@@ -11,6 +11,13 @@
 # `active=true` with whatever `phase` was in progress. Deactivation
 # (`.active = false` below) is therefore best-effort, NOT a guarantee.
 #
+# When it does run, a state that was mid-flow (active=true, phase not
+# terminal) is deactivated but kept, so a session resumed after `/exit` reads
+# its phase and PR back. The same write marks it `suspended_by_session_end`,
+# and SessionStart(`source=resume`) turns a marked state active again so the
+# resumed entries read it as in progress. Only a state with nothing to resume
+# or keep is removed, together with its lock file.
+#
 # Consequently, code elsewhere that treats `active=true` as "do not touch —
 # a live session still owns this" must not assume SessionEnd will eventually
 # clear it. The actual safety net is the liveness TTL in
@@ -18,7 +25,8 @@
 # (`RITE_SESSION_LIVENESS_TTL_HOURS`, default 24h): an `active=true` holder is
 # protected only while its flow-state `updated_at` is within that TTL, so a
 # session whose termination skipped this hook eventually stops blocking reap
-# instead of doing so forever.
+# instead of doing so forever. run-queue-reap.sh does not use this TTL: a
+# run-queue whose owner never got the ended marker this hook writes is kept.
 set -euo pipefail
 
 # Double-execution guard (hooks.json + settings.local.json migration)
@@ -31,6 +39,8 @@ source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
 source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 # shellcheck source=control-char-neutralize.sh
 source "$SCRIPT_DIR/control-char-neutralize.sh"
+# shellcheck source=session-identity.sh
+source "$SCRIPT_DIR/session-identity.sh"
 # session-ownership.sh provides the ownership guard consumed below. Sourcing is
 # fail-open (2>/dev/null || true) so a missing or unparsable helper cannot block
 # session-end's main job: persisting / deactivating the flow state.
@@ -91,6 +101,25 @@ if [ "$_resolve_failed" -eq 1 ]; then
   echo "[rite] WARNING: flow-state.sh path resolution failed — skip" >&2
 fi
 [ -n "$_resolve_err" ] && rm -f "$_resolve_err"
+
+# Mark this session's run-queue as ended. run-queue-reap.sh cannot tell an
+# ended owner from one paused by a usage limit by timestamps alone; only a
+# marked queue is reaped, and an unmarked one is kept and announced at
+# SessionStart. The payload names the session that is
+# ending; the resolved state file is used only when the payload has no id.
+_end_sid=$(extract_session_id "$INPUT") || _end_sid=""
+if [ -z "$_end_sid" ] && [[ "$STATE_FILE" == *"/.rite/sessions/"*".flow-state" ]]; then
+    _end_sid=$(basename "$STATE_FILE" .flow-state)
+fi
+if [ -n "$_end_sid" ] && validate_session_id_path "$_end_sid" "SessionEnd payload"; then
+    if [[ "$_end_sid" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+        _end_sid=$(printf '%s' "$_end_sid" | tr 'A-F' 'a-f')
+    fi
+    _run_queue="$STATE_ROOT/.rite/state/run-queue-${_end_sid}.json"
+    if [ -f "$_run_queue" ] && ! : > "${_run_queue%.json}.ended"; then
+        echo "[rite] WARNING: session-end: failed to mark run-queue as ended: $(printf '%s' "${_run_queue%.json}.ended" | neutralize_ctrl)" >&2
+    fi
+fi
 
 # Get current branch. Capture git stderr so that corrupt .git / permission denied
 # / missing git binary surface a WARNING instead of collapsing into an empty
@@ -196,6 +225,18 @@ WARN_MSG
             ;;
     esac
 
+    # A state that was mid-flow when the session ended (active=true, phase not
+    # terminal; a missing phase counts as not terminal) is kept and marked, so a
+    # resumed session can tell it from a finished or stopped state. Decided here,
+    # before the deactivate write, because the file always says active=false after it.
+    _state_midflow=0
+    if [ "$_state_active" = "true" ]; then
+      case "$_state_phase" in
+        completed|create_completed|cleanup_completed) ;;
+        *) _state_midflow=1 ;;
+      esac
+    fi
+
     # PID-based fallback so a broken mktemp (e.g. /tmp readonly) still produces
     # a unique sibling path instead of clobbering the state file via a fixed name.
     TMP_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_FILE="${STATE_FILE}.tmp.$$"
@@ -205,8 +246,10 @@ WARN_MSG
     # stderr に出しても次セッションの orchestrator からは grep されない。代替として diag log に
     # 持続化することで、次回 session-start の defensive reset が cause を surface できる。
     _deact_jq_err=$(mktemp 2>/dev/null) || _deact_jq_err=""
-    if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-       '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_FILE" 2>"${_deact_jq_err:-/dev/null}"; then
+    if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" --argjson midflow "$_state_midflow" \
+       '.active = false | .updated_at = $ts
+        | if $midflow == 1 then .suspended_by_session_end = true else . end' \
+       "$STATE_FILE" > "$TMP_FILE" 2>"${_deact_jq_err:-/dev/null}"; then
         _deact_mv_err=$(mktemp 2>/dev/null) || _deact_mv_err=""
         if mv "$TMP_FILE" "$STATE_FILE" 2>"${_deact_mv_err:-/dev/null}"; then
           :
@@ -217,7 +260,7 @@ WARN_MSG
           if command -v _log_flow_diag >/dev/null 2>&1; then
             _log_flow_diag "session_end_mv_failed rc=$_mv_rc state=$STATE_FILE"
           fi
-          echo "rite: session-end: mv deactivation state failed (rc=$_mv_rc)" >&2
+          echo "rite: session-end: WARNING: mv deactivation state failed (rc=$_mv_rc): $STATE_FILE" >&2
           [ -n "$_deact_mv_err" ] && [ -s "$_deact_mv_err" ] && head -3 "$_deact_mv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
         fi
         [ -n "$_deact_mv_err" ] && rm -f "$_deact_mv_err"
@@ -236,12 +279,17 @@ WARN_MSG
     [ -n "$_deact_jq_err" ] && rm -f "$_deact_jq_err"
 
     # Keep review history (live run, parked history, unfinished collecting,
-    # unreadable JSON) and any state whose deactivate write failed.
+    # unreadable JSON), any state whose deactivate write failed, and a state
+    # that was still mid-flow when the session ended. SessionEnd cannot tell a
+    # `/exit` that will be resumed from a final exit, and a resumed session
+    # reads this file back, so a mid-flow state (`_state_midflow`, decided
+    # before the deactivate write) is only deactivated.
     # Do not empty history keys before this check, and do not fill missing
-    # keys with [] / 0. States without that history still follow the existing
-    # per-session cleanup (deactivate then rm).
+    # keys with [] / 0. Only a state with none of the above is removed.
     _session_end_preserve=0
-    if ! jq -e . "$STATE_FILE" >/dev/null 2>&1; then
+    if [ "$_state_midflow" = 1 ]; then
+      _session_end_preserve=1
+    elif ! jq -e . "$STATE_FILE" >/dev/null 2>&1; then
       _session_end_preserve=1
     elif jq -e '
         ((.review_run | type) == "object")
@@ -255,8 +303,9 @@ WARN_MSG
       _session_end_preserve=1
     fi
 
-    # Clean up per-session flow-state file on session end when there is no
-    # review history to keep and deactivation succeeded.
+    # Clean up the per-session flow-state file, and its flock lock file, when
+    # none of the keep conditions above holds. A removed state leaves no lock
+    # behind; a kept state keeps its lock for the resumed session.
     # Detection: STATE_FILE matches `*/.rite/sessions/*.flow-state` (the per-session
     # path returned by `flow-state.sh path`, now the only resolved form).
     # A residual legacy `.rite-flow-state` single-file (left over from a pre-v3
@@ -270,7 +319,12 @@ WARN_MSG
     elif [[ "$STATE_FILE" == *"/.rite/sessions/"*".flow-state" ]] && [ -f "$STATE_FILE" ]; then
         # Surface rm failure (readonly fs / permission denied) so the next
         # session doesn't silently read stale state.
-        rm -f "$STATE_FILE" 2>/dev/null || echo "[rite] WARNING: session-end: failed to remove per-session state file: $STATE_FILE" >&2
+        if ! rm -f "$STATE_FILE" 2>/dev/null; then
+            echo "[rite] WARNING: session-end: failed to remove per-session state file: $STATE_FILE" >&2
+        elif [ -e "${STATE_FILE}.lock" ] || [ -L "${STATE_FILE}.lock" ]; then
+            rm -f "${STATE_FILE}.lock" 2>/dev/null \
+              || echo "[rite] WARNING: session-end: failed to remove the state lock file: ${STATE_FILE}.lock" >&2
+        fi
     fi
 fi
 

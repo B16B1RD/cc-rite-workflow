@@ -14,7 +14,8 @@
 #
 # Convention: source the lib and call the function in-process (it is a
 # source-only helper, not a standalone script). parse_wiki_scalar reads
-# rite-config.yml from the current directory, so each case cd's into a sandbox.
+# the rite-config.yml resolved from the current directory, so each case cd's into
+# a sandbox.
 
 set -uo pipefail
 
@@ -125,6 +126,24 @@ assert "same-named key in a later section is not read" "true" \
 assert "same-named key in an earlier section is not read" "right" \
   "$(parse_wiki_scalar branch_name)"
 
+# A top-level key starting with a digit or an underscore ends the section too.
+# The looked-up key sits only under that key; first-match would hide a leak if
+# it also sat inside `wiki:`.
+printf 'wiki:\n  enabled: true\n2fa:\n  branch_name: "leak"\n' > rite-config.yml
+assert "key under a digit-led top-level key is not read" "" \
+  "$(parse_wiki_scalar branch_name)"
+printf 'wiki:\n  enabled: true\n_x:\n  branch_name: "leak"\n' > rite-config.yml
+assert "key under an underscore-led top-level key is not read" "" \
+  "$(parse_wiki_scalar branch_name)"
+
+# A column-0 comment is not YAML structure: the section keeps going past it, and
+# the digit-led key after it still ends the section.
+printf 'wiki:\n# note\n  branch_name: "kept"\n2fa:\n  auto_query: "leak"\n' > rite-config.yml
+assert "key after a column-0 comment is still read" "kept" \
+  "$(parse_wiki_scalar branch_name)"
+assert "comment then digit-led key: the later key is not read" "" \
+  "$(parse_wiki_scalar auto_query)"
+
 # --- Key matching is anchored -------------------------------------------------
 # `auto_ingest` must not satisfy a lookup for `ingest`, or a caller asking for a
 # key that does not exist would silently receive another key's value.
@@ -140,5 +159,38 @@ assert "value case is preserved (caller lowercases if needed)" "TRUE" \
   "$(parse_wiki_scalar enabled)"
 assert "branch_name case is preserved" "Wiki-Notes" \
   "$(parse_wiki_scalar branch_name)"
+
+# An untracked config lives only in the main checkout; a linked worktree reads it,
+# and a missing config warns with the tried paths instead of defaulting silently.
+LW_MAIN=$(make_sandbox --branch develop)
+LW="${LW_MAIN}-wt"
+git -C "$LW_MAIN" worktree add -q -b feat/cfg "$LW" >/dev/null 2>&1
+printf 'wiki:\n  branch_name: main-wiki\n' > "$LW_MAIN/rite-config.yml"
+assert "linked worktree reads the main checkout config" "main-wiki" \
+  "$(cd "$LW" && parse_wiki_scalar branch_name)"
+rm -f "$LW_MAIN/rite-config.yml"
+lw_err=$(cd "$LW" && parse_wiki_scalar branch_name 2>&1 >/dev/null)
+case "$lw_err" in
+  WARNING:*"$LW_MAIN/rite-config.yml"*) pass "missing config warns with the tried path" ;;
+  *) fail "missing config warns with the tried path (got '$lw_err')" ;;
+esac
+# An unreadable config stops the read instead of falling back to defaults.
+# (root ignores mode bits, so this cannot be exercised as root.)
+if [ "$(id -u)" != 0 ]; then
+  printf 'wiki:\n  branch_name: main-wiki\n' > "$LW_MAIN/rite-config.yml"
+  chmod 000 "$LW_MAIN/rite-config.yml"
+  lw_rc=0
+  lw_out=$(cd "$LW" && parse_wiki_scalar branch_name 2>"$SANDBOX/unreadable.err") || lw_rc=$?
+  chmod 644 "$LW_MAIN/rite-config.yml"
+  assert "unreadable config returns 1" "1" "$lw_rc"
+  assert "unreadable config prints no value" "" "$lw_out"
+  case "$(cat "$SANDBOX/unreadable.err")" in
+    ERROR:*"$LW_MAIN/rite-config.yml"*) pass "unreadable config errors with the path" ;;
+    *) fail "unreadable config errors with the path (got '$(cat "$SANDBOX/unreadable.err")')" ;;
+  esac
+else
+  echo "  SKIP: unreadable config (root ignores mode bits)"
+fi
+rm -rf "$LW_MAIN" "$LW"
 
 print_summary "$(basename "$0")"

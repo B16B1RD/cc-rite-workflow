@@ -66,7 +66,8 @@
 #        素通りする drift クラス)。
 #        各 pin は追加時に mutation を当てて落ちることを実測する (手順: measured-gate-record.md#static-pin)
 #   TC-7 scripts/review-class-demotion-gate.sh の除外判別子 SoT 静的 pin — severity-levels §ゲート層 /
-#        assessment-rules §5.3.0.C / helper docstring の各節に「合意済み AC の実測済み未充足」が載り、
+#        assessment-rules §5.3.0.C / helper docstring の各節に「合意済み AC の実測済み未充足」と
+#        「指摘が主張する AC 未充足」(ac_claim) が載り、
 #        既存判別子 (既存記述の削除/弱体化) の原文が残る。helper の挙動は
 #        scripts/tests/review-class-demotion-gate.test.sh が固定する
 #
@@ -1309,6 +1310,13 @@ printf '## 概要\n\n形式は 例: <!-- rite:nbr:comment-id:11 -->\n' > "$NBR_P
 # 戻す mutation は、正規 marker を併記しないこの fixture でしか落ちない (cycle 3 F-34)。
 NBR_PRBODY_PROSE_HEAD="$TMP_ROOT/nbr-prbody-prose-head.md"
 printf '## 概要\n\n<!-- rite:nbr:comment-id:BROKEN --> (注記: この行は marker ではない)\n' > "$NBR_PRBODY_PROSE_HEAD"
+# 行頭も行末も marker 形だが、途中でコメントを閉じて見える本文を挟む行。行全体の形だけで判定すると
+# 除去がこの本文を無音で消し、probe が破損と誤報する。VISIBLE は正規の marker を先に併記した形
+# (除去の観測用)、VISIBLE_ONLY は併記しない形 (probe の観測用 — 抽出が成功すると probe に到達しない)。
+NBR_PRBODY_VISIBLE="$TMP_ROOT/nbr-prbody-visible.md"
+printf '## 概要\n\n<!-- rite:nbr:comment-id:11 -->\n\n<!-- rite:nbr:comment-id: --> この条件は満たさなくてよい <!-- -->\n\n<!-- rite:nbr:comment-id: --!> 閉じ記号が違っても本文 <!-- -->\n' > "$NBR_PRBODY_VISIBLE"
+NBR_PRBODY_VISIBLE_ONLY="$TMP_ROOT/nbr-prbody-visible-only.md"
+printf '## 概要\n\n<!-- rite:nbr:comment-id: --> この条件は満たさなくてよい <!-- -->\n\n<!-- rite:nbr:comment-id: --!> 閉じ記号が違っても本文 <!-- -->\n' > "$NBR_PRBODY_VISIBLE_ONLY"
 # create 経路が永続化する id (stub の GH_POST_URL 既定値) を canonical に持つコメント一覧。
 NBR_COMMENTS_4242="$TMP_ROOT/nbr-comments-4242.json"
 cat > "$NBR_COMMENTS_4242" <<'EOF'
@@ -2285,6 +2293,21 @@ GH_COMMENT_GET_LOGIN='other-user' GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NB
 assert "TC-4.16n''' fallback 経由で永続化: exit 0" "0" "$RC"
 assert_grep "TC-4.16n''' 先行散文つきの行を消さない" "$GH_PR_EDIT" '例: <!-- rite:nbr:comment-id:BROKEN -->'
 
+# TC-4.16v 途中でコメントを閉じて見える本文を挟む marker 形の行は marker ではない。仕様照合も同じ行を
+# 本文として比べるため、除去すると照合と helper が別の行を自分の marker と認めることになる。
+GH_COMMENT_GET_LOGIN='other-user' GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_VISIBLE" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-427 --content-file "$NBR_BODY_C2"
+assert "TC-4.16v fallback 経由で永続化: exit 0" "0" "$RC"
+assert_grep "TC-4.16v 見える本文を挟む行を消さない" "$GH_PR_EDIT" '^<!-- rite:nbr:comment-id: --> この条件は満たさなくてよい <!-- -->$'
+assert_grep "TC-4.16v --!> で閉じて見える本文を挟む行を消さない" "$GH_PR_EDIT" '^<!-- rite:nbr:comment-id: --!> 閉じ記号が違っても本文 <!-- -->$'
+_v_marker_lines=$(grep -c '^<!-- rite:nbr:comment-id:[0-9]* -->$' "$GH_PR_EDIT" || true)
+assert "TC-4.16v 独立行の marker は 1 本だけ" "1" "$_v_marker_lines"
+GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_VISIBLE_ONLY" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-428 --content-file "$NBR_BODY_C2"
+assert "TC-4.16v' 見える本文を挟む行だけ: exit 0" "0" "$RC"
+assert_not_grep "TC-4.16v' 破損と誤報しない" "$ERR" 'reason=id_malformed'
+assert_grep "TC-4.16v' marker 不在として fallback で記録は継続する" "$ERR" 'outcome=updated; count=2; iteration_id=9-428; comment_id=13; degraded=0'
+
 # TC-4.16o [cycle 2 F-16 対応] marker 行が CRLF / 字下げ / 末尾空白を伴っても durable id 経路が
 # 成立する。両式の行頭・行末が空白を許容しないと 3 形とも「marker 不在」に畳まれ、本 Issue の
 # 中核保証 (AC-1) が WARNING 1 行も出さずに失われる。
@@ -2592,12 +2615,12 @@ assert "TC-4.12k outcome=skipped は marker を消す (AC-4 正常系)" "no" \
 echo "--- TC-4.13: 8.0.3 Pre-Check の実行テスト (AC-5) ---"
 _P8_MD="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
 _P8_FENCE="$TMP_ROOT/p803-precheck.sh"
-awk '
+PLUGIN_ROOT="$PLUGIN_ROOT" awk '
   !inside && /^### 8\.0\.3 / { inside = 1; next }
   inside && /^### / { exit }
   inside && !infence && /^```bash$/ { infence = 1; next }
   inside && infence && /^```[[:space:]]*$/ { exit }
-  inside && infence { print }
+  inside && infence { gsub(/\{plugin_root\}/, ENVIRON["PLUGIN_ROOT"]); print }
 ' "$_P8_MD" > "$_P8_FENCE"
 if [ ! -s "$_P8_FENCE" ]; then
   fail "TC-4.13 precondition: 8.0.3 節から Pre-Check の bash fence を抽出できません"
@@ -2656,7 +2679,32 @@ echo "=== TC-5: skills/pr-review/SKILL.md 静的 pin (6.1.d / 8.0.3) ==="
 # mutation (述語置換 / 死に分岐化 / 変数リネーム / 散文追加 / 区間境界変更) を当て、落ちること
 # および無害な変更では落ちないことを実測してから commit する**。手順は下記 rationale を参照。
 # rationale: ../../skills/pr-review/references/measured-gate-record.md#static-pin
-REVIEW_MD="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
+# pr-review の各ステップの bash は scripts/pr-review-step.sh の 1 行呼び出しで、実体は同名の step 関数。
+# 配置契約 (区間・fence 到達性・件数) は「LLM が各ステップで実行する bash」について固定するため、
+# SKILL.md の呼び出し行をその step 関数の本体 (呼び出し行と同じ字下げ) へ展開した写しに当てる。
+# 展開では `"$plugin_root"/` を SKILL.md の `{plugin_root}/` 表記へそろえる。
+REVIEW_MD="$TMP_ROOT/pr-review-expanded.md"
+PLUGIN_ROOT="$PLUGIN_ROOT" awk '
+  BEGIN {
+    step = ENVIRON["PLUGIN_ROOT"] "/scripts/pr-review-step.sh"
+    while ((getline line < step) > 0) {
+      if (line ~ /^step_[a-z0-9_]+\(\) \{$/) {
+        cur = line; sub(/^step_/, "", cur); sub(/\(\) \{$/, "", cur); gsub(/_/, "-", cur); body[cur] = ""; continue
+      }
+      if (cur != "" && line == "}") { cur = ""; continue }
+      if (cur != "") { gsub(/"\$plugin_root"\//, "{plugin_root}/", line); body[cur] = body[cur] line "\n" }
+    }
+  }
+  match($0, /^[[:space:]]*bash \{plugin_root\}\/scripts\/pr-review-step\.sh [a-z0-9-]+/) {
+    indent = $0; sub(/[^[:space:]].*$/, "", indent)
+    sub_name = substr($0, RSTART, RLENGTH); sub(/.* /, "", sub_name)
+    if (!(sub_name in body)) { print "UNKNOWN pr-review-step.sh subcommand: " sub_name > "/dev/stderr"; exit 1 }
+    n = split(body[sub_name], lines, "\n")
+    for (i = 1; i < n; i++) print indent lines[i]
+    next
+  }
+  { print }
+' "$PLUGIN_ROOT/skills/pr-review/SKILL.md" > "$REVIEW_MD" || rm -f "$REVIEW_MD"
 if [ ! -f "$REVIEW_MD" ]; then
   fail "TC-5 precondition: skills/pr-review/SKILL.md が存在しません"
 else
@@ -2715,13 +2763,14 @@ else
   #     CI が green のまま)。行頭 anchor にすると `# bash ...` は 0 件になり検出される。
   #     fence 検査は「行頭 anchor で拾えた行が実際に bash fence の内側にあるか」を確認する
   #     (fence は番号付きリスト内にありインデントされるため fence 側も行頭 anchor は使えない)。
-  nbr_invoke_line=$(grep -nE '^[[:space:]]*bash \{plugin_root\}/hooks/review-nonblocking-record\.sh' "$REVIEW_MD" | cut -d: -f1)
+  #     読み取り専用モード (`--print-record-body`、台帳の読み手) の呼び出しは記録経路ではないため数えない。
+  nbr_invoke_line=$(grep -nE '^[[:space:]]*bash \{plugin_root\}/hooks/review-nonblocking-record\.sh' "$REVIEW_MD" | grep -v -- '--print-record-body' | cut -d: -f1)
   nbr_invoke_count=$(printf '%s\n' "$nbr_invoke_line" | grep -c '[0-9]' || true)
   assert "TC-5a 6.1.d の helper 呼び出しが live な行として 1 箇所" "1" "$nbr_invoke_count"
   # [伝播修正, cycle 2 F-04 と同型]: 上記はファイル全体の件数で、ラベルが表明する scope (6.1.d) を
   # 検査していない。呼び出しを 6.1.d の外へ移しても件数は 1 のままだが、6.1.d を読む LLM には
   # 呼び出しが見えなくなり記録経路が実行されない。区間限定でも 1 本であることを併せて固定する。
-  nbr_invoke_in_section=$(_sec_610d | grep -cE '^[[:space:]]*bash \{plugin_root\}/hooks/review-nonblocking-record\.sh' || true)
+  nbr_invoke_in_section=$(_sec_610d | grep -E '^[[:space:]]*bash \{plugin_root\}/hooks/review-nonblocking-record\.sh' | grep -cv -- '--print-record-body' || true)
   assert "TC-5a 6.1.d 区間に helper 呼び出しが 1 箇所" "1" "$nbr_invoke_in_section"
   # 到達性 assertion を件数 pin の内側に入れない。gate すると件数 pin が落ちたとき到達性側が
   # 無言で実行されず、総 assertion 数だけが減る (赤にはなるが「何本走ったか」が変わる)。
@@ -3289,8 +3338,10 @@ else
   #        exit 1 を返して ステップ 8.1 に永久到達できなくなる。sibling は path を内部導出するため
   #        配線 drift が構造的に起こり得ないが、本 helper は id を受け取るのでここが単一障害点。
   _sec_610a() { _section_of '^bash \{plugin_root\}/hooks/flow-state\.sh review-finish' '^```$'; }
+  assert "TC-5h 6.1.a の呼び出し行が --pending-id に本 cycle の id を渡す (配線 drift の検出)" "1" \
+    "$(grep -cE '^bash \{plugin_root\}/scripts/pr-review-step\.sh review-finish .*--pending-id "\{save_pending_id\}"$' "$PLUGIN_ROOT/skills/pr-review/SKILL.md" || true)"
   assert "TC-5h 6.1.a の helper 呼び出しが --pending-id を渡す (配線 drift の検出)" "1" \
-    "$(_sec_610a | grep -cE '^[[:space:]]*--pending-id "\{save_pending_id\}" \|\| \{$' || true)"
+    "$(_sec_610a | grep -cE '^[[:space:]]*--pending-id "\$\{pending_id\}" \|\| \{$' || true)"
   # 生成側の変数名と caller placeholder 名が一致すること (片側改名で silent に空文字が渡る)
   assert "TC-5h 6.1.a が渡す placeholder 名が 5.3.0.M step 2 の変数名と一致する" "1" \
     "$(_sec_530m_step2 | grep -cE '^[[:space:]]*save_pending_id="' || true)"
@@ -3305,9 +3356,11 @@ else
     "$(_sec_530m_step2 | grep -cE '^exit "\$_gate_rc"$' || true)"
   # 実測: 抽出した block を bash に食わせ、helper 失敗時に非ゼロで終わることを確認する
   # (静的 pin だけでは `exit "$_gate_rc"` が生成 if の**内側**へ移動した変異を検出できない)。
-  _gate_block_probe=$(_sec_530m_step2 | sed \
+  # helper は PR 番号を引数 (--pr) から受け取るため、probe は pr_number=123 を与えて実行する。
+  _gate_block_probe="pr_number=123
+$(_sec_530m_step2 | sed \
     -e 's#^bash {plugin_root}/scripts/review-measured-gate\.sh.*#( exit 3 )#' \
-    -e '/^  --input /d' -e '/^  --reject-preset-verification$/d')
+    -e '/^  --input /d' -e '/^  --reject-preset-verification$/d')"
   _probe_rc=0
   printf '%s\n' "$_gate_block_probe" | TMPDIR="$TMP_ROOT" bash >/dev/null 2>&1 || _probe_rc=$?
   assert "TC-5h [実測] helper 非ゼロ終了時に step 2 block が同じ rc で終わる" "3" "$_probe_rc"
@@ -3333,7 +3386,7 @@ else
   _squat_bin=$(mktemp -d "$TMP_ROOT/squatbin-XXXXXX")
   printf '#!/bin/bash\nprintf "%%s\\n" "1700000099"\n' > "$_squat_bin/date"
   chmod +x "$_squat_bin/date"
-  if mkfifo "$_squat_dir/rite-p61a-pending-{pr_number}-1700000099" 2>/dev/null; then
+  if mkfifo "$_squat_dir/rite-p61a-pending-123-1700000099" 2>/dev/null; then
     _squat_rc=0
     # `timeout` は macOS CI (BSD / coreutils なし) に存在しないため `_timeout` を使う。bare
     # `timeout` だと rc=127 (command not found) で block 自体が走らず、下の marker assertion が
@@ -3352,13 +3405,12 @@ else
   fi
 
   # 生成側が emit する id が **消費側 helper の allowlist を通り、実際に marker を consume できるか**
-  # を end-to-end で固定する。probe の id は `{pr_number}` が未置換のままなので、そのままでは
-  # helper に弾かれる形状 (= (h-5) arm A が「拒否される側」として使う値と同型)。ここで置換して
-  # 実 id にしてから helper に渡すことで、生成側テンプレートが allowlist 外の文字を含む形へ
-  # drift した場合に落ちる。これが無いと drift 時は「marker は作られたが helper が消せず
-  # 8.0.4 が毎 cycle exit 1」という本 Issue の失敗クラスがそのまま再現する。
+  # を end-to-end で固定する。probe は pr_number=123 で実行した生成側の id をそのまま helper に
+  # 渡すため、生成側の id の形が allowlist 外の文字を含む形へ drift した場合に落ちる。これが無いと
+  # drift 時は「marker は作られたが helper が消せず 8.0.4 が毎 cycle exit 1」という失敗クラスが
+  # そのまま再現する。
   _probe_id_raw=$(printf '%s\n' "$_probe_err" | sed -n 's/^\[CONTEXT\] REVIEW_SAVE_PENDING_ID=//p' | head -1)
-  _probe_id=${_probe_id_raw//\{pr_number\}/123}
+  _probe_id=$_probe_id_raw
   if [ -n "$_probe_id" ]; then
     _probe_e2e_marker="${TMPDIR:-/tmp}/rite-p61a-pending-$_probe_id"
     : > "$_probe_e2e_marker"
@@ -3424,7 +3476,10 @@ else
   # 抽出は `esac` で止めない — positive 検査 (review-save-json-verify.sh) は case の**外**に
   # 置かれており、`esac` で切ると本 PR が塞いだ「marker degraded 時に positive 検査が走らない」
   # 経路を arm テストが一切踏めなくなる。閉じ fence まで取る。
-  _sec_804_precheck() { _sec_804 | awk '/^save_pending_marker="/{f=1} f&&/^```$/{exit} f{print}'; }
+  _sec_804_precheck() {
+    awk '/^### 8\.0\.4 /{f=1; next} f&&/^### /{exit} f' "$PLUGIN_ROOT/skills/pr-review/SKILL.md" \
+      | grep -E '^bash \{plugin_root\}/scripts/pr-review-step\.sh save-gate '
+  }
   # marker 不在の arm は positive 検査 (review-save-json-verify.sh) まで到達する。同 helper は
   # state-path-resolve.sh で results dir を解決するため、arm は **cwd 配下に .rite/review-results を
   # 持つ一時ディレクトリ**で走らせる。`--results-dir` を後付けせず本番と同じ既定解決を通すことで、
@@ -3448,7 +3503,7 @@ EOF
   _run_804_arm() {  # $1=marker 値, $2=cwd (省略: 本 cycle の JSON を持つ dir) → "rc|stderr" を返す
     local _m="$1" _cwd="${2:-$_804_json_ok}" _rc=0 _err
     _err=$(printf '%s\n' "$(_sec_804_precheck)" \
-      | sed "1s#^save_pending_marker=.*#save_pending_marker='$_m'#" \
+      | sed "s#{save_pending_marker}#$_m#" \
       | sed "s#{plugin_root}#$PLUGIN_ROOT#g; s#{pr_number}#$_804_pr#g; s#{current_commit_sha}#$_804_sha#g" \
       | (cd "$_cwd" && PATH="$_804_bin:$PATH" bash) 2>&1 >/dev/null) || _rc=$?
     printf '%s|%s' "$_rc" "$_err"
@@ -3463,10 +3518,10 @@ EOF
   _804_json_missing=$(mktemp -d "$TMP_ROOT/gate804miss-XXXXXX")
   mkdir -p "$_804_json_missing/.rite/review-results"
   _804_precheck_lines=$(_sec_804_precheck | grep -c . || true)
-  if [ "$_804_precheck_lines" -ge 10 ] 2>/dev/null; then
-    pass "TC-5h 区間解決: 8.0.4 Pre-Check の bash を抽出できる ($_804_precheck_lines 行)"
+  if [ "$_804_precheck_lines" -eq 1 ] 2>/dev/null; then
+    pass "TC-5h 区間解決: 8.0.4 Pre-Check の save-gate 呼び出し行を抽出できる"
   else
-    fail "TC-5h 区間解決: 8.0.4 Pre-Check の bash 抽出に失敗 ($_804_precheck_lines 行) — case 構造の drift"
+    fail "TC-5h 区間解決: 8.0.4 Pre-Check の save-gate 呼び出し行の抽出に失敗 ($_804_precheck_lines 行)"
   fi
 
   # arm 1: marker 残存 → rc=1 + REVIEW_SAVE_GATE_FAILED。**かつ marker を削除しない**
@@ -4029,6 +4084,14 @@ assert "TC-7 assessment-rules §5.3.0.C に既存判別子の原文が残る" "1
   "$(_sec_ar_530c | grep -cF '既存 (base 側) に存在した記述・ガード・禁止文を本 PR の diff が削除/弱体化した' || true)"
 assert "TC-7 helper docstring の Gate semantics に第 2 判別子が 1 箇所" "1" \
   "$(_sec_gate_doc | grep -cF '#      - 合意済み AC の実測済み未充足:' || true)"
+assert "TC-7 severity-levels ゲート層節に ac_claim 由来の除外が 1 箇所" "1" \
+  "$(_sec_sev_gate | grep -cF 'classification map の `ac_claim` が主張する AC から helper が付与する (`ac_claim:AC-N`)' || true)"
+assert "TC-7 assessment-rules §5.3.0.C に第 3 除外入力源が 1 箇所" "1" \
+  "$(_sec_ar_530c | grep -cF '**第 3 除外入力源 (指摘が主張する AC 未充足)**' || true)"
+assert "TC-7 assessment-rules §5.3.0.C の集合演算に ac_claim の付与が 1 箇所" "1" \
+  "$(_sec_ar_530c | grep -cF 'consequence_exclusion = "ac_claim:AC-N"' || true)"
+assert "TC-7 helper docstring の Gate semantics に ac_claim 判別子が 1 箇所" "1" \
+  "$(_sec_gate_doc | grep -cF '#      - 指摘側が主張する AC 未充足:' || true)"
 assert "TC-7 helper docstring の Reason SoT に acceptance_criteria_invalid が 1 箇所" "1" \
   "$(_sec_gate_doc | grep -cE '^#   acceptance_criteria_invalid +— ' || true)"
 assert "TC-7 helper docstring に既存判別子の well-formed 条件が残る" "1" \

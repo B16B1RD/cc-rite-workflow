@@ -12,6 +12,7 @@ TARGET="$PLUGIN_ROOT/hooks/scripts/number-reference-check.sh"
 LINT_SKILL="$PLUGIN_ROOT/skills/lint/SKILL.md"
 PR_REVIEW_SKILL="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
 FIX_SKILL="$PLUGIN_ROOT/skills/fix/SKILL.md"
+FIX_STEP="$PLUGIN_ROOT/scripts/fix-step.sh"
 IMPLEMENT_SKILL="$PLUGIN_ROOT/skills/issue-implement/SKILL.md"
 ISSUE_CLOSE_SKILL="$PLUGIN_ROOT/skills/issue-close/SKILL.md"
 
@@ -143,6 +144,166 @@ rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
 assert "T-01(d) deleted numbered line is not a hit" "0" "$rc"
 
 # --------------------------------------------------------------------------
+# T-01(e) moved lines: an added line equal to a removed line in the same diff
+# is a move, not a new reference (split / rewrite / renames off)
+# --------------------------------------------------------------------------
+mv_dir="$sb/plugins/rite/references"
+mkdir -p "$mv_dir"
+printf 'intro prose\nfirst ref (#2101)\nmiddle prose\nsecond ref (#2102)\nthird ref (#2103)\n' > "$mv_dir/guide.md"
+printf 'halves prose\nleft ref (#2111)\nright ref (#2112)\n' > "$mv_dir/halves.md"
+commit_all "$sb" move-base
+# 2-way split with the prose rewritten
+git -C "$sb" rm -q plugins/rite/references/halves.md
+printf 'left prose\nleft ref (#2111)\n' > "$mv_dir/left.md"
+printf 'right prose\nright ref (#2112)\n' > "$mv_dir/right.md"
+commit_all "$sb" move-halves
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+assert "T-01(e0) 2-way split of moved numbered lines is not a hit" "0" "$rc"
+# 3-way split with every prose line rewritten; numbered lines are unchanged
+git -C "$sb" rm -q plugins/rite/references/guide.md
+mkdir -p "$mv_dir"
+printf 'rewritten a\nfirst ref (#2101)\n' > "$mv_dir/part-a.md"
+printf 'rewritten b\nsecond ref (#2102)\n' > "$mv_dir/part-b.md"
+printf 'rewritten c\nthird ref (#2103)\n' > "$mv_dir/part-c.md"
+commit_all "$sb" move-split
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+assert "T-01(e1) split + rewrite of moved numbered lines is not a hit" "0" "$rc"
+
+# pure mv with renames disabled in the user config
+git -C "$sb" config diff.renames false
+git -C "$sb" mv plugins/rite/references/part-a.md plugins/rite/references/moved-a.md
+commit_all "$sb" move-renames-off
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+git -C "$sb" config --unset diff.renames
+assert "T-01(e2) pure mv under diff.renames=false is not a hit" "0" "$rc"
+
+# a move plus a new reference: only the new one is a hit
+git -C "$sb" rm -q plugins/rite/references/part-b.md
+mkdir -p "$mv_dir"
+printf 'second ref (#2102)\nnew ref (#2104)\n' > "$mv_dir/merged.md"
+commit_all "$sb" move-plus-new
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] && grep -q '#2104' <<< "$out" \
+   && ! grep -q '#2102' <<< "$out" \
+   && grep -q 'Total number-ref findings: 1' <<< "$out"; then
+  pass "T-01(e3) move plus new reference detects only the new one"
+else
+  fail "T-01(e3) expected only #2104, got rc=$rc: $out"
+fi
+
+# one removal offsets one addition: removed once, added twice → one hit
+git -C "$sb" rm -q plugins/rite/references/part-c.md
+mkdir -p "$mv_dir"
+printf 'third ref (#2103)\n' > "$mv_dir/copy-1.md"
+printf 'third ref (#2103)\n' > "$mv_dir/copy-2.md"
+commit_all "$sb" move-duplicated
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] && grep -q 'Total number-ref findings: 1' <<< "$out"; then
+  pass "T-01(e4) a removed line offsets only one identical addition"
+else
+  fail "T-01(e4) expected exactly one hit, got rc=$rc: $out"
+fi
+
+# a line removed from an excluded path is not a move source
+mkdir -p "$sb/.rite/wiki/raw/reviews"
+printf 'raw ref (#2105)\n' > "$sb/.rite/wiki/raw/reviews/r.md"
+commit_all "$sb" excluded-base
+git -C "$sb" rm -q .rite/wiki/raw/reviews/r.md
+mkdir -p "$mv_dir"
+printf 'raw ref (#2105)\n' > "$mv_dir/from-raw.md"
+commit_all "$sb" excluded-move
+# rename detection on in the user config: the same-content rename must still be scanned
+git -C "$sb" config diff.renames true
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+git -C "$sb" config --unset diff.renames
+if [ "$rc" -eq 1 ] && grep -q '^plugins/rite/references/from-raw.md:1: raw ref (#2105)$' <<< "$out"; then
+  pass "T-01(e5) a reference renamed out of an excluded path is a hit under diff.renames=true"
+else
+  fail "T-01(e5) expected from-raw.md hit, got rc=$rc: $out"
+fi
+
+# prefix settings in the user config must not break the excluded-path check
+for prefix_cfg in diff.mnemonicPrefix diff.noprefix; do
+  git -C "$sb" config "$prefix_cfg" true
+  rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+  git -C "$sb" config --unset "$prefix_cfg"
+  if [ "$rc" -eq 1 ] && grep -q '^plugins/rite/references/from-raw.md:1: raw ref (#2105)$' <<< "$out"; then
+    pass "T-01(e6) move out of an excluded path is a hit under $prefix_cfg=true"
+  else
+    fail "T-01(e6) expected from-raw.md hit under $prefix_cfg=true, got rc=$rc: $out"
+  fi
+done
+
+# a user-configured diff.external must not replace the internal diff (--no-ext-diff pin,
+# both the --path DIR call and the whole-tree call)
+ext_dir=$(make_plain_sandbox) && cleanup_dirs+=("$ext_dir") || { echo "ERROR: ext_dir sandbox" >&2; exit 1; }
+noop_ext="$ext_dir/noop-ext.sh"
+printf '#!/bin/sh\nexit 0\n' > "$noop_ext"
+chmod +x "$noop_ext"
+git -C "$sb" config diff.external "$noop_ext"
+plain_out=$(git -C "$sb" diff HEAD~1 -- plugins/rite/references/from-raw.md 2>&1)
+if grep -q 'raw ref (#2105)' <<< "$plain_out"; then
+  fail "T-01(e6b) setup: expected diff.external to suppress the plain diff output, got: $plain_out"
+else
+  for path_args in "" "--path plugins/rite/references"; do
+    rc=0; out=$(run_diff "$sb" HEAD~1 --quiet $path_args 2>&1) || rc=$?
+    if [ "$rc" -eq 1 ] && grep -q '^plugins/rite/references/from-raw.md:1: raw ref (#2105)$' <<< "$out"; then
+      pass "T-01(e6b) move out of an excluded path is a hit under diff.external (path_args='${path_args:-<none>}')"
+    else
+      fail "T-01(e6b) expected from-raw.md hit under diff.external (path_args='${path_args:-<none>}'), got rc=$rc: $out"
+    fi
+  done
+fi
+git -C "$sb" config --unset diff.external
+
+# a user-configured textconv driver must not replace the internal diff (--no-textconv pin,
+# both the --path DIR call and the whole-tree call)
+attrs_file="$sb/.gitattributes"
+printf '*.md diff=strip\n' > "$attrs_file"
+git -C "$sb" config diff.strip.textconv 'sed s/#/N/g'
+plain_out=$(git -C "$sb" diff HEAD~1 -- plugins/rite/references/from-raw.md 2>&1)
+if ! grep -q 'N2105' <<< "$plain_out"; then
+  fail "T-01(e6c) setup: expected textconv to rewrite # to N in the plain diff, got: $plain_out"
+else
+  for path_args in "" "--path plugins/rite/references"; do
+    rc=0; out=$(run_diff "$sb" HEAD~1 --quiet $path_args 2>&1) || rc=$?
+    if [ "$rc" -eq 1 ] && grep -q '^plugins/rite/references/from-raw.md:1: raw ref (#2105)$' <<< "$out"; then
+      pass "T-01(e6c) move out of an excluded path is a hit under textconv (path_args='${path_args:-<none>}')"
+    else
+      fail "T-01(e6c) expected from-raw.md hit under textconv (path_args='${path_args:-<none>}'), got rc=$rc: $out"
+    fi
+  done
+fi
+git -C "$sb" config --unset diff.strip.textconv
+rm -f "$attrs_file"
+
+# a moved line that starts with "-- " is a content line, not a file header
+printf 'intro\n-- see (#2106)\n' > "$mv_dir/dash-src.md"
+commit_all "$sb" dash-base
+git -C "$sb" rm -q plugins/rite/references/dash-src.md
+mkdir -p "$mv_dir"
+printf 'other intro\n-- see (#2106)\n' > "$mv_dir/dash-dst.md"
+commit_all "$sb" dash-move
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+assert "T-01(e7) a moved line starting with -- is not a hit" "0" "$rc"
+
+# an added line whose content starts with "++ " is content, not a file header
+printf 'intro\n' > "$mv_dir/plus.md"
+commit_all "$sb" plus-base
+printf 'intro\n++ plus ref (#2107)\ntrailing ref (#2108)\n' > "$mv_dir/plus.md"
+commit_all "$sb" plus-add
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] \
+   && grep -qxF 'plugins/rite/references/plus.md:2: ++ plus ref (#2107)' <<< "$out" \
+   && grep -qxF 'plugins/rite/references/plus.md:3: trailing ref (#2108)' <<< "$out"; then
+  pass "T-01(e8) a line starting with ++ is scanned and later lines keep their path"
+else
+  fail "T-01(e8) expected plus.md:2 and plus.md:3 hits, got rc=$rc: $out"
+fi
+git -C "$sb" rm -q -r plugins/rite/references
+commit_all "$sb" move-cleanup
+
+# --------------------------------------------------------------------------
 # T-02 Issue #N / PR #N share the same grammar
 # --------------------------------------------------------------------------
 issue_label=Issue
@@ -203,9 +364,9 @@ else
   fail "word-char skip failed rc=$rc: $out"
 fi
 
-rc=0; out=$(printf 'link to assessment-rules.md#%s-class\ncolor #%s\nreal token (#%s)\n' \
-  "$heading_id" "$hex_color" "$bare_token" \
-  | bash "$TARGET" --stdin --label probe.md --quiet 2>&1) || rc=$?
+probe_input=$(printf 'link to assessment-rules.md#%s-class\ncolor #%s\nreal token (#%s)' \
+  "$heading_id" "$hex_color" "$bare_token")
+rc=0; out=$(bash "$TARGET" --stdin --label probe.md --quiet <<< "$probe_input" 2>&1) || rc=$?
 if [ "$rc" -eq 1 ] \
    && printf '%s' "$out" | grep -cE >/dev/null "^probe.md:3: real token \\(#${bare_token}\\)$" \
    && ! printf '%s' "$out" | grep -c >/dev/null 'probe.md:1:' \
@@ -294,8 +455,8 @@ for excluded_path in \
   plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh \
   plugins/rite/hooks/tests/wiki-numref-precommit.test.sh \
   plugins/rite/hooks/tests/wiki-worktree-commit.test.sh; do
-  rc=0; out=$(printf 'excluded token (#2106)\n' \
-    | bash "$TARGET" --stdin --label "$excluded_path" --quiet 2>&1) || rc=$?
+  rc=0; out=$(bash "$TARGET" --stdin --label "$excluded_path" --quiet \
+    <<< 'excluded token (#2106)' 2>&1) || rc=$?
   if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -c >/dev/null 'Total number-ref findings: 0'; then
     pass "T-04 --stdin excludes $excluded_path"
   else
@@ -303,8 +464,8 @@ for excluded_path in \
   fi
 done
 
-rc=0; out=$(printf 'sibling token (#2107)\n' \
-  | bash "$TARGET" --stdin --label plugins/rite/hooks/tests/other.test.sh --quiet 2>&1) || rc=$?
+rc=0; out=$(bash "$TARGET" --stdin --label plugins/rite/hooks/tests/other.test.sh --quiet \
+  <<< 'sibling token (#2107)' 2>&1) || rc=$?
 if [ "$rc" -eq 1 ] \
    && printf '%s' "$out" | grep -c >/dev/null '^plugins/rite/hooks/tests/other.test.sh:1:' \
    && printf '%s' "$out" | grep -c >/dev/null 'Total number-ref findings: 1'; then
@@ -314,8 +475,8 @@ else
 fi
 
 for sibling_path in .rite/wiki/raw-notes/x.md plugins/rite/scripts/tests/fixtures-other/x.md; do
-  rc=0; out=$(printf 'directory sibling token (#2113)\n' \
-    | bash "$TARGET" --stdin --label "$sibling_path" --quiet 2>&1) || rc=$?
+  rc=0; out=$(bash "$TARGET" --stdin --label "$sibling_path" --quiet \
+    <<< 'directory sibling token (#2113)' 2>&1) || rc=$?
   if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -c >/dev/null "^$sibling_path:1:" \
      && printf '%s' "$out" | grep -c >/dev/null 'Total number-ref findings: 1'; then
     pass "T-04 --stdin scans directory sibling $sibling_path"
@@ -327,12 +488,12 @@ done
 # Directory prefixes are boundaries: the root and descendants are excluded,
 # while merely similar prefixes remain in scope.
 for excluded_label in .rite/wiki/raw .rite/wiki/raw/child.md; do
-  rc=0; out=$(printf 'excluded token (#2108)\n' \
-    | bash "$TARGET" --stdin --label "$excluded_label" --quiet 2>&1) || rc=$?
+  rc=0; out=$(bash "$TARGET" --stdin --label "$excluded_label" --quiet \
+    <<< 'excluded token (#2108)' 2>&1) || rc=$?
   assert "T-04 directory boundary excludes $excluded_label" "0" "$rc"
 done
-rc=0; out=$(printf 'prefix sibling (#2109)\n' \
-  | bash "$TARGET" --stdin --label .rite/wiki/raw-notes/x.md --quiet 2>&1) || rc=$?
+rc=0; out=$(bash "$TARGET" --stdin --label .rite/wiki/raw-notes/x.md --quiet \
+  <<< 'prefix sibling (#2109)' 2>&1) || rc=$?
 assert "T-04 similar directory prefix remains in scope" "1" "$rc"
 
 # Both chunk orders pin that an excluded file cannot leak skip state into the
@@ -516,7 +677,7 @@ fi
 # --------------------------------------------------------------------------
 # --stdin --label
 # --------------------------------------------------------------------------
-rc=0; out=$(printf 'stdin token (#2400)\n' | bash "$TARGET" --stdin --label docs/in.md --quiet 2>&1) || rc=$?
+rc=0; out=$(bash "$TARGET" --stdin --label docs/in.md --quiet <<< 'stdin token (#2400)' 2>&1) || rc=$?
 if [ "$rc" -eq 1 ] \
    && printf '%s' "$out" | grep -cE >/dev/null '^docs/in.md:1: stdin token \(#2400\)$' \
    && printf '%s' "$out" | grep -c >/dev/null 'Total number-ref findings: 1'; then
@@ -525,10 +686,10 @@ else
   fail "--stdin expected labeled finding, got rc=$rc: $out"
 fi
 
-rc=0; out=$(printf 'raw (#2500)\n' | bash "$TARGET" --stdin --label .rite/wiki/raw/x.md --quiet 2>&1) || rc=$?
+rc=0; out=$(bash "$TARGET" --stdin --label .rite/wiki/raw/x.md --quiet <<< 'raw (#2500)' 2>&1) || rc=$?
 assert "--stdin excluded label is not scanned" "0" "$rc"
 
-rc=0; out=$(printf 'placeholder #123 only\n' | bash "$TARGET" --stdin --label docs/p.md --quiet 2>&1) || rc=$?
+rc=0; out=$(bash "$TARGET" --stdin --label docs/p.md --quiet <<< 'placeholder #123 only' 2>&1) || rc=$?
 assert "--stdin #123 placeholder is excluded" "0" "$rc"
 
 # --------------------------------------------------------------------------
@@ -558,42 +719,47 @@ assert_grep "T-06 pr-review orchestrator reviewer id" "$PR_REVIEW_SKILL" \
   'reviewer: "pr-review"'
 assert_not_grep "T-06 pr-review does not skip on cycle-scope" "$PR_REVIEW_SKILL" \
   'number-reference-check.*cycle-scope'
-assert_grep "T-06 fix 3.1 self-check calls --diff" "$FIX_SKILL" \
+# fix 3.1 の self-check 本体は scripts/fix-step.sh の step_number_ref_check にある。SKILL.md は
+# 3.3 と同じ {changed_files} を helper へ渡す（渡し忘れると intent-to-add の母集合が空になる）。
+assert_grep_in_section "T-06 fix 3.1 passes {changed_files} to the helper" "$FIX_SKILL" \
+  '### 3.1 Verify Changes' '### 3.1.1 ' \
+  "number-ref-check --base-branch \\{base_branch\\} --changed-files '\\{changed_files\\}'"
+assert_grep "T-06 fix 3.1 self-check calls --diff" "$FIX_STEP" \
   'number-reference-check\.sh --diff'
-assert_grep "T-06 fix 3.1 self-check intent-to-add uses {changed_files}" "$FIX_SKILL" \
-  'for f in \{changed_files\}'
-assert_grep "T-06 fix 3.1 add -N uses existing-path subset" "$FIX_SKILL" \
+assert_grep "T-06 fix 3.1 self-check intent-to-add uses changed_files" "$FIX_STEP" \
+  'for f in \$\{changed_files\}'
+assert_grep "T-06 fix 3.1 add -N uses existing-path subset" "$FIX_STEP" \
   'git add -N -- \$nref_addn'
-assert_grep "T-06 fix 3.1 empty {changed_files} skips intent-to-add" "$FIX_SKILL" \
-  'if \[ -n "\{changed_files\}" \]'
-assert_grep "T-06 fix 3.1 skips missing paths before add -N" "$FIX_SKILL" \
+assert_grep "T-06 fix 3.1 empty changed_files skips intent-to-add" "$FIX_STEP" \
+  'if \[ -n "\$\{changed_files\}" \]'
+assert_grep "T-06 fix 3.1 skips missing paths before add -N" "$FIX_STEP" \
   '\[ -e "\$f" \] && nref_addn='
-assert_grep "T-06 fix 3.1 intent-to-add fail-loud ERROR" "$FIX_SKILL" \
+assert_grep "T-06 fix 3.1 intent-to-add fail-loud ERROR" "$FIX_STEP" \
   'ERROR: intent-to-add に失敗しました'
-assert_not_grep "T-06 fix 3.1 does not use add -N ." "$FIX_SKILL" \
+assert_not_grep "T-06 fix 3.1 does not use add -N ." "$FIX_STEP" \
   'add -N[[:space:]]+(\.[[:space:]]|$)'
-assert_not_grep "T-06 fix 3.1 does not use add -N -- ." "$FIX_SKILL" \
+assert_not_grep "T-06 fix 3.1 does not use add -N -- ." "$FIX_STEP" \
   'add -N[[:space:]]+--[[:space:]]+\.'
-assert_not_grep "T-06 fix 3.1 does not use add -A" "$FIX_SKILL" \
+assert_not_grep "T-06 fix 3.1 does not use add -A" "$FIX_STEP" \
   'add -A'
 
 # AC-4 / T-04: add -N 行 < --diff 行。AC-2 / T-02: その区間に固有 ERROR と [fix:error]
 # （既存 --diff rc 分岐の [fix:error] 一致では FAIL）。
 fix_skip_line=$(awk '
-  /^### 3\.1 Verify Changes/ { s=1 }
-  s && /^### 3\.1\.1 / { exit }
-  s && /^[[:space:]]*if \[ -n "\{changed_files\}" \]/ { print NR; exit }
-' "$FIX_SKILL")
+  /^step_number_ref_check\(\) \{$/ { s=1 }
+  s && /^}$/ { exit }
+  s && /^[[:space:]]*if \[ -n "\$\{changed_files\}" \]/ { print NR; exit }
+' "$FIX_STEP")
 fix_addn_line=$(awk '
-  /^### 3\.1 Verify Changes/ { s=1 }
-  s && /^### 3\.1\.1 / { exit }
+  /^step_number_ref_check\(\) \{$/ { s=1 }
+  s && /^}$/ { exit }
   s && /^[[:space:]]*git add -N -- \$nref_addn/ { print NR; exit }
-' "$FIX_SKILL")
+' "$FIX_STEP")
 fix_diff_line=$(awk '
-  /^### 3\.1 Verify Changes/ { s=1 }
-  s && /^### 3\.1\.1 / { exit }
-  s && /^[[:space:]]*bash \{plugin_root\}\/hooks\/scripts\/number-reference-check\.sh --diff/ { print NR; exit }
-' "$FIX_SKILL")
+  /^step_number_ref_check\(\) \{$/ { s=1 }
+  s && /^}$/ { exit }
+  s && /^[[:space:]]*bash "\$plugin_root"\/hooks\/scripts\/number-reference-check\.sh --diff/ { print NR; exit }
+' "$FIX_STEP")
 if [ -n "$fix_addn_line" ] && [ -n "$fix_diff_line" ] \
    && [ "$fix_addn_line" -lt "$fix_diff_line" ]; then
   pass "T-06 fix 3.1 add -N precedes --diff"
@@ -608,7 +774,7 @@ else
 fi
 fix_intent_arm=""
 if [ -n "$fix_addn_line" ] && [ -n "$fix_diff_line" ]; then
-  fix_intent_arm=$(awk -v a="$fix_addn_line" -v d="$fix_diff_line" 'NR > a && NR < d' "$FIX_SKILL")
+  fix_intent_arm=$(awk -v a="$fix_addn_line" -v d="$fix_diff_line" 'NR > a && NR < d' "$FIX_STEP")
 fi
 if printf '%s' "$fix_intent_arm" | grep -c >/dev/null 'ERROR: intent-to-add に失敗しました' \
    && printf '%s' "$fix_intent_arm" | grep -c >/dev/null '\[fix:error\]'; then
@@ -680,6 +846,86 @@ if [ "$nref_stage_rc" -eq 0 ] && [ "$add_rc" -eq 0 ] \
 else
   fail "T-03b expected add -N rc=0 and git add rc=0 staging keep/new/gone, got stage_rc=$nref_stage_rc add_rc=$add_rc staged=$staged"
 fi
+
+# fix 3.1 の分岐は helper の終了コードではなく marker で決まる。clean / hits / 停止の各経路が
+# ちょうど 1 種類の結果だけを出し、marker が 1 つも出ない経路が SKILL.md の表で停止に落ちることを固定する。
+run_fix_nref() {
+  local sb="$1"
+  shift
+  (cd "$sb" && bash "$FIX_STEP" number-ref-check "$@" 2>&1)
+}
+nref_mk=$(make_plain_sandbox) && cleanup_dirs+=("$nref_mk") || { echo "ERROR: nref marker sandbox" >&2; exit 1; }
+init_git_sb "$nref_mk"
+git -C "$nref_mk" checkout -q -b base
+mkdir -p "$nref_mk/docs"
+printf 'base line\n' > "$nref_mk/docs/keep.md"
+commit_all "$nref_mk" nref-marker-init
+
+printf 'clean added line\n' > "$nref_mk/docs/note.md"
+rc=0; out=$(run_fix_nref "$nref_mk" --base-branch base --changed-files docs/note.md) || rc=$?
+if [ "$rc" -eq 0 ] \
+   && [ "$(printf '%s\n' "$out" | grep -cx '\[CONTEXT\] NUMBER_REF_CHECK=clean')" -eq 1 ] \
+   && ! printf '%s' "$out" | grep -c >/dev/null -e 'NUMBER_REF_CHECK=hits' -e '\[fix:error\]'; then
+  pass "T-13 fix number-ref-check emits exactly one clean marker for a clean diff"
+else
+  fail "T-13 expected rc=0 with one clean marker only, got rc=$rc: $out"
+fi
+
+printf 'hit token (#2800)\n' > "$nref_mk/docs/note.md"
+rc=0; out=$(run_fix_nref "$nref_mk" --base-branch base --changed-files docs/note.md) || rc=$?
+if [ "$rc" -eq 0 ] \
+   && [ "$(printf '%s\n' "$out" | grep -cx '\[CONTEXT\] NUMBER_REF_CHECK=hits')" -eq 1 ] \
+   && printf '%s' "$out" | grep -cE >/dev/null '^docs/note.md:[0-9]+: hit token' \
+   && ! printf '%s' "$out" | grep -c >/dev/null -e 'NUMBER_REF_CHECK=clean' -e '\[fix:error\]'; then
+  pass "T-13 fix number-ref-check emits the hits marker and no clean marker for an untracked hit"
+else
+  fail "T-13 expected one hits marker with file:line and no clean marker, got rc=$rc: $out"
+fi
+
+rc=0; out=$(run_fix_nref "$nref_mk" --base-branch no-such-base --changed-files docs/note.md) || rc=$?
+if [ "$rc" -eq 1 ] \
+   && printf '%s' "$out" | grep -c >/dev/null 'number-reference-check.sh failed (rc=2)' \
+   && printf '%s\n' "$out" | grep -cx >/dev/null '\[fix:error\]' \
+   && ! printf '%s' "$out" | grep -c >/dev/null 'NUMBER_REF_CHECK='; then
+  pass "T-13 fix number-ref-check stops with [fix:error] and no marker when the checker fails"
+else
+  fail "T-13 expected rc=1 with [fix:error] and no marker on checker failure, got rc=$rc: $out"
+fi
+
+rc=0; out=$(run_fix_nref "$nref_mk" --changed-files docs/note.md) || rc=$?
+if [ "$rc" -eq 2 ] && ! printf '%s' "$out" | grep -c >/dev/null 'NUMBER_REF_CHECK='; then
+  pass "T-13 fix number-ref-check usage failure exits 2 without a marker"
+else
+  fail "T-13 expected rc=2 without marker on usage failure, got rc=$rc: $out"
+fi
+
+# 表は marker と行き先を同じ行で結ぶ。旧 Exit 表の行が残っていないことも固定する。
+nref_sec_start='### 3.1 Verify Changes'
+nref_sec_end='### 3.1.1 '
+assert_grep_in_section "T-13 fix 3.1 table maps clean to 3.1.1" "$FIX_SKILL" \
+  "$nref_sec_start" "$nref_sec_end" \
+  '^\| `NUMBER_REF_CHECK=clean` \| 3\.1\.1 へ \|$'
+assert_grep_in_section "T-13 fix 3.1 table maps hits to a rewrite without a commit fallback" "$FIX_SKILL" \
+  "$nref_sec_start" "$nref_sec_end" \
+  '^\| `NUMBER_REF_CHECK=hits` \| コミットしない。2\.3 に戻り.*番号付き行をコミットする fallback は禁止 \|$'
+assert_grep_in_section "T-13 fix 3.1 table maps [fix:error] to a stop" "$FIX_SKILL" \
+  "$nref_sec_start" "$nref_sec_end" \
+  '^\| `\[fix:error\]` \| 停止'
+assert_grep_in_section "T-13 fix 3.1 table maps no marker to [fix:error]" "$FIX_SKILL" \
+  "$nref_sec_start" "$nref_sec_end" \
+  '^\| いずれも無い.* \| `\[fix:error\]` \|$'
+# 共有の assert_grep_in_section は正規表現の範囲指定で節を切り出すが、こちらは見出しの前置一致で切り出す（1 箇所でしか使わないため共有 helper へは移さない）。
+assert_not_grep_in_section() {
+  local label="$1" file="$2" start="$3" end="$4" pattern="$5" body
+  body=$(awk -v s="$start" -v e="$end" 'index($0, s) == 1 { on = 1; next } on && index($0, e) == 1 { exit } on' "$file")
+  if [ -n "$body" ] && ! printf '%s\n' "$body" | grep -cE >/dev/null -e "$pattern"; then
+    pass "$label"
+  else
+    fail "$label (section empty or pattern present: $pattern)"
+  fi
+}
+assert_not_grep_in_section "T-13 fix 3.1 no longer branches on helper exit codes" "$FIX_SKILL" \
+  "$nref_sec_start" "$nref_sec_end" '^\| `[0-9]` \|'
 
 assert_grep "T-11 issue-implement forbids number/AC tokens in generated prose" "$IMPLEMENT_SKILL" \
   '番号・AC番号を書かない'
@@ -807,7 +1053,7 @@ scan_deletion_residue() {
   local manifest
   manifest=$(mktemp)
   local file grep_rc grep_bin="${DELETION_GREP_BIN:-grep}"
-  if ! find "$@" -type f ! -path '*/fixtures/*' \
+  if ! find "$@" -type f ! -path '*/fixtures/*' ! -path '*/__pycache__/*' \
     ! -name 'number-reference-check.test.sh' -print0 > "$manifest"; then
     rm -f "$manifest"
     return 2
@@ -840,10 +1086,9 @@ fi
 # word": bash subshells share that shape, so a broad arm flags working code as
 # residue. Pin the narrowing so a later widening fails here rather than turning
 # the whole-tree scan below into a wall of false residue.
-if ! printf '%s\n' 'if ( set -C; printf "%s" "$json" > "$file" ) 2>/dev/null; then' \
-  'if ( exec 8>.rite/state/wiki-worktree-setup.lock ) 2>/dev/null; then' \
-  'else ( if ($f.severity == "CRITICAL" or $f.severity == "MEDIUM")' \
-  | grep -Eq "$deletion_residue_pattern"; then
+if ! grep -Eq "$deletion_residue_pattern" <<< 'if ( set -C; printf "%s" "$json" > "$file" ) 2>/dev/null; then
+if ( exec 8>.rite/state/wiki-worktree-setup.lock ) 2>/dev/null; then
+else ( if ($f.severity == "CRITICAL" or $f.severity == "MEDIUM")'; then
   pass "deletion-damage matcher accepts bash subshells"
 else
   fail "deletion-damage matcher rejected a bash subshell"
@@ -852,11 +1097,9 @@ fi
 # literals write `\(/` (backslash before the open paren); the arm must leave
 # those alone or the tree scan fails closed on working code.
 slash_only_arm="${deletion_residue_patterns[$((${#deletion_residue_patterns[@]} - 1))]}"
-if ! printf '%s\n' \
-  '  if (s ~ /\]\(/) linkrows++' \
-  '    if (match(link, /^\[.*\]\(/)) t = substr(link, 2, RLENGTH - 3)' \
-  '  if (line ~ /\$\([^)]*\$\(/) nested = 1' \
-  | grep -Eq "$slash_only_arm"; then
+if ! grep -Eq "$slash_only_arm" <<< '  if (s ~ /\]\(/) linkrows++
+    if (match(link, /^\[.*\]\(/)) t = substr(link, 2, RLENGTH - 3)
+  if (line ~ /\$\([^)]*\$\(/) nested = 1'; then
   pass "deletion-damage matcher accepts awk regex literals"
 else
   fail "deletion-damage matcher rejected an awk regex literal"
@@ -886,6 +1129,16 @@ if [ "$scan_rc" -eq 0 ]; then
   pass "deletion-damage scan reports residue found through the scan helper"
 else
   fail "deletion-damage scan missed helper-level residue (rc=$scan_rc)"
+fi
+pycache_fixture="$sb/deletion-scan-pycache-fixture"
+mkdir -p "$pycache_fixture/__pycache__"
+printf '%s\n' "${deletion_residue_samples[0]}" > "$pycache_fixture/__pycache__/generated.pyc"
+scan_rc=0
+scan_deletion_residue "$pycache_fixture" || scan_rc=$?
+if [ "$scan_rc" -eq 1 ]; then
+  pass "deletion-damage scan ignores generated __pycache__ files"
+else
+  fail "deletion-damage scan flagged a generated __pycache__ file (rc=$scan_rc)"
 fi
 grep_fail_shim="$sb/grep-fail"
 printf '%s\n' '#!/bin/bash' 'exit 2' > "$grep_fail_shim"

@@ -236,7 +236,8 @@ while IFS= read -r page; do
       # minimal frontmatter (sources: 直後に `---` で閉じる、tags:/confidence: なし) でも
       # sources 節が確実に閉じ、body 内 YAML code block の ` resource:` 誤抽出を防ぐ。
       in_sources && /^---[[:space:]]*$/ { in_sources=0; next }
-      in_sources && /^[a-zA-Z]/ { in_sources=0 }
+      # sources: は空白・#・- 以外で始まる行で閉じる（列 0 の - 項目は節の続き）
+      in_sources && /^[^[:space:]#-]/ { in_sources=0 }
       in_sources && /^[[:space:]]*-[[:space:]]*resource:[[:space:]]/ {
         # legacy 単行形式: `- resource: "..."`
         sub(/^[[:space:]]*-[[:space:]]*resource:[[:space:]]*/, "")

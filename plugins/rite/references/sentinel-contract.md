@@ -22,7 +22,7 @@ rite workflow のスキル間連携は、各 sub-skill が bash 出力に埋め�
 | `[review:error]` | pr-review | iterate | review 実行中にエラー発生。iterate 内部で処理され batch-run へは bubble しない |
 | `[fix:error]` | fix | iterate, batch-run | fix 実行中にエラー発生 |
 | `[fix:pushed]` | fix | iterate | fix 完了・push 済み、review へ再突入。iterate のループ内部状態のため batch-run へは bubble しない |
-| `[fix:sweep-done]` | fix | iterate | NB digest sweep 完了。iterate は入口の終了理由を保持してステップ 5 完了通知へ（ステップ 1 に戻らない） |
+| `[fix:sweep-done]` | fix | iterate | NB digest sweep 完了。`/rite:fix --nb-sweep`（iterate 5.S）からのみ emit する。iterate は 5.S の戻りとして入口の終了理由を保持し、PR 内推奨の修正と完了前確認を経てステップ 5 完了通知へ（sweep の戻りでステップ 1 に戻らない） |
 | `[fix:pushed-wm-stale]` | fix | iterate | fix push 完了だが work memory 更新が失敗（non-blocking）。iterate 内部で処理され batch-run へは bubble しない |
 | `[fix:non-fatal-only]` | fix | iterate | fatal=0、非 fatal 移送あり、push / 本 cycle accept なし。5.S sweep 成功後だけ外向きに review:mergeable を返す |
 | `[fix:replied-only]` | fix | iterate, batch-run | push / 本 cycle accept なしで全返信済み（非 fatal 移送との混在を含む）。5.S 成功後も返信のみで終了し、mergeable へ昇格しない |
@@ -35,7 +35,7 @@ rite workflow のスキル間連携は、各 sub-skill が bash 出力に埋め�
 | `[ready:returned-to-caller]` | ready | batch-run | Ready for review 化完了、caller へ制御を返す |
 | `[ready:error]` | ready | batch-run | Ready 化中にエラー発生 |
 | `[merge:returned-to-caller]` | merge | batch-run | マージ完了、caller へ制御を返す |
-| `[merge:not-ready]` | merge | batch-run | PR が draft または mergeable でないため merge 不可 |
+| `[merge:not-ready]` | merge | batch-run | PR が draft または mergeable でないため merge 不可。再判定後も `mergeable == CONFLICTING` のときだけ `[CONTEXT] MERGE_NOT_READY=conflicting; pr=N` を併記し、batch-run は base 取り込みから iterate へ戻る。併記がなければ停止 |
 | `[merge:error]` | merge | batch-run | merge 実行中にエラー発生 |
 | `[cleanup:returned-to-caller]` | cleanup | batch-run | クリーンアップ完了、caller へ制御を返す |
 | `[cleanup:outstanding:N]` | cleanup | batch-run | 完了報告の「未完了事項」件数（N 件、0 も明示）。batch-run は N>0 のとき run-queue の `outstanding[]` に記録する |
@@ -44,12 +44,14 @@ rite workflow のスキル間連携は、各 sub-skill が bash 出力に埋め�
 | `[pr:created:N]` | pr-create | open, recover, batch-run | PR #N を作成完了 |
 | `[pr-create-failed]` | pr-create | open, batch-run | PR 作成に失敗 |
 | `[iterate:max-cycles-reached]` | iterate | batch-run | review⇄fix ループのサーキットブレーカーが発火（収束トレンドの発散検出、または `safety.max_review_cycles` 到達 = backstop）。**sentinel は発火理由に依らず同一 literal**（batch は理由を問わず failed 記録するため） |
-| `[iterate:nb-sweep-error]` | iterate | batch-run | NB digest sweep が collect / persist に失敗、または入口の終了理由が不明。失敗即停止（`[fix:error]` と同帰結） |
+| `[iterate:nb-sweep-error]` | iterate | batch-run | NB digest sweep が collect / persist に失敗、入口の終了理由が不明、または止まった sweep の入口記録（ステップ 0.7）を検証できない。失敗即停止（`[fix:error]` と同帰結） |
 | `[iterate:max-cycles-stopped]` | iterate | (iterate 内部完結) | サーキットブレーカー発火（発散検出 または `safety.max_review_cycles` backstop）でループを停止した最終状態表示。理由は停止通知の「理由」行が担う |
 | `[run:all-completed]` | batch-run | (batch-run 内部完結、最終出力) | バッチ処理対象の全 Issue が完了 |
 | `[run:stopped]` | batch-run | (batch-run 内部完結、最終出力) | サーキットブレーカー等でバッチ処理を中断 |
 | `[projects:fetch-failed]` | issue-list | (issue-list 内部完結) | GitHub Projects からのフィールド取得に失敗 |
 | `[learn:complete]` | learn | (learn 内部完結) | 学習セッション完了 |
+| `[issue-audit:returned-to-caller]` | issue-audit | batch-run | Issue 監査が完了し、同じ返却ブロックの `監査レポート:` 行にレポートの path がある。caller へ制御を返す |
+| `[issue-audit:failed]` | issue-audit | batch-run | 集計または処分に失敗。batch-run は完了通知の `要対応:` に載せて続行する |
 
 ## Non-Sentinel な類似記法（検証対象外）
 

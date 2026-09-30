@@ -387,12 +387,12 @@ rm -f "$SBX/.rite/wiki/log.md"
 # 取り違えの検出なので「静かに 0 件」にしない)。(2) 仮に gate を越えても委譲先が同じパスを
 # 除外するため findings は 0 になる。(2) を測らないと、gate を緩めた変異が
 # 「raw の番号を数え始める」方向へ倒れても気付けない。
-raw_probe=$(printf 'PR #1234 の生ログ\n' | bash "$PLUGIN_ROOT/hooks/scripts/number-reference-check.sh" \
-  --stdin --label ".rite/wiki/raw/reviews/x-pr-1234.md" --quiet 2>/dev/null; echo "rc=$?")
+raw_probe=$(bash "$PLUGIN_ROOT/hooks/scripts/number-reference-check.sh" \
+  --stdin --label ".rite/wiki/raw/reviews/x-pr-1234.md" --quiet <<< 'PR #1234 の生ログ' 2>/dev/null; echo "rc=$?")
 assert "TC-13c (AC-5) 委譲先は raw パスの label を findings 0 で返す" "rc=0" "$raw_probe"
 # 対照: 同じ本文でも pages/ の label なら hit する (label 除外が効いていることの識別力)
-pages_probe=$(printf 'PR #1234 の本文\n' | bash "$PLUGIN_ROOT/hooks/scripts/number-reference-check.sh" \
-  --stdin --label ".rite/wiki/pages/x/a.md" --quiet 2>/dev/null; echo "rc=$?")
+pages_probe=$(bash "$PLUGIN_ROOT/hooks/scripts/number-reference-check.sh" \
+  --stdin --label ".rite/wiki/pages/x/a.md" --quiet <<< 'PR #1234 の本文' 2>/dev/null; echo "rc=$?")
 assert "TC-13c (AC-5) 対照: pages/ の label なら同じ本文が hit する" "rc=1" "$(printf '%s' "$pages_probe" | tail -1)"
 
 # TC-14: invocation errors

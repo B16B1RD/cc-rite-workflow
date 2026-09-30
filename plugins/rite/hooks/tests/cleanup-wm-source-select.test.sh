@@ -246,7 +246,7 @@ _order=$(printf '%s\n' "$out" | grep -n -E "state-path-resolve.sh の解決に�
 _n_warn=$(printf '%s\n' "$out" | grep -n -F "$T05_WARN" | head -1 | cut -d: -f1)
 _n_mid=$(printf '%s\n' "$out" | grep -n 'WM_SOURCE=resolver_unresolved' | head -1 | cut -d: -f1)
 _n_final=$(printf '%s\n' "$out" | grep -n 'WM_SOURCE=comment' | head -1 | cut -d: -f1)
-if ! printf '%s' "$out" | grep -F -q "$T05_WARN"; then
+if ! grep -F -q "$T05_WARN" <<< "$out"; then
   fail "T-05: WARNING 全文が無い (出力: $out)"
 elif [ -z "$_n_mid" ]; then
   fail "T-05: resolver_unresolved 不在 (出力: $out)"

@@ -96,6 +96,14 @@ opt-in であることに置き、本ステップでは停止しない。batch �
 batch 判定と同型で read-only。helper 失敗 / session_id 解決不可 / キュー不在のときは interactive
 （確認を出す）へ fail-safe する。
 
+## implement-phase-gate
+
+Wiki 適用証跡のコミット前ゲート（`git-commit-file.sh` / `pre-tool-bash-guard.sh`）は phase が
+`implement` / `fix` の commit だけを検査する。`plan` のまま実装コミットするとゲートを素通りし、証跡の
+`head` が更新されないため、続くレビューが `stale_head` で拒否する。セッション worktree の記録は 2.6 が
+済ませており、ステップ 4 の set は merge-preserve でそれを保つ。worktree を記録しない単一セッションでは、
+ゲートは flow-state を持つ checkout をセッションの作業ツリーとして検査する。
+
 ## autonomous-lint
 
 `/rite:issue-implement` は全 step 完了後に `rite:lint` を自身で invoke する（旧 `start.md` の flat

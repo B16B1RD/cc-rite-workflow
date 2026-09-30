@@ -60,6 +60,9 @@ fi
 unset CLAUDE_SUBAGENT_TYPE CLAUDE_AGENT_TYPE
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=_hermetic-env.sh
+source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
+hermetic_leave_checkout || exit 1
 HOOK="$SCRIPT_DIR/../pre-tool-bash-guard.sh"
 PASS=0
 FAIL=0
@@ -67,6 +70,7 @@ STDERR_FILE=$(mktemp)
 
 cleanup() {
   rm -f "$STDERR_FILE"
+  rm -rf "$HERMETIC_CWD"
 }
 trap cleanup EXIT
 
@@ -524,12 +528,13 @@ assert_main_allow() {
 }
 
 # --------------------------------------------------------------------------
-# TC-201: verb-denylist removal — mutating git verbs are NOT machine-gated
-# (AC-1/AC-4). These commands were denied by the removed sub-blocks
-# (A)-(G); after the removal they must pass the hook untouched. The READ-ONLY
-# guarantee for them is the reviewer prompt (Layer 1) + post-review-state-verify
-# (Layer 3), NOT this hook — this loop pins the hook's non-involvement so a
-# future edit cannot silently re-grow the verb denylist.
+# TC-201: verb-denylist removal — working-tree git verbs are NOT machine-gated.
+# These commands were denied by the removed sub-blocks (A)-(G); they must pass
+# the hook untouched. The READ-ONLY guarantee for them is the reviewer prompt
+# (Layer 1) + post-review-state-verify (Layer 3), NOT this hook — this loop pins
+# the hook's non-involvement so neither a future edit nor sub-block (S), whose
+# closed set is git commit / git push / GitHub writes / flow-state writes / step drivers, can
+# silently re-grow the verb denylist.
 # --------------------------------------------------------------------------
 echo "TC-201: subagent mutating git verbs → allow (Layer 1/3 territory, not machine-gated)"
 for verb_cmd in \
@@ -538,8 +543,6 @@ for verb_cmd in \
   "git checkout -b pr-123-test" \
   "git reset --hard HEAD" \
   "git add ." \
-  "git commit -am 'wip'" \
-  "git push origin feat/foo" \
   "git stash push" \
   "git branch new-branch-name" \
   "git branch -D old-branch" \
@@ -554,7 +557,8 @@ done
 # NOTE: git update-ref / symbolic-ref / config-write / mutating-remote are NOT in
 # this allow set — they write .git directly and are denied by sub-block (N),
 # pinned in TC-127 below. They were never working-tree verbs (removed
-# working-tree verbs; .git-write is the retained gate).
+# working-tree verbs; .git-write is the retained gate). git commit / git push are
+# not in it either: sub-block (S) denies them for reviewers (TC-203).
 echo ""
 
 # --------------------------------------------------------------------------
@@ -912,7 +916,7 @@ else
   fail "TC-116 expected deny with gh-pr-diff-stat via fallback, got decision=$decision reason=$reason"
 fi
 # raw C0 バイト (ESC 等) の非漏出 — neutralize_ctrl --c0-only の挙動 pin
-if printf '%s' "$output" | LC_ALL=C grep -q $'\x1b'; then
+if LC_ALL=C grep -q $'\x1b' <<< "$output"; then
   fail "TC-116 fallback JSON leaked a raw ESC byte: $(printf '%s' "$output" | cat -v)"
 else
   pass "TC-116 fallback JSON contains no raw ESC byte"
@@ -1164,11 +1168,14 @@ else
 fi
 echo ""
 
+# Time only checks that the hook is not killed; verdicts are fixed by the input.
+sb_timeout_s=$(jq -r '[.. | objects | select((.command // "") | contains("pre-tool-bash-guard.sh")) | .timeout] | if length == 1 then .[0] else empty end' "$(dirname "$HOOK")/hooks.json") || sb_timeout_s=""
+if [[ "$sb_timeout_s" =~ ^[1-9][0-9]*$ ]]; then sb_timeout_ms=$(( sb_timeout_s * 1000 )); else sb_timeout_ms=""; fi
+[ -n "$sb_timeout_ms" ] || fail "timed guard cases need one positive integer bash-guard timeout from hooks.json"
 echo "TC-124: oversized command → length-guard fail-closed deny WITHOUT the O(n²) paths"
 # The (L) length guard is the primary timeout-bypass bound: any reviewer command
-# over the byte ceiling is denied fail-closed BEFORE the O(n²) heredoc strip
-# (${COMMAND%%<<*}, ~45s on ~1.3MB) and the O(n²) Pattern 2 regex (>2min on a few
-# MB) — both of which would otherwise time out the fail-open hook and let a padded
+# over the byte ceiling is denied fail-closed BEFORE the O(n²) Pattern 2 regex
+# (>2min on a few MB), which would otherwise time out the fail-open hook and let a padded
 # .git write run. Build huge commands via temp file + --rawfile to avoid argv
 # limits, and pin that the deny is FAST (proves the O(n²) work is skipped).
 tc124_dir=$(mktemp -d)
@@ -1194,10 +1201,10 @@ if [[ "$reason" == *"reviewer-oversized-command"* ]] && [[ "$reason" == *"abnorm
 else
   fail "TC-124 expected reviewer-oversized-command explanation in reason, got: $reason"
 fi
-if [ "$_ms" -lt 5000 ]; then
-  pass "TC-124 oversized deny completes fast (${_ms}ms < 5s — O(n²) paths skipped, no timeout→fail-open)"
+if [ -n "$sb_timeout_ms" ] && [ "$_ms" -lt "$sb_timeout_ms" ]; then
+  pass "TC-124 oversized deny returns before the hook timeout (${_ms}ms)"
 else
-  fail "TC-124 oversized deny too slow (${_ms}ms) — length guard is not short-circuiting the O(n²) work"
+  fail "TC-124 oversized deny reached the hook timeout or timeout is unavailable (${_ms}ms)"
 fi
 # (b) oversized (~80KB) READ-ONLY command → deny (allow→deny flip; a small `git status` allows)
 { printf 'git '; for _i in $(seq 1 8); do printf -- '-C %s ' "$tc124_bigval"; done; printf 'status'; } > "$tc124_dir/ro.txt"
@@ -1215,10 +1222,8 @@ fi
 # The length guard checks ${#COMMAND} over the WHOLE command (heredoc body included),
 # so it fires here. Non-vacuous (review F-06): the prefix `git status` is
 # read-only, so WITHOUT the length guard the heredoc strip yields `git status` and the
-# command is ALLOWED — WITH it the command is denied. (Note: the `<<` sits near the
-# front, so `${COMMAND%%<<*}` is itself fast here regardless — this case pins the
-# length guard's use of the full command length, not the O(n²) strip skip; the O(n²)
-# no-heredoc path is covered by (a).)
+# command is ALLOWED — WITH it the command is denied. This case pins the length
+# guard's use of the full command length.
 { printf 'git status <<EOF\n'; printf 'y%.0s' $(seq 1 200000); printf '\nEOF'; } > "$tc124_dir/hd.txt"
 jq -n --rawfile cmd "$tc124_dir/hd.txt" --arg tp "$SUBAGENT_TRANSCRIPT" \
   '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/hdin.json"
@@ -2251,6 +2256,41 @@ else
 fi
 echo ""
 
+# A newline after an even backslash run starts a new command; an odd run joins it.
+tc144_slashes=""
+for tc144_n in 1 2 3 4; do
+  tc144_slashes+='\'
+  for tc144_size in 4 10240; do
+    tc144_body=$(printf '%*s' "$tc144_size" '' | tr ' ' x)
+    tc144_cmd=$(printf "cat <<'EOF'\n%s\nEOF\necho foo%s\ngh issue create --title x" \
+      "$tc144_body" "$tc144_slashes")
+    rc=0
+    output=$(run_guard "Bash" "$tc144_cmd") || rc=$?
+    decision=$(extract_hook_field "$output" permissionDecision)
+    reason=$(extract_hook_field "$output" permissionDecisionReason)
+    if [ $((tc144_n % 2)) = 0 ]; then
+      if [ "$rc" = 0 ] && [ "$decision" = deny ] && [[ "$reason" == *direct-gh-issue-create* ]] \
+        && { [ "$tc144_size" = 4 ] || [[ "$reason" == *"bodies were checked"* ]]; }; then
+        pass "Pattern 6 keeps the newline after $tc144_n backslashes (body=$tc144_size)"
+      else
+        fail "Pattern 6 even backslashes ($tc144_n, body=$tc144_size): rc=$rc reason=$reason"
+      fi
+    elif [ "$rc" = 0 ] && [ -z "$output" ]; then
+      pass "Pattern 6 joins the newline after $tc144_n backslashes (body=$tc144_size)"
+    else
+      fail "Pattern 6 odd backslashes ($tc144_n, body=$tc144_size): rc=$rc output=$output"
+    fi
+  done
+  tc144_cmd=$(printf "cat <<'EOF'\necho foo%s\ngh issue create --title literal\nEOF" "$tc144_slashes")
+  rc=0
+  output=$(run_guard "Bash" "$tc144_cmd") || rc=$?
+  if [ "$rc" = 0 ] && [ -z "$output" ]; then
+    pass "Pattern 6 omits heredoc data after $tc144_n backslashes"
+  else
+    fail "Pattern 6 heredoc data after $tc144_n backslashes: rc=$rc output=$output"
+  fi
+done
+
 echo "TC-145 / T-02,T-03: approved Issue helpers → allow"
 for tc145_cmd in \
   'bash plugins/rite/scripts/create-issue-with-projects.sh "$args_json"' \
@@ -2334,6 +2374,1103 @@ if [ "$rc" = "0" ] && [ -z "$output" ] && [ -z "$decision" ]; then
   pass "git commit --allow-empty-message is not denied"
 else
   fail "Expected allow for --allow-empty-message, got rc=$rc decision=$decision output=$output"
+fi
+# Global options and redirections between git and commit still leave commit as the subcommand.
+# Run from a repository, so the parser resolves the commit instead of failing on the target.
+p7_repo=$(mktemp -d)
+git -C "$p7_repo" init -q
+run_guard_in_repo() {
+  jq -n --arg cmd "$1" --arg cwd "$p7_repo" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: $cwd}' \
+    | bash "$HOOK" 2>"$STDERR_FILE"
+}
+while IFS= read -r p7_cmd; do
+  rc=0
+  output=$(run_guard_in_repo "$p7_cmd") || rc=$?
+  decision=$(extract_hook_field "$output" permissionDecision)
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$decision" = "deny" ] && [[ "$reason" == *"git-commit-allow-empty"* ]] \
+     && [[ "$reason" == *"creates a commit with no file changes"* ]]; then
+    pass "--allow-empty denied through words before commit: $p7_cmd"
+  else
+    fail "Expected git-commit-allow-empty deny for '$p7_cmd', got decision=$decision reason=$reason"
+  fi
+done <<'EOF'
+git -c a.b=c commit --allow-empty -m x
+git 2>/dev/null commit --allow-empty -m x
+git 2> /dev/null commit --allow-empty -m x
+git >/dev/null commit --allow-empty -m x
+git &>/dev/null commit --allow-empty -m x
+git <&- commit --allow-empty -m x
+git -c a.b=c 2>&1 commit --allow-empty -m x
+git -C . 2>/dev/null commit --allow-empty -m x
+git -C 2>/dev/null . commit --allow-empty -m x
+git -c 2>&1 a.b=c commit --allow-empty -m x
+git --no-pager commit --allow-empty -m x
+git 'commit' --allow-empty -m x
+EOF
+# A variable or command substitution between git and commit may expand to nothing, leaving a bare commit.
+while IFS= read -r p7_cmd; do
+  rc=0
+  output=$(run_guard_in_repo "$p7_cmd") || rc=$?
+  decision=$(extract_hook_field "$output" permissionDecision)
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$decision" = "deny" ] && [[ "$reason" == *"git-commit-allow-empty"* ]] && [[ "$reason" == *"dynamic"* ]]; then
+    pass "--allow-empty denied behind a word that may expand to nothing: $p7_cmd"
+  else
+    fail "Expected git-commit-allow-empty deny for '$p7_cmd', got decision=$decision reason=$reason"
+  fi
+done <<'EOF'
+git $OPTS commit --allow-empty -m x
+git $(true) commit --allow-empty -m x
+EOF
+# git '' fails as an unknown command without committing; a commit word in another subcommand's arguments is not a commit.
+while IFS= read -r p7_cmd; do
+  rc=0
+  output=$(run_guard_in_repo "$p7_cmd") || rc=$?
+  if [ "$rc" = "0" ] && [ -z "$output" ]; then
+    pass "not denied as git commit --allow-empty: $p7_cmd"
+  else
+    fail "Expected allow for '$p7_cmd', got rc=$rc output=$output"
+  fi
+done <<'EOF'
+git log --allow-empty commit
+git $OPTS log --allow-empty --grep commit
+git '' commit --allow-empty -m x
+git -c a.b=c commit --allow-empty-message -m ""
+git -c a.b=c commit-tree --allow-empty
+EOF
+# Pattern 7 and the heredoc strip before it stay linear in the command length, so a
+# command of a few hundred KB is judged well within the hook timeout.
+p7_timed() {
+  jq -n --rawfile cmd "$1" --arg cwd "$p7_repo" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: $cwd}' > "$p7_repo/big.json"
+  rc=0
+  _t0=$(date +%s%N)
+  output=$(_timeout 15 bash "$HOOK" < "$p7_repo/big.json" 2>"$STDERR_FILE") || rc=$?
+  _t1=$(date +%s%N)
+  _ms=$(( (_t1 - _t0) / 1000000 ))
+}
+p7_big="$p7_repo/big.txt"
+{ printf 'git '; for _i in $(seq 1 86000); do printf -- '-c git '; done; printf -- '--allow-empty'; } > "$p7_big"
+p7_timed "$p7_big"
+if [ "$rc" = "0" ] && [ -z "$output" ] && [ "$_ms" -lt 5000 ]; then
+  pass "Pattern 7 returns for a ~600KB git -c command within 5s (${_ms}ms)"
+else
+  fail "Pattern 7 on a ~600KB git -c command rc=$rc ms=$_ms output=$output"
+fi
+# A non-adjacent commit longer than the parser's input limit is denied without parsing.
+{ printf 'git -c a=b commit --allow-empty -m x a'; printf '%*s' 120000 '' | tr ' ' '>'; } > "$p7_big"
+p7_timed "$p7_big"
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"too long to inspect"* ]] && [ -n "$sb_timeout_ms" ] && [ "$_ms" -lt "$sb_timeout_ms" ]; then
+  pass "Pattern 7 denies a ~120KB non-adjacent commit as too long to inspect (${_ms}ms)"
+else
+  fail "Pattern 7 on a ~120KB non-adjacent commit rc=$rc ms=$_ms decision=$decision reason=$reason"
+fi
+# At each limit the parser still finishes (the reason is its own) before the hook
+# timeout. Past a parser limit, a commit that could hide there is refused, and a
+# command that moves no HEAD outside an unparsed substitution is not.
+p7_max=$(sed -n 's/^_RITE_BTG_P7_PARSE_MAX_CHARS=//p' "$HOOK")
+p7_scope_py="$(dirname "$HOOK")/scripts/lib/review-fix-scope.py"
+p7_depth=$(sed -n 's/^MAX_SUBSTITUTION_DEPTH = //p' "$p7_scope_py")
+p7_changes=$(sed -n 's/^MAX_DIRECTORY_CHANGES = //p' "$p7_scope_py")
+for p7_limit in "$p7_max" "$p7_depth" "$p7_changes"; do
+  [[ "$p7_limit" =~ ^[0-9]+$ ]] || fail "Pattern 7 limit constants must be read as integers: '$p7_max' '$p7_depth' '$p7_changes'"
+done
+p7_tail='; git -ca commit --allow-empty -m x'
+p7_limit_case() {  # $1 label, $2 expected reason
+  p7_timed "$p7_big"
+  decision=$(extract_hook_field "$output" permissionDecision)
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$decision" = "deny" ] && [[ "$reason" == *"$2"* ]] && [ -n "$sb_timeout_ms" ] && [ "$_ms" -lt "$sb_timeout_ms" ]; then
+    pass "Pattern 7 denies $1 before the hook timeout ($(wc -c < "$p7_big") bytes, ${_ms}ms)"
+  else
+    fail "Pattern 7 on $1 rc=$rc ms=$_ms decision=$decision reason=$reason"
+  fi
+}
+p7_allow_case() {  # $1 label
+  p7_timed "$p7_big"
+  if [ "$rc" = "0" ] && [ -z "$output" ] && [ -n "$sb_timeout_ms" ] && [ "$_ms" -lt "$sb_timeout_ms" ]; then
+    pass "Pattern 7 allows $1 before the hook timeout (${_ms}ms)"
+  else
+    fail "Pattern 7 on $1 rc=$rc ms=$_ms output=$output"
+  fi
+}
+p7_log_tail='; git log --allow-empty --grep commit'
+p7_nested() {  # $1 depth, $2 length of the innermost word, $3 innermost command (default echo), $4 tail
+  { printf 'echo '; printf '$(%.0s' $(seq 1 "$1"); printf '%s ' "${3:-echo}"; printf '%*s' "$2" '' | tr ' ' 'x'
+    printf ')%.0s' $(seq 1 "$1"); printf '%s' "${4:-$p7_tail}"; } > "$p7_big"
+}
+p7_nested "$p7_depth" $(( p7_max - 3 * p7_depth - 10 - ${#p7_tail} ))
+p7_limit_case "the deepest nesting of the longest command" "creates a commit with no file changes"
+p7_nested $(( p7_depth + 1 )) 10 'git -ca commit -m' "$p7_log_tail"
+p7_limit_case "a commit nested one level too deep" "nested more than $p7_depth deep"
+p7_nested $(( p7_depth + 1 )) 10 "g''it commit -m" "$p7_log_tail"
+p7_limit_case "a quoted-apart commit nested one level too deep" "nested more than $p7_depth deep"
+p7_nested $(( p7_depth + 1 )) 10 true "$p7_log_tail"
+p7_allow_case "a git log after nesting one level too deep"
+{ for _i in $(seq 1 $(( (p7_max - ${#p7_tail}) / 10 ))); do printf 'git merge;'; done
+  printf '%s' "$p7_tail"; } > "$p7_big"
+p7_limit_case "the most merges that fit" "creates a commit with no file changes"
+# Each directory change here is a different merge target, resolved by its own git process.
+p7_dirs() {  # $1 number of merge targets besides the commit's
+  { for _i in $(seq 1 "$1"); do mkdir -p "$p7_repo/d$_i"; printf 'git -C d%s merge x;' "$_i"; done
+    printf '%s' "$p7_tail"; } > "$p7_big"
+}
+p7_dirs "$p7_changes"
+p7_limit_case "the most cd / -C directory changes" "creates a commit with no file changes"
+p7_moves() {  # $1 number of -C. options, $2 subcommand and arguments
+  { printf 'git'; for _i in $(seq 1 "$1"); do printf ' -C.'; done; printf ' %s' "$2"; } > "$p7_big"
+}
+p7_moves $(( p7_changes + 1 )) 'commit --allow-empty -m x'
+p7_limit_case "a commit after one cd / -C directory change too many" "target is dynamic"
+p7_moves $(( p7_changes + 1 )) 'log --allow-empty --grep commit'
+p7_allow_case "a git log after one cd / -C directory change too many"
+# The longest path those changes can build: every change adds as many components as fit.
+{ printf 'git'; for _i in $(seq 1 "$p7_changes"); do
+    printf ' -C'; printf 'x/%.0s' $(seq 1 $(( (p7_max - 40) / p7_changes / 2 - 2 ))); done
+  printf ' commit --allow-empty -m x'; } > "$p7_big"
+p7_limit_case "the longest path built by directory changes" "cannot be resolved to a repository"
+# The costliest use of those changes: the first builds the whole path and every other one
+# resolves it again.
+{ printf 'git -C'; printf 'x/%.0s' $(seq 1 $(( (p7_max - 40 - 4 * p7_changes) / 2 )))
+  for _i in $(seq 2 "$p7_changes"); do printf ' -C.'; done
+  printf ' commit --allow-empty -m x'; } > "$p7_big"
+p7_limit_case "the longest path resolved again by every directory change" "cannot be resolved to a repository"
+# The parser itself stays linear: a long word of > signs and a long run of wrapper options.
+p7_scope_check="$(dirname "$HOOK")/scripts/review-fix-scope-check.sh"
+for p7_shape in gt wrapper; do
+  if [ "$p7_shape" = gt ]; then
+    { printf 'git -c a=b commit --allow-empty -m x a'; printf '%*s' 120000 '' | tr ' ' '>'; } > "$p7_big"
+  else
+    { printf 'env '; printf -- '-i %.0s' $(seq 1 40000); printf 'git -c a=b commit --allow-empty -m x'; } > "$p7_big"
+  fi
+  rc=0
+  _t0=$(date +%s%N)
+  output=$(_timeout 15 bash "$p7_scope_check" commit-target --command "$(cat "$p7_big")" --cwd "$p7_repo" 2>&1) || rc=$?
+  _t1=$(date +%s%N)
+  _ms=$(( (_t1 - _t0) / 1000000 ))
+  if [ "$rc" = "0" ] && [[ "$output" == index* || "$output" == other* ]] && [ -n "$sb_timeout_ms" ] && [ "$_ms" -lt "$sb_timeout_ms" ]; then
+    pass "commit-target parses a ~120KB $p7_shape command before the hook timeout (${_ms}ms)"
+  else
+    fail "commit-target on a ~120KB $p7_shape command rc=$rc ms=$_ms output=$(printf '%s' "$output" | head -c 200)"
+  fi
+done
+# The heredoc surface parser that Patterns 6, 8 and 9 run costs about the square of each
+# line's length plus a fixed amount per line. A git commit / merge command past the parse
+# budget is denied without parsing, so a hook killed for its timeout cannot let it run.
+# The cost is quadratic only under a UTF-8 locale, so the timed cases run under one.
+sb_utf8=$(locale -a 2>/dev/null | grep -ixE 'c\.utf-?8|en_us\.utf-?8' | head -1) || sb_utf8=""
+[ -n "$sb_utf8" ] || fail "parse budget timings need a C.UTF-8 or en_US.UTF-8 locale"
+sb_line_cost=$(sed -n 's/^_RITE_BTG_SURFACE_LINE_COST=//p' "$HOOK")
+sb_max_cost=$(sed -n 's/^_RITE_BTG_SURFACE_MAX_COST=//p' "$HOOK")
+# Where a case falls is fixed by the cost constants, not by the clock. The clock only has to
+# show the hook is not killed: the ceiling is the timeout the harness enforces, so a slow
+# runner cannot turn a correct verdict into a failure.
+if [[ "$sb_line_cost" =~ ^[1-9][0-9]*$ && "$sb_max_cost" =~ ^[1-9][0-9]*$ && -n "$sb_timeout_ms" ]]; then
+  sb_case() {  # $1 label, $2 "deny" when commit-guard-uninspectable is expected, "other" when not
+    LC_ALL="$sb_utf8" p7_timed "$p7_big"
+    reason=$(extract_hook_field "$output" permissionDecisionReason)
+    local got=other
+    [[ "$reason" == *commit-guard-uninspectable* ]] && got=deny
+    if [ "$rc" = "0" ] && [ "$_ms" -lt "$sb_timeout_ms" ] && [ "$got" = "$2" ]; then
+      pass "parse budget: $1 → $2 (${_ms}ms)"
+    else
+      fail "parse budget: $1 expected $2, rc=$rc ms=$_ms reason=$reason"
+    fi
+  }
+  sb_x() { printf '%*s' "$1" '' | tr ' ' "${2:-x}"; }
+  # One line: the longest that fits, and one byte more.
+  sb_len=$(awk -v m="$sb_max_cost" -v c="$sb_line_cost" 'BEGIN { printf "%d", int(sqrt(m - c)) }')
+  for sb_n in "$sb_len" $(( sb_len + 1 )); do
+    { printf 'git commit -m '; sb_x $(( sb_n - 14 )); } > "$p7_big"
+    if [ "$sb_n" = "$sb_len" ]; then sb_case "one line of $sb_n bytes" other; else sb_case "one line of $sb_n bytes" deny; fi
+  done
+  # Two lines add up: each is within a one-line budget, and together they are not.
+  sb_half=$(awk -v m="$sb_max_cost" -v c="$sb_line_cost" 'BEGIN { printf "%d", int(sqrt(m / 2 - c)) }')
+  for sb_n in "$sb_half" $(( sb_half + 1 )); do
+    { printf 'git commit -m '; sb_x $(( sb_n - 14 )); printf '\necho '; sb_x $(( sb_n - 5 )) y; } > "$p7_big"
+    if [ "$sb_n" = "$sb_half" ]; then sb_case "two lines of $sb_n bytes" other; else sb_case "two lines of $sb_n bytes" deny; fi
+  done
+  # Short lines cost their fixed amount: the most 15-byte lines that fit, and one more.
+  sb_lines=$(( sb_max_cost / (225 + sb_line_cost) ))
+  for sb_n in "$sb_lines" $(( sb_lines + 1 )); do
+    { for _i in $(seq 2 "$sb_n"); do printf 'echo abcdefghij\n'; done; printf 'git commit -m y'; } > "$p7_big"
+    if [ "$sb_n" = "$sb_lines" ]; then sb_case "$sb_n short lines" other; else sb_case "$sb_n short lines" deny; fi
+  done
+  # Lines joined by a continuation are measured joined, with carriage returns removed first.
+  { printf 'git commit -m '; sb_x $(( sb_len / 2 - 4 )); printf '\\\n'; sb_x $(( sb_len / 2 + 10 )); } > "$p7_big"
+  sb_case "a line joined by a continuation" deny
+  { printf 'git commit -m '; sb_x $(( sb_len / 2 - 4 )); printf '\\\r\n'; sb_x $(( sb_len / 2 + 10 )); } > "$p7_big"
+  sb_case "a line joined by a continuation before a carriage return" deny
+  # Long commands past the budget, a merge among them; a command without git is not this denial.
+  { printf 'git commit -m "'; sb_x 40960; printf '"'; } > "$p7_big"
+  sb_case "a 40KB commit message" deny
+  # The alternative must not lead back to the same denial: a Bash heredoc holding the
+  # message is estimated the same way, so it names a file-editing tool and git commit -F.
+  if [[ "$reason" == *"file-editing tool, not a Bash heredoc"* && "$reason" == *"git commit -F <message-file>"* ]]; then
+    pass "parse budget: the denial names a file-editing tool and git commit -F"
+  else
+    fail "parse budget: the denial should name a file-editing tool and git commit -F: $reason"
+  fi
+  printf 'git commit -F /tmp/rite-commit-msg.txt' > "$p7_big"
+  sb_case "the recovery command git commit -F <message-file>" other
+  { printf 'git commit -m "'; sb_x 1048576; printf '"'; } > "$p7_big"
+  sb_case "a 1MB commit message" deny
+  # Past the budget Pattern 6 checks the whole command, so a heredoc of many lines must
+  # not make its checks run out of time before this denial.
+  { printf "git commit -F - <<'EOF'\n"; printf 'xxxxxxxxxxxxxxx\n%.0s' $(seq 1 60000); printf 'EOF'; } > "$p7_big"
+  sb_case "a commit with a 60000-line heredoc" deny
+  # Each character Pattern 6 replaces, crowded into a heredoc of about 1MB.
+  { printf "git commit -F - <<'EOF'\r\n"; printf 'xxxxxxxxxxxxxx\r\n%.0s' $(seq 1 60000); printf 'EOF'; } > "$p7_big"
+  sb_case "a commit with a 60000-line CRLF heredoc" deny
+  for sb_char in '\' $'\t'; do
+    sb_line="$(printf '%*s' 32 '' | tr ' ' "$sb_char")y"
+    { printf "git commit -F - <<'EOF'\n"; for _i in $(seq 1 30800); do printf '%s\n' "$sb_line"; done; printf 'EOF'; } > "$p7_big"
+    sb_case "a commit with a heredoc of 30800 lines of 32 $([ "$sb_char" = '\' ] && echo backslashes || echo tabs)" deny
+  done
+  { printf 'git merge -m '; sb_x 10240; printf ' x'; } > "$p7_big"
+  sb_case "a merge with a 10KB message" deny
+  { printf 'echo '; sb_x 40960; } > "$p7_big"
+  sb_case "a 40KB command without git" other
+  # Two separate 5000-byte lines fit; joining them exceeds the same budget.
+  sb_slashes=""
+  for sb_n in 1 2 3 4; do
+    sb_slashes+='\'
+    {
+      printf "cat <<'EOF'\nbody\nEOF\n"
+      for _i in 1 2; do printf 'echo '; sb_x 5000; printf '%s\n' "$sb_slashes"; done
+      printf 'git commit -m x'
+    } > "$p7_big"
+    if [ $((sb_n % 2)) = 0 ]; then
+      sb_case "two lines ending in $sb_n backslashes stay separate" other
+    else
+      sb_case "two lines ending in $sb_n backslashes join" deny
+    fi
+  done
+  # A failed estimate denies.
+  printf 'git commit -m y' > "$p7_big"
+  RITE_BTG_TEST_CRASH=surface-budget sb_case "a commit whose estimate fails" deny
+  # Everyday and heavy commands within the budget are judged as before.
+  printf 'git commit -m "fix: x"' > "$p7_big"
+  sb_case "an everyday commit" other
+  { printf "git commit -F - <<'EOF'\n"; for _i in $(seq 1 420); do sb_x 71; printf '\n'; done; printf 'EOF'; } > "$p7_big"
+  sb_case "a 30KB heredoc message of short lines" other
+  { printf 'git commit -m '; for _i in $(seq 1 $(( (sb_len - 14) / 3 ))); do printf 'あ'; done; } > "$p7_big"
+  sb_case "a Japanese message line just within the budget" other
+  { printf 'git commit -m '; for _i in $(seq 1 $(( (sb_len - 14) / 3 + 1 ))); do printf 'あ'; done; } > "$p7_big"
+  sb_case "a Japanese message line just past the budget" deny
+  { printf 'git commit -m '; sb_x 7960; printf '\n'; for _i in $(seq 1 150); do printf 'echo abcdefghij\n'; done; } > "$p7_big"
+  sb_case "one long line followed by short lines" other
+  # The heaviest form: a heredoc makes Patterns 6, 8 and 9 each parse the surface, and
+  # the commit line after it is as long as the budget allows.
+  { printf "cat <<'EOF'\nx\nEOF\ngit commit -m "; sb_x $(( sb_len - 4 - 14 )); } > "$p7_big"
+  sb_case "a heredoc before a commit line of $(( sb_len - 4 )) bytes" other
+  # Pattern 6 checks a heredoc past the budget as raw text: a gh issue create after the
+  # heredoc, split by a line continuation, or in its body is denied, and a command with
+  # none of them is allowed.
+  for sb_where in after split body none; do
+    case "$sb_where" in
+      after) { printf "cat <<'EOF'\n"; sb_x 10240 q; printf '\nEOF\ngh issue create -t x'; } > "$p7_big" ;;
+      split) { printf "cat <<'EOF'\n"; sb_x 10240 q; printf '\nEOF\ngh issue cre\\\r\nate -t x'; } > "$p7_big" ;;
+      body) { printf "cat <<'EOF'\ngh issue create "; sb_x 10240 q; printf '\nEOF'; } > "$p7_big" ;;
+      none) { printf "cat <<'EOF'\n"; sb_x 10240 q; printf '\nEOF'; } > "$p7_big" ;;
+    esac
+    LC_ALL="$sb_utf8" p7_timed "$p7_big"
+    reason=$(extract_hook_field "$output" permissionDecisionReason)
+    if [ "$sb_where" = none ]; then
+      if [ "$rc" = "0" ] && [ -z "$output" ] && [ "$_ms" -lt "$sb_timeout_ms" ]; then
+        pass "parse budget: Pattern 6 allows a long heredoc without gh issue create (${_ms}ms)"
+      else
+        fail "parse budget: Pattern 6 on a long heredoc without gh issue create rc=$rc ms=$_ms output=$output"
+      fi
+    elif [ "$rc" = "0" ] && [[ "$reason" == *direct-gh-issue-create* && "$reason" == *"bodies were checked"* && "$reason" == *"file-editing tool, not a Bash heredoc"* ]] && [ "$_ms" -lt "$sb_timeout_ms" ]; then
+      pass "parse budget: Pattern 6 denies gh issue create $sb_where a long heredoc (${_ms}ms)"
+    else
+      fail "parse budget: Pattern 6 on gh issue create $sb_where a long heredoc rc=$rc ms=$_ms reason=$reason"
+    fi
+  done
+else
+  fail "parse budget constants and the hook timeout must be read as positive integers: '$sb_line_cost' '$sb_max_cost' '$sb_timeout_s'"
+fi
+rm -rf "$p7_repo"
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-203: reviewer state-changing commands (sub-block (S)).
+# Reviewer-typed subagents are denied push / commit / GitHub writes / gh pr checkout /
+# flow-state writes / step drivers at command position; read-only commands that merely MENTION those words
+# stay allowed; non-reviewer subagents and the main session are untouched.
+# --------------------------------------------------------------------------
+echo "TC-203: reviewer state-changing commands → deny; read-only and non-reviewer → allow"
+# $1 = reported agent type ("" = main session, "-" = subagent transcript with no type)
+run_guard_typed() {
+  local agent_type="$1" cmd="$2" rc=0 output
+  output=$(jq -n --arg cmd "$cmd" --arg t "$agent_type" \
+    '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp"}
+     + (if $t == "" then {} elif $t == "-" then {transcript_path: "/tmp/p/subagents/a.jsonl"} else {agent_type: $t} end)' \
+    | bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+  echo "$output"
+  return $rc
+}
+for sc_cmd in \
+  "git push" \
+  "git -C x commit -m y" \
+  "/usr/bin/git push origin HEAD" \
+  "cd x && git commit -m y" \
+  'x=$(git push)' \
+  "FOO=1 git push" \
+  "bash plugins/rite/hooks/flow-state.sh set --phase fix" \
+  "plugins/rite/hooks/flow-state.sh consume-handoff" \
+  "bash plugins/rite/hooks/flow-state.sh" \
+  "bash plugins/rite/scripts/fix-step.sh push" \
+  "bash plugins/rite/scripts/iterate-step.sh restore" \
+  $'cat <<\'EOF\' >/tmp/m\nx\nEOF\ngit push' \
+  "if true; then git push; fi" \
+  "{ git commit -m y; }" \
+  "! git push" \
+  "'git' push" \
+  '\git commit -m y' \
+  'echo "$(git push)"' \
+  "while read x; do git push; done" \
+  'git -C "$(pwd)" push' \
+  'cd "$(git rev-parse --show-toplevel)" && git push' \
+  'bash "$(git rev-parse --show-toplevel)/plugins/rite/hooks/flow-state.sh" set --phase fix' \
+  'echo "`date`" && git push' \
+  'echo $(case x in *) git push;; esac)' \
+  'printf %s "$(case x in a) bash plugins/rite/hooks/flow-state.sh set --phase fix;; esac)"' \
+  'x="$(case y in a) echo z;; esac)"; git push origin HEAD' \
+  'echo $(time -p case x in *) git push;; esac)' \
+  "echo \"\$('case' x)\"; git push" \
+  "echo \$(case x in a) 'esac';; *) git push;; esac)" \
+  '$(true) git push' \
+  "timeout 30 git push" \
+  "env -u X git push" \
+  "nice -n 5 git commit -m y" \
+  "time -p git push" \
+  "timeout -k 5 30 git push" \
+  "command git push" \
+  "exec git push" \
+  "nohup git push" \
+  "gh pr comment 1 --body x" \
+  "gh pr review 1 --approve" \
+  "gh pr update-branch 1" \
+  "gh pr revert 1" \
+  "gh pr checkout 1" \
+  "gh -R o/r pr checkout 1 --force" \
+  "timeout 30 gh pr checkout 1" \
+  "gh -R o/r issue create --title t --body b" \
+  "gh issue edit 1 --add-label x" \
+  "gh pr merge 1 --squash" \
+  "gh api -X POST repos/o/r/issues/1/comments -f body=x" \
+  "gh api repos/o/r/issues/1/comments -f body=x" \
+  "gh api repos/o/r/issues -F title=x" \
+  "gh api -X DELETE repos/o/r/issues/comments/1" \
+  "gh api --method=PATCH repos/o/r/pulls/1" \
+  "gh api graphql -f query='mutation { x }'" \
+  "git push && git log --help" \
+  "git push origin --help" \
+  "git push --help && git push origin HEAD" \
+  "bash -n plugins/rite/hooks/flow-state.sh && bash plugins/rite/hooks/flow-state.sh set --phase fix" \
+  "bash -x plugins/rite/hooks/flow-state.sh set --phase fix" \
+  "git >/dev/null push" \
+  "git 2>/dev/null commit -m x" \
+  'git $OPTS commit -m x' \
+  "git > /dev/null push" \
+  "git 2>&1 push" \
+  "git &>/dev/null push" \
+  "timeout 30 git 2>/dev/null push" \
+  "git --git-dir .git push" \
+  "git --work-tree=. commit -m x" \
+  "git --no-pager push" \
+  "git -p push" \
+  "git -C x 2>/dev/null push" \
+  "git --namespace n push" \
+  "git --super-prefix p/ push" \
+  "git --attr-source HEAD push" \
+  "git --shallow-file f push" \
+  'git $(echo) push' \
+  "git 2>/dev/null push origin --help" \
+  "git >/dev/null push && git log --help" \
+  "git push&>/dev/null" \
+  "gh pr merge 1&>/dev/null" \
+  "bash plugins/rite/scripts/iterate-step.sh&>/dev/null" \
+  "echo '->'& git push origin HEAD" \
+  "echo 'a<'& gh pr comment 1 --body x" \
+  "sleep 1 & git push" \
+  "true&git push" \
+  'echo a\>& git push origin HEAD' \
+  'echo a\<& gh pr comment 1 --body x' \
+  ; do
+  rc=0
+  output=$(run_guard_typed "rite:test-reviewer" "$sc_cmd") || rc=$?
+  decision=$(extract_hook_field "$output" permissionDecision)
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$decision" = "deny" ] && [[ "$reason" == "BLOCKED (reviewer-state-change):"* ]] \
+    && [[ "$reason" == *"type=rite:test-reviewer"* ]] \
+    && grep -q 'bash-guard: BLOCKED pattern=reviewer-state-change' "$STDERR_FILE"; then
+    pass "reviewer '${sc_cmd//$'\n'/\\n}' denied as reviewer-state-change"
+  else
+    fail "Expected reviewer-state-change deny for '${sc_cmd//$'\n'/\\n}', got decision=$decision reason=$reason"
+  fi
+done
+# Reviewer classification matrix — the same predicate as pre-tool-edit-guard.sh.
+# $1 = JSON fields merged into the hook input, $2 = CLAUDE_SUBAGENT_TYPE ("" = unset)
+run_guard_fields() {
+  local fields="$1" env_type="$2" rc=0 output
+  output=$(jq -n --arg cmd "git push" --argjson f "$fields" \
+    '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp"} + $f' \
+    | env -u CLAUDE_SUBAGENT_TYPE -u CLAUDE_AGENT_TYPE ${env_type:+CLAUDE_SUBAGENT_TYPE=$env_type} bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+  echo "$output"
+  return $rc
+}
+for deny_fields in \
+  '{"subagent_type":"plugin:rite:code-quality-reviewer"}' \
+  '{"subagent_type":"rite:_reviewer-base"}' \
+  '{"subagent_type":"general-purpose","agent_type":"rite:security-reviewer"}' \
+  ; do
+  rc=0
+  output=$(run_guard_fields "$deny_fields" "") || rc=$?
+  if [[ "$(extract_hook_field "$output" permissionDecisionReason)" == "BLOCKED (reviewer-state-change):"* ]]; then
+    pass "reviewer-typed $deny_fields denied git push"
+  else
+    fail "Expected reviewer-state-change deny for $deny_fields, got output=$output"
+  fi
+done
+rc=0
+output=$(run_guard_fields '{}' "rite:test-reviewer") || rc=$?
+if [[ "$(extract_hook_field "$output" permissionDecisionReason)" == "BLOCKED (reviewer-state-change):"* ]]; then
+  pass "Tier 3 env CLAUDE_SUBAGENT_TYPE=rite:test-reviewer denied git push"
+else
+  fail "Expected Tier 3 reviewer deny, got output=$output"
+fi
+for allow_case in '{"subagent_type":"general-purpose"}|' '{}|general-purpose'; do
+  rc=0
+  output=$(run_guard_fields "${allow_case%%|*}" "${allow_case#*|}") || rc=$?
+  if [ "$rc" = "0" ] && [ -z "$output" ]; then
+    pass "non-reviewer type ($allow_case) git push allowed"
+  else
+    fail "Expected allow for non-reviewer type ($allow_case), got rc=$rc output=$output"
+  fi
+done
+# The .git-write gate still covers every subagent, not only reviewers.
+rc=0
+output=$(run_guard_typed "general-purpose" "echo x > .git/hooks/pre-commit") || rc=$?
+if [[ "$(extract_hook_field "$output" permissionDecisionReason)" == "BLOCKED (reviewer-gitdir-write):"* ]]; then
+  pass "non-reviewer subagent .git write still denied as reviewer-gitdir-write"
+else
+  fail "Expected reviewer-gitdir-write deny for general-purpose .git write, got output=$output"
+fi
+rc=0
+output=$(run_guard_typed "-" "git push") || rc=$?
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [[ "$reason" == *"reviewer-state-change"* ]] && [[ "$reason" == *"type unknown"* ]]; then
+  pass "subagent with no reported type is treated as a reviewer (git push denied)"
+else
+  fail "Expected type-unknown subagent git push deny, got reason=$reason"
+fi
+for ro_sc_cmd in \
+  "git diff" \
+  "grep -rn 'git commit' plugins/" \
+  "git log -S'git push'" \
+  'echo "git push"' \
+  "bash plugins/rite/hooks/tests/x.test.sh" \
+  "bash plugins/rite/hooks/flow-state.sh get --field phase" \
+  "bash plugins/rite/hooks/flow-state.sh path" \
+  "git worktree add --detach /tmp/rite-review-mutation-x HEAD" \
+  "grep -rn 'x; git push' plugins/" \
+  "git log --grep='a\\|git commit'" \
+  'echo "(git push)"' \
+  $'cat <<\'EOF\'\ngit push\nEOF' \
+  "git status # then git push" \
+  'echo "$(date); git push is blocked"' \
+  'x=$(case y in a) echo z;; esac); echo "$x git push"' \
+  "gh pr view 1 --json body" \
+  "gh pr diff 1" \
+  "gh issue view 1" \
+  "gh api repos/o/r/pulls/1" \
+  "gh api -X GET repos/o/r/issues -f state=open" \
+  "gh api graphql -f query='query { viewer { login } }'" \
+  "timeout 30 git status" \
+  "gh pr create --help" \
+  "gh issue close -h" \
+  "gh pr checkout --help" \
+  "git push --help" \
+  "git commit -h" \
+  "bash -n plugins/rite/hooks/flow-state.sh" \
+  "bash -n plugins/rite/scripts/iterate-step.sh" \
+  "git log --grep push" \
+  "git 2>/dev/null log --grep push" \
+  "git -C push status" \
+  "git --git-dir push log" \
+  "git --namespace commit log" \
+  "git 2>/dev/null push --help" \
+  "git -C x commit -h" \
+  "git log -- plugins/rite/scripts/iterate-step.sh" \
+  "git show HEAD:plugins/rite/hooks/flow-state.sh" \
+  "git log 2>&1 | grep commit" \
+  "git log&>/dev/null" \
+  "git log >&2" \
+  ; do
+  rc=0
+  output=$(run_guard_typed "rite:test-reviewer" "$ro_sc_cmd") || rc=$?
+  if [ "$rc" = "0" ] && [ -z "$output" ]; then
+    pass "reviewer read-only '$ro_sc_cmd' allowed"
+  else
+    fail "Expected allow for reviewer '$ro_sc_cmd', got rc=$rc output=$output"
+  fi
+done
+# A git subcommand that the parser does not report is denied: a python3 that
+# fails, and one that answers no line. A git with no push / commit does not run
+# the parser, so the broken python3 does not deny it.
+sc_stub_dir=$(mktemp -d)
+for sc_stub in "fail|exit 1|parser failed" "silent|exit 0|answered 0 of 1"; do
+  sc_stub_label="${sc_stub%%|*}"; sc_stub_rest="${sc_stub#*|}"
+  sc_stub_body="${sc_stub_rest%|*}"; sc_stub_want="${sc_stub_rest##*|}"
+  printf '#!/bin/sh\ncat >/dev/null\n%s\n' "$sc_stub_body" > "$sc_stub_dir/python3"
+  chmod +x "$sc_stub_dir/python3"
+  rc=0
+  output=$(jq -n --arg cmd "git >/dev/null log" '{tool_name: "Bash", tool_input: {command: ($cmd + "; git 2>/dev/null push")}, cwd: "/tmp", agent_type: "rite:test-reviewer"}' \
+    | PATH="$sc_stub_dir:$PATH" bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$(extract_hook_field "$output" permissionDecision)" = "deny" ] \
+    && [[ "$reason" == "BLOCKED (reviewer-state-change):"* ]] && [[ "$reason" == *"could not be determined"*"$sc_stub_want"* ]] \
+    && grep -q 'bash-guard: BLOCKED pattern=reviewer-state-change' "$STDERR_FILE"; then
+    pass "reviewer git push denied when the subcommand parser is unusable ($sc_stub_label)"
+  else
+    fail "Expected parser-unusable deny ($sc_stub_label), got output=$output"
+  fi
+  for sc_ro in "git status" "git diff"; do
+    rc=0
+    output=$(jq -n --arg cmd "$sc_ro" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", agent_type: "rite:test-reviewer"}' \
+      | PATH="$sc_stub_dir:$PATH" bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+    if [ "$rc" = "0" ] && [ -z "$output" ]; then
+      pass "reviewer '$sc_ro' allowed without the subcommand parser ($sc_stub_label)"
+    else
+      fail "Expected allow for reviewer '$sc_ro' with an unusable parser ($sc_stub_label), got rc=$rc output=$output"
+    fi
+  done
+done
+rm -rf "$sc_stub_dir"
+# The subcommand is found in one place: the reviewer scan keeps no git
+# subcommand branch, and the commit guard's parser walks global options once.
+sc_match_body=$(awk '/^_rite_btg_state_change_match\(\) \{/,/^}/' "$HOOK")
+if [ -n "$sc_match_body" ] && ! grep -qE 'push\|commit' <<< "$sc_match_body" \
+  && [ "$(grep -c 'while index < len(words) and (words\[index\].startswith("-")' "$SCRIPT_DIR/../scripts/lib/review-fix-scope.py")" = "1" ]; then
+  pass "git subcommand identification is shared with the commit guard's parser"
+else
+  fail "Expected no git subcommand branch in the reviewer scan and one global-option walk in review-fix-scope.py"
+fi
+# The scan must finish inside the hook timeout: a command just under the scan
+# ceiling is scanned and denied, a longer one is denied unscanned; neither may
+# time out.
+sc_pad=$(printf 'a b %.0s' $(seq 1 2040))
+for size_case in "scan|echo $sc_pad; git push|runs 'git push'" \
+  "unscanned|echo $(printf 'aaaa bbbb %.0s' $(seq 1 6000)); git push|(ceiling 8192)"; do
+  size_label="${size_case%%|*}"; size_rest="${size_case#*|}"
+  size_cmd="${size_rest%|*}"; size_want="${size_rest##*|}"
+  rc=0
+  output=$(jq -n --arg cmd "$size_cmd" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", agent_type: "rite:test-reviewer"}' \
+    | _timeout 10 bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$rc" != "124" ] && [[ "$reason" == "BLOCKED (reviewer-state-change):"* ]] && [[ "$reason" == *"$size_want"* ]]; then
+    pass "reviewer ${#size_cmd}-byte git push denied within the hook timeout ($size_label)"
+  else
+    fail "Expected in-time reviewer-state-change deny for ${#size_cmd}-byte command ($size_label), got rc=$rc reason=$reason"
+  fi
+done
+# gh counts only as a word: a long read-only command with `through ` / `high `
+# is not denied by the size ceiling.
+sc_cmd="echo $(printf 'walk through high %.0s' $(seq 1 500))"
+rc=0
+output=$(run_guard_typed "rite:test-reviewer" "$sc_cmd") || rc=$?
+if [ "${#sc_cmd}" -gt 8192 ] && [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "reviewer ${#sc_cmd}-byte command with 'through ' / 'high ' allowed"
+else
+  fail "Expected allow for ${#sc_cmd}-byte command with 'through ' / 'high ', got rc=$rc output=$output"
+fi
+# A failure inside the scan function must still reach the fail-closed ERR trap.
+rc=0
+output=$(jq -n --arg cmd "git push" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", agent_type: "rite:test-reviewer"}' \
+  | RITE_BTG_TEST_CRASH=pattern4-scan bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+if [ "$rc" = "2" ] && [[ "$(extract_hook_field "$output" permissionDecisionReason)" == *"reviewer-gitdir-write"* ]] \
+  && grep -q 'WARNING Pattern 4' "$STDERR_FILE"; then
+  pass "crash inside the (S) scan function denies fail-closed (rc=2)"
+else
+  fail "Expected fail-closed deny for a crash inside the (S) scan, got rc=$rc output=$output"
+fi
+for other_type in "general-purpose" ""; do
+  for other_cmd in "git push" "git commit -m x" "gh pr checkout 1" "bash plugins/rite/hooks/flow-state.sh set --phase fix"; do
+    rc=0
+    output=$(run_guard_typed "$other_type" "$other_cmd") || rc=$?
+    if [ "$rc" = "0" ] && [ -z "$output" ]; then
+      pass "non-reviewer (${other_type:-main session}) '$other_cmd' allowed"
+    else
+      fail "Expected allow for non-reviewer (${other_type:-main session}) '$other_cmd', got rc=$rc output=$output"
+    fi
+  done
+done
+echo ""
+
+# --------------------------------------------------------------------------
+# Pattern 10: git / gh / script outside the checkout during a rite session
+# --------------------------------------------------------------------------
+echo "TC-P10: git / gh / script run outside the checkout while a rite session is active"
+p10_main=$(mktemp -d "${TMPDIR:-/tmp}/rite-p10-main.XXXXXX")
+p10_scratch=$(mktemp -d "${TMPDIR:-/tmp}/rite-p10-scratch.XXXXXX")
+p10_plain=$(mktemp -d "${TMPDIR:-/tmp}/rite-p10-plain.XXXXXX")
+p10_main=$(cd "$p10_main" && pwd -P)
+p10_scratch=$(cd "$p10_scratch" && pwd -P)
+p10_plain=$(cd "$p10_plain" && pwd -P)
+p10_wt="$p10_main/.rite/worktrees/issue-1"
+p10_sid="p10-session"
+git -C "$p10_main" init -q
+git -C "$p10_main" -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m init
+git -C "$p10_main" worktree add -q --detach "$p10_wt" 2>/dev/null
+mkdir -p "$p10_main/.rite/sessions" "$p10_plain/.rite/sessions"
+jq -n --arg wt "$p10_wt" '{active: true, worktree: $wt}' > "$p10_main/.rite/sessions/$p10_sid.flow-state"
+jq -n '{active: false}' > "$p10_main/.rite/sessions/p10-inactive.flow-state"
+printf 'not json\n' > "$p10_main/.rite/sessions/p10-broken.flow-state"
+jq -n '{active: true}' > "$p10_plain/.rite/sessions/$p10_sid.flow-state"
+
+# p10_run <cwd> <command> [session] — the hook with the fixture state root.
+p10_run() {
+  # The command goes through stdin: a long one does not fit in an argument.
+  printf '%s' "$2" | jq -Rs --arg cwd "$1" --arg sid "${3:-$p10_sid}" \
+    '{tool_name: "Bash", tool_input: {command: .}, cwd: $cwd, session_id: $sid}' \
+    | RITE_STATE_ROOT="${P10_ROOT:-$p10_main}" bash "$HOOK" 2>"$STDERR_FILE"
+}
+# p10_deny <label> <pattern> <reason substring> <cwd> <command> [session]
+p10_deny() {
+  local rc=0 output reason
+  output=$(p10_run "$4" "$5" "${6:-}") || rc=$?
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$(extract_hook_field "$output" permissionDecision)" = "deny" ] \
+    && [[ "$reason" == "BLOCKED ($2): "* && "$reason" == *"$3"* ]]; then
+    pass "$1"
+  else
+    fail "$1: expected BLOCKED ($2) with '$3', got rc=$rc reason=$reason"
+  fi
+}
+# p10_allow <label> <cwd> <command> [session]
+p10_allow() {
+  local rc=0 output
+  output=$(p10_run "$2" "$3" "${4:-}") || rc=$?
+  if [ "$rc" = "0" ] && [ -z "$output" ]; then
+    pass "$1"
+  else
+    fail "$1: expected allow, got rc=$rc output=$output"
+  fi
+}
+
+p10_deny "gh after cd to a scratch dir" outside-checkout "runs 'gh' in $p10_scratch, which is outside" \
+  "$p10_wt" "cd $p10_scratch && gh api repos/x/y"
+p10_deny "deny names the way back into the worktree" outside-checkout "cd $p10_wt && <command>" \
+  "$p10_wt" "cd $p10_scratch && gh api repos/x/y"
+p10_deny "script run in a scratch dir" outside-checkout "runs 'bash' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && bash x.sh"
+p10_deny "git -C to a dir outside the checkout" outside-checkout "runs 'git' in $p10_scratch/foo" \
+  "$p10_wt" "git -C $p10_scratch/foo status"
+p10_deny "cd to a variable before gh" outside-checkout "cannot be determined" \
+  "$p10_wt" 'cd "$D" && gh api x'
+p10_deny "gh from a hook cwd left in a scratch dir" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_scratch" "gh api repos/x/y"
+p10_deny "script from a hook cwd left in a scratch dir" outside-checkout "runs 'bash' in $p10_scratch" \
+  "$p10_scratch" "bash x.sh"
+p10_deny "script behind timeout" outside-checkout "runs 'bash' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && timeout 5 bash x.sh"
+p10_deny "script by path behind env" outside-checkout "runs './x.sh' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && env A=1 ./x.sh"
+p10_deny "gh in a subshell after its cd" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "(cd $p10_scratch && gh api x)"
+p10_deny "git -C to a variable after cd to a scratch dir" outside-checkout "runs 'git' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && git -C \"\$X\" status"
+p10_deny "a conditional variable cd to a scratch dir" outside-checkout-uninspectable "cannot determine the working directory" \
+  "$p10_wt" "d=$p10_scratch; if [ -z \"\$d\" ] || ! cd \"\$d\" 2>/dev/null; then echo no; else git status; fi"
+p10_deny "more cd than the parser follows" outside-checkout "cannot be determined" \
+  "$p10_wt" "$(printf 'cd . && %.0s' $(seq 1 17))git status"
+p10_deny "unreadable flow-state is checked as active" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && gh api x" p10-broken
+p10_allow "script in a scratch dir run from the worktree" "$p10_wt" "cd $p10_wt && bash $p10_scratch/x.sh"
+p10_allow "script in a scratch dir, hook cwd in the worktree" "$p10_wt" "bash $p10_scratch/x.sh"
+p10_allow "git in the worktree" "$p10_wt" "git status"
+p10_allow "cd into the worktree then git" "$p10_wt" "cd $p10_wt && git status"
+p10_allow "git -C the worktree" "$p10_scratch" "git -C $p10_wt status"
+p10_allow "cd into the main checkout then gh" "$p10_scratch" "cd $p10_main && gh api x"
+p10_allow "git -C a variable from the worktree" "$p10_wt" 'git -C "$X" status'
+p10_deny "a conditional variable cd into the main checkout" outside-checkout-uninspectable "cannot determine the working directory" "$p10_wt" \
+  "d=$p10_main; if [ -z \"\$d\" ] || ! cd \"\$d\" 2>/dev/null; then echo no; else git status; fi"
+p10_allow "no git, gh or script in a scratch dir" "$p10_wt" "cd $p10_scratch && ls && cat a > b"
+p10_allow "a cd kept inside its subshell" "$p10_wt" "(cd $p10_scratch && ls); gh api x"
+p10_allow "heredoc text is not a command" "$p10_wt" \
+  "$(printf 'cat > %s/b.md <<%s\ncd /tmp && gh api x\nEOF' "$p10_scratch" "'EOF'")"
+p10_allow "no flow-state for the session" "$p10_wt" "cd $p10_scratch && gh api x" p10-none
+p10_allow "an inactive flow-state" "$p10_wt" "cd $p10_scratch && gh api x" p10-inactive
+P10_ROOT="$p10_plain" p10_allow "a state root that is not a repository" "$p10_scratch" "gh api x"
+# The state root comes from CLAUDE_PROJECT_DIR when RITE_STATE_ROOT is unset.
+rc=0
+output=$(jq -n --arg cmd "gh api x" --arg cwd "$p10_scratch" --arg sid "$p10_sid" \
+  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: $cwd, session_id: $sid}' \
+  | CLAUDE_PROJECT_DIR="$p10_wt" bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+if [[ "$(extract_hook_field "$output" permissionDecisionReason)" == "BLOCKED (outside-checkout): "* ]]; then
+  pass "state root resolved from CLAUDE_PROJECT_DIR"
+else
+  fail "state root resolved from CLAUDE_PROJECT_DIR: got rc=$rc output=$output"
+fi
+p10_deny "an earlier pattern keeps its reason" gh-pr-diff-stat "--stat" \
+  "$p10_wt" "cd $p10_scratch && gh pr diff 1 --stat"
+p10_deny "gh in a long command" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "echo $(printf 'x%.0s' $(seq 1 9000)) && cd $p10_scratch && gh api x"
+RITE_BTG_TEST_CRASH=pattern10-helper p10_deny "a failed check denies" outside-checkout-uninspectable "rc=3" \
+  "$p10_wt" "cd $p10_scratch && ls"
+p10_deny "gh after pushd to a scratch dir" outside-checkout "cannot be determined" \
+  "$p10_wt" "pushd $p10_scratch && gh api x"
+p10_deny "script after pushd to a scratch dir" outside-checkout "cannot be determined" \
+  "$p10_wt" "pushd $p10_scratch >/dev/null; bash x.sh"
+p10_deny "gh behind env --chdir" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "env --chdir=$p10_scratch gh api x"
+p10_deny "gh behind env -C" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "env -C $p10_scratch gh api x"
+p10_deny "gh behind timeout with a signal option" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && timeout -s KILL 5 gh api x"
+p10_deny "gh behind env -u" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && env -u HOME gh api x"
+p10_deny "git -C after another global option" outside-checkout "runs 'git' in $p10_scratch" \
+  "$p10_wt" "git -P -C $p10_scratch status"
+p10_deny "a variable reassigned inside if" outside-checkout "cannot be determined" \
+  "$p10_wt" "d=$p10_wt; if true; then d=$p10_scratch; fi; cd \"\$d\" && gh api x"
+p10_deny "a variable reassigned by export" outside-checkout "cannot be determined" \
+  "$p10_wt" "d=$p10_wt; export d=$p10_scratch; cd \"\$d\" && gh api x"
+p10_allow "cd into a directory made in the same command" "$p10_wt" \
+  "mkdir -p $p10_wt/new && cd $p10_wt/new && git status"
+p10_allow "a cd kept inside the first of two subshells" "$p10_wt" "(cd $p10_scratch && ls); (gh api x)"
+p10_allow "a cd kept inside an inner subshell" "$p10_wt" "( (cd $p10_scratch); gh api x )"
+p10_allow "a long command that runs no git, gh or script" "$p10_scratch" \
+  "echo $(printf 'x%.0s' $(seq 1 9000)) > out.txt"
+p10_deny "gh in a substitution after a cd in its subshell" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "(cd $p10_scratch && echo \$(gh api x))"
+p10_deny "script in a substitution after a cd in its subshell" outside-checkout "runs 'bash' in $p10_scratch" \
+  "$p10_wt" "(cd $p10_scratch; x=\$(bash rec.sh))"
+p10_allow "a substitution after a closed subshell" "$p10_wt" "(cd $p10_scratch); echo \$(gh api x)"
+p10_deny "gh in an inner subshell after the outer subshell's cd" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "(cd $p10_scratch; (gh api x))"
+p10_deny "gh after a cd that may fail" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_scratch" "cd $p10_wt/missing; gh api x"
+p10_deny "a command behind env -S" outside-checkout "cannot be determined" \
+  "$p10_wt" "env -S '-C $p10_scratch gh api x'"
+p10_deny "gh behind sudo -D" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "sudo -D $p10_scratch gh api x"
+p10_deny "gh behind xargs -I" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && xargs -I {} gh api {}"
+p10_deny "gh behind a joined env -u" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && env -uHOME gh api x"
+p10_deny "gh after popd" outside-checkout "cannot be determined" "$p10_wt" "popd; gh api x"
+p10_deny "a variable reassigned by read" outside-checkout "cannot be determined" \
+  "$p10_wt" "d=$p10_wt; read d; cd \"\$d\" && gh api x"
+p10_deny "a variable reassigned by for" outside-checkout-uninspectable "cannot determine the working directory" \
+  "$p10_wt" "d=$p10_wt; for d in $p10_scratch; do cd \"\$d\" && gh api x; done"
+p10_long=$(printf 'x%.0s' $(seq 1 9000))
+p10_out="in $p10_scratch, which is outside the checkout"
+p10_deny "a long command that runs a script by path" outside-checkout "$p10_out" \
+  "$p10_wt" "echo $p10_long > $p10_scratch/body.txt; cd $p10_scratch && $p10_scratch/record"
+p10_deny "a long command that runs a script by variable" outside-checkout "$p10_out" \
+  "$p10_wt" "echo $p10_long > $p10_scratch/body.txt; cd $p10_scratch && \"\$runner\""
+p10_allow "a long heredoc that mentions git and gh" "$p10_scratch" \
+  "$(printf 'cat > out.md <<%s\n%s\nEOF' "'EOF'" "$(printf 'Run git status then gh pr view. %.0s' $(seq 1 300))")"
+p10_prose=$(printf "Don't run git status then gh pr view. %.0s" $(seq 1 300))
+p10_deny "gh after a long heredoc" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 'cat > %s/o.md <<%s\n%s\nEOF\ncd %s && gh api x' "$p10_scratch" "'EOF'" "$p10_prose" "$p10_scratch")"
+p10_deny "a script after a heredoc with a hyphenated delimiter" outside-checkout "runs './rec.sh' $p10_out" \
+  "$p10_wt" "$(printf 'cat > %s/o.md <<%s\n%s\nPR-BODY\ncd %s && ./rec.sh' "$p10_scratch" "'PR-BODY'" "$p10_prose" "$p10_scratch")"
+p10_deny "gh after a tab-indented heredoc delimiter" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 'cat > %s/o.md <<-%s\n\t%s\n\tEOF\ncd %s && gh api x' "$p10_scratch" "'EOF'" "$p10_prose" "$p10_scratch")"
+p10_deny "gh after a << inside a string" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 'printf %s > %s/a.c\ncd %s && gh api x' "'mask = 1 << bit'" "$p10_scratch" "$p10_scratch")"
+p10_deny "gh between a << in a string and a heredoc it names" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 'echo %s\ncd %s && gh api x\ncat > %s/o.md <<%s\n%s\nEOF' "'Use cat <<EOF for long text'" "$p10_scratch" "$p10_scratch" "'EOF'" "$p10_prose")"
+p10_deny "gh after a shift in arithmetic" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "echo \$((1<<2)) && cd $p10_scratch && gh api x"
+p10_deny "a heredoc that does not end" outside-checkout-uninspectable "does not end" \
+  "$p10_scratch" "$(printf 'cat > out.md <<EOF\nhello')"
+p10_deny "gh before a heredoc that does not end" outside-checkout-uninspectable "does not end" \
+  "$p10_wt" "$(printf 'cd %s && gh api x && cat <<EOF\nhello' "$p10_scratch")"
+p10_deny "gh in a substitution of an unquoted heredoc body" outside-checkout-uninspectable "runs a command substitution" \
+  "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n$(gh api user)\nEOF' "$p10_scratch")"
+p10_deny "gh in an unquoted heredoc body of a message substitution" outside-checkout-uninspectable "runs a command substitution" \
+  "$p10_wt" "$(printf 'cd %s && echo "$(cat <<EOF\n$(gh api user)\nEOF\n)"' "$p10_scratch")"
+p10_allow "a substitution in a quoted heredoc body is text" "$p10_scratch" \
+  "$(printf 'cat > n.md <<%s\n$(gh api user)\nEOF' "'EOF'")"
+p10_allow "a substitution after a backslash-quoted delimiter is text" "$p10_scratch" \
+  "$(printf 'cat > n.md <<\\EOF\n$(gh api user)\nEOF')"
+p10_allow "escaped substitutions in an unquoted heredoc body are text" "$p10_scratch" \
+  "$(printf 'cat > pr.md <<EOF\nRun \\`git status\\` and \\$(gh pr view).\nEOF')"
+p10_deny "a substitution after an escaped backslash in an unquoted body" outside-checkout-uninspectable "runs a command substitution" \
+  "$p10_scratch" "$(printf 'cat > n.md <<EOF\n\\\\$(date)\nEOF')"
+p10_deny "gh after a << inside a parameter expansion" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 's=a; echo ${s//<</x}\ncd %s && gh api x' "$p10_scratch")"
+p10_deny "gh after a comment right after a group" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf '(true)# use <<EOF\ncd %s && gh api x' "$p10_scratch")"
+p10_deny "gh after a comment behind an escaped backslash" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 'echo a\\\\ #note <<EOF\ncd %s && gh api x' "$p10_scratch")"
+p10_allow "a comment with a quote inside a multi-line substitution" "$p10_scratch" \
+  "$(printf "x=\$(\n  # don't\n  echo a\n)\nls")"
+p10_allow "a # inside a word before a heredoc" "$p10_scratch" \
+  "$(printf "echo a#b; cat > n.md <<'EOF'\ngh pr view\nEOF")"
+p10_deny "gh after a URL fragment" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "echo https://e/x#frag; cd $p10_scratch && gh api x"
+p10_deny "a case command inside a substitution" outside-checkout-uninspectable "case command" \
+  "$p10_wt" "cd $p10_scratch && echo \"\$(case \"\$k\" in pr) gh pr view 1;; esac)\""
+p10_allow "the word case inside a substitution" "$p10_scratch" "echo \$(echo a test case here)"
+p10_deny "arithmetic in an unquoted heredoc body" outside-checkout-uninspectable "runs a command substitution" \
+  "$p10_scratch" "$(printf 'cat > n.md <<EOF\n$((1+2)) items\nEOF')"
+p10_allow "an unquoted heredoc body without a substitution" "$p10_scratch" \
+  "$(printf 'cat > n.md <<EOF\nHome is $HOME, 100%%\nEOF')"
+p10_deny "a backquote in an unquoted heredoc body" outside-checkout-uninspectable "runs a command substitution" \
+  "$p10_scratch" "$(printf 'cat > n.md <<EOF\nnow `date`\nEOF')"
+p10_deny "the denial of an unquoted body names the quoted delimiter" outside-checkout-uninspectable "<<'EOF'" \
+  "$p10_scratch" "$(printf 'cat > n.md <<EOF\nnow $(date)\nEOF')"
+p10_allow "an unquoted body run in the checkout without a cd" "$p10_wt" \
+  "$(printf 'cat > n.md <<EOF\n$(git rev-parse HEAD)\nEOF')"
+p10_deny "an unquoted body is denied with a cd into the checkout" outside-checkout-uninspectable "runs a command substitution" \
+  "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n$(git rev-parse HEAD)\nEOF' "$p10_wt")"
+p10_allow "a value assigned before the heredoc, as the denial advises" "$p10_wt" \
+  "$(printf 'cd %s && v=$(date) && cat > n.md <<EOF\nnow $v\nEOF' "$p10_scratch")"
+p10_deny "a case command after ; inside a substitution" outside-checkout-uninspectable "case command" \
+  "$p10_wt" "cd $p10_scratch && echo \"\$(true; case \"\$k\" in pr) gh pr view 1;; esac)\""
+p10_deny "a case command after then inside a substitution" outside-checkout-uninspectable "case command" \
+  "$p10_wt" "cd $p10_scratch && echo \"\$(if true; then case \"\$k\" in pr) gh pr view 1;; esac; fi)\""
+p10_deny "a denied body names the variable rewrite and that a cd does not help" outside-checkout-uninspectable \
+  'write $v in the body. Rewrite the command' "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n$(date)\nEOF' "$p10_wt")"
+p10_deny "the rewrite alternative says a cd is denied the same way" outside-checkout-uninspectable \
+  "adding a cd into the checkout, or running it from outside" "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n$(date)\nEOF' "$p10_wt")"
+p10_deny "a denied case names the rewrite and that a cd does not help" outside-checkout-uninspectable \
+  "set the variable in its branches. Rewrite the command" \
+  "$p10_wt" "cd $p10_scratch && echo \"\$(case \"\$k\" in pr) gh pr view 1;; esac)\""
+p10_allow "a case moved out of the substitution, as the denial advises" "$p10_wt" \
+  "cd $p10_wt && case \"\$k\" in pr) v=\$(git rev-parse HEAD);; esac; echo \"\$v\""
+p10_deny "a heredoc that does not end names the fix, not a cd" outside-checkout-uninspectable \
+  "end each heredoc at its delimiter line" "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\nhello' "$p10_wt")"
+p10_unfinished=$(p10_run "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\nhello' "$p10_wt")") || true
+p10_unfinished=$(extract_hook_field "$p10_unfinished" permissionDecisionReason)
+if [[ "$p10_unfinished" == *"delimiter EOF. Fix the command"* && "$p10_unfinished" == *"adding a cd into the checkout is denied the same way."* \
+  && "$p10_unfinished" != *"first."* ]]; then
+  pass "a heredoc that does not end ends its reason and does not advise a cd first"
+else
+  fail "a heredoc that does not end ends its reason and does not advise a cd first: got $p10_unfinished"
+fi
+p10_deny "a heredoc operator at the end of the command ends its reason" outside-checkout-uninspectable \
+  "delimiter EOF. Fix the command" "$p10_scratch" "cat > out.md <<EOF"
+p10_deny "a heredoc without a delimiter ends its reason" outside-checkout-uninspectable \
+  "a heredoc has no delimiter. Fix the command" "$p10_scratch" "cat > out.md <<"
+p10_deny "a quote that does not end ends its reason" outside-checkout-uninspectable \
+  "a quote or substitution does not end. Fix the command" "$p10_scratch" "cd $p10_scratch && echo \"abc"
+p10_deny "gh after a # inside a word" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "x=abc; echo \${#x}; cd $p10_scratch && gh api x"
+p10_deny "gh after a # right after a substitution" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "echo \$(pwd)#x; cd $p10_scratch && gh api x"
+p10_deny "gh after an escaped space and #" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "cp notes\\ #1.md $p10_scratch/ && cd $p10_scratch && gh api x"
+p10_deny "gh after a comment that mentions a heredoc" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf '# use cat <<EOF here\ncd %s && gh api x' "$p10_scratch")"
+p10_deny "gh after a here-string" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "grep -q x <<< \"\$v\" && cd $p10_scratch && gh api x"
+p10_deny "gh after a << in a double-quoted string" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "echo \"a << b\"; cd $p10_scratch && gh api x"
+p10_deny "a script in a function body after cd" outside-checkout-uninspectable "combined with a function definition" \
+  "$p10_wt" "cd $p10_scratch && f() { ./rec.sh; }; f"
+# Compound commands cannot be treated as one unconditional pass through their body.
+for p10_cmd in \
+  "for i in 1 2; do gh api x; cd $p10_scratch; done" \
+  "while true; do git status; cd $p10_scratch; done" \
+  "until false; do ./rec.sh; cd $p10_scratch; done" \
+  "for ((i=0;i<2;i++)); do gh api x; cd $p10_scratch; done" \
+  "for i in a b; do cd $p10_scratch; done; gh api x" \
+  "if false; then cd $p10_wt; fi; gh api x" \
+  "if true; then :; elif cd $p10_scratch; then :; else gh api x; fi" \
+  "case x in x) cd $p10_scratch;; esac; gh api x" \
+  "f() { cd $p10_scratch; }; f; gh api x" \
+  "function f { cd $p10_scratch; gh api x; }; f" \
+  "function f() { gh api x; }; cd $p10_scratch; f" \
+  "f() { gh api x; }; cd $p10_scratch; f" \
+  "f() (gh api x); cd $p10_scratch; f" \
+  "for i in a b; do if true; then builtin cd $p10_scratch; fi; gh api x; done" \
+  "for i in a b; do command cd $p10_scratch; gh api x; done" \
+  "if pushd $p10_scratch; then gh api x; fi" \
+  "case x in x) popd; ./rec.sh;; esac" \
+  "case x in x) f() { gh api x; };; esac; cd $p10_scratch; f" \
+  "echo \$(if true; then cd $p10_scratch; gh api x; fi)" \
+  "echo \$(f() { gh api x; }; cd $p10_scratch; f)"; do
+  p10_deny "compound directory change: $p10_cmd" outside-checkout-uninspectable \
+    "cannot determine the working directory" "$p10_wt" "$p10_cmd"
+done
+p10_deny "compound rejection advises a separate call from the checkout" outside-checkout-uninspectable \
+  "separate Bash call from the checkout" "$p10_wt" "for i in 1 2; do gh api x; cd $p10_scratch; done"
+p10_allow "a loop without cd" "$p10_wt" "for i in 1 2; do gh api x; done"
+p10_allow "a loop with cd but no protected call" "$p10_wt" "for d in a b; do cd $p10_scratch; ls; done"
+p10_allow "a conditional cd without a protected call" "$p10_wt" "if true; then cd $p10_scratch; fi; ls"
+p10_allow "a function with cd but no protected call" "$p10_wt" "f() { cd $p10_scratch; }; f; ls"
+p10_allow "cd after a completed condition" "$p10_wt" "if true; then :; fi; cd $p10_wt; gh api x"
+p10_allow "literal compound words are data" "$p10_wt" \
+  "printf '%s' 'if true; then cd /tmp; fi' 'f() { cd /tmp; gh api x; }'; gh api x"
+p10_allow "commented compound words are data" "$p10_wt" \
+  "$(printf '# for i in a; do cd /tmp; gh api x; done\ncd %s; gh api x' "$p10_wt")"
+p10_allow "quoted heredoc compound words are data" "$p10_wt" \
+  "$(printf "cat <<'EOF'\nif true; then cd /tmp; gh api x; fi\nEOF\ncd %s; gh api x" "$p10_wt")"
+p10_allow "a path-only substitution in a condition does not move the caller" "$p10_wt" \
+  "if true; then d=\$(cd $p10_scratch && pwd); fi; gh api x"
+p10_allow "a case arm before an if is not a function definition" "$p10_wt" \
+  "case x in y) :;; x) if true; then :; fi;; esac; cd $p10_wt; gh api x"
+# Patterns are data, even when their dequoted words spell control keywords.
+for p10_pattern in if "'if'" 'a|if' for "'esac'" 'a|esac' '(if' '\if' '[' '[abc' "'[()]'" '[\(]' '[\)]'; do
+  p10_allow_cmd="case x in y) :;; $p10_pattern) :;; esac; cd $p10_wt; gh api x"
+  p10_deny_cmd="case x in y) :;; $p10_pattern) cd $p10_wt;; esac; gh api x"
+  if bash -n <<<"$p10_allow_cmd" && bash -n <<<"$p10_deny_cmd"; then
+    pass "case pattern $p10_pattern fixtures are valid Bash"
+  else
+    fail "case pattern $p10_pattern fixtures are invalid Bash"
+  fi
+  p10_allow "case pattern $p10_pattern before an outer cd" "$p10_wt" "$p10_allow_cmd"
+  p10_deny "case pattern $p10_pattern does not close the case before cd" outside-checkout-uninspectable \
+    "cannot determine the working directory" "$p10_wt" "$p10_deny_cmd"
+done
+p10_deny "literal open bracket preserves an outside cd after the case" outside-checkout \
+  "runs 'gh' $p10_out" "$p10_wt" "case x in [) :;; esac; cd $p10_scratch; gh api x"
+p10_deny "nested cases retain the outer conditional cd" outside-checkout-uninspectable \
+  "cannot determine the working directory" "$p10_wt" \
+  "case x in x) case y in y) :;; esac; cd $p10_wt;; esac; gh api x"
+p10_allow "case alternatives preserve a following loop without cd" "$p10_wt" \
+  "case x in x|if) :;; esac; for i in 1 2; do gh api x; done"
+
+rc=0
+p10_helper=$(python3 "$SCRIPT_DIR/../scripts/lib/checkout-cwd.py" \
+  --cwd "$p10_scratch" --root "$p10_main" \
+  --command "gh api x; for i in 1 2; do gh api x; cd $p10_scratch; done" 2>"$STDERR_FILE") || rc=$?
+if [ "$rc" = 1 ] && [ -z "$p10_helper" ] && grep -q 'cannot determine the working directory' "$STDERR_FILE"; then
+  pass "helper rejects compound changes before producing any normal output"
+else
+  fail "compound helper rejection: rc=$rc stdout=$p10_helper stderr=$(cat "$STDERR_FILE")"
+fi
+
+p10_huge=$(printf 'Run cd into the worktree and write notes. %.0s' $(seq 1 3500))
+p10_allow "a heredoc longer than one argument may be" "$p10_scratch" \
+  "$(printf 'cat > big.md <<%s\n%s\nEOF' "'EOF'" "$p10_huge")"
+p10_deny "gh after a heredoc longer than one argument may be" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 'cat > %s/big.md <<%s\n%s\nEOF\ncd %s && gh api x' "$p10_scratch" "'EOF'" "$p10_huge" "$p10_scratch")"
+p10_allow "a heredoc with a backslashed delimiter that mentions git and gh" "$p10_scratch" \
+  "$(printf 'cat > out.md <<\\EOF\n%s\nEOF' "$p10_prose")"
+p10_allow "a heredoc with a hyphenated delimiter that mentions git and gh" "$p10_scratch" \
+  "$(printf 'cat > out.md <<%s\n%s\nPR-BODY' "'PR-BODY'" "$p10_prose")"
+p10_allow "a tab-indented heredoc that mentions git and gh" "$p10_scratch" \
+  "$(printf 'cat > out.md <<-%s\n\t%s\n\tEOF' "'EOF'" "$p10_prose")"
+p10_deny "a script after then" outside-checkout "runs './rec.sh' $p10_out" \
+  "$p10_wt" "cd $p10_scratch && if true; then ./rec.sh; fi"
+p10_deny "a variable run after do" outside-checkout "$p10_out" \
+  "$p10_wt" "cd $p10_scratch && for f in a; do \"\$runner\"; done"
+p10_deny "a script in braces" outside-checkout "runs './rec.sh' $p10_out" \
+  "$p10_wt" "cd $p10_scratch && { ./rec.sh; }"
+p10_deny "a script in a case branch" outside-checkout "runs './rec.sh' $p10_out" \
+  "$p10_wt" "cd $p10_scratch && case x in x) ./rec.sh;; esac"
+p10_deny "a script after a quoted assignment" outside-checkout "runs './rec.sh' $p10_out" \
+  "$p10_wt" "cd $p10_scratch && MSG=\"two words\" ./rec.sh"
+p10_deny "a script after a redirection" outside-checkout "runs './rec.sh' $p10_out" \
+  "$p10_wt" "cd $p10_scratch && 2>/dev/null ./rec.sh"
+p10_deny "a variable run behind timeout" outside-checkout "$p10_out" \
+  "$p10_wt" "cd $p10_scratch && timeout 5 \"\$runner\""
+p10_deny "a sourced file" outside-checkout "runs '.' $p10_out" \
+  "$p10_wt" "cd $p10_scratch && . rec"
+p10_allow "a long prose line with wrapper words" "$p10_scratch" \
+  "echo \"$p10_long the time is now; run this command with env set (time permitting)\" > out.txt"
+p10_allow "a multi-line string with wrapper words at line starts" "$p10_scratch" \
+  "$(printf 'echo "%s\nenv var is set\ntime to go" > out.txt' "$p10_long")"
+p10_allow "backquotes in a single-quoted text" "$p10_wt" \
+  "printf '%s\n' '$p10_long see \`plugins/x.md\` then cd back' > $p10_scratch/notes.md"
+p10_broken=$(mktemp -d "${TMPDIR:-/tmp}/rite-p10-broken.XXXXXX")
+printf 'gitdir: %s/missing\n' "$p10_broken" > "$p10_broken/.git"
+mkdir -p "$p10_broken/.rite/sessions"
+jq -n '{active: true}' > "$p10_broken/.rite/sessions/$p10_sid.flow-state"
+# A git that fails with a command as its last line, as git does for a repository it does not trust.
+p10_failgit=$(mktemp -d "${TMPDIR:-/tmp}/rite-p10-failgit.XXXXXX")
+printf '#!/bin/bash\nfor a; do [ "$a" = --path-format=absolute ] && { printf "fatal: cannot read\\n\\tgit config --global --add safe.directory %%s\\n" "%s" >&2; exit 128; }; done\nexec %s "$@"\n' \
+  "$p10_main" "$(command -v git)" > "$p10_failgit/git"
+chmod +x "$p10_failgit/git"
+PATH="$p10_failgit:$PATH" p10_deny "a git that cannot read the state root names its own error" outside-checkout-uninspectable \
+  "git cannot read the repository at $p10_main. git reports:"$'\n'"fatal: cannot read" "$p10_scratch" "cd $p10_scratch && gh api x"
+PATH="$p10_failgit:$PATH" p10_deny "a command git reports is left as is, with the fix on its own line" outside-checkout-uninspectable \
+  $'\tgit config --global --add safe.directory '"$p10_main"$' \nFix why git cannot read the repository (the error git reports above)' \
+  "$p10_scratch" "cd $p10_scratch && gh api x"
+# git trusts the state root but not the worktree the command runs in: the worktree's error is shown,
+# not an outside-checkout denial whose cd advice is denied the same way.
+printf '#!/bin/bash\n[ "$2" = %s ] && { printf "fatal: cannot read\\n\\tgit config --global --add safe.directory %%s\\n" "%s" >&2; exit 128; }\nexec %s "$@"\n' \
+  "$p10_wt" "$p10_wt" "$(command -v git)" > "$p10_failgit/git"
+PATH="$p10_failgit:$PATH" p10_deny "a worktree git cannot read names its own error" outside-checkout-uninspectable \
+  "git cannot read the repository at $p10_wt. git reports:"$'\n'"fatal: cannot read"$'\n\t'"git config --global --add safe.directory $p10_wt" \
+  "$p10_wt" "cd $p10_wt && gh api x"
+PATH="$p10_failgit:$PATH" p10_deny "a directory in no repository is still judged outside, not unreadable" outside-checkout \
+  "runs 'gh' in $p10_scratch, which is outside" "$p10_wt" "cd $p10_scratch && gh api x"
+# The same for a directory below the worktree, and for a worktree placed outside the state root.
+mkdir -p "$p10_wt/sub"
+printf '#!/bin/bash\n[[ "$2" == %s* ]] && { echo "fatal: cannot read" >&2; exit 128; }\nexec %s "$@"\n' \
+  "$p10_wt" "$(command -v git)" > "$p10_failgit/git"
+PATH="$p10_failgit:$PATH" p10_deny "a directory below a worktree git cannot read names its own error" outside-checkout-uninspectable \
+  "git cannot read the repository at $p10_wt/sub. git reports:" "$p10_wt" "cd $p10_wt/sub && gh api x"
+p10_ext="$p10_scratch/ext-wt"
+git -C "$p10_main" worktree add -q --detach "$p10_ext" 2>/dev/null
+printf '#!/bin/bash\n[ "$2" = %s ] && { echo "fatal: cannot read" >&2; exit 128; }\nexec %s "$@"\n' \
+  "$p10_ext" "$(command -v git)" > "$p10_failgit/git"
+PATH="$p10_failgit:$PATH" p10_deny "a worktree outside the state root git cannot read names its own error" outside-checkout-uninspectable \
+  "git cannot read the repository at $p10_ext. git reports:" "$p10_wt" "cd $p10_ext && gh api x"
+git -C "$p10_main" worktree remove --force "$p10_ext"
+rm -rf "$p10_failgit" "$p10_wt/sub"
+# A directory made where a removed worktree was is outside, not an unreadable worktree.
+p10_gone="$p10_scratch/gone-wt"
+git -C "$p10_main" worktree add -q --detach "$p10_gone" 2>/dev/null
+rm -rf "$p10_gone" && mkdir "$p10_gone"
+p10_deny "a directory where a removed worktree was is outside" outside-checkout \
+  "runs 'gh' in $p10_gone, which is outside" "$p10_wt" "cd $p10_gone && gh api x"
+git -C "$p10_main" worktree prune
+rm -rf "$p10_gone"
+P10_ROOT="$p10_broken" p10_deny "a state root git cannot read names the git fix" outside-checkout-uninspectable \
+  "Fix why git cannot read the repository" "$p10_wt" "cd $p10_scratch && gh api x"
+P10_ROOT="$p10_broken" p10_deny "a state root git cannot read" outside-checkout-uninspectable "git cannot read the repository at $p10_broken. git reports:"$'\n'"fatal" \
+  "$p10_wt" "cd $p10_scratch && gh api x"
+rm -rf "$p10_main" "$p10_scratch" "$p10_plain" "$p10_broken"
+# The skills' own bash blocks run during a session, from the checkout. Placeholders
+# stand for paths in the checkout, so none of them may be denied.
+p10_repo=$(cd "$SCRIPT_DIR/../../../.." && pwd -P)
+rc=0
+p10_corpus=$(python3 - "$SCRIPT_DIR/../scripts/lib" "$p10_repo" <<'EOF'
+import importlib, re, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+cwd = importlib.import_module("checkout-cwd")
+repo = Path(sys.argv[2])
+checkout = cwd.common_dir(repo)
+fence = re.compile(r"^(\s*)```(?:bash|sh)\s*$")
+blocks = 0
+for md in sorted([*repo.glob("plugins/rite/skills/**/*.md"), *repo.glob("plugins/rite/references/**/*.md")]):
+    lines = md.read_text().splitlines()
+    index = 0
+    while index < len(lines):
+        opened = fence.match(lines[index])
+        index += 1
+        if not opened:
+            continue
+        start, body = index, []
+        while index < len(lines) and not re.match(r"^\s*```\s*$", lines[index]):
+            body.append(lines[index][len(opened.group(1)):])
+            index += 1
+        blocks += 1
+        command = re.sub(r"\{[a-z_0-9]+\}", str(repo), "\n".join(body))
+        for kind, directories, word in cwd.each_call(command, repo):
+            if directories is None or any(cwd.common_dir(d) != checkout for d in directories):
+                print(f"{md.relative_to(repo)}:{start}: {word} in {directories}")
+print(f"blocks={blocks}")
+EOF
+) || rc=$?
+if [ "$rc" = "0" ] && [[ "$p10_corpus" =~ ^blocks=[1-9][0-9]*$ ]]; then
+  pass "no skill or reference bash block is denied ($p10_corpus)"
+else
+  fail "skill or reference bash blocks denied (rc=$rc): $p10_corpus"
 fi
 echo ""
 

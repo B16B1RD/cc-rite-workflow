@@ -1,9 +1,24 @@
 #!/bin/bash
-# Reap other-session run-queue files that can no longer be resumed.
+# Reap other-session run-queue files whose owner session has gone away.
 #
-# Resume is same-session only. A queue whose updated_at is older than the
-# existing 2h liveness window (or missing / unparsable) cannot be continued,
-# including when active=true. Own-session files are never touched.
+# Resume is same-session only. An ended-marked queue (see below) is reaped when
+# its updated_at is older than 2h (or missing / unparsable) and its owner session
+# is not live. The
+# queue's updated_at moves only at batch start and cursor advance, so a live
+# session routinely exceeds 2h on one Issue. Liveness is the owner's
+# flow-state updated_at, which moves on every phase transition, within the
+# same 2h window. An owner flow-state that is not a readable JSON object keeps
+# the queue with a WARNING. One without a parsable updated_at cannot prove
+# liveness, so the queue's own staleness decides and the reason is printed.
+# Own-session files are never touched.
+#
+# Neither timestamp moves while the owner is paused (e.g. by a usage limit),
+# so 2h without an update does not mean the owner has ended. session-end.sh
+# marks an ended owner with `run-queue-{sid}.ended`; only a marked queue is
+# reaped. A queue without the marker is never reaped, however long it has been
+# idle: a usage-limit pause can outlast any age bound. Such a queue that has
+# passed the checks above is announced on stdout (one line per queue) so it
+# does not linger unseen; the SessionStart hook passes that line to the model.
 #
 # Stale failed[] / outstanding[] are printed to stderr one item per line
 # before deletion — the record must not vanish silently.
@@ -65,6 +80,7 @@ _emit_leftover_items() {
   done < <(jq -r "$expr" "$q")
 }
 
+STALE_SECONDS=7200
 now_epoch=$(date +%s)
 shopt -s nullglob
 for q in "$queue_dir"/run-queue-*.json; do
@@ -80,17 +96,40 @@ for q in "$queue_dir"/run-queue-*.json; do
   fi
 
   updated_at=$(jq -r '.updated_at // empty' "$q")
-  stale=0
-  if [ -z "$updated_at" ]; then
-    stale=1
-  else
-    state_epoch=$(parse_iso8601_to_epoch "$updated_at")
-    diff_seconds=$((now_epoch - state_epoch))
-    if [ "$state_epoch" -eq 0 ] || [ "$diff_seconds" -gt 7200 ]; then
-      stale=1
+  state_epoch=0
+  [ -n "$updated_at" ] && state_epoch=$(parse_iso8601_to_epoch "$updated_at")
+  if [ "$state_epoch" -ne 0 ] && [ $((now_epoch - state_epoch)) -le "$STALE_SECONDS" ]; then
+    continue
+  fi
+
+  fs="$STATE_ROOT/.rite/sessions/${sid}.flow-state"
+  fs_epoch=0
+  if [ -f "$fs" ]; then
+    fs_disp=$(printf '%s' "$fs" | neutralize_ctrl)
+    if ! jq -e 'type == "object"' "$fs" >/dev/null 2>&1; then
+      echo "WARNING: run-queue-reap: owner flow-state unreadable, keep queue: $q_disp (flow-state: $fs_disp)" >&2
+      continue
+    fi
+    fs_updated=$(jq -r '.updated_at // empty' "$fs")
+    [ -n "$fs_updated" ] && fs_epoch=$(parse_iso8601_to_epoch "$fs_updated")
+    if [ "$fs_epoch" -ne 0 ] && [ $((now_epoch - fs_epoch)) -le "$STALE_SECONDS" ]; then
+      continue
     fi
   fi
-  [ "$stale" -eq 1 ] || continue
+
+  ended="$queue_dir/run-queue-${sid}.ended"
+  if [ ! -e "$ended" ]; then
+    sid_disp=$(printf '%s' "$sid" | neutralize_ctrl)
+    # The announcement is for a person to act on: keep UTF-8 in the path (C1 neutralize would break it).
+    q_show=$(printf '%s' "$q" | neutralize_ctrl --c0-only)
+    progress=$(jq -r '"\(if (.cursor | type) == "number" then .cursor else 0 end)/\(if (.issues | type) == "array" then (.issues | length) else 0 end)"' "$q")
+    echo "[rite] Batch: 終了の印が無い他セッションの run-queue を回収せず残しています (cursor ${progress}): ${q_show} — 持ち主のセッション ${sid_disp} を再開し、引数なしの /rite:batch-run で続行できます。不要なら run-queue-${sid_disp}.json と .watchdog を削除してください。"
+    continue
+  fi
+
+  if [ -f "$fs" ] && [ "$fs_epoch" -eq 0 ]; then
+    echo "WARNING: run-queue-reap: owner flow-state updated_at missing or unparsable, reap stale queue: $q_disp (flow-state: $fs_disp)" >&2
+  fi
 
   failed_n=$(jq '(.failed // []) | length' "$q")
   outstanding_n=$(jq '(.outstanding // []) | length' "$q")
@@ -101,6 +140,6 @@ for q in "$queue_dir"/run-queue-*.json; do
   fi
 
   watchdog="$queue_dir/run-queue-${sid}.watchdog"
-  rm -f "$q" "$watchdog"
+  rm -f "$q" "$watchdog" "$ended"
 done
 exit 0

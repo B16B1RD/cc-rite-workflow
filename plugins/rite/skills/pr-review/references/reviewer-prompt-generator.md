@@ -39,7 +39,7 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 <!-- 番号種別判定（url パスセグメント / title・state が使えない理由）の同旨記述: skills/issue-create/references/body-fact-check.md のクラス 1。reviewer prompt は subagent に注入されるため本文は自己完結させるが、gh の挙動が変わったときは両方を更新すること -->
 
 ## 共通レビュー原則
-<!-- `_reviewer-base.md` から抽出される全 reviewer 共通の原則。READ-ONLY Enforcement / Mindset / Cross-File Impact Check / Confidence Scoring が含まれる。reviewer 固有の identity (Role / Core Principles / Detection Process / Detailed Checklist (Expertise Areas, Review Checklist, Severity Definitions, Finding Quality Guidelines) / Output Format) は named subagent の system prompt (agents/{reviewer_type}-reviewer.md) として自動注入されるためここには含めない -->
+<!-- 全 reviewer 共通の原則 (`_reviewer-base.md`) の絶対パスと着手前の全文読取義務・読取完了申告 (ステップ 4.5 の placeholder 表)。本文は inline しない。reviewer 固有の identity は named subagent の system prompt (agents/{reviewer_type}-reviewer.md) として届く -->
 {shared_reviewer_principles}
 
 ## Doc-Heavy PR Mode (Conditional — 適用時のみ非空)
@@ -129,17 +129,17 @@ Finding Quality Guardrail Category #2 で除外した候補を次の表へ必ず
 
 
 ### 推奨事項
-[改善提案があれば（任意の改善、スタイル提案、本 PR の diff と無関係な気になる点など）。各推奨事項を箇条書きで記載すること。本 PR の diff と無関係でトリアージが妥当な場合は `別 Issue` または `スコープ外` キーワードを含めること（ステップ 7 でユーザー確認のうえ Decision Log 記録または Issue 化される）]
+[改善提案があれば（任意の改善、スタイル提案、本 PR の diff と無関係な気になる点など）。各推奨事項を箇条書きで記載すること。本 PR の diff と無関係でトリアージが妥当な場合は `別 Issue` または `スコープ外` キーワードを含めること（ステップ 7.2 の採否ゲートの出口（file / record / fix / hold）で処分される）]
 
 **⚠️ 各推奨事項に 3 分類を必ず明示すること** (`aggregate label` 禁止規定):
 
-各推奨事項を `分類: <actionable|design_confirmation|boundary>` を冒頭に付して記載する。分類が無い推奨事項は ステップ 5.1 collection で `design_confirmation` (default) として扱われるが、reviewer 自身が判断したうえで明示することが望ましい。
+各推奨事項を `分類: <actionable|design_confirmation|boundary>` を冒頭に付して記載する。分類は必須で、欠落や 3 値以外の値（`follow-up` など）は producer gate が検出してレビューを 1 回だけ再生成させ、再発すればレビューを止める。値は 3 値のどれか 1 語だけを書き、注記は値の後ろに ` — ` を挟んで書く（` — ` は em dash、U+2014。ハイフンや en dash は使わない。値の直後に括弧・句読点・別の語を続けない）。推奨事項が無いときは `なし` とだけ書く。この節には推奨事項だけを書く。字下げのない 1 行が 1 項目で、続きの行は字下げする。この節の後ろには `###` 見出しで始まる節しか置かない（時刻記録などの付記は `### 評価` より前か、別の `###` 見出しの下に書く）。
 
 | 分類 | 意味 | 対応経路 |
 |------|------|---------|
-| `actionable` | follow-up 対応が妥当な改善提案 (本 PR の diff と無関係で `別 Issue` / `スコープ外` キーワードを含む or それに該当する内容) | ステップ 7.2 で `AskUserQuestion` 必須起動 → Decision Log 記録または Issue 化（推奨機械決定表に従う） |
+| `actionable` | 対応が妥当な改善提案。本 PR が追加した行の欠陥（誤ったコメント・到達しない分岐・テストの粗さ等）なら `ファイル:行` を併記する。本 PR の diff と無関係なものは `別 Issue` / `スコープ外` キーワードを含める | ステップ 7.2 の採否ゲートの出口で処分する。PR が持ち込んだ根因（ADOPT・`origin=pr`）は `/rite:iterate` 経由の mergeable の review なら同じ PR で修正し（fix）、受入条件未検証の停止・単独実行・cycle 上限では hold。それ以外は file / record / hold |
 | `design_confirmation` | reviewer 自身が「現状の判断は妥当」「対応不要」「informational 寄り」と結論しており、action 要求を伴わない観察事項 | ステップ 7 で起票・記録なし、completion report に件数のみ表示 |
-| `boundary` | reviewer が action 要否を judgement できず user 判断を要する境界事案 | ステップ 7.2 で `AskUserQuestion` 必須起動 → user が「Decision Log 記録/起票/対応/無視」を選択 |
+| `boundary` | reviewer が action 要否を判断できない境界事案 | ステップ 7.2 の採否ゲートの出口（file / record / fix / hold）で処分 |
 
 **禁止**: 「推奨 N 件」「follow-up 候補 N 件」のような **件数のみの aggregate label** で報告を済ませること。各 item の分類を明示せずに集計するのは `aggregate-recommendation-label-evasion` anti-pattern であり、ステップ 7 の機械的 gate により block される。
 
@@ -151,7 +151,7 @@ Finding Quality Guardrail Category #2 で除外した候補を次の表へ必ず
 | {file} | {concern_description} | {notes — e.g., `/rite:investigate {file}` で追加調査推奨 / 本 PR のスコープ外} |
 
 ## 制約
-[READ-ONLY RULE] このレビューは読み取り専用。`Edit`/`Write` 禁止、問題は指摘事項として報告し修正は `/rite:fix` に委譲する。許可/禁止コマンドの完全一覧は上記「共通レビュー原則」に注入済みの `_reviewer-base.md` `## READ-ONLY Enforcement` を SoT として参照。
+[READ-ONLY RULE] このレビューは読み取り専用。`Edit`/`Write` 禁止、問題は指摘事項として報告し修正は `/rite:fix` に委譲する。許可/禁止コマンドの完全一覧は上記「共通レビュー原則」で読取義務を課した `_reviewer-base.md`（絶対パス）の `## READ-ONLY Enforcement` を SoT として参照。
 ````
 
 ## 受入条件確認の mandate

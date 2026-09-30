@@ -156,4 +156,18 @@ git init -q
 mkdir nested
 cd nested
 assert 'nested cwd resolves repository-root config' 完了 "$(projects_status_name_for_role done)"
+
+# An untracked config lives only in the main checkout; a linked session worktree reads it.
+MAIN=$(make_sandbox --branch develop)
+WT="${MAIN}-wt"
+trap 'chmod -R u+rwx "$MAIN" 2>/dev/null; rm -rf "$TEST_DIR" "$MAIN" "$WT"' EXIT
+git -C "$MAIN" worktree add -q -b feat/cfg "$WT" >/dev/null 2>&1
+cp "$TEST_DIR/rite-config.yml" "$MAIN/rite-config.yml"
+cd "$WT"
+assert 'linked worktree reads the main checkout config' 完了 "$(projects_status_name_for_role done)"
+if [ "$(id -u)" -ne 0 ]; then
+  chmod 000 "$MAIN/rite-config.yml"
+  assert_invalid 'unreadable main checkout config fails instead of using defaults'
+  chmod 644 "$MAIN/rite-config.yml"
+fi
 print_summary 'projects-status-config.test.sh'

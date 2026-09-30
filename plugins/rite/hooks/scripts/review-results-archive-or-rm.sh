@@ -5,7 +5,7 @@
 # 退避し、それ以外を削除する**。
 #
 # なぜ一律削除ではないか:
-#   ステップ 6.1.d の関連 Issue 記録コメントは reviewer / severity / file:line のポインタと降格理由 (判定文) しか載せない。
+#   ステップ 6.1.d の関連 Issue 記録コメントは reviewer / severity / file:line のポインタと降格理由しか載せない。
 #   cycle 中の `description` / `suggestion` の全文を持つのは本 JSON だけである。マージ時は
 #   cleanup-follow-up-issue.sh が本 JSON から follow-up Issue へ全文転記するが、転記は本 helper
 #   の前に走る。無条件削除すると転記失敗時に非実測 CRITICAL の詳細が merge 直後にどこにも

@@ -5,12 +5,19 @@
 # Precision rules:
 # - shell quotes/comments are lexed before splitting raw `|` operators;
 # - the immediate stage before grep is reported (not the pipeline head);
-# - direct echo/printf -> grep and `{ ...; } -> grep` are exempt proxies for
-#   bounded fixture/control output. Command name is only a proxy: an unbounded
-#   printf can still SIGPIPE, so adding such a site requires removing the proxy
-#   or inserting a real streaming stage; `drift-check-ignore` is the explicit
-#   audited escape hatch;
+# - an echo or printf producer stage that contains no `$`, backquote, glob
+#   (`*` `?` `[`) or brace-expansion (`{`) character is an exempt proxy for
+#   bounded literal output. The test covers the whole producer stage, so a
+#   prefix assignment (`X=$HOME echo literal`), a redirection (`2>"$log"`) and
+#   a literal `'$'` are also reported. A printf whose format has a numeric
+#   width or precision (`%300000s`, `%.5000f`) pads past its literal text and
+#   is reported too. A producer stage with an expansion has
+#   no size bound at the call site: rewrite it as a here-string.
+#   `drift-check-ignore` is the explicit audited escape hatch;
+# - `{ ...; } -> grep` is exempt whatever the group contains;
 # - `enable -p` is bounded by the current builtin table and is exempt.
+# - tests/ is scanned like production code: a fixture whose unsafe pipeline is
+#   data lives in a heredoc or a quoted string, which the lexer skips.
 #
 # Usage: pipefail-grep-q-check.sh --all [--repo-root DIR] [--quiet] [--skip-if-no-target]
 # Exit: 0 clean, 1 findings, 2 invocation/read error.
@@ -257,7 +264,7 @@ def infer_function_activity(logical):
                 if re.search(r'if\s+false\s*;\s*then\b[^;]*$',prefix): continue
                 line_events.append((m.start(),"toggle",m.group(1).startswith("-")))
             for name in names:
-                for cm in re.finditer(r'(?:^|[;|&]\s*|\b(?:if|then|command)\s+|!\s*|\$\(\s*)'+re.escape(name)+r'(?=\s|[;|&()]|$)',syntax):
+                for cm in re.finditer(r'(?:^|[;|&]\s*|\b(?:if|then|elif|else|do|while|until|command)\s+|!\s*|\$\(\s*)'+re.escape(name)+r'(?=\s|[;|&()]|$)',syntax):
                     line_events.append((cm.start(),"call",name))
             for _,kind,value in sorted(line_events):
                 if kind == "toggle": local_state[in_function]=value
@@ -267,7 +274,7 @@ def infer_function_activity(logical):
             if depth<=0: in_function=None
             continue
         for name in names:
-            if re.search(r'(?:^|[;|&]\s*|\b(?:if|then|command)\s+|!\s*|\$\(\s*)'+re.escape(name)+r'(?=\s|[;|&()]|$)',syntax):
+            if re.search(r'(?:^|[;|&]\s*|\b(?:if|then|elif|else|do|while|until|command)\s+|!\s*|\$\(\s*)'+re.escape(name)+r'(?=\s|[;|&()]|$)',syntax):
                 activity[name]=activity[name] or state
         _,state,_,_,_=scan_line_state(syntax,state,[],{},None,{},[])
     changed=True
@@ -291,20 +298,18 @@ def exempt(prod, pipeline_len):
     ws=words(p)
     if "enable" in ws and "-p" in ws: return True
     if "docker" in ws and ws[ws.index("docker")+1:ws.index("docker")+2] == ["ps"]: return True
-    # Static format containing a literal pipe is the quoted-pipe false-positive
-    # fixture, not an unbounded repository-derived payload.
-    if "printf" in ws and any("|" in w for w in ws[ws.index("printf")+1:ws.index("printf")+2]): return True
-    while ws and re.match(r'^[A-Za-z_][A-Za-z0-9_]*=', ws[0]): ws=ws[1:]
-    while ws and ws[0] in ("if","then","command","env"): ws=ws[1:]
+    while ws and (re.match(r'^[A-Za-z_][A-Za-z0-9_]*=', ws[0]) or ws[0] in ("!","if","elif","then","do","while","until","command","env")):
+        ws=ws[1:]
     if not ws: return True
     cmd=os.path.basename(ws[0])
-    if cmd == "echo": return True
-    # `%s` (without newline/repetition) is retained as a bounded-output proxy
-    # for small status probes. `%s\n` repository lists are deliberately not.
-    if "printf" in ws:
-        pi=ws.index("printf")
-        if ws[pi+1:pi+2] == ["%s"]: return True
-    return False
+    # Only an echo or printf whose producer stage holds no `$`, backquote, glob
+    # or brace-expansion character is bounded by its own text. `echo "$output"
+    # | grep -q` has been observed to die of SIGPIPE on CI with a few lines, and
+    # `printf '%s\n' {1..300000}` expands without any `$`. A printf conversion
+    # with a numeric width or precision (`%300000s`, `%.5000f`) pads its output
+    # beyond the literal text, so it is not exempt either.
+    if cmd not in ("echo","printf") or re.search(r"[$`*?\[{]", p): return False
+    return cmd == "echo" or not re.search(r"%[-+ #0']*(?:[0-9]|\.[0-9])", p)
 
 findings=[]; errors=0
 def walk_error(err):
@@ -370,11 +375,6 @@ def backslash_continues(line):
 for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
     start=os.path.join(root,base)
     for dp, dns, fns in os.walk(start, onerror=walk_error):
-        # Test fixtures intentionally exercise unsafe pipelines and often enable
-        # pipefail only inside generated shell snippets. Scanning them would turn
-        # expected-negative fixtures into lint findings, so this checker covers
-        # production hooks/scripts only; test code must guard its own pipelines.
-        dns[:] = [d for d in dns if d != "tests"]
         for fn in fns:
             if not fn.endswith(".sh") or fn == "pipefail-grep-q-check.sh": continue
             path=os.path.join(dp,fn); rel=os.path.relpath(path,root)

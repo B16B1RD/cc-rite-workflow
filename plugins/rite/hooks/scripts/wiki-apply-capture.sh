@@ -56,7 +56,7 @@ _yaml() {
   local file="$1" key="$2"
   awk -v k="$key" '
     /^wiki:/ {s=1; next}
-    s && /^[^ ]/ {exit}
+    s && /^[^[:space:]#]/ {exit}
     s && $0 ~ "^[[:space:]]+" k ":" {print; exit}
   ' "$file" 2>/dev/null \
     | sed 's/[[:space:]]#.*//' \
@@ -66,10 +66,12 @@ _yaml() {
 }
 enabled="true"
 auto_query=""
-# cwd にファイルが無いことを設定オフと扱わない。gate と同じ worktree 根を読む。
-if [ -n "$WT" ] && [ -f "$WT/rite-config.yml" ]; then
-  enabled=$(_yaml "$WT/rite-config.yml" enabled)
-  auto_query=$(_yaml "$WT/rite-config.yml" auto_query)
+# cwd にファイルが無いことを設定オフと扱わない。gate と同じ worktree 根から、
+# worktree 自身の config、無ければ main checkout の config を読む。
+if [ -n "$WT" ]; then
+  cfg=$(bash "$SCRIPT_DIR/lib/rite-config-path.sh" --or-devnull "$WT") || exit 1
+  enabled=$(_yaml "$cfg" enabled)
+  auto_query=$(_yaml "$cfg" auto_query)
 fi
 case "$enabled" in
   false|no|0) enabled="false" ;;

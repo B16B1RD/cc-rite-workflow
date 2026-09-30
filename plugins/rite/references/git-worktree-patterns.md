@@ -287,7 +287,7 @@ git worktree list --porcelain
 ls -d {worktree_base}/*/* 2>/dev/null
 ```
 
-If stale worktrees are found, display a warning and offer cleanup:
+If stale worktrees are found, inspect each one per [§5](#5-残骸ディレクトリの削除確認), then display a warning with what was found and offer cleanup:
 
 ```
 ⚠️ 既存の worktree が検出されました:
@@ -319,6 +319,14 @@ if [ "$worktree_count" -gt 1 ]; then
   echo "WARNING: $((worktree_count - 1)) worktree(s) still exist" >&2
 fi
 ```
+
+### 5. 残骸ディレクトリの削除確認
+
+残骸（前のセッションの作業フォルダが、worktree の登録を外れて残ったもの）や古い worktree を消すかは、必ず人間に確認する（削除は不可逆操作で、中身を調べても承認は省かない）。AI は依頼の説明に載せる中身を先に調べる（[question_resolution](../skills/rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) 規則 6）:
+
+1. `ls -A {path}` で中身を見る。空かどうかを説明に載せる
+2. 中身があれば、`git -C {path} rev-parse --show-toplevel` が `{path}` の絶対パス（`cd {path} && pwd -P` の出力）と一致するときは `git -C {path} status --porcelain --ignored` で未コミットの変更と ignore 対象のファイルを集める。一致しないか失敗するとき（`{path}` 自身が作業ツリーの最上位ではなく、git は親の checkout を読む）は `ls -A {path}` のファイル一覧（先頭 20 件）を集める
+3. 規則 6 の 4 要素で依頼する。何を確かめるか = `{path}` を消してよいか。なぜ AI では決められないか = 手順 1・2 で見つかった内容が必要かどうかは、作業した本人にしか分からない。どう確かめるか = 見つかった変更・ファイルの一覧（空ならその旨）を見て、残したいものがあれば別の場所へ移す。期待する結果 = 不要なら削除、必要なら退避してから削除するか中止する
 
 ---
 
@@ -369,7 +377,7 @@ reaped lazily by `pr-cycle-cleanup.sh` Step 5.
 | その他の native 失敗 / 検証失敗 / 適合経路なし | worktree と state を保持して診断・停止。下記の native 失敗診断または `/rite:recover` を案内する |
 | 入場は検証済みで成功しているが、以後の複合 shell コマンドがホストの隔離ガードに拒否される | 作業先を変えない。拒否されたシェルブロックをスクラッチ領域のスクリプトファイルへ書き出し、単一コマンド `bash {script_path}` で実行する（下記「入場後のガード拒否の退路」） |
 
-**入場後のガード拒否の退路**: 判定表の最終行に該当するのは、入場の検証（下記「変更前検証」の `WORKTREE_INVARIANT=ok`）が済んだ後に、スキルのシェルブロックがホストの隔離ガードに「worktree 内に留まることを検証できない」旨で拒否される場合である。拒否されやすい形は、変数代入とコマンド置換を組み合わせたブロック、共有 helper の `source` を伴うブロック、`git` を含む複数行の複合コマンドである。入場そのものが拒否された場合はこの行ではなく「native が権限拒否 / 隔離ガードで失敗」行を適用する。拒否されたブロック自身が `cd` / `git -C` / `workdir` で `{wt_path}` 外（main checkout を含む）を作業先にする場合も本行に該当しない。退出は「退出」節を適用し、main checkout 操作はスキルが定める経路（cleanup の委譲モード等）に従い、経路の定めがなければ代替経路を試さず停止する。いずれもスクリプト化しない。既存 helper による main root の共有 state 更新や、作業先を worktree に保ったまま絶対パスで行う読み書きはこの除外に含まない。退路は次のとおり。
+**入場後のガード拒否の退路**: 判定表の最終行に該当するのは、入場の検証（下記「変更前検証」の `WORKTREE_INVARIANT=ok`）が済んだ後に、スキルのシェルブロックがホストの隔離ガードに「worktree 内に留まることを検証できない」旨で拒否される場合である。ガードは形の規則表ではなく、git の作業先を静的に確かめられるかを判定するため、通過する形を列挙で約束できない。入場そのものが拒否された場合はこの行ではなく「native が権限拒否 / 隔離ガードで失敗」行を適用する。拒否されたブロック自身が `cd` / `git -C` / `workdir` で `{wt_path}` 外（main checkout を含む）を作業先にする場合も本行に該当しない。退出は「退出」節を適用し、main checkout 操作はスキルが定める経路（cleanup の委譲モード等）に従い、経路の定めがなければ代替経路を試さず停止する。いずれもスクリプト化しない。既存 helper による main root の共有 state 更新や、作業先を worktree に保ったまま絶対パスで行う読み書きはこの除外に含まない。退路は次のとおり。
 
 - 拒否されたシェルブロックを、そのままの内容でスクラッチ領域（ホストが session 用に用意する一時ディレクトリ）のスクリプトファイルへ書き出し、`bash {script_path}` の単一コマンドで実行する。ファイル先頭で `cd "{wt_path}"` を行い、作業先は検証済み worktree のまま固定する
 - 置き場所はスクラッチ領域に限る。worktree 内や main checkout 配下へ書き出さない（作業ツリーを汚し、diff と commit 対象に混入する）
@@ -377,6 +385,18 @@ reaped lazily by `pr-cycle-cleanup.sh` Step 5.
 - 採用したことを、他の入場経路と同様に work memory へ記録する
 - スクリプトファイルを書き出せない（スクラッチ領域が書込不可）場合は退路を採らず停止し、作業先と state を保持したまま `/rite:recover` を案内する
 - スクリプトファイル化した単一コマンドもガードに拒否される場合は退路が成立しない。さらなる代替形を試さず停止し、ホストの正式な承認手順へ案内する
+
+**入場後に実行されるシェルブロックの書き方**: 退路に頼らず通すため、worktree 入場後に実行されるスキルのシェルブロックは、1 呼び出しにつき top-level の `bash <helper の絶対パス> <literal 引数>` 1 文にする。`source`・変数への捕捉・分岐・ループは helper の中に置き、結果は helper の出力（`[CONTEXT]` marker または値）で受け取る。引数の値は placeholder を置換した literal で渡す（シェル変数や置換を引数に使わない）。本文・JSON など caller が生成する自由文は Write ツールで作業ツリー外のファイルに置き、そのパスを渡す。iterate・fix・pr-review のステップのうち、それぞれ `scripts/iterate-step.sh`・`scripts/fix-step.sh`・`scripts/pr-review-step.sh` のサブコマンドとして実装したものがこの形を取る。例外は `git add` と `git commit` の commit ブロックで、実行前 hook がコマンド文字列の `git commit` を検査するため helper へ移さず literal のまま呼ぶ。
+
+観測例（2026-09 時点、native 入場した隔離下）。ホストの版で変わりうるため、上の書き方の根拠ではなく参考として扱う:
+
+| 結果 | 形 |
+|---|---|
+| 通過 | top-level の `bash <file> <literal args>`（単独・複数行の並び・`\|\| exit N`・パイプの先頭・`if` の条件のいずれも） |
+| 通過 | `x=$(git rev-parse …)` の代入、`if git …; then`、`git … \| head` |
+| 拒否 | `source` / `.`、`bash -c '…'`、`bash -s <<EOF` |
+| 拒否 | `x=$(bash <file>)` の後に別の文が続くブロック、`bash <file> > out; echo $?` |
+| 拒否 | `git -C <main checkout>`、git を含むブロック内の `for` / `until`、`case "$(git …)" in` |
 
 **作業先固定**: shell の読取・編集・検証・git 操作はすべて選択した経路で実行する。ファイルツールには検証済み worktree 配下の絶対パスを渡す。委譲先にも絶対ルート・branch・この検証手順・main checkout 編集禁止を渡し、子の最初の結果で照合する。共有 state は `state-path-resolve.sh` が返した main root に対し既存 helper で更新する。
 
@@ -575,10 +595,18 @@ Two helper-driven patterns bracket the session-worktree lifecycle:
   `other` claim is surfaced via AskUserQuestion — never an unattended steal.
 - **Lazy reap** (`pr-cycle-cleanup.sh` Step 5): normal cleanup removes the worktree
   immediately; reap only collects **abnormally-orphaned** worktrees, and only when a
-  self-exclusion guard plus all 3 gates pass — the guard (Gate 0) never reaps the
+  self-exclusion and resumable-owner guards plus all 3 gates pass — the guard (Gate 0) never reaps the
   worktree the cleanup is itself running in (invocation cwd or `RITE_WORKTREE` matching
   or nested under the candidate), so a long-lived session cannot delete its own active
-  worktree mid-flight; then strict `^issue-[0-9]+$` name under
+  worktree mid-flight. Independently, a flow-state worktree reference or matching claim
+  holder protects the tree while its `updated_at` is within the liveness TTL
+  (`RITE_SESSION_LIVENESS_TTL_HOURS`, default 24h) when the owner is active, or
+  non-terminal and marked `suspended_by_session_end=true` or
+  `review_run.status=stopped`. Terminal phases are `completed`,
+  `create_completed` and `cleanup_completed`. This retention does not reactivate
+  the owner or authorize a stopped review to restart. Missing/unparseable timestamps
+  and unreadable flow-state scans retain the existing conservative protection;
+  live process cwd protection also applies. Then strict `^issue-[0-9]+$` name under
   `worktree_base`, claim not live (or absent + mtime > 24h — except a worktree whose
   checked-out branch is **reap-manifest-recorded**, i.e. cleanup already verified the
   PR merged and deferred the removal: that explicit "reap me" record bypasses the age
@@ -727,7 +755,7 @@ flock 排他の前提）ため、worktree cwd からの state 書込は構造的
 ### main checkout cwd から wiki worktree の管理ディレクトリへの書き込みが sandbox にブロックされる
 
 sandbox が有効な環境で、main checkout を cwd として `wiki-numref-precommit.sh`（`/rite:wiki-ingest` ステップ 5.0.n）
-や `wiki-worktree-commit.sh --commit-only`（ingest ステップ 5.1、`/rite:wiki-lint` ステップ 8.3）を実行すると、
+や `wiki-worktree-commit.sh --commit-only`（ingest ステップ 5.1、`/rite:wiki-lint` ステップ 8.3 の `wiki-lint-log-commit.sh` 経由）を実行すると、
 wiki worktree の管理ディレクトリ（`.git/worktrees/wiki-worktree/`）に `index.lock` を作れず失敗することがある。
 
 **症状**: `Unable to create '.git/worktrees/wiki-worktree/index.lock'`（読み込み専用ファイルシステム）。wiki worktree

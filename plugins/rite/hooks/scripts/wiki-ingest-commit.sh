@@ -63,7 +63,9 @@
 # - Designed to be idempotent: when called with no pending raw sources,
 # it exits 0 without touching git state.
 # - Preserves any unrelated uncommitted work in the current branch via
-# full `git stash push -u`, and pops the stash afterwards.
+# full `git stash push -u`, and pops that entry afterwards. The entry is
+# named by its SHA, because the stash stack is shared with every worktree
+# and another session may push on top of it while this script runs.
 # - The current branch is restored before exit on the happy path. On a
 # failed run the raw sources are restored to the working tree unstaged,
 # so the next run can ingest them. On cleanup failure (checkout-back,
@@ -377,6 +379,16 @@ if [[ "$branch_strategy" == "same_branch" ]]; then
  if ! bash "$_SCRIPT_DIR/git-commit-file.sh" --file "$_wic_resolved_file" -- --quiet 2>"${_sb_git_err:-/dev/null}"; then
   echo "ERROR: git commit failed" >&2
   _sb_dump "commit"
+  # A refused commit (e.g. the Wiki apply gate) must not leave the raw sources
+  # staged: the next commit or review gate would see them as foreign paths.
+  # Only the files added above are unstaged; staging of other paths stays.
+  # The hint names $repo_root because the caller's cwd may be a session
+  # worktree whose index is not the one staged here.
+  if ! git reset -q -- "${pending_files[@]}" 2>"${_sb_git_err:-/dev/null}"; then
+   echo "WARNING: failed to unstage the raw sources after the failed commit" >&2
+   printf ' manual recovery: git -C %q reset -q --%s\n' "$repo_root" "$(printf ' %q' "${pending_files[@]}")" >&2
+   _sb_dump "reset"
+  fi
   [ -n "$_sb_git_err" ] && rm -f "$_sb_git_err"
   exit 3
  fi
@@ -402,7 +414,9 @@ fi
 # pre-init state), this block is skipped silently and the legacy
 # stash/checkout path below handles the case (backward compat).
 # -----------------------------------------------------------------------
-worktree_path=".rite/wiki-worktree"
+# Absolute so the recovery commands the helpers print (git -C <worktree> ...)
+# work when pasted from a session worktree, not only from the main checkout.
+worktree_path="$repo_root/.rite/wiki-worktree"
 # Probe the worktree fast path. rc semantics from verify_worktree_branch:
 # 0=on the wiki branch (usable), 2=rev-parse failed (corrupt/orphaned — e.g. a
 # stale `.git` gitdir after the repo was relocated), 3=checked out to a different
@@ -548,7 +562,7 @@ fi
 # on the wiki branch at the same relative paths.
 # 6. git add / commit / push.
 # 7. Checkout back to the original branch.
-# 8. Pop the stash (if any).
+# 8. Pop our stash entry (if any), found by its SHA.
 # 9. Cleanup the /tmp staging directory.
 #
 # A trap ensures that on any failure or signal we attempt to return the
@@ -561,6 +575,11 @@ fi
 # guarded with `--` and would still accept `-<anything>` as an option if
 # the validation above were ever bypassed. `show-ref --verify` requires a
 # fully-qualified ref and refuses option-like strings outright.
+#
+# Pasteable recovery commands on this path name the repository with
+# `git -C $_q_repo_root` (and an absolute copy target): the caller's cwd may be
+# a session worktree whose index and working tree are not the ones changed here.
+printf -v _q_repo_root '%q' "$repo_root"
 if ! git show-ref --verify --quiet "refs/heads/${wiki_branch}"; then
  # stderr is captured separately for MEDIUM #7 (surface real cause).
  #
@@ -584,7 +603,7 @@ if ! git show-ref --verify --quiet "refs/heads/${wiki_branch}"; then
  sed 's/^/ git: /' "$ref_err" >&2
  fi
  echo " hint (run one of these, in order of preference):" >&2
- echo " 1) git fetch origin ${wiki_branch}:${wiki_branch} # fresh clone: create local branch from origin/${wiki_branch}" >&2
+ echo " 1) git -C $_q_repo_root fetch origin ${wiki_branch}:${wiki_branch} # fresh clone: create local branch from origin/${wiki_branch}" >&2
  echo " 2) /rite:wiki-init # uninitialized repo: initialize Wiki structure" >&2
  echo " NOTE: trade-off — this exit 2 silently defers raw source commit" >&2
  echo " until the wiki branch exists locally. On a fresh clone the caller" >&2
@@ -601,7 +620,7 @@ fi
 current_branch=$(git branch --show-current || true)
 if [[ -z "$current_branch" ]]; then
  echo "ERROR: detached HEAD state — cannot run wiki-ingest-commit.sh safely" >&2
- echo " hint: checkout a named branch first (e.g. git checkout develop)" >&2
+ echo " hint: checkout a named branch first (e.g. git -C $_q_repo_root checkout develop)" >&2
  exit 1
 fi
 
@@ -622,6 +641,8 @@ if ! stage_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-stage-XXXXXX" 2>/dev/null)
  exit 3
 fi
 stash_pushed=false
+# SHA of our own stash entry; pop and the recovery hints resolve stash@{n} from it.
+stash_sha=""
 checked_out_wiki=false
 # Stays true after checkout-back: records that the wiki branch index was used.
 entered_wiki=false
@@ -660,9 +681,12 @@ cleanup_body() {
  rm -f "${_wic_default_file:-}" "${_wic_resolved_file:-}"
  # Values embedded in pasteable recovery commands are shell-quoted so a
  # branch name or TMPDIR with spaces / apostrophes stays one argument.
- local _q_current_branch _q_stage_dir
+ local _q_current_branch _q_stage_dir _stash_pop_hint _stash_ref
  printf -v _q_current_branch '%q' "$current_branch"
  printf -v _q_stage_dir '%q' "$stage_dir"
+ # Pops only our entry: stash@{n} is looked up from the SHA when the command runs, and an
+ # empty lookup makes git refuse instead of popping whatever is on top.
+ _stash_pop_hint="git -C $_q_repo_root stash pop \"\$(git -C $_q_repo_root stash list --format='%gd %H' | awk -v s=$stash_sha '\$2 == s {print \$1}')\""
  if [[ "$checked_out_wiki" == "true" ]]; then
  if git checkout "$current_branch" >/dev/null 2>&1; then
  checked_out_wiki=false
@@ -674,9 +698,9 @@ cleanup_body() {
  if [[ "$rc" -ne 0 ]] && [[ -d "$stage_dir" ]]; then
  echo " manual recovery: follow the numbered steps after the staging directory WARNING below" >&2
  elif [[ "$stash_pushed" == "true" ]]; then
- echo " manual recovery: git checkout $_q_current_branch && git stash pop" >&2
+ echo " manual recovery: git -C $_q_repo_root checkout $_q_current_branch && $_stash_pop_hint" >&2
  else
- echo " manual recovery: git checkout $_q_current_branch" >&2
+ echo " manual recovery: git -C $_q_repo_root checkout $_q_current_branch" >&2
  fi
  if [[ "$stash_pushed" == "true" ]]; then
  echo " (stash is intentionally left intact to avoid cross-branch pop)" >&2
@@ -691,7 +715,7 @@ cleanup_body() {
     [[ "$checked_out_wiki" == "false" ]] && [[ "$entered_wiki" == "true" ]]; then
  if ! git reset -q -- .rite/wiki/raw >/dev/null 2>&1; then
  echo "WARNING: cleanup failed to unstage raw sources carried back from '$wiki_branch'" >&2
- echo " manual recovery: git reset -q -- .rite/wiki/raw" >&2
+ echo " manual recovery: git -C $_q_repo_root reset -q -- .rite/wiki/raw" >&2
  fi
  fi
  # Only pop the stash once we are safely back on the original branch.
@@ -699,13 +723,14 @@ cleanup_body() {
  # pop entirely — the user must resolve manually to avoid corrupting
  # the wiki branch working tree with dev-branch changes.
  if [[ "$checked_out_wiki" == "false" ]] && [[ "$stash_pushed" == "true" ]]; then
- if git stash pop >/dev/null 2>&1; then
+ _stash_ref=$(git stash list --format='%gd %H' 2>/dev/null | awk -v s="$stash_sha" '$2 == s {print $1; exit}')
+ if [[ -n "$_stash_ref" ]] && git stash pop "$_stash_ref" >/dev/null 2>&1; then
  stash_pushed=false
  else
  echo "WARNING: cleanup failed to pop stash" >&2
  echo " manual recovery:" >&2
- echo " git stash list | grep rite-wiki-ingest-commit-stash" >&2
- echo " git stash pop # resolve conflicts if any" >&2
+ echo " git -C $_q_repo_root stash list --format='%gd %H' | grep $stash_sha" >&2
+ echo " $_stash_pop_hint # resolve conflicts if any" >&2
  fi
  fi
  # Restore staged raw sources whenever we did not complete successfully,
@@ -750,13 +775,13 @@ cleanup_body() {
  echo " (checkout-back to '$current_branch' failed earlier; copying now would write onto the wiki branch)" >&2
  local step=3
  echo " manual recovery:" >&2
- echo " 1) resolve the branch state: git checkout $_q_current_branch" >&2
- echo " 2) unstage raw sources carried over from the wiki branch: git reset -q -- .rite/wiki/raw" >&2
+ echo " 1) resolve the branch state: git -C $_q_repo_root checkout $_q_current_branch" >&2
+ echo " 2) unstage raw sources carried over from the wiki branch: git -C $_q_repo_root reset -q -- .rite/wiki/raw" >&2
  if [[ "$stash_pushed" == "true" ]]; then
- echo " 3) restore stashed changes: git stash pop" >&2
+ echo " 3) restore stashed changes: $_stash_pop_hint" >&2
  step=4
  fi
- echo " ${step}) copy staged raw sources back: cp -r $_q_stage_dir/. .rite/wiki/raw/" >&2
+ echo " ${step}) copy staged raw sources back: cp -r $_q_stage_dir/. $_q_repo_root/.rite/wiki/raw/" >&2
  echo " $((step + 1))) clean up: rm -rf $_q_stage_dir" >&2
  fi
  else
@@ -866,7 +891,7 @@ for f in "${pending_files[@]}"; do
  echo " hint: this usually means an accidental commit of the raw source on the dev branch" >&2
  printf -v _q_f '%q' "$f"
  echo " manual recovery:" >&2
- echo " 1) git rm --cached $_q_f" >&2
+ echo " 1) git -C $_q_repo_root rm --cached $_q_f" >&2
  echo " 2) commit the removal on the dev branch" >&2
  echo " 3) re-run wiki-ingest-commit.sh" >&2
  exit 3
@@ -905,9 +930,12 @@ fi
 # path. Use a case statement to distinguish 0 (clean) / 1 (has-diff) /
 # anything else (real error → fail-fast with dump_git_err).
 has_changes=false
+# Submodule changes (dirty content and a moved gitlink alike) are ignored: git stash push -u
+# does not save them, so counting them would reach the stash with nothing to save and stop at
+# the new-entry check.
 
 set +e
-git diff --quiet HEAD 2>"${git_err:-/dev/null}"
+git diff --quiet --ignore-submodules HEAD 2>"${git_err:-/dev/null}"
 diff_rc=$?
 set -e
 case "$diff_rc" in
@@ -922,7 +950,7 @@ esac
 surface_git_warnings "diff HEAD"
 
 set +e
-git diff --cached --quiet HEAD 2>"${git_err:-/dev/null}"
+git diff --cached --quiet --ignore-submodules HEAD 2>"${git_err:-/dev/null}"
 diff_cached_rc=$?
 set -e
 case "$diff_cached_rc" in
@@ -951,12 +979,21 @@ fi
 surface_git_warnings "ls-files --others"
 
 if [[ "$has_changes" == "true" ]]; then
+ stash_before=$(git rev-parse -q --verify refs/stash 2>/dev/null) || stash_before=""
  if ! git stash push -u -m "rite-wiki-ingest-commit-stash" >/dev/null 2>"${git_err:-/dev/null}"; then
  echo "ERROR: git stash push failed" >&2
  dump_git_err "stash push"
  exit 3
  fi
  surface_git_warnings "stash push"
+ # A push that saved nothing leaves refs/stash on another entry; popping it later would
+ # take someone else's work, so stop here instead.
+ stash_sha=$(git rev-parse -q --verify refs/stash 2>/dev/null) || stash_sha=""
+ if [[ -z "$stash_sha" ]] || [[ "$stash_sha" == "$stash_before" ]]; then
+ echo "ERROR: git stash push did not create a new entry; refusing to continue without our own stash" >&2
+ stash_sha=""
+ exit 3
+ fi
  stash_pushed=true
 fi
 
@@ -1045,7 +1082,7 @@ if ! git push --quiet origin "$wiki_branch" 2>"${git_err:-/dev/null}"; then
  push_failed=true
  echo "WARNING: git push origin '$wiki_branch' failed — commit is local only" >&2
  dump_git_err "push origin $wiki_branch"
- echo " manual recovery: git push origin $wiki_branch" >&2
+ echo " manual recovery: git -C $_q_repo_root push origin $wiki_branch" >&2
 fi
 surface_git_warnings "push origin $wiki_branch"
 # git_err cleanup is handled by the EXIT trap installed above.

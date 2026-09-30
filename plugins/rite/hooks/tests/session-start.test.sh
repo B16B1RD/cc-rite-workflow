@@ -190,11 +190,11 @@ create_state_file "$dir006b" '{
   "stop_reason": "circuit-breaker:max-cycles"
 }'
 output=$(run_hook_with_source "$dir006b" "compact")
-if echo "$output" | grep -q "Auto-compact recovery" && \
-   echo "$output" | grep -q "$(issue_text 2045)" && \
-   ! echo "$output" | grep -q "失敗停止した rite workflow" && \
-   ! echo "$output" | grep -q "中断した rite workflow" && \
-   ! echo "$output" | grep -q "/rite:recover"; then
+if grep -q "Auto-compact recovery" <<< "$output" && \
+   grep -q "$(issue_text 2045)" <<< "$output" && \
+   ! grep -q "失敗停止した rite workflow" <<< "$output" && \
+   ! grep -q "中断した rite workflow" <<< "$output" && \
+   ! grep -q "/rite:recover" <<< "$output"; then
   pass "compact + stop_reason emits recovery, not recover/failure notice"
 else
   fail "Expected compact recovery without recover notice, got: $output"
@@ -215,11 +215,162 @@ create_state_file "$dir006c" '{
   "stop_reason": "circuit-breaker:divergence"
 }'
 output=$(run_hook_with_source "$dir006c" "startup")
-if echo "$output" | grep -q "失敗停止した rite workflow の状態をリセット" && \
-   echo "$output" | grep -q "収束トレンドの発散を検出"; then
+if grep -q "失敗停止した rite workflow の状態をリセット" <<< "$output" && \
+   grep -q "収束トレンドの発散を検出" <<< "$output"; then
   pass "startup defensive reset surfaces the durable failure reason"
 else
   fail "Expected failure-specific startup reset notice, got: $output"
+fi
+echo ""
+
+echo "TC-006d: startup reset names the receipt-missing stop as a known reason"
+dir006d="$TEST_DIR/tc006d"
+mkdir -p "$dir006d"
+create_state_file "$dir006d" '{
+  "active": true,
+  "issue_number": 2045,
+  "branch": "fix/issue-2045",
+  "phase": "cleanup",
+  "stop_reason": "circuit-breaker:receipt-missing"
+}'
+output=$(run_hook_with_source "$dir006d" "startup")
+if grep -q "未完了レビューの結果ファイルが消失" <<< "$output" && \
+   ! grep -q "未知の停止理由トークン" <<< "$output"; then
+  pass "startup defensive reset surfaces the receipt-missing stop reason"
+else
+  fail "Expected receipt-missing stop reason in startup reset notice, got: $output"
+fi
+echo ""
+
+echo "TC-006e: a resumed session names each stagnation stop it left behind"
+# 停滞停止は stop_reason と active=false を同じ更新で書き、review_run も stopped のまま残る。
+# flow state はセッション単位なので、停止した run の state を読めるのは同じ session_id の起動だけ。
+# ホストが runtime env に渡す session_id を、RITE_HOST=claude と payload で再現する。
+sid006e="0e06e006-0000-4000-8000-000000000001"
+# 親シェルで stderr と rc を受け取る (run_hook_* は LAST_STDERR_FILE をサブシェルで代入するため)。
+run006e() {
+  err006e="$(mktemp "$TEST_DIR/stderr.006e.XXXXXX")"
+  out006e=$(jq -n --arg cwd "$1" --arg src "$2" --arg sid "$3" \
+    '{cwd: $cwd, source: $src, session_id: $sid}' \
+    | RITE_HOST=claude bash "$HOOK" 2>"$err006e") && rc006e=0 || rc006e=$?
+}
+# 各対照の基本 fixture。対照ごとに 1 条件だけを変える。
+state006e='{
+  "active": false,
+  "issue_number": 2045,
+  "branch": "fix/issue-2045",
+  "phase": "review",
+  "stop_reason": "stagnation:non-convergent",
+  "review_run": {"status": "stopped", "stop_reason": "stagnation:non-convergent"}
+}'
+for _sr_case in \
+  "circuit-breaker:stagnation|停滞診断で停止 (review⇄fix が収束しない)" \
+  "stagnation:non-convergent|停滞診断で停止 (見直し後も同じ根本原因が再発し、受入条件が進まない)" \
+  "stagnation:scope-insoluble|停滞診断で停止 (根本原因が Issue の範囲内では解消できない)"; do
+  _sr_token=${_sr_case%%|*}
+  _sr_phrase=${_sr_case#*|}
+  dir006e="$TEST_DIR/tc006e-${_sr_token//:/-}"
+  mkdir -p "$dir006e"
+  create_state_file "$dir006e" '{
+  "active": false,
+  "issue_number": 2045,
+  "branch": "fix/issue-2045",
+  "phase": "review",
+  "stop_reason": "'"$_sr_token"'",
+  "review_run": {"status": "stopped", "stop_reason": "'"$_sr_token"'"}
+}' "$sid006e"
+  output=$(RITE_HOST=claude run_hook_with_session "$dir006e" "resume" "$sid006e")
+  if grep -qF "理由: ${_sr_phrase})。確認するには /rite:recover" <<< "$output" && \
+     ! grep -q "未知の停止理由トークン" <<< "$output"; then
+    pass "resume surfaces the $_sr_token stop reason for an inactive stopped run"
+  else
+    fail "Expected $_sr_token stop reason on resume for an inactive stopped run, got: $output"
+  fi
+done
+dir006e="$TEST_DIR/tc006e-unlisted"
+mkdir -p "$dir006e"
+create_state_file "$dir006e" '{
+  "active": false,
+  "issue_number": 2045,
+  "branch": "fix/issue-2045",
+  "phase": "review",
+  "stop_reason": "stagnation:future-token",
+  "review_run": {"status": "stopped", "stop_reason": "stagnation:future-token"}
+}' "$sid006e"
+output=$(RITE_HOST=claude run_hook_with_session "$dir006e" "resume" "$sid006e")
+if grep -qF "未知の停止理由トークン 'stagnation:future-token'" <<< "$output"; then
+  pass "resume keeps an unlisted stagnation token unknown"
+else
+  fail "Expected an unlisted stagnation token to stay unknown, got: $output"
+fi
+# post-/clear は新しい session_id で起動するため、同じ session_id の clear はホストが作らない入力形。
+# clear は下の新しい session_id の対照だけで扱う。
+dir006e="$TEST_DIR/tc006e-session"
+mkdir -p "$dir006e"
+create_state_file "$dir006e" "$state006e" "$sid006e"
+output=$(RITE_HOST=claude run_hook_with_session "$dir006e" "startup" "$sid006e")
+if grep -qF "確認するには /rite:recover" <<< "$output"; then
+  pass "startup in the same session surfaces the stagnation stop reason"
+else
+  fail "Expected the stagnation stop reason on startup in the same session, got: $output"
+fi
+# 同じ dir・同じ state のまま session_id だけを変える。
+for _src006e in startup clear; do
+  output=$(RITE_HOST=claude run_hook_with_session "$dir006e" "$_src006e" "0e06e006-0000-4000-8000-000000000002")
+  if ! grep -q "失敗停止" <<< "$output"; then
+    pass "state resolution is per session: $_src006e with a new session id does not read the stopped run"
+  else
+    fail "Expected no failure-stop notice on $_src006e with a new session id, got: $output"
+  fi
+done
+# 壊れた state では停止理由の読み取り失敗を WARNING で出し、案内は出さない。
+for _src006e in startup resume; do
+  dir006e="$TEST_DIR/tc006e-corrupt-$_src006e"
+  mkdir -p "$dir006e"
+  create_state_file "$dir006e" '{"active": false, "stop_reason": "stagnation:non-convergent", "phase":' "$sid006e"
+  run006e "$dir006e" "$_src006e" "$sid006e"
+  if [ "$rc006e" -eq 0 ] && \
+     grep -qF "jq read of .stop_reason failed" "$err006e" && \
+     ! grep -q "失敗停止" <<< "$out006e"; then
+    pass "$_src006e on a corrupt state warns that the stop reason could not be read"
+  else
+    fail "Expected rc=0, the stop_reason read WARNING and no failure-stop notice on $_src006e (rc=$rc006e), got: $out006e / $(cat "$err006e")"
+  fi
+done
+# 基本 fixture から 1 条件だけを変えると案内は出ない。
+for _case006e in \
+  "completed|resume|.phase = \"completed\"" \
+  "no-issue|resume|del(.issue_number)" \
+  "compact|compact|."; do
+  _name006e=${_case006e%%|*}
+  _rest006e=${_case006e#*|}
+  _src006e=${_rest006e%%|*}
+  _filter006e=${_rest006e#*|}
+  dir006e="$TEST_DIR/tc006e-$_name006e"
+  mkdir -p "$dir006e"
+  create_state_file "$dir006e" "$(jq -c "$_filter006e" <<< "$state006e")" "$sid006e"
+  run006e "$dir006e" "$_src006e" "$sid006e"
+  if [ "$rc006e" -eq 0 ] && \
+     ! grep -q "失敗停止" <<< "$out006e" && \
+     ! grep -qF "path resolution failed" "$err006e"; then
+    pass "$_name006e: $_src006e stays silent for a stopped run outside the notice conditions"
+  else
+    fail "Expected rc=0 and no failure-stop notice for $_name006e on $_src006e (rc=$rc006e), got: $out006e / $(cat "$err006e")"
+  fi
+done
+dir006e="$TEST_DIR/tc006e-inactive-no-stop"
+mkdir -p "$dir006e"
+create_state_file "$dir006e" '{
+  "active": false,
+  "issue_number": 2045,
+  "branch": "fix/issue-2045",
+  "phase": "review"
+}' "$sid006e"
+output=$(RITE_HOST=claude run_hook_with_session "$dir006e" "resume" "$sid006e")
+if ! grep -q "失敗停止" <<< "$output"; then
+  pass "resume stays silent for an inactive state without a stop reason"
+else
+  fail "Expected no failure-stop notice for an inactive state without a stop reason, got: $output"
 fi
 echo ""
 
@@ -299,11 +450,11 @@ create_state_file "$dir006" '{
 }'
 
 output=$(run_hook_with_source "$dir006" "compact")
-if echo "$output" | grep -q "Auto-compact recovery" && \
-   echo "$output" | grep -q "$(issue_text 42)" && \
-   echo "$output" | grep -q "Phase: implementing" && \
-   echo "$output" | grep -q "then continue" && \
-   ! echo "$output" | grep -q "/rite:recover"; then
+if grep -q "Auto-compact recovery" <<< "$output" && \
+   grep -q "$(issue_text 42)" <<< "$output" && \
+   grep -q "Phase: implementing" <<< "$output" && \
+   grep -q "then continue" <<< "$output" && \
+   ! grep -q "/rite:recover" <<< "$output"; then
   pass "compact recovery contains issue + phase + continue, no recover notice"
 else
   fail "compact recovery missing expected fields, got: $output"
@@ -324,8 +475,8 @@ mkdir -p "$dir007"
 create_state_file "$dir007" '{"active": true, "phase": "test"}'
 
 output=$(run_hook_with_source "$dir007" "compact")
-if echo "$output" | grep -q "issue_number is missing" && \
-   echo "$output" | grep -q "/rite:recover"; then
+if grep -q "issue_number is missing" <<< "$output" && \
+   grep -q "/rite:recover" <<< "$output"; then
   pass "Missing issue_number → empty ISSUE guard fires with recovery hint (IFS=\$'\\x1f' correctly preserves empty field)"
 else
   fail "Expected 'issue_number is missing' + '/rite:recover' guard (cycle 11 IFS fix should have eliminated field shift), got: $output"
@@ -341,8 +492,8 @@ mkdir -p "$dir008"
 create_state_file "$dir008" '{"active": true, "issue_number": 99}'
 
 output=$(run_hook_with_source "$dir008" "compact")
-if echo "$output" | grep -q "$(issue_text 99)" && \
-   echo "$output" | grep -q "Phase: unknown"; then
+if grep -q "$(issue_text 99)" <<< "$output" && \
+   grep -q "Phase: unknown" <<< "$output"; then
   pass "Missing optional fields → phase defaults to unknown"
 else
   fail "Expected phase default (unknown), got: $output"
@@ -392,7 +543,7 @@ if [ $rc -eq 0 ]; then
   if [ -s "$LAST_STDERR_FILE" ]; then
     stderr_content=$(cat "$LAST_STDERR_FILE")
     # Only jq parse errors are unexpected; rite: warnings are expected (defense-in-depth)
-    if echo "$stderr_content" | grep -qv "^rite:"; then
+    if grep -qv "^rite:" <<< "$stderr_content"; then
       fail "Unexpected stderr output: $stderr_content"
     else
       pass "Invalid JSON → exit 0 (line 111 ACTIVE fallback, no jq error on stderr)"
@@ -423,8 +574,8 @@ create_state_file "$dir011" '{
 }'
 
 output=$(run_hook_with_source "$dir011" "compact")
-if echo "$output" | grep -q "$(issue_text 77)" && \
-   echo "$output" | grep -q "Phase: Phase with spaces"; then
+if grep -q "$(issue_text 77)" <<< "$output" && \
+   grep -q "Phase: Phase with spaces" <<< "$output"; then
   pass "Unit-separator-delimited field extraction handles spaces in phase"
 else
   fail "Field extraction failed with spaces, got: $output"
@@ -441,9 +592,9 @@ create_state_file "$dir012" '{"active": true, "issue_number": 55, "phase": "impl
 echo '{"compact_state": "recovering", "active_issue": 55}' > "$dir012/.rite-compact-state"
 
 output=$(run_hook_with_source "$dir012" "compact")
-if echo "$output" | grep -q "Auto-compact recovery" && \
-   echo "$output" | grep -q "$(issue_text 55)" && \
-   ! echo "$output" | grep -q "/rite:recover"; then
+if grep -q "Auto-compact recovery" <<< "$output" && \
+   grep -q "$(issue_text 55)" <<< "$output" && \
+   ! grep -q "/rite:recover" <<< "$output"; then
   pass "source=compact + recovering → recovery text"
 else
   fail "Expected recovery text with issue 55, got: $output"
@@ -460,9 +611,9 @@ create_state_file "$dir013" '{"active": true, "issue_number": 56, "phase": "revi
 echo '{"compact_state": "normal"}' > "$dir013/.rite-compact-state"
 
 output=$(run_hook_with_source "$dir013" "compact")
-if echo "$output" | grep -q "Auto-compact recovery" && \
-   echo "$output" | grep -q "$(issue_text 56)" && \
-   ! echo "$output" | grep -q "/rite:recover"; then
+if grep -q "Auto-compact recovery" <<< "$output" && \
+   grep -q "$(issue_text 56)" <<< "$output" && \
+   ! grep -q "/rite:recover" <<< "$output"; then
   pass "source=compact + normal → recovery text"
 else
   fail "Expected recovery text, got: $output"
@@ -478,10 +629,10 @@ mkdir -p "$dir014"
 create_state_file "$dir014" '{"active": true, "issue_number": 57, "phase": "testing"}'
 
 output=$(run_hook_with_source "$dir014" "compact")
-if echo "$output" | grep -q "Auto-compact recovery" && \
-   echo "$output" | grep -q "$(issue_text 57)" && \
-   echo "$output" | grep -q "then continue" && \
-   ! echo "$output" | grep -q "/rite:recover"; then
+if grep -q "Auto-compact recovery" <<< "$output" && \
+   grep -q "$(issue_text 57)" <<< "$output" && \
+   grep -q "then continue" <<< "$output" && \
+   ! grep -q "/rite:recover" <<< "$output"; then
   pass "source=compact + no compact state file → auto recovery (missing trigger)"
 else
   fail "Expected auto recovery text, got: $output"
@@ -502,7 +653,7 @@ output=$(run_hook_with_source "$dir015" "clear")
 ACTIVE_VAL=$(jq -r '.active' "$(state_file_path "$dir015")" 2>/dev/null)
 if [ "$ACTIVE_VAL" = "false" ] && \
    ! [ -f "$dir015/.rite-compact-state" ] && \
-   echo "$output" | grep -q "リセットしました"; then
+   grep -q "リセットしました" <<< "$output"; then
   pass "source=clear + recovering → defensive reset (active=false, compact state cleaned)"
 else
   fail "Expected defensive reset, got active=$ACTIVE_VAL, compact_exists=$([ -f "$dir015/.rite-compact-state" ] && echo yes || echo no), output: $output"
@@ -543,8 +694,8 @@ create_state_file "$dir016" '{"active": true, "issue_number": 59, "phase": "revi
 echo '{"compact_state": "recovering", "active_issue": 59}' > "$dir016/.rite-compact-state"
 
 output=$(run_hook_with_source "$dir016" "startup")
-if echo "$output" | grep -q "前回のセッション状態が残っていたためリセットしました" && \
-   ! echo "$output" | grep -q "STOP. DO NOT CONTINUE"; then
+if grep -q "前回のセッション状態が残っていたためリセットしました" <<< "$output" && \
+   ! grep -q "STOP. DO NOT CONTINUE" <<< "$output"; then
   pass "source=startup + blocked → defensive reset message (not STOP, not CRITICAL)"
 else
   fail "Expected defensive reset message (not STOP), got: $output"
@@ -683,7 +834,7 @@ create_state_file "$dir024" '{"active": true, "issue_number": 71, "branch": "fea
 
 output=$(run_hook_with_source "$dir024" "startup") && rc=0 || rc=$?
 ACTIVE_AFTER=$(jq -r '.active' "$(state_file_path "$dir024")" 2>/dev/null)
-if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "false" ] && echo "$output" | grep -q "前回のセッション状態が残っていたためリセットしました"; then
+if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "false" ] && grep -q "前回のセッション状態が残っていたためリセットしました" <<< "$output"; then
   pass "source=startup + phase=implementing → reset message shown and active=false"
 else
   fail "Expected reset message and active=false, got rc=$rc, active=$ACTIVE_AFTER, output='$output'"
@@ -756,7 +907,7 @@ create_state_file "$dirT01" \
 
 output=$(run_hook_with_session "$dirT01" "startup" "$sid_t01") && rc=0 || rc=$?
 ACTIVE_AFTER=$(jq -r '.active' "$(state_file_path "$dirT01" "$sid_t01")" 2>/dev/null)
-if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "false" ] && echo "$output" | grep -q "前回のセッション状態が残っていたためリセットしました"; then
+if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "false" ] && grep -q "前回のセッション状態が残っていたためリセットしました" <<< "$output"; then
   pass "TC-T01: own-session → reset (active=false, message shown)"
 else
   fail "TC-T01: expected own-session reset; got rc=$rc, active=$ACTIVE_AFTER, output='$output'"
@@ -811,7 +962,7 @@ create_state_file "$dirT03" \
 
 output=$(run_hook_with_session "$dirT03" "startup" "$sid_t03") && rc=0 || rc=$?
 ACTIVE_AFTER=$(jq -r '.active' "$(state_file_path "$dirT03" "$sid_t03")" 2>/dev/null)
-if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "false" ] && echo "$output" | grep -q "前回のセッション状態が残っていたためリセットしました"; then
+if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "false" ] && grep -q "前回のセッション状態が残っていたためリセットしました" <<< "$output"; then
   pass "TC-T03: per-session state (no internal session_id) → reset (active=false, message shown)"
 else
   fail "TC-T03: expected per-session reset; got rc=$rc, active=$ACTIVE_AFTER, output='$output'"
@@ -859,7 +1010,7 @@ output=$(jq -n --arg cwd "$dirT04" --arg src "startup" --arg sid "$sid_t04" \
   '{cwd: $cwd, source: $src, session_id: $sid}' \
   | bash "$sandbox_hook_dir/session-start.sh" 2>"$LAST_STDERR_FILE") && rc=0 || rc=$?
 ACTIVE_AFTER=$(jq -r '.active' "$dirT04/.rite/sessions/${sid_t04}.flow-state" 2>/dev/null)
-if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "false" ] && echo "$output" | grep -q "前回のセッション状態が残っていたためリセットしました"; then
+if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "false" ] && grep -q "前回のセッション状態が残っていたためリセットしました" <<< "$output"; then
   pass "TC-T04: check_session_ownership undefined → fail-safe reset (active=false)"
 else
   fail "TC-T04: expected fail-safe reset; got rc=$rc, active=$ACTIVE_AFTER, output='$output'"
@@ -906,8 +1057,8 @@ output=$(jq -n --arg cwd "$dirT04b" --arg src "startup" --arg sid "$sid_t04b" \
 stderr_content=$(cat "$LAST_STDERR_FILE")
 ACTIVE_AFTER=$(jq -r '.active' "$dirT04b/.rite/sessions/${sid_t04b}.flow-state" 2>/dev/null)
 if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "false" ] \
-   && echo "$stderr_content" | grep -q "ownership check unavailable" \
-   && echo "$stderr_content" | grep -q "check_session_ownership not sourced"; then
+   && grep -q "ownership check unavailable" <<< "$stderr_content" \
+   && grep -q "check_session_ownership not sourced" <<< "$stderr_content"; then
   pass "TC-T04b: helper undefined + RITE_DEBUG → debug log 'ownership check unavailable' shown"
 else
   fail "TC-T04b: expected debug log 'ownership check unavailable'; got rc=$rc, active=$ACTIVE_AFTER, stderr='$stderr_content'"
@@ -946,8 +1097,8 @@ cat > "$dir680a/.rite/sessions/${sid680a}.flow-state" <<EOF
 {"active": true, "issue_number": 680, "branch": "refactor/issue-680-test", "phase": "phase5_review", "next_action": "review", "loop_count": 0, "session_id": "$sid680a", "updated_at": "$ts_t680a"}
 EOF
 output=$(run_hook_with_session "$dir680a" "resume" "$sid680a") && rc=0 || rc=$?
-if [ $rc -eq 0 ] && echo "$output" | grep -q "中断した rite workflow を検出" \
-   && echo "$output" | grep -q "$(issue_text 680)"; then
+if [ $rc -eq 0 ] && grep -q "中断した rite workflow を検出" <<< "$output" \
+   && grep -q "$(issue_text 680)" <<< "$output"; then
   pass "TC-per-session-detect-A: per-session file read → interruption notice fired (AC-LOCAL-2)"
 else
   fail "TC-per-session-detect-A: expected workflow-detected output from per-session file; got rc=$rc, output='$output'"
@@ -1685,9 +1836,9 @@ create_state_file "$dir_t09b" '{
 }'
 write_batch_queue "$dir_t09b"
 output=$(run_hook_with_source "$dir_t09b" "compact")
-if echo "$output" | grep -q "/rite:batch-run" \
-  && ! echo "$output" | grep -q "再開するには /rite:recover" \
-  && ! echo "$output" | grep -q "失敗停止した rite workflow"; then
+if grep -q "/rite:batch-run" <<< "$output" \
+  && ! grep -q "再開するには /rite:recover" <<< "$output" \
+  && ! grep -q "失敗停止した rite workflow" <<< "$output"; then
   pass "T-09b: failure-stop compact notice replaced by batch continuation"
 else
   fail "T-09b: unexpected output: $output"
@@ -1748,9 +1899,9 @@ create_state_file "$dir_t12" "$T10_STATE"
 printf 'not-json{{' > "$(compact_state_path "$dir_t12")"
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 output=$(echo "{\"cwd\": \"$dir_t12\", \"source\": \"compact\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
-if echo "$output" | grep -q "Auto-compact recovery" \
-  && echo "$output" | grep -q "then continue" \
-  && ! echo "$output" | grep -q "/rite:recover" \
+if grep -q "Auto-compact recovery" <<< "$output" \
+  && grep -q "then continue" <<< "$output" \
+  && ! grep -q "/rite:recover" <<< "$output" \
   && grep -q "jq parse of compact-state.trigger failed" "$LAST_STDERR_FILE"; then
   pass "T-12: corrupt compact-state warns and still emits auto recovery"
 else
@@ -1773,9 +1924,9 @@ T13_STATE=$(jq -nc --arg na $'line1\nline2' '{
 create_state_file "$dir_t13" "$T13_STATE"
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 output=$(echo "{\"cwd\": \"$dir_t13\", \"source\": \"compact\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
-if echo "$output" | grep -q "Next action: line1 line2" \
-  && echo "$output" | grep -q "Loop: 7 | PR: #99" \
-  && echo "$output" | grep -q "Branch: feat/issue-42-test" \
+if grep -q "Next action: line1 line2" <<< "$output" \
+  && grep -q "Loop: 7 | PR: #99" <<< "$output" \
+  && grep -q "Branch: feat/issue-42-test" <<< "$output" \
   && grep -q "next_action contained a newline" "$LAST_STDERR_FILE"; then
   pass "T-13: newline in next_action collapsed; Loop/PR/Branch kept"
 else
@@ -1792,12 +1943,12 @@ mkdir -p "$dir_t11/.rite/state"
 printf 'not-json{{' > "$dir_t11/.rite/state/run-queue-${sid_t11}.json"
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 output=$(echo "{\"cwd\": \"$dir_t11\", \"source\": \"compact\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
-if echo "$output" | grep -q "Auto-compact recovery" \
-  && echo "$output" | grep -q "Batch: run-queue unreadable" \
-  && echo "$output" | grep -q "queue_file=" \
-  && ! echo "$output" | grep -q "Batch: run-queue active" \
-  && ! echo "$output" | grep -q "mode=" \
-  && ! echo "$output" | grep -q "/rite:recover" \
+if grep -q "Auto-compact recovery" <<< "$output" \
+  && grep -q "Batch: run-queue unreadable" <<< "$output" \
+  && grep -q "queue_file=" <<< "$output" \
+  && ! grep -q "Batch: run-queue active" <<< "$output" \
+  && ! grep -q "mode=" <<< "$output" \
+  && ! grep -q "/rite:recover" <<< "$output" \
   && grep -q "WARNING: run-queue が破損しています" "$LAST_STDERR_FILE"; then
   pass "T-11 corrupt: unreadable Batch line + WARNING, no invented fields"
 else
@@ -1817,9 +1968,9 @@ create_state_file "$dir_t10c" '{
 }'
 write_batch_queue "$dir_t10c"
 output=$(run_hook_with_source "$dir_t10c" "startup")
-if echo "$output" | grep -q "前回のセッション状態が残っていたためリセットしました" \
-  && echo "$output" | grep -q "/rite:recover" \
-  && ! echo "$output" | grep -q "/rite:batch-run"; then
+if grep -q "前回のセッション状態が残っていたためリセットしました" <<< "$output" \
+  && grep -q "/rite:recover" <<< "$output" \
+  && ! grep -q "/rite:batch-run" <<< "$output"; then
   pass "T-10c: startup reset wording unchanged with active queue"
 else
   fail "T-10c: $output"
@@ -1917,23 +2068,259 @@ write_queue_file() {
   printf '%s\n' "$json" > "$dir/.rite/state/run-queue-${sid}.json"
 }
 
-echo "RQ-01: own stale queue and watchdog remain; other stale json+watchdog are removed (same fixture)"
+# session-end.sh marks an ended owner; only a marked queue is reaped on the 2h rule.
+write_ended_marker() {
+  local dir="$1" sid="$2"
+  mkdir -p "$dir/.rite/state"
+  : > "$dir/.rite/state/run-queue-${sid}.ended"
+}
+
+write_owner_flow_state() {
+  local dir="$1" sid="$2" content="$3"
+  mkdir -p "$dir/.rite/sessions"
+  printf '%s\n' "$content" > "$dir/.rite/sessions/${sid}.flow-state"
+}
+
+echo "RQ-01: own stale queue remains; ended other stale queues with absent or old owner flow-state are removed (same fixture)"
 dir_rq01="$TEST_DIR/rq-01"
 mkdir -p "$dir_rq01"
 stale_ts=$(iso8601_now -8000)
 write_queue_file "$dir_rq01" "own-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[1],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
 write_queue_file "$dir_rq01" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[2],cursor:0,mode:"default",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+write_queue_file "$dir_rq01" "old-fs-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[3],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+write_owner_flow_state "$dir_rq01" "own-sid" "$(jq -n --arg ts "$stale_ts" '{active:true,updated_at:$ts}')"
+write_owner_flow_state "$dir_rq01" "old-fs-sid" "$(jq -n --arg ts "$stale_ts" '{active:true,updated_at:$ts}')"
 : > "$dir_rq01/.rite/state/run-queue-own-sid.watchdog"
 : > "$dir_rq01/.rite/state/run-queue-other-sid.watchdog"
+: > "$dir_rq01/.rite/state/run-queue-old-fs-sid.watchdog"
+write_ended_marker "$dir_rq01" "own-sid"
+write_ended_marker "$dir_rq01" "other-sid"
+write_ended_marker "$dir_rq01" "old-fs-sid"
 RITE_STATE_ROOT="$dir_rq01" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq01-out" 2>"$TEST_DIR/rq01-err" || true
 if [ -f "$dir_rq01/.rite/state/run-queue-own-sid.json" ] \
   && [ -f "$dir_rq01/.rite/state/run-queue-own-sid.watchdog" ] \
   && [ ! -f "$dir_rq01/.rite/state/run-queue-other-sid.json" ] \
   && [ ! -f "$dir_rq01/.rite/state/run-queue-other-sid.watchdog" ] \
+  && [ ! -f "$dir_rq01/.rite/state/run-queue-old-fs-sid.json" ] \
+  && [ ! -f "$dir_rq01/.rite/state/run-queue-old-fs-sid.watchdog" ] \
+  && [ ! -f "$dir_rq01/.rite/state/run-queue-old-fs-sid.ended" ] \
+  && [ -f "$dir_rq01/.rite/state/run-queue-own-sid.ended" ] \
   && [ ! -s "$TEST_DIR/rq01-out" ]; then
-  pass "RQ-01: own stale remains, other stale (active=true) json+watchdog removed, stdout silent"
+  pass "RQ-01: own stale remains; other stale (flow-state absent / old) json+watchdog removed; stdout silent"
 else
-  fail "RQ-01: own=$(ls "$dir_rq01/.rite/state/run-queue-own-sid.json" 2>/dev/null && echo y || echo n) other=$(ls "$dir_rq01/.rite/state/run-queue-other-sid.json" 2>/dev/null && echo y || echo n) stdout=$(cat "$TEST_DIR/rq01-out")"
+  fail "RQ-01: own=$( [ -f "$dir_rq01/.rite/state/run-queue-own-sid.json" ] && echo y || echo n ) other=$( [ -f "$dir_rq01/.rite/state/run-queue-other-sid.json" ] && echo y || echo n ) old_fs=$( [ -f "$dir_rq01/.rite/state/run-queue-old-fs-sid.json" ] && echo y || echo n ) stdout=$(cat "$TEST_DIR/rq01-out")"
+fi
+echo ""
+
+echo "RQ-11: other stale queue remains while its owner flow-state is fresh"
+dir_rq11="$TEST_DIR/rq-11"
+mkdir -p "$dir_rq11"
+write_queue_file "$dir_rq11" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[4],cursor:0,mode:"merge",failed:[11],outstanding:[],active:true,updated_at:$ts}')"
+write_owner_flow_state "$dir_rq11" "other-sid" "$(jq -n --arg ts "$(iso8601_now -60)" '{active:true,updated_at:$ts}')"
+: > "$dir_rq11/.rite/state/run-queue-other-sid.watchdog"
+write_ended_marker "$dir_rq11" "other-sid"
+rc_rq11=0
+RITE_STATE_ROOT="$dir_rq11" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq11-out" 2>"$TEST_DIR/rq11-err" || rc_rq11=$?
+if [ "$rc_rq11" -eq 0 ] \
+  && [ -f "$dir_rq11/.rite/state/run-queue-other-sid.json" ] \
+  && [ -f "$dir_rq11/.rite/state/run-queue-other-sid.watchdog" ] \
+  && [ -f "$dir_rq11/.rite/state/run-queue-other-sid.ended" ] \
+  && ! grep -q 'leftover failed/outstanding' "$TEST_DIR/rq11-err" \
+  && ! grep -q 'run-queue-reap: failed=11' "$TEST_DIR/rq11-err" \
+  && [ ! -s "$TEST_DIR/rq11-out" ]; then
+  pass "RQ-11: live owner keeps its stale queue and watchdog; no leftover output; rc=0"
+else
+  fail "RQ-11: rc=$rc_rq11 exists=$( [ -f "$dir_rq11/.rite/state/run-queue-other-sid.json" ] && echo y || echo n ) err=$(cat "$TEST_DIR/rq11-err")"
+fi
+echo ""
+
+echo "RQ-12: broken or non-object owner flow-state keeps the queue; missing or unparsable updated_at reaps with a reason"
+dir_rq12="$TEST_DIR/rq-12"
+mkdir -p "$dir_rq12"
+for sid in broken-sid array-sid missing-sid badts-sid; do
+  write_queue_file "$dir_rq12" "$sid" "$(jq -n --arg ts "$stale_ts" '{issues:[5],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+  : > "$dir_rq12/.rite/state/run-queue-${sid}.watchdog"
+  write_ended_marker "$dir_rq12" "$sid"
+done
+write_owner_flow_state "$dir_rq12" "broken-sid" 'not-json{{'
+write_owner_flow_state "$dir_rq12" "array-sid" '[]'
+write_owner_flow_state "$dir_rq12" "missing-sid" '{"active":true}'
+write_owner_flow_state "$dir_rq12" "badts-sid" '{"active":true,"updated_at":"not-iso"}'
+rc_rq12=0
+RITE_STATE_ROOT="$dir_rq12" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq12-out" 2>"$TEST_DIR/rq12-err" || rc_rq12=$?
+fs_broken="$dir_rq12/.rite/sessions/broken-sid.flow-state"
+fs_array="$dir_rq12/.rite/sessions/array-sid.flow-state"
+fs_missing="$dir_rq12/.rite/sessions/missing-sid.flow-state"
+fs_badts="$dir_rq12/.rite/sessions/badts-sid.flow-state"
+q_broken="$dir_rq12/.rite/state/run-queue-broken-sid.json"
+q_array="$dir_rq12/.rite/state/run-queue-array-sid.json"
+q_missing="$dir_rq12/.rite/state/run-queue-missing-sid.json"
+q_badts="$dir_rq12/.rite/state/run-queue-badts-sid.json"
+if [ "$rc_rq12" -eq 0 ] \
+  && [ -f "$q_broken" ] \
+  && [ -f "$dir_rq12/.rite/state/run-queue-broken-sid.watchdog" ] \
+  && grep -qxF "WARNING: run-queue-reap: owner flow-state unreadable, keep queue: $q_broken (flow-state: $fs_broken)" "$TEST_DIR/rq12-err" \
+  && [ -f "$q_array" ] \
+  && grep -qxF "WARNING: run-queue-reap: owner flow-state unreadable, keep queue: $q_array (flow-state: $fs_array)" "$TEST_DIR/rq12-err" \
+  && [ ! -f "$q_missing" ] \
+  && [ ! -f "$dir_rq12/.rite/state/run-queue-missing-sid.watchdog" ] \
+  && [ "$(grep -c 'missing-sid.flow-state' "$TEST_DIR/rq12-err")" -eq 1 ] \
+  && grep -qxF "WARNING: run-queue-reap: owner flow-state updated_at missing or unparsable, reap stale queue: $q_missing (flow-state: $fs_missing)" "$TEST_DIR/rq12-err" \
+  && [ ! -f "$q_badts" ] \
+  && [ "$(grep -c 'badts-sid.flow-state' "$TEST_DIR/rq12-err")" -eq 1 ] \
+  && grep -qxF "WARNING: run-queue-reap: owner flow-state updated_at missing or unparsable, reap stale queue: $q_badts (flow-state: $fs_badts)" "$TEST_DIR/rq12-err" \
+  && [ ! -s "$TEST_DIR/rq12-out" ]; then
+  pass "RQ-12: broken / non-object flow-state keeps queue with queue + flow-state path WARNING; missing / unparsable updated_at reaps with one queue + flow-state path reason line each"
+else
+  fail "RQ-12: rc=$rc_rq12 err=$(cat "$TEST_DIR/rq12-err") stdout=$(cat "$TEST_DIR/rq12-out")"
+fi
+echo ""
+
+# One announcement line per kept queue; the reap script emits it on stdout.
+expected_kept_notice() {
+  local dir="$1" sid="$2" progress="$3"
+  printf '[rite] Batch: 終了の印が無い他セッションの run-queue を回収せず残しています (cursor %s): %s/.rite/state/run-queue-%s.json — 持ち主のセッション %s を再開し、引数なしの /rite:batch-run で続行できます。不要なら run-queue-%s.json と .watchdog を削除してください。' \
+    "$progress" "$dir" "$sid" "$sid" "$sid"
+}
+
+echo "RQ-13: without an ended marker, stale queues of a paused owner are kept and announced once each; live-owner, fresh and marked queues are not announced"
+dir_rq13="$TEST_DIR/rq-13"
+mkdir -p "$dir_rq13"
+# Paused mid-Issue / paused after cleanup deactivated flow-state / batch stopped (active=false, unfinished) / flow-state gone.
+for sid in paused-sid cleaned-sid stopped-sid nofs-sid marked-sid live-sid; do
+  q_active=true
+  [ "$sid" = "stopped-sid" ] && q_active=false
+  write_queue_file "$dir_rq13" "$sid" "$(jq -n --arg ts "$stale_ts" --argjson a "$q_active" '{issues:[13,14,15],cursor:1,mode:"merge",failed:[11],outstanding:[],active:$a,updated_at:$ts}')"
+  : > "$dir_rq13/.rite/state/run-queue-${sid}.watchdog"
+done
+write_queue_file "$dir_rq13" "fresh-sid" "$(jq -n --arg ts "$(iso8601_now -60)" '{issues:[13,14,15],cursor:1,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+write_owner_flow_state "$dir_rq13" "paused-sid" "$(jq -n --arg ts "$stale_ts" '{active:true,updated_at:$ts}')"
+write_owner_flow_state "$dir_rq13" "cleaned-sid" "$(jq -n --arg ts "$stale_ts" '{active:false,updated_at:$ts}')"
+write_owner_flow_state "$dir_rq13" "stopped-sid" "$(jq -n --arg ts "$stale_ts" '{active:true,updated_at:$ts}')"
+write_owner_flow_state "$dir_rq13" "marked-sid" "$(jq -n --arg ts "$stale_ts" '{active:true,updated_at:$ts}')"
+write_owner_flow_state "$dir_rq13" "live-sid" "$(jq -n --arg ts "$(iso8601_now -60)" '{active:true,updated_at:$ts}')"
+write_ended_marker "$dir_rq13" "marked-sid"
+rc_rq13=0
+RITE_STATE_ROOT="$dir_rq13" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq13-out" 2>"$TEST_DIR/rq13-err" || rc_rq13=$?
+rq13_kept_ok=1
+for sid in paused-sid cleaned-sid stopped-sid nofs-sid; do
+  grep -qxF "$(expected_kept_notice "$dir_rq13" "$sid" 1/3)" "$TEST_DIR/rq13-out" || rq13_kept_ok=0
+  [ -f "$dir_rq13/.rite/state/run-queue-${sid}.json" ] && [ -f "$dir_rq13/.rite/state/run-queue-${sid}.watchdog" ] || rq13_kept_ok=0
+done
+for sid in live-sid fresh-sid; do
+  [ -f "$dir_rq13/.rite/state/run-queue-${sid}.json" ] || rq13_kept_ok=0
+done
+if [ "$rc_rq13" -eq 0 ] \
+  && [ "$rq13_kept_ok" -eq 1 ] \
+  && [ "$(wc -l < "$TEST_DIR/rq13-out" | tr -d ' ')" -eq 4 ] \
+  && ! grep -qE 'run-queue-(marked|live|fresh|own)-sid' "$TEST_DIR/rq13-out" \
+  && [ ! -f "$dir_rq13/.rite/state/run-queue-marked-sid.json" ] \
+  && [ ! -f "$dir_rq13/.rite/state/run-queue-marked-sid.watchdog" ] \
+  && [ ! -f "$dir_rq13/.rite/state/run-queue-marked-sid.ended" ] \
+  && [ "$(grep -c 'run-queue-reap: failed=11' "$TEST_DIR/rq13-err")" -eq 1 ] \
+  && [ "$(grep -c 'leftover failed/outstanding' "$TEST_DIR/rq13-err")" -eq 1 ] \
+  && grep -q 'run-queue-marked-sid.json' "$TEST_DIR/rq13-err"; then
+  pass "RQ-13: unmarked paused / cleaned / stopped / flow-state-less queues are kept with one full announcement line each (cursor 1/3); live-owner, fresh and marked queues are never announced; only the marked queue is reaped with its leftovers printed"
+else
+  fail "RQ-13: rc=$rc_rq13 kept_ok=$rq13_kept_ok files=$(ls "$dir_rq13/.rite/state" | tr '\n' ' ') out=$(cat "$TEST_DIR/rq13-out") err=$(cat "$TEST_DIR/rq13-err")"
+fi
+echo ""
+
+echo "RQ-14: an unmarked queue idle for 7 days, and one without any updated_at, are kept whatever the liveness TTL env says; the marked control queue proves the reap ran"
+seven_days_ts=$(iso8601_now -604800)
+rq14_ok=1
+rq14_note=""
+for ttl in 1 24h; do
+  dir_rq14="$TEST_DIR/rq-14-$ttl"
+  mkdir -p "$dir_rq14"
+  for sid in week-sid ctrl-sid; do
+    write_queue_file "$dir_rq14" "$sid" "$(jq -n --arg ts "$seven_days_ts" '{issues:[15],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+    write_owner_flow_state "$dir_rq14" "$sid" "$(jq -n --arg ts "$seven_days_ts" '{active:true,updated_at:$ts}')"
+    : > "$dir_rq14/.rite/state/run-queue-${sid}.watchdog"
+  done
+  write_ended_marker "$dir_rq14" "ctrl-sid"
+  write_queue_file "$dir_rq14" "nots-sid" '{"issues":[17],"cursor":0,"mode":"merge","failed":[],"outstanding":[],"active":true}'
+  rc_rq14=0
+  RITE_STATE_ROOT="$dir_rq14" RITE_SESSION_LIVENESS_TTL_HOURS="$ttl" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq14-$ttl-out" 2>"$TEST_DIR/rq14-$ttl-err" || rc_rq14=$?
+  if [ "$rc_rq14" -ne 0 ] \
+    || [ ! -f "$dir_rq14/.rite/state/run-queue-week-sid.json" ] \
+    || [ ! -f "$dir_rq14/.rite/state/run-queue-week-sid.watchdog" ] \
+    || [ -e "$dir_rq14/.rite/state/run-queue-ctrl-sid.json" ] \
+    || [ -e "$dir_rq14/.rite/state/run-queue-ctrl-sid.watchdog" ] \
+    || [ -e "$dir_rq14/.rite/state/run-queue-ctrl-sid.ended" ] \
+    || grep -q 'RITE_SESSION_LIVENESS_TTL_HOURS' "$TEST_DIR/rq14-$ttl-err" \
+    || [ "$(grep -cxF "$(expected_kept_notice "$dir_rq14" week-sid 0/1)" "$TEST_DIR/rq14-$ttl-out")" -ne 1 ] \
+    || [ ! -f "$dir_rq14/.rite/state/run-queue-nots-sid.json" ] \
+    || [ "$(grep -cxF "$(expected_kept_notice "$dir_rq14" nots-sid 0/1)" "$TEST_DIR/rq14-$ttl-out")" -ne 1 ] \
+    || [ "$(wc -l < "$TEST_DIR/rq14-$ttl-out" | tr -d ' ')" -ne 2 ]; then
+    rq14_ok=0
+    rq14_note="$rq14_note ttl=$ttl rc=$rc_rq14 files=$(ls "$dir_rq14/.rite/state" | tr '\n' ' ') out=$(cat "$TEST_DIR/rq14-$ttl-out") err=$(cat "$TEST_DIR/rq14-$ttl-err");"
+  fi
+done
+if [ "$rq14_ok" -eq 1 ]; then
+  pass "RQ-14: 7-day-old and updated_at-less unmarked queues remain and are announced once each under TTL=1 and TTL=24h (watchdog kept); marked control queue reaped; no TTL warning"
+else
+  fail "RQ-14:$rq14_note"
+fi
+echo ""
+
+echo "RQ-18: the announcement of a kept unmarked queue prints a non-ASCII state-root path byte for byte"
+dir_rq18="$TEST_DIR/rq-18-プロジェクト"
+mkdir -p "$dir_rq18"
+rq18_ts=$(iso8601_now -604800)
+write_queue_file "$dir_rq18" "week-sid" "$(jq -n --arg ts "$rq18_ts" '{issues:[15],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+write_owner_flow_state "$dir_rq18" "week-sid" "$(jq -n --arg ts "$rq18_ts" '{active:true,updated_at:$ts}')"
+rc_rq18=0
+RITE_STATE_ROOT="$dir_rq18" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq18-out" 2>"$TEST_DIR/rq18-err" || rc_rq18=$?
+if [ "$rc_rq18" -eq 0 ] \
+  && [ "$(grep -cF "(cursor 0/1): $dir_rq18/.rite/state/run-queue-week-sid.json — " "$TEST_DIR/rq18-out")" -eq 1 ] \
+  && [ -f "$dir_rq18/.rite/state/run-queue-week-sid.json" ]; then
+  pass "RQ-18: non-ASCII path appears unchanged in the single announcement line; queue kept"
+else
+  fail "RQ-18: rc=$rc_rq18 out=$(cat "$TEST_DIR/rq18-out") err=$(cat "$TEST_DIR/rq18-err")"
+fi
+echo ""
+
+echo "RQ-15: SessionStart drops only its own ended marker, so a resumed session's queue is protected again"
+dir_rq15="$TEST_DIR/rq-15"
+mkdir -p "$dir_rq15"
+create_state_file "$dir_rq15" '{"active":true,"issue_number":15,"phase":"review","next_action":"iterate","loop_count":1,"pr_number":15,"branch":"fix/issue-15-x","schema_version":3}' "own-sid"
+write_queue_file "$dir_rq15" "own-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[15],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+write_queue_file "$dir_rq15" "other-sid" "$(jq -n --arg ts "$(iso8601_now -60)" '{issues:[16],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+write_ended_marker "$dir_rq15" "own-sid"
+write_ended_marker "$dir_rq15" "other-sid"
+run_hook_with_session "$dir_rq15" "resume" "own-sid" >/dev/null || true
+if [ ! -e "$dir_rq15/.rite/state/run-queue-own-sid.ended" ] \
+  && [ -f "$dir_rq15/.rite/state/run-queue-own-sid.json" ] \
+  && [ -f "$dir_rq15/.rite/state/run-queue-other-sid.ended" ] \
+  && [ -f "$dir_rq15/.rite/state/run-queue-other-sid.json" ]; then
+  pass "RQ-15: own marker removed, own queue kept; other session's marker and queue untouched"
+else
+  fail "RQ-15: files=$(ls "$dir_rq15/.rite/state" | tr '\n' ' ')"
+fi
+echo ""
+
+echo "RQ-16: an own ended marker that cannot be removed warns with its path and SessionStart still exits 0"
+if [ "$(id -u)" -eq 0 ]; then
+  # root bypasses dir-permission bits, so a read-only state dir cannot force the removal failure.
+  pass "RQ-16: skipped under root (chmod cannot force a removal failure as uid 0)"
+else
+  dir_rq16="$TEST_DIR/rq-16"
+  mkdir -p "$dir_rq16"
+  create_state_file "$dir_rq16" '{"active":true,"issue_number":16,"phase":"review","next_action":"iterate","loop_count":1,"pr_number":16,"branch":"fix/issue-16-x","schema_version":3}' "own-sid"
+  write_queue_file "$dir_rq16" "own-sid" "$(jq -n --arg ts "$(iso8601_now -60)" '{issues:[16],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+  write_ended_marker "$dir_rq16" "own-sid"
+  chmod 555 "$dir_rq16/.rite/state"
+  rc_rq16=0
+  run_hook_with_session "$dir_rq16" "resume" "own-sid" >/dev/null || rc_rq16=$?
+  chmod 755 "$dir_rq16/.rite/state"   # restore so the EXIT trap can rm -rf
+  if [ "$rc_rq16" -eq 0 ] \
+    && grep -qF "WARNING: session-start.sh: cannot remove run-queue ended marker for this session; other sessions may reap its queue: $dir_rq16/.rite/state/run-queue-own-sid.ended" "$LAST_STDERR_FILE" \
+    && [ -f "$dir_rq16/.rite/state/run-queue-own-sid.ended" ]; then
+    pass "RQ-16: unremovable own marker warns with its path; rc=0"
+  else
+    fail "RQ-16: rc=$rc_rq16 stderr=$(cat "$LAST_STDERR_FILE")"
+  fi
 fi
 echo ""
 
@@ -1942,8 +2329,9 @@ dir_rq02="$TEST_DIR/rq-02"
 mkdir -p "$dir_rq02"
 fresh_ts=$(iso8601_now -60)
 write_queue_file "$dir_rq02" "other-sid" "$(jq -n --arg ts "$fresh_ts" '{issues:[3],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+write_ended_marker "$dir_rq02" "other-sid"
 RITE_STATE_ROOT="$dir_rq02" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq02-out" 2>"$TEST_DIR/rq02-err" || true
-if [ -f "$dir_rq02/.rite/state/run-queue-other-sid.json" ] && [ ! -s "$TEST_DIR/rq02-out" ]; then
+if [ -f "$dir_rq02/.rite/state/run-queue-other-sid.json" ] && [ -f "$dir_rq02/.rite/state/run-queue-other-sid.ended" ] && [ ! -s "$TEST_DIR/rq02-out" ]; then
   pass "RQ-02: other fresh active=true remains"
 else
   fail "RQ-02: file missing or stdout not silent"
@@ -1954,6 +2342,7 @@ echo "RQ-03: other stale with failed[] prints each item then deletes"
 dir_rq03="$TEST_DIR/rq-03"
 mkdir -p "$dir_rq03"
 write_queue_file "$dir_rq03" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[4],cursor:0,mode:"merge",failed:[11,12],outstanding:[],active:false,updated_at:$ts}')"
+write_ended_marker "$dir_rq03" "other-sid"
 RITE_STATE_ROOT="$dir_rq03" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq03-out" 2>"$TEST_DIR/rq03-err" || true
 if [ ! -f "$dir_rq03/.rite/state/run-queue-other-sid.json" ] \
   && grep -q 'run-queue-reap: failed=11' "$TEST_DIR/rq03-err" \
@@ -1970,6 +2359,7 @@ echo "RQ-04: other stale with outstanding[] only prints each item then deletes"
 dir_rq04="$TEST_DIR/rq-04"
 mkdir -p "$dir_rq04"
 write_queue_file "$dir_rq04" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[5],cursor:0,mode:"default",failed:[],outstanding:[21],active:true,updated_at:$ts}')"
+write_ended_marker "$dir_rq04" "other-sid"
 RITE_STATE_ROOT="$dir_rq04" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq04-out" 2>"$TEST_DIR/rq04-err" || true
 if [ ! -f "$dir_rq04/.rite/state/run-queue-other-sid.json" ] \
   && grep -q 'run-queue-reap: outstanding=21' "$TEST_DIR/rq04-err" \
@@ -1984,6 +2374,7 @@ echo "RQ-10: Japanese leftover detail remains readable after C0 neutralize"
 dir_rq10="$TEST_DIR/rq-10"
 mkdir -p "$dir_rq10"
 write_queue_file "$dir_rq10" "other-sid" "$(jq -n --arg ts "$stale_ts" --arg d 'サーキットブレーカーで非収束' '{issues:[10],cursor:0,mode:"merge",failed:[{issue:2089,detail:$d}],outstanding:[],active:false,updated_at:$ts}')"
+write_ended_marker "$dir_rq10" "other-sid"
 RITE_STATE_ROOT="$dir_rq10" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq10-out" 2>"$TEST_DIR/rq10-err" || true
 if [ ! -f "$dir_rq10/.rite/state/run-queue-other-sid.json" ] \
   && grep -q 'サーキットブレーカーで非収束' "$TEST_DIR/rq10-err" \
@@ -2016,6 +2407,8 @@ dir_rq06="$TEST_DIR/rq-06"
 mkdir -p "$dir_rq06"
 write_queue_file "$dir_rq06" "missing-ts" '{"issues":[6],"cursor":0,"mode":"default","failed":[],"outstanding":[],"active":true}'
 write_queue_file "$dir_rq06" "bad-ts" '{"issues":[7],"cursor":0,"mode":"default","failed":[],"outstanding":[],"active":true,"updated_at":"not-iso"}'
+write_ended_marker "$dir_rq06" "missing-ts"
+write_ended_marker "$dir_rq06" "bad-ts"
 RITE_STATE_ROOT="$dir_rq06" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq06-out" 2>"$TEST_DIR/rq06-err" || true
 if [ ! -f "$dir_rq06/.rite/state/run-queue-missing-ts.json" ] \
   && [ ! -f "$dir_rq06/.rite/state/run-queue-bad-ts.json" ]; then
@@ -2032,6 +2425,7 @@ git -C "$dir_rq07" init -q
 create_state_file "$dir_rq07" '{"active":true,"issue_number":1,"phase":"review","next_action":"iterate","loop_count":1,"pr_number":9,"branch":"feat/x","schema_version":3}' "own-sid"
 write_queue_file "$dir_rq07" "own-sid" "$(jq -n --arg ts "$fresh_ts" '{issues:[1],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
 write_queue_file "$dir_rq07" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[8],cursor:0,mode:"merge",failed:[99],outstanding:[],active:true,updated_at:$ts}')"
+write_ended_marker "$dir_rq07" "other-sid"
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 output=$(jq -n --arg cwd "$dir_rq07/sub" --arg src "startup" --arg sid "own-sid" \
   '{cwd:$cwd, source:$src, session_id:$sid}' \
@@ -2056,6 +2450,7 @@ mkdir -p "$dir_rq08"
 create_state_file "$dir_rq08" '{"active":true,"issue_number":2502,"phase":"review","next_action":"iterate","loop_count":1,"pr_number":99,"branch":"fix/issue-2502-x","schema_version":3}' "own-sid"
 write_batch_queue "$dir_rq08" "own-sid" true 0
 write_queue_file "$dir_rq08" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[9],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+write_ended_marker "$dir_rq08" "other-sid"
 output=$(run_hook_with_session "$dir_rq08" "compact" "own-sid")
 if grep -q "Batch: run-queue active" <<<"$output" \
   && [ -f "$dir_rq08/.rite/state/run-queue-own-sid.json" ] \
@@ -2063,6 +2458,30 @@ if grep -q "Batch: run-queue active" <<<"$output" \
   pass "RQ-08: compact Batch frame remains; own queue kept; other stale removed"
 else
   fail "RQ-08: output=$output"
+fi
+echo ""
+
+echo "RQ-17: SessionStart passes the announcement of a kept unmarked queue to hook stdout next to the own Batch frame"
+dir_rq17="$TEST_DIR/rq-17"
+mkdir -p "$dir_rq17"
+create_state_file "$dir_rq17" '{"active":true,"issue_number":2502,"phase":"review","next_action":"iterate","loop_count":1,"pr_number":99,"branch":"fix/issue-2502-x","schema_version":3}' "own-sid"
+write_batch_queue "$dir_rq17" "own-sid" true 0
+write_queue_file "$dir_rq17" "other-sid" "$(jq -n --arg ts "$(iso8601_now -604800)" '{issues:[9],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+output=$(run_hook_with_session "$dir_rq17" "compact" "own-sid")
+rq17_line=$(grep -F '終了の印が無い他セッションの run-queue' <<<"$output" || true)
+if [ "$(grep -c . <<<"$rq17_line")" -eq 1 ] \
+  && [[ "$rq17_line" == "[rite] Batch: "* ]] \
+  && [[ "$rq17_line" == *"(cursor 0/1)"* ]] \
+  && [[ "$rq17_line" == *"run-queue-other-sid.json"* ]] \
+  && [[ "$rq17_line" != *"run-queue active"* ]] \
+  && [[ "$rq17_line" != *"Continue /rite:batch-run"* ]] \
+  && ! grep -qF '終了の印が無い他セッションの run-queue' "$LAST_STDERR_FILE" \
+  && grep -q "Batch: run-queue active" <<<"$output" \
+  && [ -f "$dir_rq17/.rite/state/run-queue-other-sid.json" ] \
+  && [ -f "$dir_rq17/.rite/state/run-queue-own-sid.json" ]; then
+  pass "RQ-17: exactly one announcement line on hook stdout (not stderr), distinct from the own Batch frame; both queues kept"
+else
+  fail "RQ-17: line=$rq17_line output=$output stderr=$(cat "$LAST_STDERR_FILE")"
 fi
 echo ""
 
@@ -2074,10 +2493,11 @@ if grep -q 'run-queue-reap.sh" --session' "$HOOK" \
     /^fi$/ && gated { ungated=1; gated=0 }
     END { exit (found_outside && !found_inside) ? 0 : 1 }
   ' "$HOOK" \
-  && grep -n 'run-queue-reap.sh' "$HOOK" | grep -q '|| true'; then
+  && _gq_out=$(grep -n 'run-queue-reap.sh' "$HOOK") && grep -q '|| true' <<< "$_gq_out" \
+  && _gq_call=$(grep 'run-queue-reap.sh" --session' "$HOOK") && [[ "$_gq_call" != *'>'* ]]; then
   pass "RQ-09: reap call is non-blocking and outside the worktree CWD gate"
 else
-  fail "RQ-09: call site missing or still inside CWD==STATE_ROOT gate"
+  fail "RQ-09: call site missing, inside CWD==STATE_ROOT gate, or its output is redirected"
 fi
 echo ""
 
@@ -2134,7 +2554,7 @@ if _stub_lock_fixture "$git_dir_sl1/config.lock" 0444 \
   rc_sl1=$(_stub_lock_run "$d_sl1" PATH="$PATH")
   _stub_lock_expect "STUB-LOCK-1: hook rc=0" "0" "$rc_sl1"
   _stub_lock_expect "STUB-LOCK-1: exactly one stub lock WARNING" "1" "$(grep -c 'is an empty read-only lock file' "$d_sl1.err")"
-  if grep -F "$git_dir_sl1/config.lock" "$d_sl1.err" | grep -q "rm -f"; then
+  if _gq_out=$(grep -F "$git_dir_sl1/config.lock" "$d_sl1.err") && grep -q "rm -f" <<< "$_gq_out"; then
     pass "STUB-LOCK-1: config.lock named with removal hint"
   else
     fail "STUB-LOCK-1: config.lock named with removal hint (stderr=$(cat "$d_sl1.err"))"
@@ -2211,6 +2631,45 @@ if _stub_lock_fixture "$git_dir_sl4/config.lock" 0444 \
   _stub_lock_expect "STUB-LOCK-4: git config, writable lock and decoys kept" "5" "$kept_sl4"
 else
   fail "STUB-LOCK-4: fixtures did not keep their mode / size"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# PAUSE: a recorded pause is announced on stdout so a forgotten resume is not silent
+# --------------------------------------------------------------------------
+echo "PAUSE: session start announces this session's pause record and how to resume"
+pause_sid="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+other_sid="bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
+dir_p="$TEST_DIR/pause_notice"
+mkdir -p "$dir_p"
+output=$(run_hook_with_session "$dir_p" "startup" "$pause_sid")
+if ! grep -q "一時停止中" <<< "$output"; then
+  pass "PAUSE-1: no notice without a pause record"
+else
+  fail "PAUSE-1: unexpected notice without a record: $output"
+fi
+RITE_STATE_ROOT="$dir_p" bash "$SCRIPT_DIR/../flow-state.sh" pause --session "$other_sid" >/dev/null
+output=$(run_hook_with_session "$dir_p" "startup" "$pause_sid")
+if ! grep -q "一時停止中" <<< "$output"; then
+  pass "PAUSE-2: another session's pause record is not announced"
+else
+  fail "PAUSE-2: announced another session's record: $output"
+fi
+RITE_STATE_ROOT="$dir_p" bash "$SCRIPT_DIR/../flow-state.sh" pause --session "$pause_sid" >/dev/null
+for src in startup resume clear compact; do
+  output=$(run_hook_with_session "$dir_p" "$src" "$pause_sid")
+  if grep -q "一時停止中" <<< "$output" && grep -q "flow-state.sh\" resume" <<< "$output"; then
+    pass "PAUSE-3: source=$src announces the pause and the resume command"
+  else
+    fail "PAUSE-3: source=$src missing the notice: $output"
+  fi
+done
+RITE_STATE_ROOT="$dir_p" bash "$SCRIPT_DIR/../flow-state.sh" resume --session "$pause_sid" >/dev/null
+output=$(run_hook_with_session "$dir_p" "startup" "$pause_sid")
+if ! grep -q "一時停止中" <<< "$output"; then
+  pass "PAUSE-4: no notice after resume"
+else
+  fail "PAUSE-4: notice remained after resume: $output"
 fi
 echo ""
 

@@ -38,7 +38,13 @@ current_oid=$(git rev-parse HEAD) || { echo "ERROR: Ready gate: 現在の HEAD �
 scan_root="."
 if [ "$current_oid" != "$pr_head_oid" ]; then
   git fetch origin "$pr_head_oid" >/dev/null 2>&1 || { echo "ERROR: Ready gate: PR head $pr_head_oid の fetch に失敗しました" >&2; exit 2; }
-  ready_gate_tmp=$(mktemp -d "${TMPDIR:-/tmp}/rite-ready-pr-head.XXXXXX") || { echo "ERROR: Ready gate: 一時ディレクトリの作成に失敗しました" >&2; exit 2; }
+  # 名前に自セッションを記録し、別セッションの pr-cycle-cleanup が走査中に回収しないようにする。
+  # セッション ID を取れないときは所有者なしの名前で作る (その場合は回収から守られない)
+  if sid=$(bash "$(dirname "${BASH_SOURCE[0]}")/../session-identity.sh"); then
+    ready_gate_tmp=$(mktemp -d "${TMPDIR:-/tmp}/rite-ready-pr-head-owner.$sid.XXXXXX")
+  else
+    ready_gate_tmp=$(mktemp -d "${TMPDIR:-/tmp}/rite-ready-pr-head.XXXXXX")
+  fi || { echo "ERROR: Ready gate: 一時ディレクトリの作成に失敗しました" >&2; exit 2; }
   rmdir "$ready_gate_tmp" || { echo "ERROR: Ready gate: 一時 worktree path の準備に失敗しました" >&2; exit 2; }
   git worktree add --detach "$ready_gate_tmp" "$pr_head_oid" >/dev/null 2>&1 || { echo "ERROR: Ready gate: PR head $pr_head_oid の一時 worktree 作成に失敗しました" >&2; exit 2; }
   scan_root="$ready_gate_tmp"
@@ -46,7 +52,7 @@ if [ "$current_oid" != "$pr_head_oid" ]; then
 fi
 bang_output=$(bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all --skip-if-no-target --repo-root "$scan_root" 2>&1); bang_rc=$?
 case "$bang_rc" in
-  0) if printf '%s' "$bang_output" | grep -q '\[bang-backtick\] not applicable'; then echo "ℹ️ Bang-backtick gate: N/A（clean skip）。" >&2; fi ;;
+  0) if grep -q '\[bang-backtick\] not applicable' <<< "$bang_output"; then echo "ℹ️ Bang-backtick gate: N/A（clean skip）。" >&2; fi ;;
   1) echo "❌ Bang-backtick adjacency detected — Ready transition blocked:" >&2; printf '%s\n' "$bang_output" >&2; echo "ACTION: Apply Style A (full-width 「!」) or Style B (expand 'if ! cmd; then')." >&2; exit 1 ;;
   *) echo "[CONTEXT] BANG_BACKTICK_CHECK_INVOCATION_FAILED=1; reason=invocation_error; rc=$bang_rc" >&2; printf '%s\n' "$bang_output" >&2; exit 2 ;;
 esac

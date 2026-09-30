@@ -34,11 +34,13 @@
 
 ステップ 4.0.A Pre-Review State Snapshot の設計理由。
 
-- **detached HEAD edge case**: orchestrator が `git worktree add --detach` で起動された場合や reviewer ループ中の特殊な checkout で HEAD が detached になると `git branch --show-current` は空文字列を返す。空文字列のままステップ 5.0.A に渡すと verifier が `[ -z "$ORIGINAL_BRANCH" ]` で exit 2 (invalid args) になるため、`DETACHED:<short-hash>` sentinel に置換する。verifier 側で `DETACHED:*` は branch drift check を skip する経路に乗る。
-- **md5sum portability**: Linux は `md5sum`、macOS は `shasum` を fallback として使う。両方とも stdout の先頭 token が hash であるため `awk '{print $1}'` で portable に取り出せる。
+- **snapshot を helper に委譲する理由**: 4 値は `post-review-state-verify.sh --snapshot` が 5.0.A の verify と同じ関数で算出する。SKILL.md に算出式を持つと、判別子を変えるたびに snapshot 側と verify 側の両方を揃える必要があり、片側だけ変わると毎回 drift を誤報告する。
+- **detached HEAD edge case**: orchestrator が `git worktree add --detach` で起動された場合や reviewer ループ中の特殊な checkout で HEAD が detached になると `git branch --show-current` は空文字列を返す。空文字列のままステップ 5.0.A に渡すと verifier が `[ -z "$ORIGINAL_BRANCH" ]` で exit 2 (invalid args) になるため、helper の `--snapshot` が `DETACHED:<short-hash>` sentinel に置換する。verifier 側で `DETACHED:*` は branch drift check を skip する経路に乗る。
+- **md5sum portability**: helper は Linux で `md5sum`、macOS で `shasum` を fallback として使う。両方とも stdout の先頭 token が hash であるため `awk '{print $1}'` で portable に取り出せる。
+- **stash / branch list から他セッションを除く理由**: refs/heads と refs/stash は全 worktree で共有されるため、全体の件数や一覧を比べると並列セッションの操作が reviewer の drift に見える。`git for-each-ref` の `worktreepath` で他セッションの worktree（自 worktree 以外で、mutation worktree の名前空間 `rite-review-mutation-*` / `rite-revert-test-*` にないもの。パスは物理パスで比べる）が checkout 中の branch を集め（reviewer 漏出名 `pr-<N>-cycle<X>` / `pr-<N>-test` / `pr-<N>-experiment` / `pr-<N>-mutation` / `pr-<N>-verify` / `pr-<N>-check` / `pr-<N>-sandbox` の branch は、worktree の位置によらず集めない。集合は `pr-cycle-cleanup.sh` の回収対象と同じ）、branch list はそれを除き、stash は件名 `WIP on <branch>:` / `On <branch>:` の branch がそれに当たるものを除く（git は同じ named branch を 2 つの worktree で checkout させないので、件名の branch はそれを checkout した worktree を指す）。自 worktree を基準に絞らないのは、reviewer が自 worktree で別 branch へ切り替えて作った stash や、名前空間の worktree で作った branch を数え続けるため。判別子の外に残るものは helper の docstring が列挙する。
 - **ステップ 5.0.A の placeholder 残留 gate**: `{orig_br}` が `{...}` 形状のまま渡されると verifier が non-empty 文字列として branch 比較し silent false-positive cascade を起こすため、形状検査で早期 reject する (ステップ 6.1.b と同 pattern)。
 - **tracked 差分で snapshot / verify を揃える理由**: 両側で `git-status-filtered.sh --tracked-only` を使い、sandbox 実行コンテキストごとに変わりうる untracked を hash から除く。環境固有のファイル名やサイズには依存しない。reviewer の新規ファイル作成を黙って見逃さないよう、untracked の件数と名前は WARNING に残す。tracked の staged / unstaged 差分は従来どおり drift 検出対象とする。
-- **フィルタの exit code を明示チェックする理由 (capture-first)**: 生の `git status --porcelain` と異なりフィルタは `mktemp` に依存するため、sandbox の TMPDIR 制限下では plain `git status` が成功してもフィルタは失敗しうる。かつ SKILL.md の bash block は Bash tool の 1 回の呼び出しとして新規シェルで実行され pipefail は既定 off (呼び出し間でシェル状態は引き継がれない) なので、`filter | hash | awk` の `$?` は pipefail に依存させられない。フィルタ自身の出力を先に非パイプで capture してから exit code を判定する。`post-review-state-verify.sh` 側は単一スクリプト全体に `set -uo pipefail` がかかるため pipefail 経由の `$?` チェックで足りるが、SKILL.md block はそれとは独立した実行コンテキストのため同じ前提を流用できない。
+- **フィルタの exit code を明示チェックする理由 (capture-first)**: 生の `git status --porcelain` と異なりフィルタは `mktemp` に依存するため、sandbox の TMPDIR 制限下では plain `git status` が成功してもフィルタは失敗しうる。helper はフィルタと `git for-each-ref` の出力を先に非パイプで capture し、失敗したら空入力の hash を出さずに WARNING を出して当該軸を skip する（空入力の hash を正常値として比べると、失敗が「変化なし」に化ける）。
 
 ## verification-post-condition-notes
 
@@ -63,28 +65,21 @@
 
 ## step7-triage-redesign-notes
 
-ステップ 7 の名称・推奨決定方式の再設計（自動 Issue 化 → スコープ外指摘のトリアージ）の設計理由。
+ステップ 7（スコープ外指摘のトリアージ）が候補の処分を採否ゲートの出口だけで決める理由。
 
-- **3 つのバイアスの積み重ね**: 旧「自動 Issue 化」には (1) 起票をゴールとする命名、(2) `AskUserQuestion` の選択肢列挙で「別 Issue 作成」が先頭（本 tool の規約上、先頭 = 推奨と解釈されやすい）、(3) 推奨決定の指示不在（エージェント裁量）、の 3 バイアスが積み重なっていた。エージェントには「指摘を先送りすれば fix ループが早く収束する」という構造的な先延ばし動機があり、この 3 バイアスが揃うと保険的な follow-up Issue が増殖する。fix ループ側で人間が skip → 別 Issue で loop 終了する経路は「先延ばしの抜け穴」として閉じた（`skills/iterate/SKILL.md`。残存 non-blocking の消化は機械 routing が担う）。ステップ 7 だけが同じ先延ばし動機を残していた。
+- **先延ばし動機**: エージェントには「指摘を先送りすれば fix ループが早く収束する」という構造的な先延ばし動機がある。処分をエージェント裁量や選択肢の並び順に任せると、保険的な follow-up Issue が増殖する。fix ループ側で skip → 別 Issue で loop 終了する経路は閉じており（`skills/iterate/SKILL.md`。残存 non-blocking の消化は機械 routing が担う）、ステップ 7 にも同じ動機を残さない。
 - **先延ばし禁止の設計原則**: 仮説的な将来リスクに先手を打つ Issue は大半が無駄に終わる。スコープ内の実指摘は本 PR で解決し（fix ループで強制済み）、スコープ外候補は「起票せず記録して終わり」をデフォルトにする方が、Issue の増殖を防ぎ実際に着手される確率を上げる。
-- **推奨機械決定表を裁量の代わりに置く理由**: 「裁量で決めてよい」とすると上記の構造的動機により実質的に「別 Issue 作成」へ誘導される。Likelihood（Observed/Demonstrable vs Hypothetical）と Source（A/B）という機械的に判定可能な軸だけで推奨を決定することで、エージェントの意思が介在する余地を無くす。
+- **採否ゲートを裁量と候補ごとの確認の代わりに置く理由**: 候補ごとに人間へ尋ねると、工程の途中に人間の品質判断が常駐する。裁量に任せると上の動機で起票へ寄る。分類役が根因ごとに判定記録（契約・根拠・受入条件）を書き、ゲートが記録の欄だけから出口（file / record / fix / hold）を決めるので、エージェントの意思も重要度も出口に入らない。出口の出ない候補が残れば何も書かずに保留して止める（fail-loud）。対話でも E2E でも処分は同じになる。例外は ADOPT・`origin=pr` だけで、`/rite:iterate` からの mergeable の review では fix、それ以外では hold になる（登録を読む工程が iterate にしか無いため。scope-triage.md 手順 3 の `{fix_loop}`）。
 - **Decision Log 記録を「追加」の経路とする理由**: fix ループの nit-noted 返信経路・acknowledged suppression（PR コメント / JSON ベースの再指摘抑制）は Decision Log 記録では代替されない。両者は別の目的（前者は次サイクルでの再指摘抑制、後者は仕様変更の記録）を持つため、置き換えではなく追加とした。
-- **元 Issue が特定できない PR での「選択肢非表示」**: PR コメント記録という代替スキーマを新設すると、記録先が「Section 9」「PR コメント」の 2 種に増え「シンプルさを死守」原則に反する。本リポジトリはブランチ命名規則上ほぼ全 PR が issue 番号を含むため、この縮退経路の実発生頻度は低いと判断し、選択肢非表示（3 択化）で単純に倒した（対象 Issue の Decision Log D-04 参照）。
+- **元 Issue が特定できない PR**: 記録先を「Section 9」「PR コメント」の 2 種に増やすと「シンプルさを死守」原則に反するため、代替の記録先を作らない。verdict が `file` の記録は先送りトークンの書き先が無いためその場で Issue を作り、`record` の記録は完了レポートに出口と reason を列挙する。ブランチ命名規則（`{type}/issue-{number}-{slug}`）ではほぼ全 PR が issue 番号を含むため、この縮退経路は稀。
 
 ## phase7-gate-notes
 
 ステップ 7.7 / 8.0.2 gate の設計理由。
 
-- **Defensive layering の全体像**: (a) ステップ 4.5 reviewer template が 3-classification を要求 → (b) ステップ 5.1 collection で classification を extract (default fallback あり) → (c) ステップ 7.1 で candidates を構築 → (d) ステップ 7.2 で確認完了後に証跡付き sentinel emit → (e) ステップ 7.7 で grep verify → (f) ステップ 8.0.2 で end-to-end gate continuity 参照。各層は個別に失敗しうるが、ステップ 7.7 は result emit 前の last-line-of-defense mechanical gate。ステップ 5/6 が abort-relevant findings を生成しても、ステップ 7.1 candidate extraction (recommendation_items) は独立しており ステップ 7.2 で user confirm が必須。
+- **Defensive layering の全体像**: (a) ステップ 4.5 reviewer template が 3-classification を要求 → (b) ステップ 5.1 collection で classification を extract (default fallback あり) → (c) ステップ 7.1 で candidates を構築 → (d) ステップ 7.2 で採否ゲートが decided を返した後に証跡付き sentinel emit → (e) ステップ 7.7 で grep verify → (f) ステップ 8.0.2 で end-to-end gate continuity 参照。各層は個別に失敗しうるが、ステップ 7.7 は result emit 前の last-line-of-defense mechanical gate。ステップ 5/6 が abort-relevant findings を生成しても、ステップ 7.1 candidate extraction (recommendation_items) は独立しており ステップ 7.2 で採否ゲートの decided が必須。
 - **dual placement (7.7 + 8.0.2) の理由**: ステップ 7.7 はステップ 7.1 → 7.2 → 7.7 の sequence で 7.7 が呼ばれた場合に 7.2 sentinel emit を verify する (procedure 内部の integrity check)。ステップ 8.0.2 はステップ 7 entire procedure (7.1-7.7) が skip された場合の最終 fallback で、`candidate_count >= 1` という trigger 条件が満たされている時点で「ステップ 7 が走るはずだった」と判定できる (ステップ 7.7 自体が呼ばれていない silent skip 経路でも catch する)。ステップ 8.0.1 W Phase gate と完全に対称的で、result-emit boundary における defense-in-depth pattern を構成する。
-
-## phase7-askuser-evidence
-
-ステップ 7.2 sentinel を「確認完了後」に移し `mode=` / `choice=` / `reason=` を必須にした理由。
-
-- **emit-before-evidence が空文になる**: 旧手順は `AskUserQuestion` 直前に `PHASE_7_ASKUSER_INVOKED=1` を出していた。7.7 / 8.0.2 は marker の有無しか見ないため、marker を出した直後に 7.4 へ短絡しても gate は pass する。配布先の実測では、対話セッションで marker 直後に AskUserQuestion の tool_use 0 件のまま Decision Log へ全件記録された。
-- **値が入る場所に証跡を置く**: marker 名は変えず、確認結果（対話の選択値 / E2E 自動の判定根拠）を同じ行に載せる。guard を 7.7 消費側だけに足しても、証跡の無い行を「確認済み」と読めてしまう。
-- **E2E 自動分岐は維持する**: Decision Log 記録は可逆なので E2E / batch では質問せず推奨で処理する既存分岐は残す。変えるのは対話経路と、自動経路でも `reason=reversible_decision_log` を残すこと。判定不能は確認を出す側へ倒す。
+- **sentinel を decided の後に出し `mode=` / `choice=` / `reason=` を必須にする理由**: 7.7 / 8.0.2 が marker の有無だけを見ると、marker を出した直後に 7.4 へ短絡しても gate は pass する。ゲートの結果（`choice=` の verdict 別の件数と `reason=adoption_decided`）を同じ行に載せ、欠けた行を処分済みと読まない。marker 名は消費側の grep を保つため変えない。
 
 ## reviewer-selection-notes
 
@@ -165,7 +160,7 @@ E2E で削るのはステップ 5–7 の人間向け表示だけ。ステップ
 
 AskUserQuestion を 2 種に分ける理由。
 
-ステップ 7 のトリアージは未解決指摘・スコープ外指摘の握り潰し防止なので E2E でも処理自体は skip 禁止。Decision Log への可逆記録は question_resolution の推奨自律処理。ステップ 3.3 の構成確認は iterate の自律ループと矛盾するため E2E で skip 可。サマリ行と省略 reviewer 表示は両経路で残す（silent capping 禁止）。
+ステップ 7 のトリアージは未解決指摘・スコープ外指摘の握り潰し防止なので E2E でも処理自体は skip 禁止。処分は採否ゲートの出口だけで決め、候補ごとに質問しないので、E2E と standalone で処分は変わらない（例外は ADOPT・`origin=pr` の fix / hold で、`/rite:iterate` からの呼び出しかどうかで分かれる。scope-triage.md 手順 3 の `{fix_loop}`）。ステップ 3.3 の構成確認は iterate の自律ループと矛盾するため E2E で skip 可。サマリ行と省略 reviewer 表示は両経路で残す（silent capping 禁止）。
 
 ## worktree-ensure-preamble
 
@@ -217,17 +212,23 @@ inline / 手動 verification は Detection Process・Confidence・Cross-File を
 
 ## shared-principles-hybrid
 
-`_reviewer-base.md` を user prompt の `{shared_reviewer_principles}` として渡す理由。
+`_reviewer-base.md` を `{shared_reviewer_principles}` として絶対パスと読取義務で渡す理由。
 
-named subagent の system prompt は各 agent ファイル本体だけで、別ファイルの共有原則は自動注入されない。READ-ONLY / Mindset / Cross-File / Confidence を全 reviewer に届けるため、`## Input` 直前までの連続範囲を抽出する。個別見出しだけ拾うと間の節が落ちる。
+named subagent の system prompt は各 agent ファイル本体だけで、別ファイルの共有原則は自動注入されない。共有原則は約 90KB あり、選定人数分を user prompt へ inline すると親が数百 KB を生成し、prompt の起動上限にも近づく。独立子の経路で採った絶対パス方式を named 経路にも使い、両経路の契約を 1 つにする。
+
+読まずに進む reviewer は無言で共有原則を欠くため、先頭行の読取完了申告を親が照合し、欠ければ再試行する。1 回の Read で読み切れない大きさなので、分割して末尾まで読む義務を明示する。パスを解決・読取できないときに空で起動すると同じ欠落が起動側で起きるため、`[review:error]` で止める。
 
 ## recommendation-classification
 
-`分類:` 欠落時に `design_confirmation` を default する理由。
+`分類:` の欠落・規定外を既定値で補わず、producer gate で止める理由。
 
-最も保守的（対応不要・観察のみ）で、欠落を actionable 扱いして Issue 化する先延ばしを防ぐ。欠落は `[CONTEXT] RECOMMENDATION_CLASSIFICATION_MISSING` で観測する。
+3 分類のうち `design_confirmation` だけが採否ゲートの候補から外れる。欠落や規定外の値をそこへ寄せると、reviewer が「別 Issue で直す」と書いた推奨が、起票・記録・保留のどの出口も経ずに消える。どの値へ寄せても reviewer の判断を orchestrator が上書きすることになるため、再生成で reviewer 自身に分類させ、再発すれば `[review:error]` で止める。
 
-`recommendation_items` は全推奨の canonical。`candidate_count` は Source A + Source B（actionable/boundary、user 採否後）の合算で、7.7 / 8.0.2 の trigger になる。
+値は `分類:` の直後の 1 語とし、注記は ` — ` の後ろに置く文法に閉じる。値の後ろに注記を自由に続けてよいとすると、「2 つ目の値」と「注記の中の分類語」を字面で区別する判定が要り、接続語や括弧を足すたびに取りこぼしと誤拒否が入れ替わる。文法を producer の指示と gate で揃えれば、外れた書き方は再生成の診断で直せる。
+
+分類は項目の冒頭（箇条書き記号と装飾の直後）の `分類:` だけから読む。文中や文末の `分類:` はラベルへの言及であり、その項目の分類の宣言ではない。行の中の最初の一致を読むと、「`分類: design_confirmation` を候補から外す点を別 Issue で直すべき」のように言及しただけの推奨が `design_confirmation` として通り、採否ゲートの候補から外れる。チェックボックス（`- [x] 分類: …`）や引用記号（`>`）を挟んだ項目は冒頭とみなさず、欠落として再生成に回す。
+
+`recommendation_items` は全推奨の canonical。`candidate_count` は Source A + Source B（actionable/boundary）の dedup 後の合算に triage の hold の候補を加えた数で、7.7 / 8.0.2 の trigger になる。
 
 ## likelihood-evidence-before-demotion
 
@@ -255,7 +256,7 @@ JSON 本文の書き手を 5.3.0.M step 1 に一本化する理由。
 
 5.3.0.C を 5.3.0.M の後・5.3.1 の前に置く理由。
 
-実測付き blocking を class A（実行時挙動が変わる）/ class B（検出網・可読性・文書整合）に分け、A=0 の cycle で exclusion なし B を non-blocking にして churn 尾部を自然終了させる。exclusion 付き B（既存記述の削除/弱体化、または合意済み AC の実測済み未充足）は blocking 維持。gated finding の `verification.measured` が boolean でない入力は classification map で修復できないため、分類と書き換えの前に `measured_undetermined` で停止する。成功した実測ゲート出力の gated finding は boolean を持つ。不確実なら class B（攻め側既定）。ファイルパスで機械分類しない。
+実測付き blocking を class A（実行時挙動が変わる）/ class B（検出網・可読性・文書整合）に分け、A=0 の cycle で exclusion なし B を non-blocking にして churn 尾部を自然終了させる。exclusion 付き B（既存記述の削除/弱体化、合意済み AC の実測済み未充足、または指摘が主張する AC 未充足）は blocking 維持。判定表の `unmet` 行は AC ごとに 1 finding しか指せないため、同じ AC を指す他の指摘と acceptance が未充足と判定しなかった AC への指摘は map の `ac_claim` で拾い、acceptance との食い違いは降格ではなく警告で可視化する。gated finding の `verification.measured` が boolean でない入力は classification map で修復できないため、分類と書き換えの前に `measured_undetermined` で停止する。成功した実測ゲート出力の gated finding は boolean を持つ。不確実なら class B（攻め側既定。散文への実行観測の指摘を除く）。ファイルパスで機械分類しない。
 
 classification map のパスに commit SHA を入れる理由: `${TMPDIR}` はセッション内不変で、含めないと前 cycle の map が同一パスに残り、step 1 を飛ばして step 2 だけ実行すると stale map を無音適用する。
 
@@ -341,6 +342,16 @@ Decision Log append を候補ごとに単一 Bash invocation にする理由。
 
 採番を Section 9 の内側に限る理由: Section 9 は判断の記録がない本文にも新設されるため、本文の散文に D-NN を含む Issue（レビュー指摘の文面をそのまま転記する follow-up Issue 等）にも Section 9 ができる。本文全体を数えると散文の番号に 1 を足した値へ飛び、新設時の D-01 と連番にならない。境界は追記位置を決める awk と同じにし、数える範囲と書き込む範囲を一致させる。
 
+## deferred-defect-token
+
+先送りトークンを、採否ゲートの verdict が `file` の判定記録の Decision Log 行にだけ付ける理由。
+
+Decision Log は「対応しない理由」の記録であって追跡ではない。起票すべき欠陥の行だけが残ると、誰も Issue を起こさないまま放置される。cleanup の follow-up 起票はレビュー結果 JSON の `non_blocking_findings[]` を読むため、推奨事項由来の欠陥はトークンが無いとそこに届かない。
+
+記録先を JSON ではなく Decision Log 行そのものにするのは、7.4 が JSON 保存（6.1.a）の後に走り、保存済み JSON は停滞判定の受領記録と照合されるため書き換えられないから。同じ理由で、verdict が `fix` の候補（PR 内推奨）も JSON ではなく state の登録（`review-pr-recommendations.sh record`）に書く。Issue 本文は別環境の cleanup からも読めるが、JSON はそうとは限らない。
+
+トークンは HTML コメントにして表示を汚さず、PR 番号を含めて別 PR の cleanup が拾わないようにする。付けるのは verdict が `file` の記録だけで、トークン付きの行は cleanup 6.0 の follow-up が採否ゲート（`--kind followup`）で判定し直し、出口が `file` のものだけを起票する。`record` の記録（`LINK` / `RESOLVED` / `REJECT`）には付けない。`LINK` は追跡先の既存 Issue があり、付けると二重起票になる。`RESOLVED` / `REJECT` は起票する欠陥ではない。起票の自動可否は cleanup 6.0.C の確認ゲート（batch `--merge` は確認しない、単独実行は確認する）にそのまま従う。
+
 ## 5.3-execution-order-why
 
 5.3.0 → 5.3.0.M → 5.3.0.C → 5.3.1 の順を守る理由。
@@ -351,7 +362,17 @@ Decision Log append を候補ごとに単一 Bash invocation にする理由。
 
 既存 Issue を引き受け先にして新規作成を見送る経路に申し送りコメントを必須化した理由。
 
-「引き受け先が実在する」判定だけで triage を閉じると、#N 側に何も残らず、後から「フォローアップ Issue 化はありませんか」と問われて初めてコメントが投稿される。Decision Log は元 Issue の記録であり引き受け先への通知ではない。CLOSED Issue は着手対象にできないため投稿せず、当該候補について 7.2 の既存 4 択を再掲する。新規 AskUserQuestion を足さないのは既存 disposition 質問へ戻す方が inventory を増やさず、差し戻し先が既にあるため。見送りは 7.2 の 5 択ではなく「別 Issue 作成」の結果分岐である。`HANDOFF_COMMENT_REJECTED=1` のあとに 7.4.3 へ進むと申し送りコメントの必須化が空文になる。
+「引き受け先が実在する」判定だけで triage を閉じると、#N 側に何も残らず、後から「フォローアップ Issue 化はありませんか」と問われて初めてコメントが投稿される。Decision Log は元 Issue の記録であり引き受け先への通知ではない。CLOSED Issue は着手対象にできないため投稿せず、判定記録の `tracker` を直して 7.2 のゲートからやり直す。新しい質問を足さずゲートへ戻すのは、差し戻し先が既にあり inventory を増やさないため。`HANDOFF_COMMENT_REJECTED=1` のあとに 7.4.3 へ進むと申し送りコメントの必須化が空文になる。
+
+## triage-write-mark
+
+7.4.3 / 7.4.4 が書き込み済みを印で照合する理由と、印の key の作り方。
+
+7.4.5 の台帳記録などで止まった処分は、7.2 から同じ候補で 7.4 をやり直す。Decision Log は最大 D-NN に 1 を足して追記するだけで、申し送りは投稿済みかを覚えていないので、照合しないと成功済みの書き込みが新しい番号・新しいコメントとして重なる。hold の解除を書き込みごとに分けて状態を持たせるより、書いた先に印を残して読み直す方が、途中のどこで止まっても同じ規則で済む。
+
+key に `C-n` を使わないのは、run ごとに振り直すから。key を候補から毎回作り直さず、一度付けた key を判定記録ファイルの `write_keys` に出口と候補全文ごとに残して次の run で使うのは、再実行の再レビューが同じ根因を言い換えて出し直すと、分類役がその候補を前の run の候補と同じ記録に束ね、記録の候補集合が変わるから。材料を hold の候補に限っても、hold は 7.2 とゲートが run ごとにその run の全候補で書き直すので、束ねた言い換えが次の run では hold の候補になり key がずれる。残す先は hold ではなく、`issued` を run をまたいで持ち越すのと同じ判定記録ファイルにする（ゲートの保留は hold を作り直す）。前の run で key を持つ候補の無い記録は、出口と記録の全候補から作る。記録の単位は前の run と変えない。別々の key を持った候補を 1 つの記録に束ねると、どちらの印で照合するかを決められない。1 つの key の候補を複数の記録に分けると、同じ印を 2 件目が書き込み済みと読み、その記録を黙って書かない。どちらも書かずに止め、候補ごとの前の key を示して、手順 2 が前の単位に直させる（分けた 2 件目に新しい key を振ると、前の run が 1 行で記録した根因をもう 1 行書く）。`write_keys` は cleanup まで残るので、処分を終えた後の cycle で同じ候補の単位を変えても止まる（黙って key を振り直さない）。出口も key に入れるのは、判定が変わった再実行（例: `tracker` を直して REJECT が LINK になる）を別の記録として書くため。印に PR 番号を入れるのは、同じ本文に別 PR の処分の印があっても一致させないため。
+
+照合できないとき（本文やコメントを読めない、key が 16 桁の hex でない）は書かない。未置換の key の印は全判定記録で同じになり、2 件目以降を書き込み済みと誤って飛ばす。
 
 ## acceptance-reviewer
 

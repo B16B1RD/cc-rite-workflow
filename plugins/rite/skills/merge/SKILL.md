@@ -18,7 +18,7 @@ argument-hint: "[--force-ci] <pr_number>"
 ## Contract
 
 **Input**: `[--force-ci]` + PR number (required)
-**Output**: `[merge:returned-to-caller]` / `[merge:not-ready]` / `[merge:error]`
+**Output**: `[merge:returned-to-caller]` / `[merge:not-ready]` / `[merge:error]`（競合による not-ready だけ `[CONTEXT] MERGE_NOT_READY=conflicting` を併記）
 
 `gh pr merge --squash` を叩いて PR をマージするだけ。**cleanup は走らせない**。マージ後の cleanup は `/rite:cleanup` を別途実行する。
 
@@ -45,6 +45,7 @@ argument-hint: "[--force-ci] <pr_number>"
 | `{branch_name}` | ステップ 1 の `gh pr view --json headRefName` から取得 |
 | `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute |
 | `{reviewed_ac_ids}` | reviewed-head helper の `REVIEWED_AC=unverified; ac=` marker（カンマ区切り） |
+| `{human_ac_ids}` | 未検証 AC のうち人間にしか確かめられず、人間が確認できたと答えた ID（カンマ区切り。ready の unverified 手順 4） |
 | `{squash_subject_file}` | ステップ 2 直前に規約適用した squash 件名を書いた作業ツリー外ファイル |
 | `{squash_body_file}` | ステップ 2 直前に規約適用した squash 本文を書いた作業ツリー外ファイル |
 
@@ -152,22 +153,23 @@ fi
 echo "merge_in_e2e=$merge_in_e2e"
 ```
 
-LLM は `merge_in_e2e=` を読む。`true` なら AskUserQuestion を挟まず `[merge:not-ready]` で caller に戻す。`false` の standalone なら未検証 ID `{reviewed_ac_ids}` を列挙し、「人間として全件確認済みに attest する / キャンセル」を AskUserQuestion で確認する。承認された場合だけ次を実行する:
+LLM は `merge_in_e2e=` を読み、未検証 ID `{reviewed_ac_ids}` に [ready の unverified 手順 1〜4](../ready/SKILL.md) を同じ順で当てる（`[ready:error]` は `[merge:not-ready]`、`/rite:iterate` の案内はそのまま）。`true` なら AskUserQuestion を挟まず `[merge:not-ready]` で caller に戻し、停止理由に手順 1 の分類と人間のみの行の 4 要素を含める。手順 4 の依頼へ進むのは `false` の standalone だけで、人間が確認できたと答えた ID だけを `{human_ac_ids}` として渡す:
 
 ```bash
+human_ac_ids="{human_ac_ids}"
 bash "{plugin_root}/hooks/scripts/ready-reviewed-head-gate.sh" \
   --pr {pr_number} --repo {owner_repo} --plugin-root "{plugin_root}" \
-  --attest "$reviewed_ac_ids" || { echo "[merge:not-ready]"; exit 1; }
+  --attest "$human_ac_ids" || { echo "[merge:not-ready]"; exit 1; }
 ```
 
-個別に確認できない ID があればキャンセルし、attest を作らない。attest 後もステップ 2 直前の `--enforce-ac` は省略しない。
+確認できなかった ID は attest に含めない。attest 後もステップ 2 直前の `--enforce-ac` は省略しない。
 
 `headRefName` の値は完了通知 (ステップ 3) の `{branch_name}` 展開に使うため retain する (flow-state 不在でもブランチ名が空にならない)。
 
 | 状態 | アクション |
 |------|-----------|
 | `isDraft == true` | `[merge:not-ready]` emit + 「先に `/rite:ready {pr_number}` を実行してください」案内 + 終了 |
-| `mergeable != "MERGEABLE"` | 再判定は可逆なので、原因 (`mergeStateStatus`) を表示・既存 work memory に記録して 1 回だけ自動再判定する。再度非 MERGEABLE なら `[merge:not-ready]` を emit して終了 |
+| `mergeable != "MERGEABLE"` | 再判定は可逆なので、原因 (`mergeStateStatus`) を表示・既存 work memory に記録して、下記「非 MERGEABLE の再判定」の bash で 1 回だけ自動再判定する。再度非 MERGEABLE なら bash が `[merge:not-ready]` を emit して終了する（`CONFLICTING` のときだけ理由 marker を併記）。`MERGEABLE` に戻れば以降の行で判定を続ける。`CONFLICTING` の解消は [base 取り込み](../fix/references/fix-plan.md#base-取り込み) の手順で行う |
 | `mergeable == "MERGEABLE"` + checks 0 件 | CI 未設定リポジトリとして従来どおりステップ 2 へ |
 | `mergeable == "MERGEABLE"` + checks が pending + `force_ci == false` | 上の bash が待ち loop を実行済み。`MERGE_CHECKS_STATE` の**最終行**で既存分類へ合流する。最終行がまだ `pending`（上限到達）なら `[merge:not-ready]` emit + 「checks の完了を待って再実行」と表示して終了（未完了 check 名は bash が stderr 済み） |
 | checks が pending + `force_ci == true` | 待ち loop に入らない。未完了 check の一覧を表示した後、ステップ 2 へ |
@@ -179,6 +181,26 @@ bash "{plugin_root}/hooks/scripts/ready-reviewed-head-gate.sh" \
 > **「再判定」option の挙動**: 再判定は **1 回のみ**（mergeable 再計算遅延向け。CI 待ち loop の `sleep 15` とは別）。再判定後も `MERGEABLE` でなければ `[merge:not-ready]` で確定終了する。mergeable 再判定に自動 sleep は提供しない。
 > rationale: references/rationale.md#rematch-once
 > rationale: references/rationale.md#ci-wait-bounded
+
+### 非 MERGEABLE の再判定
+
+`[CONTEXT] MERGE_NOT_READY=conflicting` は、再判定後も `mergeable == "CONFLICTING"` のときだけ出す。`UNKNOWN` など他の非 MERGEABLE、および本表の他の `[merge:not-ready]` 行では出さない。caller はこの marker の有無で、base 取り込みで解消できる競合と、それ以外の未マージを区別する。
+
+```bash
+# merge-rematch
+rematch_json=$(gh pr view {pr_number} -R {owner_repo} --json mergeable,mergeStateStatus,isDraft,headRefName,statusCheckRollup) \
+  || { echo "[merge:not-ready]"; echo "ERROR: 再判定で PR 状態を取得できないためマージしません" >&2; exit 1; }
+rematch_mergeable=$(printf '%s' "$rematch_json" | jq -r '.mergeable // ""')
+rematch_state=$(printf '%s' "$rematch_json" | jq -r '.mergeStateStatus // ""')
+echo "[CONTEXT] MERGE_REMATCH; mergeable=$rematch_mergeable; state=$rematch_state"
+if [ "$rematch_mergeable" != "MERGEABLE" ]; then
+  echo "[merge:not-ready]"
+  if [ "$rematch_mergeable" = "CONFLICTING" ]; then
+    echo "[CONTEXT] MERGE_NOT_READY=conflicting; pr={pr_number}"
+  fi
+  exit 1
+fi
+```
 
 ### CI red の分類
 
@@ -270,14 +292,14 @@ else
     echo "  詳細 (stderr):" >&2
     head -10 "$gh_err" | sed 's/^/    /' >&2
   fi
-  # AskUserQuestion を LLM 側で起動: 「再試行 / 中止」
+  # 失敗時の扱いは下の表に従う（先に stderr から原因を分類し、判定できないときだけ AskUserQuestion）
 fi
 ```
 
 | 終了 status | アクション |
 |------------|-----------|
 | `[merge:returned-to-caller]` emit | ステップ 3 完了通知へ |
-| `[merge:error]` emit | bash block が stderr に gh error 詳細を出力済み。LLM は AskUserQuestion で「再試行 / 中止」を提示 |
+| `[merge:error]` emit | bash block が stderr に gh error 詳細を出力済み。LLM は先に stderr から原因を分類する。ネットワーク・API の一時障害なら承認済みの merge を 1 回だけ再実行し、conflict・必須チェック未通過・権限不足なら原因と対処を示して停止する。どれとも判定できないときだけ、原因を question_resolution 規則 6 の 4 要素で示して AskUserQuestion で「再試行 / 中止」を提示 |
 
 ## ステップ 3: 完了通知
 

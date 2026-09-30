@@ -4,7 +4,13 @@
 
 ## Wiki 適用のコミット境界
 
-実装と修正の commit は、同じ `wiki-apply-gate.sh` が合否を決める。Claude の PreToolUse は `pre-tool-bash-guard.sh` から、Codex と Grok の明示実行は `git-commit-file.sh` から、この gate を呼ぶ。phase が implement または fix で、そのセッションの worktree にいるときだけ検査する。その範囲では、照合した index と違う内容指定（`-a` / `--all`、`-i` / `--include`、`-o` / `--only`、`-p` / `--patch`、`--interactive`、`--pathspec-from-file`、pathspec、および `a` `i` `o` `p` を含む短い束ね）を、guard も `git-commit-file.sh` も gate の前に拒否する。別の worktree と他の phase では、これらの引数も止めない。ゲートスクリプトが無い、flow-state を読んでも検査を確認できない、または gate が deny のときは commit しない。合否は証跡の自己申告では決まらない。ゲートが現在の設定、HEAD、対象ファイルの内容と照合する。literal な `git -C <path> commit` も、その path がセッションの worktree なら同じ gate を通す。対象を解決できない commit は拒否する。証跡の形は [wiki-apply-contract.md](wiki-apply-contract.md)。
+実装と修正の commit は、同じ `wiki-apply-gate.sh` が合否を決める。Claude の PreToolUse は `pre-tool-bash-guard.sh` から、Codex と Grok の明示実行は `git-commit-file.sh` から、この gate を呼ぶ。phase が implement または fix で、そのセッションの worktree にいるときだけ検査する。flow-state に worktree を記録しないセッションでは、flow-state を持つ checkout（`<root>/.rite/sessions/` の `<root>`）をセッションの worktree とみなす。その範囲では、照合した index と違う内容指定（`-a` / `--all`、`-i` / `--include`、`-o` / `--only`、`-p` / `--patch`、`--interactive`、`--pathspec-from-file`、pathspec（最初の引用符なしの `<` / `>` の前に fd 番号か `&>` の `&` しか無い語（`2>&1` / `>/dev/null` / `&>log`）と、その語が（省略可の）fd 番号か `&` に続く `<` `>` `&` だけのときの次の語（`> out.log` の `out.log`、`2> err.log` の `err.log`）は数えない。引用符付きの `'2>&1'`、先の無い演算子、この形に当たらない `>|` / `{fd}>out` は数える）、および `a` `i` `o` `p` を含む短い束ね）を、guard も `git-commit-file.sh` も gate の前に拒否する。別の worktree と他の phase では、これらの引数も止めない。ゲートスクリプトが無い、flow-state を読んでも検査を確認できない、または gate が deny のときは commit しない。`git-commit-file.sh` は `wiki-apply-advance-head.sh` が無いときも commit しない。commit 後の証跡の head は `wiki-apply-advance-head.sh` が新しい HEAD へ進める。`git-commit-file.sh` 経路では `git-commit-file.sh` が commit 後にこれを呼び、guard を通って直接 commit した fix では fix 自身が commit 後にこれを呼ぶ。合否は証跡の自己申告では決まらない。ゲートが現在の設定、HEAD、対象ファイルの内容と照合する。literal な `git -C <path> commit` も、その path がセッションの worktree なら同じ gate を通す。対象を解決できない commit は拒否する。証跡の形は [wiki-apply-contract.md](wiki-apply-contract.md)。
+
+## チェックアウト外の git / gh
+
+flow-state が active なセッションで、実効 cwd（cwd に `cd` と `env -C` / `sudo -D`（`--chdir`）を、git ではさらに `-C` を反映したもの）がチェックアウト（main checkout とその worktree）の外にある git / gh 呼び出しとスクリプト実行は、Claude の PreToolUse（`pre-tool-bash-guard.sh`）が拒否する。区切りを引用しない heredoc で本文にコマンド置換（`$(` / バッククォート / `$((`）を書いたコマンドは、作業ディレクトリが状態ルート（main checkout）のディレクトリの下にないとき（別の場所に置いた同じリポジトリの worktree も含む）、またはコマンドのどこかに `cd` / `pushd` / `popd` / `-C` / `chdir` / `sudo` の文字列（`Ctrl-C` や `cdn` のような語の一部、本文中の文字列も含む）があるときは、チェックアウト内でも判定できないとして拒否する（区切りを `<<'EOF'` と引用するか、値を先に変数へ代入して本文で `$v` を使えば通る）。`$( … )` の中の case も同じ条件で拒否する（case を `$( )` の外へ出し、分岐の中で変数を設定すれば通る）。Codex と Grok の明示実行にはこの検査が無いため、git / gh とスクリプトはチェックアウトの中から実行し、外のファイルは絶対パスで渡す。
+
+if / case / ループ内で `cd` / `pushd` / `popd` し、git / gh / スクリプトを実行するコマンドも判定不能として拒否する。関数定義とディレクトリ変更を同じコマンドに含める場合も、定義位置から呼出時の cwd を決められないため同様に拒否する。チェックアウト内へ移動する場合も対象になる。ディレクトリ変更を制御構文の外へ出し、git / gh / スクリプトはチェックアウトを作業先に指定した別の Bash 呼出しで実行する。ディレクトリ変更のないループと、保護対象の実行を含まない形はこの理由では拒否しない。`$(cd <path> && pwd)` のようにパスだけを取得するコマンド置換は親の cwd を変えない。コマンド置換自身の条件・反復内で cd と保護対象の実行を組み合わせた場合は拒否する。
 
 ## Skill と caller
 
@@ -29,7 +35,7 @@ native task 機能があれば既存手順で使う。無い実行面では、�
 
 | 経路 | 実行 |
 |---|---|
-| native named Agent/Task | 選定済み `rite:{type}-reviewer` を指定し、実 ID と completion notification を回収する |
+| native named Agent/Task | 選定済み `rite:{type}-reviewer` を指定し、`_reviewer-base.md` の絶対パスと着手前の全文読取義務を prompt へ明示する。子は raw 出力の先頭行で読取完了を申告する。実 ID と completion notification を回収する |
 | named agent が公開されず独立子は利用可能 | 配布内 `agents/{type}-reviewer.md` と `agents/_reviewer-base.md`、必要な参照の絶対パスと着手前の全文読取義務、制約・差分・仕様・絶対 workdir を native 子の prompt へ明示する。子は raw 出力の先頭行で読取完了を申告する（[本文の引き渡し](#本文の引き渡し)） |
 | 独立子・利用可能な子枠・読取専用制約を維持できない | 起動前に不足能力を診断し `[review:error]`。自己レビューや人数削減で代替しない |
 
@@ -39,20 +45,20 @@ Codex の `spawn_agent` では named reviewer の frontmatter `model: inherit` �
 
 ### 本文の引き渡し
 
-named agent が公開されないホストでは、reviewer 本文を prompt へ全文 inline せず、絶対パス方式だけを契約とする。`_reviewer-base.md` だけで約 90KB あり、選定人数分を inline すると prompt が起動できる上限を超えて reviewer を回収できない。Codex の実機セッションでは独立した計画/実装子の起動と完了回収を観測している。絶対パス方式による選定 reviewer 全員の回収は未検証である。Codex を含むどのホストでも設計記録は裏付けていない。
+`_reviewer-base.md` はどの経路でも prompt へ全文 inline せず、絶対パス方式だけを契約とする。named agent が公開されないホストでは reviewer profile も同じ方式で渡す。`_reviewer-base.md` だけで約 90KB あり、選定人数分を inline すると親が数百 KB を生成し、prompt の起動上限にも近づく。Codex の実機セッションでは独立した計画/実装子の起動と完了回収を観測している。絶対パス方式による選定 reviewer 全員の回収は未検証である。Codex を含むどのホストでも設計記録は裏付けていない。
 
 親が子の prompt へ明示する項目:
 
 - 解決済み plugin root 配下の `agents/{type}-reviewer.md` と `agents/_reviewer-base.md` の絶対パス。profile 内の相対参照に頼らず個別に列挙する。他に読ませる参照も同様に絶対パスで列挙する
 - 列挙した全ファイルを着手前に全文読み取り、raw 出力の先頭行に `読取完了: {絶対パス}; {絶対パス}` の形式で列挙した全パスを申告する義務
 - 制約（読取専用・時刻記録・結果形式）、差分、仕様、絶対 workdir
-- pr-review 4.5 の placeholder 表が定義する `{shared_reviewer_principles}`（4.5 テンプレートと 4.5.1 検証テンプレートの双方の出現箇所）は inline せず、`_reviewer-base.md` の絶対パス行（読取義務付き）に置き換える。その他の placeholder（差分・仕様・CI 状態・Wiki 等）は 4.5 のまま渡す。制約・絶対 workdir は上記の項目として別途明示する
+- pr-review 4.5 の placeholder 表が定義する `{shared_reviewer_principles}`（4.5 テンプレートと 4.5.1 検証テンプレートの双方の出現箇所）は named 経路と同じく `_reviewer-base.md` の絶対パス行（読取義務付き）で渡す。その他の placeholder（差分・仕様・CI 状態・Wiki 等）は 4.5 のまま渡す。制約・絶対 workdir は上記の項目として別途明示する
 
-親は回収ゲートで申告行を読み、渡したパス集合と一致することを確認する。申告行が無い、または 1 件でも欠ける raw 出力は未読とみなし、当該 reviewer を失敗として既存の 1 回再試行を適用する。再失敗は incomplete として停止する。申告は helper ではなく親が確認する。named agent 経路の子は本文を system prompt で受け取りファイルを読まないため、申告の対象外とする。
+親は回収ゲートで申告行を読み、渡したパス集合と一致することを確認する。申告行が無い、または 1 件でも欠ける raw 出力は未読とみなし、当該 reviewer を失敗として既存の 1 回再試行を適用する。再失敗は incomplete として停止する。申告は helper ではなく親が確認する。named agent 経路の子も profile だけを system prompt で受け取り、`_reviewer-base.md` は同じ絶対パス行で受け取って読むため、その 1 パスの申告を同じ規則で確認する。
 
 ### 回収ゲート
 
-選定名簿は起動前の値を固定し、回収不能な reviewer を削除しない。raw 出力は編集せず絶対パスのファイルへ保存する。ホストの実出力から次の manifest を `REVIEW_TMP_DIR/rite-review-{session_id}-{run_id}-{pr_number}-{cycle_count}/reviewer-completions.json` に保存する（各値は `review-start` が返した context）。同じディレクトリに reviewer ごとの raw 出力を置き、別 session / cycle の manifest を流用しない。本文の引き渡し経路では、helper を実行する前に各 raw 出力の先頭行の読取完了申告が渡した全パスと一致することを確認する。
+選定名簿は起動前の値を固定し、回収不能な reviewer を削除しない。raw 出力は編集せず絶対パスのファイルへ保存する。ホストの実出力から次の manifest を `REVIEW_TMP_DIR/rite-review-{session_id}-{run_id}-{pr_number}-{cycle_count}/reviewer-completions.json` に保存する（各値は `review-start` が返した context）。同じディレクトリに reviewer ごとの raw 出力を置き、別 session / cycle の manifest を流用しない。どの経路でも、helper を実行する前に各 raw 出力の先頭行の読取完了申告が渡した全パスと一致することを確認する。
 
 ```json
 {
@@ -82,7 +88,7 @@ bash {plugin_root}/hooks/scripts/reviewer-completion-check.sh --input "{reviewer
 
 ### 回収・保存・工程遷移
 
-統合結果にも同一 `review_context` を記録し、pr-review の measured / AC ゲート適用後に `flow-state.sh review-finish --manifest <絶対パス> --content-file <絶対パス> [--pending-id <id>]` を実行する。completion helper と saver を再利用し、名簿全員・各 context・保存ファイルを検証する。失敗は未完了の state と成功結果を保持して停止し、fix / ready / 次 cycle へ進めない。通常の `flow-state.sh set` による未検証遷移も拒否する。
+統合結果にも同一 `review_context` を記録し、pr-review の measured / AC ゲート適用後に `flow-state.sh review-finish --manifest <絶対パス> --content-file <絶対パス> [--pending-id <id>]` を実行する。completion helper と saver を再利用し、名簿全員・各 context・受入条件欄の形式・保存ファイルを検証する。失敗は未完了の state と成功結果を保持して停止し、fix / ready / 次 cycle へ進めない。通常の `flow-state.sh set` による未検証遷移も拒否する。
 
 工程の権威は自セッションの `review_cycle`。`collecting` は凍結 context の HEAD が現 HEAD と一致するときだけ同じ cycle で再開する。不一致で証跡（manifest / content / result、保存済み receipt）を 1 つも持たなければ `review-abandon` で放棄し、現 HEAD で新しい cycle を始める。`completed` は HEAD が一致するときだけ保存先を再検証して未完了の後続ゲートに戻る（`review-finish` は status に依らず HEAD 一致を要求する）。recover で HEAD 不一致の completed cycle を回収する場合は再検証できないため、保存済み `result_path` を読むだけに留めて証跡を保持したまま停止する。通常の iterate で検証済み修正を commit して次 cycle に進む場合は、`review-start` の既存 advance 条件を満たすことで新 HEAD を凍結できる。review-finish の成功だけで最終 sentinel / handoff を発行しない。
 

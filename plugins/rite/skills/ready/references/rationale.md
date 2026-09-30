@@ -30,7 +30,8 @@ schema のキーは `commit_sha`（Issue 文の `reviewed_commit` は PR コメ�
 `--force` フラグは作らない。強行はユーザーの明示指示がある場合だけ `--skip-head-check` を
 `--enforce-ac` と組み合わせ、HEAD 照合のみを省略して AC 検査は維持する。
 
-NB sweep が `fixed ≥ 1` で push した commit は例外とする。reviewed-head ゲートは
+旧版の NB sweep が `fixed ≥ 1` で push した commit は例外とする（現在の sweep は commit も push も
+しないため新しい SHA は書かれないが、旧版が 2 行目を書いた done-file は書き直しでも残る）。reviewed-head ゲートは
 `commit_sha == HEAD` を要求するが、sweep 経路は sweep を再フルレビューの
 引き金にしない。sweep は review JSON を更新しないため、`--merge` は構造的に
 ready を通過できなかった。受理するのは done-file 2 行目が指す **その 1 commit
@@ -44,6 +45,10 @@ SHA == HEAD のときだけ `via=sweep`。2 行目不正は既存判定へ縮退
 `satisfied` または現在の review JSON の `commit_sha` と同じ `head` を持つ
 `human-verified` であることを機械的に確認する。この境界により、未充足を override で通す経路を
 作らず、修正または AC 訂正後の再レビューを解消手段として維持する。
+
+attest の対象は、未検証のうち人間にしか確かめられない行に限る。AI が実行して確かめられる行は
+ready が実行し、その結果は review の記録を更新する再レビューで反映する。AI の実行結果で
+`human-verified` を作ると、人間の確認と実行結果の区別が記録から消えるためである。
 
 ## bang-backtick-hard-gate
 

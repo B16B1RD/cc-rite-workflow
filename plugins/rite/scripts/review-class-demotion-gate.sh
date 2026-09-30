@@ -6,7 +6,8 @@
 # class A (放置すると今回の成果物の実行時挙動が変わる) が 0 件の cycle で、除外なし class B
 # (帰結が検出網・可読性・文書整合に留まる) のみ non_blocking_findings[] へ移送し、
 # exclusion 付き class B は blocking のまま残す。exclusion の入力源は classification map の
-# exclusion と、入力 JSON の acceptance_criteria[] の未充足行 (合意済み AC の実測済み未充足) の 2 つ。
+# exclusion、入力 JSON の acceptance_criteria[] の未充足行 (合意済み AC の実測済み未充足)、
+# classification map の ac_claim (指摘が受入条件の未充足を主張している) の 3 つ。
 # 移送後の blocking 件数から
 # overall_assessment / verdict を再確定する。ゲート契約の SoT は
 # skills/fix/references/assessment-rules.md §5.3.0.C、語彙定義は
@@ -24,6 +25,7 @@
 # classification map (--classification) は read-only:
 #   {"classifications": [{"id": "F-01", "class": "A", "scenario": "<判定文>"}, ...]}
 #   class B は任意キー exclusion（非空文字列 = 既存記述の削除/弱体化の判定文）を持てる。
+#   各エントリは任意キー ac_claim（指摘が未充足を主張する AC ID の非空配列、例 ["AC-1"]）を持てる。
 # 入力 JSON の acceptance_criteria (review-result-schema.md §acceptance_criteria) は read-only で読む。
 #
 # Gate semantics (assessment-rules.md §5.3.0.C の verbatim 実装):
@@ -46,7 +48,7 @@
 #        → その class。consequence_class / consequence_scenario を finding へ記録する。
 #        well-formed な exclusion があれば consequence_exclusion にも判定文を記録する
 #      - それ以外 (エントリ欠落 / class が A・B 以外 / class B なのに scenario 欠落・空 /
-#        class B で exclusion キーがあるのに非空文字列でない / 同 id の重複エントリ)
+#        class B で exclusion キーがあるのに非空文字列でない / ac_claim が不正 / 同 id の重複エントリ)
 #        → **class A 扱い** (blocking 維持) + WARNING。判定不能を降格に
 #        丸めない。consequence_class="A" のみ記録し scenario / exclusion は書かない
 #      - 合意済み AC の実測済み未充足: acceptance_criteria[] の status="unmet" 行が指す
@@ -57,6 +59,19 @@
 #        (findings[] に残っているかの最終検査は scripts/acceptance-criteria-check.sh final)。
 #        finding_id が findings[] に無い行は除外に使わず WARNING を出し、成功 marker 末尾に
 #        "; warning=ac_unmet_finding_missing; rows=AC-N:F-NN,..." を付ける
+#      - 指摘側が主張する AC 未充足: map の ac_claim は、acceptance_criteria が行配列で、
+#        値が "AC-N" 書式・重複なし・行配列に実在する AC ID の非空配列のときだけ有効。
+#        それ以外 (キーはあるが空 / 非配列 / 非文字列 / 書式外 / 重複 / 未知の AC /
+#        acceptance_criteria が行配列でない) は判定不能として class A に倒す。
+#        有効な ac_claim を持つ finding が effective class B で、map の exclusion も判定表の
+#        未充足行も持たないとき、consequence_exclusion に "ac_claim:AC-N" (複数なら ac_claim の
+#        配列順に "ac_claim:AC-N,AC-M") を記録する。優先順位は map の exclusion > 判定表の
+#        未充足行 > ac_claim。判定不能に倒れていないエントリの有効な ac_claim を持つ finding
+#        (class A・B や除外の出所によらない。別理由で判定不能になったエントリの ac_claim は捨てる) が
+#        主張した AC の行が status="unmet" でないとき (acceptance の判定と食い違うとき) は、
+#        判定を変えずに WARNING を出して成功 marker 末尾に
+#        "; warning=ac_claim_disagreement; rows=AC-N:F-NN,..." (findings[] 順、同一 finding 内は
+#        ac_claim 配列順) を付ける。unmet 行が別の finding を指すだけの AC は食い違いに数えない
 #      - 降格に入る経路は「well-formed な class B エントリかつ exclusion なし」のみ —
 #        silent 降格は存在しない
 #   2. effective class A が 0 件 ∧ 除外なし class B が 1 件以上のときのみ、除外なし class B を
@@ -85,7 +100,8 @@
 #   [CONTEXT] CLASS_DEMOTION_GATE=applied; class_a=0; class_b={n}; demoted={n}; assessment={mergeable|fix-needed}
 #   [CONTEXT] CLASS_DEMOTION_GATE=not-triggered; class_a={n}; class_b={n}; demoted=0; assessment={v}
 #     (上 2 行は findings[] に無い finding_id の未充足行があるときだけ末尾に
-#      "; warning=ac_unmet_finding_missing; rows={AC-N:F-NN,...}" が付く)
+#      "; warning=ac_unmet_finding_missing; rows={AC-N:F-NN,...}" が付く。ac_claim と acceptance の
+#      判定が食い違うときはその後ろに "; warning=ac_claim_disagreement; rows={AC-N:F-NN,...}" が付く)
 #   [CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count={n}
 #   [CONTEXT] CLASS_DEMOTION_CATEGORY_PINNED=1; count={n}
 #   [CONTEXT] CLASS_DEMOTION_GATE_FAILED=1; reason=measured_undetermined; count={n}; findings={ids}
@@ -120,6 +136,7 @@
 #   jq_transform_failed         — ゲート変換 jq が非ゼロ終了 (exit 1)
 #   stats_read_failed           — .stats.* の読み出し失敗、値が数値でない、統計間の不変条件
 #                                 (class_a + class_b == blocking / unclassified <= class_a /
+#                                 ac_excluded + ac_claimed <= excluded / 食い違いの件数と一覧の整合 /
 #                                 demoted の applied 整合 —
 #                                 applied 時 demoted は除外なし class B 件数、blocking_after は
 #                                 class_a + 除外付き class B) が
@@ -159,6 +176,8 @@ Options:
                          {"classifications": [{"id": "F-01", "class": "A"|"B",
                            "scenario": "...", "exclusion": "..."}]}
                          exclusion は class B の任意キー。非空文字列なら降格対象外。
+                         ac_claim は任意キー。未充足を主張する AC ID の非空配列
+                         (例 ["AC-1"])。class B なら降格対象外。
   -h, --help             Show this help
 
 Exit codes:
@@ -339,38 +358,57 @@ def parse_exclusion($c):
   else {ok: false, value: null}
   end;
 
+# ac_claim は「この指摘が受入条件の未充足を実測付きで主張している」という map 側の判定。
+# 任意キー。あるなら acceptance_criteria[] 行配列に実在する AC ID の、重複のない非空配列に限る。
+# それ以外 (空配列 / 非配列 / 非文字列 / 書式外 / 未知の AC / 重複 / 行配列が無い入力) は不正。
+def parse_ac_claim($c; $ids):
+  if ($c | has("ac_claim") | not) then {ok: true, value: null}
+  elif ($c.ac_claim | type) == "array" and ($c.ac_claim | length) > 0
+       and all($c.ac_claim[]; type == "string" and test("^AC-[0-9]+$"))
+       and ($c.ac_claim | unique | length) == ($c.ac_claim | length)
+       and all($c.ac_claim[]; . as $x | any($ids[]; . == $x))
+  then {ok: true, value: $c.ac_claim}
+  else {ok: false, value: null}
+  end;
+
 # $ac は finding id -> "ac_unmet:AC-N" の辞書 (acceptance_criteria[] の未充足行由来)。
 # 付与は最終的に class B で map の exclusion が無いときだけ — class A (判定不能・category 固定を
 # 含む) はもともと blocking で、map の exclusion 文言は既存判別子の記録として保持する。
-def effective_class($m; $ac):
+# 判定表由来の除外が無い class B は、map の ac_claim で除外する (acceptance の判定と食い違っても
+# 降格しない)。優先順位は map の exclusion > 判定表の未充足行 > ac_claim。
+def effective_class($m; $ac; $ids):
   (.id // null | tostring) as $fid
   | ($m[$fid] // []) as $e
-  | (if ($e | length) != 1 then {class: "A", scenario: null, unclassified: true, exclusion: null}
+  | (if ($e | length) != 1 then {class: "A", scenario: null, unclassified: true, exclusion: null, claim: null}
     else $e[0] as $c
-    | if $c.class == "A" then
+    | parse_ac_claim($c; $ids) as $cl
+    | if ($cl.ok | not) then {class: "A", scenario: null, unclassified: true, exclusion: null, claim: null}
+      elif $c.class == "A" then
         {class: "A",
          scenario: (if ($c.scenario | type) == "string" and $c.scenario != "" then $c.scenario else null end),
-         unclassified: false, exclusion: null}
+         unclassified: false, exclusion: null, claim: $cl.value}
       elif $c.class == "B" and ($c.scenario | type) == "string" and $c.scenario != "" then
         parse_exclusion($c) as $ex
         | if $ex.ok then
-            {class: "B", scenario: $c.scenario, unclassified: false, exclusion: $ex.value}
-          else {class: "A", scenario: null, unclassified: true, exclusion: null} end
-      else {class: "A", scenario: null, unclassified: true, exclusion: null} end
+            {class: "B", scenario: $c.scenario, unclassified: false, exclusion: $ex.value, claim: $cl.value}
+          else {class: "A", scenario: null, unclassified: true, exclusion: null, claim: null} end
+      else {class: "A", scenario: null, unclassified: true, exclusion: null, claim: null} end
     end) as $mapped
   | (if .category == "number_reference" and $mapped.class == "B" then
        $mapped + {class: "A", pinned: true, exclusion: null}
      else $mapped + {pinned: false} end)
   | if .class == "B" and .exclusion == null and $ac[$fid] != null then
-      . + {exclusion: $ac[$fid], ac_unmet: true}
-    else . + {ac_unmet: false} end;
+      . + {exclusion: $ac[$fid], ac_unmet: true, ac_claimed: false}
+    elif .class == "B" and .exclusion == null and .claim != null then
+      . + {exclusion: ("ac_claim:" + (.claim | join(","))), ac_unmet: false, ac_claimed: true}
+    else . + {ac_unmet: false, ac_claimed: false} end;
 
 # 分類の記録: gated finding のみ consequence_class / consequence_scenario を持つ。
 # 既存値は算出結果で無条件に上書きする (map が唯一の入力 — preset は判定を変えられない)。
 # well-formed な exclusion がある class B は consequence_exclusion に判定文を残す。
-def with_class($m; $ac):
+def with_class($m; $ac; $ids):
   if gated then
-    effective_class($m; $ac) as $ec
+    effective_class($m; $ac; $ids) as $ec
     | .consequence_class = $ec.class
     | (if $ec.scenario != null then .consequence_scenario = $ec.scenario else del(.consequence_scenario) end)
     | (if $ec.exclusion != null then .consequence_exclusion = $ec.exclusion else del(.consequence_exclusion) end)
@@ -396,8 +434,17 @@ def is_demotable_b:
    | from_entries) as $ac_by_id
 | [$unmet_rows[] | select(.finding_id as $f | any($finding_ids[]; . == $f) | not)
    | "\(.id | tostring):\(.finding_id)"] as $ac_missing
+| (if (.acceptance_criteria | type) == "array" then [.acceptance_criteria[] | .id | tostring] else [] end) as $ac_ids
+| (if (.acceptance_criteria | type) == "array" then
+     (.acceptance_criteria | map({key: (.id | tostring), value: .status}) | from_entries)
+   else {} end) as $ac_status
 | .findings as $orig
-| ($orig | map(with_class($by_id; $ac_by_id))) as $judged
+# ac_claim が主張する AC を acceptance が unmet と判定していない行 (findings[] 順、同一 finding
+# 内は ac_claim 配列順)。unmet 行が別 finding を指すだけのものは食い違いに数えない。
+| [$orig[] | select(gated) | (.id // null | tostring) as $fid
+   | effective_class($by_id; $ac_by_id; $ac_ids) | select(.claim != null)
+   | .claim[] | select($ac_status[.] != "unmet") | "\(.):\($fid)"] as $claim_disagree
+| ($orig | map(with_class($by_id; $ac_by_id; $ac_ids))) as $judged
 | ($judged | map(select(gated))) as $blocking_set
 | ($blocking_set | map(select(.consequence_class == "A")) | length) as $class_a
 | ($blocking_set | map(select(.consequence_class == "B")) | length) as $class_b
@@ -423,13 +470,17 @@ def is_demotable_b:
       class_b: $class_b,
       demoted: ($demoted_set | length),
       blocking_after: $blocking_after,
-      # map 由来の判定不能 (エントリ欠落 / class 不正 / B の判定文欠落 / 重複)。
-      unclassified: ([$orig[] | select(gated) | effective_class($by_id; $ac_by_id) | select(.unclassified)] | length),
+      # map 由来の判定不能 (エントリ欠落 / class 不正 / B の判定文欠落 / ac_claim 不正 / 重複)。
+      unclassified: ([$orig[] | select(gated) | effective_class($by_id; $ac_by_id; $ac_ids) | select(.unclassified)] | length),
       # number_reference に well-formed な class B を指定し、category 固定で A へ戻した件数。
-      category_pinned: ([$orig[] | select(gated) | effective_class($by_id; $ac_by_id) | select(.pinned)] | length),
+      category_pinned: ([$orig[] | select(gated) | effective_class($by_id; $ac_by_id; $ac_ids) | select(.pinned)] | length),
       excluded: $excluded,
       # excluded のうち acceptance_criteria[] の未充足行で除外した件数。
-      ac_excluded: ([$orig[] | select(gated) | effective_class($by_id; $ac_by_id) | select(.ac_unmet)] | length),
+      ac_excluded: ([$orig[] | select(gated) | effective_class($by_id; $ac_by_id; $ac_ids) | select(.ac_unmet)] | length),
+      # excluded のうち map の ac_claim で除外した件数。
+      ac_claimed: ([$orig[] | select(gated) | effective_class($by_id; $ac_by_id; $ac_ids) | select(.ac_claimed)] | length),
+      claim_disagree: ($claim_disagree | length),
+      claim_disagree_rows: ($claim_disagree | join(",")),
       ac_missing: ($ac_missing | length),
       ac_missing_rows: ($ac_missing | join(",")),
       applied: (if $applied then "true" else "false" end),
@@ -447,16 +498,20 @@ fi
 if ! stats_tsv=$(printf '%s\n' "$result" | jq -r '
   [ .stats.blocking, .stats.class_a, .stats.class_b, .stats.demoted,
     .stats.blocking_after, .stats.unclassified, .stats.category_pinned,
-    .stats.excluded, .stats.ac_excluded, .stats.ac_missing,
+    .stats.excluded, .stats.ac_excluded, .stats.ac_claimed, .stats.claim_disagree, .stats.ac_missing,
     .stats.applied, .stats.assessment, .stats.ac_missing_rows ]
   | map(tostring) | @tsv' 2>"${diag_file:-/dev/null}"); then
   _fail stats_read_failed "ゲート統計の読み出し jq が失敗しました"
 fi
 # ac_missing_rows は空になりうるため末尾に置く (IFS の tab は連続区切りを 1 つに潰す)
 IFS=$'\t' read -r blocking class_a class_b demoted blocking_after unclassified category_pinned excluded \
-  ac_excluded ac_missing applied assessment ac_missing_rows \
+  ac_excluded ac_claimed claim_disagree ac_missing applied assessment ac_missing_rows \
   <<< "$stats_tsv"
-for _stat_name in blocking class_a class_b demoted blocking_after unclassified category_pinned excluded ac_excluded ac_missing; do
+# 空になりうる 2 つ目の一覧は同じ TSV に載せず、別の jq で読む
+if ! claim_disagree_rows=$(printf '%s\n' "$result" | jq -r '.stats.claim_disagree_rows' 2>"${diag_file:-/dev/null}"); then
+  _fail stats_read_failed "ゲート統計 claim_disagree_rows の読み出し jq が失敗しました"
+fi
+for _stat_name in blocking class_a class_b demoted blocking_after unclassified category_pinned excluded ac_excluded ac_claimed claim_disagree ac_missing; do
   _stat_val="${!_stat_name-}"
   case "$_stat_val" in
     ''|*[!0-9]*) _fail stats_read_failed "ゲート統計 $_stat_name が数値ではありません: '$_stat_val'" ;;
@@ -485,11 +540,14 @@ fi
 if [ "$excluded" -gt "$class_b" ]; then
   _fail stats_read_failed "ゲート統計の除外件数が class B 件数を超えています (excluded=${excluded} > class_b=${class_b})"
 fi
-if [ "$ac_excluded" -gt "$excluded" ]; then
-  _fail stats_read_failed "未充足 AC 由来の除外件数が除外件数を超えています (ac_excluded=${ac_excluded} > excluded=${excluded})"
+if [ "$((ac_excluded + ac_claimed))" -gt "$excluded" ]; then
+  _fail stats_read_failed "受入条件由来の除外件数が除外件数を超えています (ac_excluded=${ac_excluded} + ac_claimed=${ac_claimed} > excluded=${excluded})"
 fi
 if { [ "$ac_missing" -eq 0 ] && [ -n "$ac_missing_rows" ]; } || { [ "$ac_missing" -gt 0 ] && [ -z "$ac_missing_rows" ]; }; then
   _fail stats_read_failed "存在しない finding_id の未充足行の件数と一覧が整合しません (ac_missing=${ac_missing})"
+fi
+if { [ "$claim_disagree" -eq 0 ] && [ -n "$claim_disagree_rows" ]; } || { [ "$claim_disagree" -gt 0 ] && [ -z "$claim_disagree_rows" ]; }; then
+  _fail stats_read_failed "ac_claim と判定表の食い違いの件数と一覧が整合しません (claim_disagree=${claim_disagree})"
 fi
 if [ "$applied" = "true" ]; then
   [ "$demoted" -eq "$((class_b - excluded))" ] || _fail stats_read_failed "降格発動なのに移送件数が除外なし class B 件数と一致しません (demoted=${demoted} != class_b-excluded=$((class_b - excluded)))"
@@ -513,7 +571,7 @@ fi
 out_tmp=""
 
 if [ "$unclassified" -gt 0 ]; then
-  echo "WARNING: 帰結クラス分類が欠落・不正 (エントリなし / class が A・B 以外 / class B なのに判定文なし / class B の exclusion が非空文字列でない / 同 id の重複エントリ) の blocking finding ${unclassified} 件を class A 扱い (blocking 維持) にしました。判定不能を降格に丸めません" >&2
+  echo "WARNING: 帰結クラス分類が欠落・不正 (エントリなし / class が A・B 以外 / class B なのに判定文なし / class B の exclusion が非空文字列でない / ac_claim が不正 / 同 id の重複エントリ) の blocking finding ${unclassified} 件を class A 扱い (blocking 維持) にしました。判定不能を降格に丸めません" >&2
   echo "[CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count=${unclassified}" >&2
 fi
 
@@ -532,12 +590,21 @@ if [ "$ac_missing" -gt 0 ]; then
   gate_warning="; warning=ac_unmet_finding_missing; rows=${ac_missing_rows}"
 fi
 
+# 指摘の実測と acceptance の判定が食い違う AC を、降格には使わず成功 marker に残す。
+claim_warning=""
+if [ "$claim_disagree" -gt 0 ]; then
+  printf 'WARNING: ac_claim が主張する受入条件を acceptance は未充足と判定していません %s 件。指摘は blocking に残しました: %s' \
+    "$claim_disagree" "$claim_disagree_rows" | neutralize_ctrl --c0-only >&2
+  printf '\n' >&2
+  claim_warning="; warning=ac_claim_disagreement; rows=${claim_disagree_rows}"
+fi
+
 if [ "$applied" = "true" ]; then
-  printf '[CONTEXT] CLASS_DEMOTION_GATE=applied; class_a=%s; class_b=%s; demoted=%s; assessment=%s%s' \
-    "$class_a" "$class_b" "$demoted" "$assessment" "$gate_warning" | neutralize_ctrl --c0-only >&2
+  printf '[CONTEXT] CLASS_DEMOTION_GATE=applied; class_a=%s; class_b=%s; demoted=%s; assessment=%s%s%s' \
+    "$class_a" "$class_b" "$demoted" "$assessment" "$gate_warning" "$claim_warning" | neutralize_ctrl --c0-only >&2
 else
-  printf '[CONTEXT] CLASS_DEMOTION_GATE=not-triggered; class_a=%s; class_b=%s; demoted=0; assessment=%s%s' \
-    "$class_a" "$class_b" "$assessment" "$gate_warning" | neutralize_ctrl --c0-only >&2
+  printf '[CONTEXT] CLASS_DEMOTION_GATE=not-triggered; class_a=%s; class_b=%s; demoted=0; assessment=%s%s%s' \
+    "$class_a" "$class_b" "$assessment" "$gate_warning" "$claim_warning" | neutralize_ctrl --c0-only >&2
 fi
 printf '\n' >&2
 exit 0

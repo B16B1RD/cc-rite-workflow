@@ -175,7 +175,7 @@ if [[ -n "$TITLE" ]]; then
     echo "ERROR: --title must be valid UTF-8" >&2
     exit 1
   fi
-  if contains_ctrl "$TITLE" --c0-only || printf '%s' "$TITLE" | LC_ALL=C grep -q $'\302[\200-\237]'; then
+  if contains_ctrl "$TITLE" --c0-only || LC_ALL=C grep -q $'\302[\200-\237]' <<< "$TITLE"; then
     echo "ERROR: --title must not contain control characters (C0/DEL/C1 code points)" >&2
     exit 1
   fi
@@ -287,7 +287,8 @@ if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then
   # fallback that continued staging would let a corrupted config quietly leak
   # raw sources to develop even when the user set wiki.enabled: false on purpose
   # — same threat model the .gitignore last-line-defense addresses.
-  if wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$STATE_ROOT/rite-config.yml" 2>"${_yaml_err:-/dev/null}"); then
+  # 節は空白と # 以外で始まる次の行で終える（数字や _ で始まるキーでも終え、列 0 のコメント行では終えない）
+  if wiki_section=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$STATE_ROOT/rite-config.yml" 2>"${_yaml_err:-/dev/null}"); then
     :  # success (sed no-match は exit 0 なので legitimate)
   else
     _sed_rc=$?

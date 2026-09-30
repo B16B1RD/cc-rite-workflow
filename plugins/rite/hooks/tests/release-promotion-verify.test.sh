@@ -91,7 +91,7 @@ fi
 # review-result-state-root.test.sh TC-8, which asserts indented>=1 and bare==0 together).
 # LC_ALL=C is required — the cause is a locale-dependent OS message, and a UTF-8 locale
 # gives up on lines it cannot decode, matching nothing.
-if ! printf '%s\n' "$gi_err" | LC_ALL=C grep -qE '^  .*/\.gitignore: '; then
+if ! LC_ALL=C grep -qE '^  .*/\.gitignore: ' <<< "$gi_err"; then
   echo "FAIL: .gitignore failure cause was not emitted alongside the WARNING" >&2
   exit 1
 fi

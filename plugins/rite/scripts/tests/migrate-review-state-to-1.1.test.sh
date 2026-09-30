@@ -78,7 +78,7 @@ json_10 > "$MAIN_ROOT/.rite/review-results/42-20260101000000.json"
 echo "TC-1: --dry-run from worktree cwd detects the main-root 1.0 JSON"
 rc=0
 dry_out=$( (cd "$WT" && bash "$MIGRATE" --dry-run) 2>&1 ) || rc=$?
-if [ "$rc" -eq 0 ] && printf '%s\n' "$dry_out" | grep -qF "would migrate ${MAIN_ROOT}/.rite/review-results/42-20260101000000.json"; then
+if [ "$rc" -eq 0 ] && grep -qF "would migrate ${MAIN_ROOT}/.rite/review-results/42-20260101000000.json" <<< "$dry_out"; then
   pass "TC-1: dry-run resolved the state root and found the target"
 else
   fail "TC-1: expected 'would migrate <main-root JSON>' (rc=$rc). got: $dry_out"
@@ -134,7 +134,7 @@ NOGIT="$TEST_DIR/nogit"
 mkdir -p "$NOGIT"
 rc=0
 err_out=$( (cd "$NOGIT" && bash "$MIGRATE") 2>&1 ) || rc=$?
-if [ "$rc" -eq 1 ] && printf '%s\n' "$err_out" | grep -q "ERROR: REPO_ROOT could not be resolved"; then
+if [ "$rc" -eq 1 ] && grep -q "ERROR: REPO_ROOT could not be resolved" <<< "$err_out"; then
   pass "TC-4: non-git cwd exits 1 with the resolution ERROR"
 else
   fail "TC-4: expected rc=1 + resolution ERROR, got rc=$rc: $err_out"

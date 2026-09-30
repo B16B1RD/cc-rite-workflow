@@ -75,8 +75,12 @@ def same_json(left, right):
 DECISION_LOG_HEADING = re.compile(r"^## 9\. Decision Log\s*$")
 DECISION_LOG_END = re.compile(r"^(## |---\s*$|</details>)")
 DECISION_LOG_ROW = re.compile(r"^- \d{4}-\d{2}-\d{2} D-\d{2,}: .+ / Reason: .+ / Impact: .+$")
-# Same line shape the non-blocking record helper accepts as its own marker.
-NBR_MARKER_LINE = re.compile(r"^\s*<!-- rite:nbr:comment-id:.*-->\s*$")
+# Same lines the non-blocking record helper strips as its own marker (equal for
+# ASCII whitespace; for other whitespace the helper's sed depends on the locale): one
+# comment alone on the line, so a value never contains a comment closer (`-->`, or
+# `--!>`, which HTML also accepts). A line that closes the comment early and continues
+# with visible text is specification text.
+NBR_MARKER_LINE = re.compile(r"^\s*<!-- rite:nbr:comment-id:(?:(?!--!?>).)*-->\s*$")
 FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}(?=[^`]*$)|~{3,})")
 
 
@@ -139,8 +143,59 @@ def same_specification(left, right):
     return normalize_issue_body(left) == normalize_issue_body(right)
 
 
+SPEC_CHANGE_SECTION = "仕様改訂の記録"
+
+
+def spec_change_hint(state, body):
+    """The recovery route for a specification mismatch found on `body`, where review-reconcile can act on it."""
+    run = state.get("review_run")
+    if not (isinstance(run, dict) and run.get("status") == "active"
+            and (run.get("observations") or run.get("reconciliations"))):
+        return ""
+    records = run.get("reconciliations") or []
+    if (records and records[-1]["review_context"] == (state.get("review_cycle") or {}).get("review_context")
+            and same_specification(records[-1]["issue_body"], body)):
+        return ("; the revision is already recorded for this cycle: take the next step for it instead of"
+                " reconciling again (references/review-stagnation.md, section: " + SPEC_CHANGE_SECTION + ")")
+    return ("; if the Issue was revised by agreement, record the revision with `flow-state.sh review-reconcile"
+            " --issue <latest Issue JSON> --approval <approval JSON>` and review under the revised specification"
+            " before fixing (references/review-stagnation.md, section: " + SPEC_CHANGE_SECTION + ")")
+
+
 def without_timestamp(result):
     return {key: value for key, value in result.items() if key != "timestamp"}
+
+
+AC_SKIPPED = ("no_issue", "no_ac_section")
+# The final consistency check accepts some tables this refuses, so the repair names the form itself.
+AC_REPAIR = ("; rewrite the table in pr-review's result JSON in the form the Ready gate accepts"
+             " (either an object whose only key is skipped, valued no_issue or no_ac_section, or a non-empty"
+             " array of rows with a unique AC-N id, non-empty evidence, status satisfied/unmet/unverified,"
+             " a finding_id on every row (F-NN when unmet, null otherwise) and no head/at),"
+             " then rerun pr-review's final acceptance-criteria consistency check")
+
+
+def check_acceptance(content):
+    # Save only a table whose form the Ready gate accepts; review-close and Ready
+    # judge its content later. Attestation (human-verified) is written by ready
+    # after save, never by a fresh result.
+    require("acceptance_criteria" in content, "result has no acceptance_criteria" + AC_REPAIR)
+    table = content["acceptance_criteria"]
+    if isinstance(table, dict):
+        require(list(table) == ["skipped"] and table["skipped"] in AC_SKIPPED,
+                "acceptance_criteria skipped must be exactly one of " + "/".join(AC_SKIPPED) + AC_REPAIR)
+        return
+    require(isinstance(table, list) and table, "acceptance_criteria must be skipped or a non-empty row array" + AC_REPAIR)
+    for row in table:
+        require(isinstance(row, dict) and isinstance(row.get("id"), str) and re.fullmatch(r"AC-[0-9]+", row["id"])
+                and row.get("status") in ("satisfied", "unmet", "unverified")
+                and isinstance(row.get("evidence"), str) and row["evidence"] != ""
+                and "finding_id" in row and "head" not in row and "at" not in row
+                and (isinstance(row["finding_id"], str) and re.fullmatch(r"F-[0-9]{2,}", row["finding_id"])
+                     if row["status"] == "unmet" else row["finding_id"] is None),
+                "acceptance_criteria row is invalid: " + json.dumps(row, ensure_ascii=False) + AC_REPAIR)
+    ids = [row["id"] for row in table]
+    require(len(ids) == len(set(ids)), "acceptance_criteria has duplicate ids" + AC_REPAIR)
 
 
 def matching_receipt(directory, cycle, content=None):
@@ -312,6 +367,12 @@ def finish(state, args, path, directory):
     hooks = Path(__file__).resolve().parents[2]
     subprocess.run(["bash", str(hooks / "scripts/reviewer-completion-check.sh"), "--input", args.manifest],
                    check=True, stdout=sys.stderr)
+    check_acceptance(content)
+    # Without the recorded receipt, the replay guard has nothing to compare, so a
+    # new save could replace a completed cycle's result.
+    recorded = cycle.get("result_path")
+    require(cycle.get("status") != "completed" or not recorded or Path(recorded).exists(),
+            "recorded review receipt is missing: " + str(recorded) + "; restore it instead of saving another")
     pending_id = args.pending_id or cycle.get("pending_id")
     require(not pending_id or re.fullmatch(r"[A-Za-z0-9._-]+", pending_id), "invalid pending-id")
     receipt = matching_receipt(directory, cycle, content)
@@ -380,9 +441,39 @@ def abandon(state, args, directory):
     return state
 
 
+def record_marker(context):
+    """The identity of one completed review in the Issue work memory.
+
+    A run may review the same commit again, so the cycle is part of the identity.
+    """
+    return ("<!-- rite:review-record run_id=" + context["run_id"] + " cycle=" + str(context["cycle_count"])
+            + " commit_sha=" + context["commit_sha"] + " -->")
+
+
+def record(state, args, directory):
+    """Describe the work memory record of the completed cycle; the state is not changed."""
+    if args.closing:
+        # A close that would be refused anyway writes nothing to the Issue.
+        importlib.import_module("review-stagnation").closable(state, args, directory)
+    if not state.get("issue_number"):
+        return dict(issue=None)
+    cycle = state.get("review_cycle")
+    require(isinstance(cycle, dict) and cycle.get("status") == "completed",
+            "only a completed review cycle can be recorded; finish the review first")
+    receipt = matching_receipt(directory, cycle)
+    require(receipt is not None, "saved review receipt missing")
+    context, saved = cycle["review_context"], receipt[1]
+    blocking = sum(1 for finding in saved["findings"] if finding.get("scope") in ("current-pr", "follow-up"))
+    remaining = len(saved.get("non_blocking_findings") or [])
+    line = ("- **cycle " + str(context["cycle_count"]) + "** (`" + context["commit_sha"][:12] + "`): "
+            + saved["verdict"] + " — blocking " + str(blocking) + " 件 / non-blocking " + str(remaining) + " 件")
+    return dict(issue=state["issue_number"], marker=record_marker(context),
+                content=record_marker(context) + "\n" + line + "\n")
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("operation", choices=("start", "finish", "guard-set", "clock", "observe", "replan", "retry", "restart", "close", "defer", "abandon"))
+    parser.add_argument("operation", choices=("start", "finish", "guard-set", "clock", "observe", "replan", "retry", "restart", "reconcile", "close", "defer", "deviate", "abandon", "record"))
     parser.add_argument("--state", required=True)
     parser.add_argument("--session", required=True)
     parser.add_argument("--results-dir", required=True)
@@ -398,6 +489,7 @@ def main():
     parser.add_argument("--expected-run-id")
     parser.add_argument("--approval")
     parser.add_argument("--amend", action="store_true")
+    parser.add_argument("--closing", action="store_true")
     args = parser.parse_args()
     path, directory = Path(args.state), Path(args.results_dir)
     if args.operation == "guard-set":
@@ -405,8 +497,8 @@ def main():
         return
     required = dict(start=["selection"], finish=["manifest", "content_file"],
                     clock=["input"], observe=["input", "issue"], replan=["plan", "issue"],
-                    retry=["plan", "issue"], restart=["selection", "approval"],
-                    close=[], defer=[], abandon=[])
+                    retry=["plan", "issue"], restart=["selection", "approval"], reconcile=["issue", "approval"],
+                    close=[], defer=[], deviate=["input"], abandon=[], record=[])
     for name in required[args.operation]:
         value = getattr(args, name)
         require(value and Path(value).is_absolute(), name + " must be an absolute file path")
@@ -422,6 +514,10 @@ def main():
         updated = finish(state, args, path, directory)
     elif args.operation == "abandon":
         updated = abandon(state, args, directory)
+    elif args.operation == "record":
+        # The record describes a saved cycle; it is not a state transition.
+        print(json.dumps(record(state, args, directory), ensure_ascii=False))
+        return
     else:
         stagnation = importlib.import_module("review-stagnation")
         updated = stagnation.clock(state, args) if args.operation == "clock" else getattr(stagnation, args.operation)(state, args, directory)

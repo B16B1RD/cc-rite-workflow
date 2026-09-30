@@ -115,8 +115,9 @@ commands:
 ```
 
 ```bash
-# rite-config.yml を読み取り
-cat rite-config.yml
+# rite-config.yml を読み取り（worktree 自身のもの、無ければ main checkout のもの）
+rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+cat "$rite_config"
 ```
 
 `commands.lint` が非空なら必ずそれを使う。未設定 / `null` / 空文字のときだけ 1.2 へ進む。設定済みコマンドの実行失敗は `[lint:error]` とし、自動検出や未検出スキップへ切り替えない。
@@ -432,6 +433,7 @@ fi
 - **Findings are warnings, not errors**: どのチェックも結果パターンを変えない。`[lint:success]` は findings があっても `[lint:success]`。warning を error に昇格しない。
 - **Recording**（チェックごと 3 変数）: `{prefix}_status` / `{prefix}_finding_count`（Count line regex。無マッチは 0）/ `{prefix}_output`（50 行超は truncate）。例: `bang_backtick` → `bang_backtick_status` / `bang_backtick_finding_count` / `bang_backtick_output`。
 - **Out-of-contract exit codes**（0/1/2/-1 以外）: `error` として warning 記録し続行。
+- **exit 0 の WARNING**（表の全行に適用）: `{prefix}_output` に行頭 `WARNING:` の行があっても `{prefix}_status` は `success` のまま、件数と結果パターンも変えない。4.3 の当該行にその行を表示する（skip の理由を隠さないため）。
 rationale: references/rationale.md#findings-are-warnings
 
 **Per-check notes**: Number reference `--all` は git-tracked 全件 − helper の path 除外（wiki raw、script fixtures、検出器テスト 3 本）。CHANGELOG は対象。`/rite:lint` では warning。CI の `shellcheck` job は同じ `--all` を blocking にする。
@@ -442,7 +444,7 @@ rationale: references/rationale.md#findings-are-warnings
 
 ### 3.8 Wiki Growth Check supplement (internal no-op contract)
 
-wiki 無効 / wiki branch 不在 / `gh` 不在 / config 不在は script 内で exit 0・`findings: 0`。4.3 は `success (0 findings)`。
+script 内で exit 0・`findings: 0` になる経路は 2 群。WARNING なし（config 不在 / wiki 節不在 / wiki 無効 / wiki branch 不在）は 4.3 が `success (0 findings)`。WARNING 付き（`branch.base` 未解決 / `gh` 不在 / `jq` 不在 / git log 失敗 / gh pr list 失敗 / その JSON 解析失敗）は検査を skip し、4.3 に WARNING 行を併記する。mktemp 失敗と PR↔raw 対応検査だけの skip も WARNING を出すが、growth 検査は続行する。
 
 ### 3.9 Gitignore Health Check supplement (internal no-op contract)
 
@@ -454,7 +456,7 @@ orphan は inbound（`plugins/rite/` / `docs/` / `.github/`、自己参照除く
 
 ### 3.18 Projects Board Drift Check supplement (detect-and-enumerate only)
 
-lint は auto-reconcile しない。`Done` 遷移は `/rite:cleanup` / `/rite:issue-close`、`Cancelled` 遷移は `/rite:issue-cancel`。on-demand は `--reconcile`。no-op（projects 無効 / config 不在 → exit 0）は 3.8 / 3.9 と同じ。
+lint は auto-reconcile しない。`Done` 遷移は `/rite:cleanup` / `/rite:issue-close`、`Cancelled` 遷移は `/rite:issue-cancel`。`/rite:issue-audit` は規則で決まる処分に限り両方を書く。on-demand は `--reconcile`。no-op（projects 無効 / config 不在 → exit 0）は 3.9 と同じ WARNING なしの経路。
 
 ---
 
@@ -596,7 +598,7 @@ placeholder は上表の実値。lock 失敗は WARNING して続行（best-effo
 > **注**: `/rite:open` の一気通貫フローから呼び出された場合、この「次のステップ」案内は**スキップ**されます。呼び出し元が出力パターン（`[lint:success]` 等）を検出し、自動的に次のアクション（PR 作成）に進みます。**この案内は単独実行時のみ参照してください**。
 ```
 
-`テスト` 行は `commands.test` があるときだけ。skip なら省略。プラグイン行は Phase 3.5 表順、1 チェック 1 行。`skipped` は省略。`success` / `warning` / `error` は表示（`error` = 起動失敗を落とさない）。
+`テスト` 行は `commands.test` があるときだけ。skip なら省略。プラグイン行は Phase 3.5 表順、1 チェック 1 行。`skipped` は省略。`success` / `warning` / `error` は表示（`error` = 起動失敗を落とさない）。`success` で `{prefix}_output` に行頭 `WARNING:` の行があれば、`success (0 findings)` の後ろに ` — ` を置き、WARNING 行を出現順に「 / 」で連結して表示する。
 
 ### 4.4 Automatic Work Memory Update (Conditional)
 

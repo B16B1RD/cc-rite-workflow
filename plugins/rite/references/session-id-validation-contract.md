@@ -73,6 +73,9 @@ flow-state、run queue（`path` の basename）、claim、work memory の state 
 - `hooks/tests/_hermetic-env.sh` が ambient な Claude / Codex / Grok ID、`RITE_HOST`、runtime mode / state root の
   解除一覧を持つ。`run-tests.sh` と `_test-helpers.sh` がこれを source し、ambient identity を読むテストのうち
   `_test-helpers.sh` を読まないものも直接 source するため、suite 実行でも単体実行でも解除される。
+  解除しても、hook は state root をプロセスの cwd から決めるため、checkout の中の cwd からは
+  `.rite/session-id` 経由で実行中セッションの state を読める。hook を自分の cwd で呼ぶテストは、source 直後に
+  `hermetic_leave_checkout` で cwd を git 管理外の一時ディレクトリへ移す。
 
 ## 関連
 

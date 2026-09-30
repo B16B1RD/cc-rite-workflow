@@ -2,7 +2,7 @@
 
 > Universal Issue-Driven Development Workflow for Claude Code
 
-[![Version](https://img.shields.io/badge/version-0.18.0-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.18.0)
+[![Version](https://img.shields.io/badge/version-0.19.0-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.19.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **English** | [日本語](README.ja.md)
@@ -113,6 +113,7 @@ This will:
 | `/rite:issue-update` | Update work memory |
 | `/rite:issue-close` | Check Issue completion |
 | `/rite:issue-cancel` | Cancel an Issue (close as not planned, board Status → the `cancelled` role's column when configured, clean up any PR/branch/worktree) |
+| `/rite:issue-audit` | Review open Issues as a whole (merge / lineage / redirection proposals; closes only rule-decided duplicates and resolved or rejected Issues) |
 | `/rite:issue-edit` | Edit existing Issue interactively |
 | `/rite:open` | Start work end-to-end (branch → plan → implement → lint → draft PR) |
 | `/rite:iterate` | Loop review ⇄ fix until mergeable |

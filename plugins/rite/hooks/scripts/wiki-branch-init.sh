@@ -21,13 +21,19 @@
 # Exit codes:
 #   0  初期コミット完了
 #   1  git 操作失敗 / 未知の branch_strategy / 引数異常 (leading-`-` の wiki_branch 拒否を
-#      含む; 旧 inline block と同じ blocking 契約)
+#      含む; 旧 inline block と同じ blocking 契約) / stash push が新しい entry を作らない /
+#      自分の stash entry が見つからない・pop できない / submodule に変更または未追跡
+#      ファイルがある / submodule を index から外せない / 終了時の submodule の状態が
+#      実行前と一致しない (いずれも separate_branch)
 #
 # Notes:
 #   - 旧 inline block と同じく global `set -e` は使わない (各 git 操作の失敗を
 #     個別メッセージ + exit 1 で明示ハンドリングする)。
 #   - separate_branch の orphan 作成は untracked な `.rite/wiki/` がブランチ切替を
 #     生き延びる git の挙動に依存する (stash push は untracked を退避しない)。
+#   - separate_branch は submodule の作業ツリーに触れない (gitlink を index からだけ外す)。
+#     submodule に変更または未追跡ファイルがあるときは、何も変更せずに止まる。
+#   - stash は全 worktree で共有されるため、push 時に記録した SHA の entry だけを pop する。
 set -u
 
 export GIT_TERMINAL_PROMPT=0
@@ -118,12 +124,82 @@ if [ "$branch_strategy" = "separate_branch" ]; then
 
   current_branch=$(git branch --show-current)
 
+  # stash は submodule の変更を退避せず、git diff は submodule 内の未追跡ファイルを変更と見なさない。
+  # 何かを変更する前に両方を検出して止める。利用者の設定で検出が外れないよう、submodule の ignore 設定と
+  # 未追跡ファイルの非表示設定をこの呼び出しに限って上書きする (-c は submodule 側の status にも届く)
+  status_v2=$(git -c status.showUntrackedFiles=normal status --porcelain=v2 --ignore-submodules=none) || {
+    echo "ERROR: git status failed — submodule の変更を確認できないため停止します" >&2
+    exit 1
+  }
+  changed_submodules=$(printf '%s\n' "$status_v2" | awk '
+    ($1 == "1" || $1 == "2" || $1 == "u") && $3 ~ /^S/ {
+      n = ($1 == "1") ? 8 : ($1 == "2") ? 9 : 10
+      for (i = 0; i < n; i++) $0 = substr($0, index($0, " ") + 1)
+      sub(/\t.*/, "")
+      print
+    }')
+  if [ -n "$changed_submodules" ]; then
+    echo "ERROR: submodule に変更または未追跡ファイルがあります。ブランチ・作業ツリー・stash を変更せずに停止します" >&2
+    printf '%s\n' "$changed_submodules" | sed 's/^/  対象: /' >&2
+    echo "  原因: submodule の変更は git stash で退避できず、ブランチの切り替えで失われうるため、変更がある状態では初期化しません" >&2
+    echo "  対処: 変更を残すなら submodule の変更（未追跡ファイルは commit するか submodule の外へ移す）と親の新しい参照先を commit し、残さないなら submodule を記録済みの commit と中身に戻して、git status に submodule が表示されなくなってから再実行してください" >&2
+    echo "  確認: git -c status.showUntrackedFiles=normal status --ignore-submodules=none" >&2
+    exit 1
+  fi
+  submodules_before=$(git submodule status) || {
+    echo "ERROR: git submodule status failed — submodule の状態を記録できないため停止します" >&2
+    echo "  対処: 上の git の出力を確認してください。.gitmodules に登録の無い submodule が index にある場合は、登録するか index から外してから再実行してください" >&2
+    exit 1
+  }
+
+  # 元のブランチへ戻ったあと、submodule が実行前と同じ commit で展開されていることを確かめる。
+  # signal trap の exit で EXIT trap も走るため、照合の前に verify_needed を下ろして 2 回目を防ぐ
+  verify_needed=true
+  _rite_wiki_init_verify_submodules() {
+    local after
+    [ "$verify_needed" = true ] || return 0
+    verify_needed=false
+    if ! after=$(git submodule status) || [ "$after" != "$submodules_before" ]; then
+      echo "ERROR: submodule の状態が実行前と一致しません" >&2
+      echo "  復旧: git submodule status で確認し、git submodule update で記録済みの commit を展開し直してください" >&2
+      return 1
+    fi
+  }
+
+  stash_needed=false
+  # stash は全 worktree で共有され、並行セッションが上に積みうる。自分の entry は push 時の SHA で特定する
+  stash_sha=""
+
+  # SHA が一致する stash@{n} だけを pop する。見つからなければほかの entry に触れず失敗を返す
+  _rite_wiki_init_pop_own_stash() {
+    local ref
+    ref=$(git stash list --format='%gd %H' | awk -v s="$stash_sha" '$2 == s {print $1; exit}')
+    if [ -z "$ref" ]; then
+      echo "ERROR: 退避した変更 (stash $stash_sha) が stash に見つかりません。ほかの stash entry には触れずに停止します" >&2
+      echo "  確認: git stash list --format='%gd %H %gs'" >&2
+      return 1
+    fi
+    if ! git stash pop "$ref"; then
+      echo "ERROR: 退避した変更 ($ref, $stash_sha) を戻せませんでした — 手動で復旧してください" >&2
+      echo "  確認: git stash list --format='%gd %H %gs' で SHA が一致する entry を探し、衝突を解消してから pop します" >&2
+      return 1
+    fi
+  }
+
   # cleanup trap: 異常終了時に元のブランチに復帰を保証
   # canonical signal-specific trap パターン (references/bash-trap-patterns.md 準拠)
+  # pop は元のブランチへ戻れたときだけ行う (wiki ブランチ上に自分の変更を展開しない)。
+  # signal trap の exit で EXIT trap も走るため、pop の前に stash_needed を下ろして 2 回目を防ぐ
   _rite_wiki_init_cleanup() {
-    git checkout "$current_branch" 2>/dev/null || true
-    if [ "${stash_needed:-false}" = true ]; then
-      git stash pop 2>/dev/null || echo "WARNING: git stash pop failed in cleanup — manual recovery needed: git stash list" >&2
+    if git checkout "$current_branch" 2>/dev/null; then
+      if [ "$stash_needed" = true ]; then
+        stash_needed=false
+        _rite_wiki_init_pop_own_stash
+      fi
+      _rite_wiki_init_verify_submodules
+    elif [ "$stash_needed" = true ]; then
+      echo "WARNING: '$current_branch' へ戻れなかったため、退避した変更 (stash $stash_sha) を戻していません" >&2
+      echo "  復旧: git checkout '$current_branch' のあと、git stash list --format='%gd %H %gs' で SHA が一致する entry を pop します" >&2
     fi
     _rite_wiki_init_msg_cleanup
   }
@@ -135,10 +211,18 @@ if [ "$branch_strategy" = "separate_branch" ]; then
   # dirty tree チェック（未コミットの変更を保護）
   if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/dev/null; then
     echo "WARNING: 未コミットの変更があります。git stash で退避します。"
-    git stash push -m "rite-wiki-init-stash"
+    stash_before=$(git rev-parse -q --verify refs/stash) || stash_before=""
+    git stash push -m "rite-wiki-init-stash" || {
+      echo "ERROR: git stash push failed" >&2
+      exit 1
+    }
+    stash_sha=$(git rev-parse -q --verify refs/stash) || stash_sha=""
+    # 何も退避しなかった push は refs/stash をほかの entry に残す。それを戻すと他人の変更を展開する
+    if [ -z "$stash_sha" ] || [ "$stash_sha" = "$stash_before" ]; then
+      echo "ERROR: git stash push が新しい entry を作りませんでした。自分の退避なしには続行しません" >&2
+      exit 1
+    fi
     stash_needed=true
-  else
-    stash_needed=false
   fi
 
   # orphan ブランチを作成
@@ -146,6 +230,31 @@ if [ "$branch_strategy" = "separate_branch" ]; then
     echo "ERROR: git checkout --orphan '$wiki_branch' failed" >&2
     exit 1
   }
+  # git rm は submodule の作業ツリーを中身ごと消し、元のブランチへ戻っても再展開されない。
+  # gitlink は index からだけ外し、作業ツリーには触れさせない。
+  # path は NUL 区切りで読む (行出力は " や \ を含む path を引用し、index の entry と一致しなくなる)
+  while IFS= read -r -d '' index_entry; do
+    case "$index_entry" in
+      160000\ *)
+        git update-index --force-remove -- "${index_entry#*$'\t'}" || {
+          echo "ERROR: submodule '${index_entry#*$'\t'}' を index から外せませんでした" >&2
+          exit 1
+        }
+        ;;
+    esac
+  done < <(git ls-files -s -z)
+  # update-index は対象の entry が無くても成功を返し、上の読み取りの失敗はループからは見えない。
+  # gitlink が残ったまま git rm へ進まないよう、index を読み直して確かめる
+  remaining_entries=$(git ls-files -s) || {
+    echo "ERROR: git ls-files failed — submodule を index から外せたか確認できないため停止します" >&2
+    exit 1
+  }
+  case $'\n'"$remaining_entries" in
+    *$'\n160000 '*)
+      echo "ERROR: submodule を index から外せませんでした。作業ツリーを消さずに停止します" >&2
+      exit 1
+      ;;
+  esac
   git rm -rf . 2>/dev/null || true
 
   # Wiki ファイルのみをステージング
@@ -170,13 +279,15 @@ if [ "$branch_strategy" = "separate_branch" ]; then
 
   # stash した場合のみ pop
   if [ "$stash_needed" = true ]; then
-    git stash pop
-    stash_needed=false  # EXIT trap での二重 pop を防止
+    stash_needed=false  # 成否によらず EXIT trap での二重 pop を防止
+    _rite_wiki_init_pop_own_stash || exit 1
   fi
 
   _rite_wiki_init_msg_cleanup
   # cleanup trap を解除（正常完了時は不要）
   trap - EXIT INT TERM HUP
+
+  _rite_wiki_init_verify_submodules || exit 1
 
   echo "✅ Wiki ブランチ '$wiki_branch' を作成しました"
 

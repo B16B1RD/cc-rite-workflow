@@ -133,7 +133,7 @@ sleep 1
 out=$(cd "$d" && bash "$HOOK" migrate --verbose 2>&1)
 after=$(jq -r .updated_at "$state_file")
 assert "v3 file is skipped" "$before" "$after"
-echo "$out" | grep -q "skip (already v3)" && pass "TC-7: skip message shown" || fail "TC-7: no skip message"
+grep -q "skip (already v3)" <<< "$out" && pass "TC-7: skip message shown" || fail "TC-7: no skip message"
 
 # --- TC-8: migrate maps various legacy phases correctly ---
 echo ""
@@ -187,7 +187,7 @@ rc=0; err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 ) || rc=$?
 assert_migrate_rc "TC-8b-a" "$rc"
 # Why: grep specificity に v[12]→v3 矢印と phase 変換 token を要求することで、emission format が
 # `migrate done:` 等にリネームされた場合も regression を検出できる (format stability invariant)。
-echo "$err" | grep -qE 'migrated:.*v[12]→v3.*[a-z_]+→[a-z_]+' \
+grep -qE 'migrated:.*v[12]→v3.*[a-z_]+→[a-z_]+' <<< "$err" \
   && pass "TC-8b-a: non-verbose migrate announces 'migrated:' on stderr with v→v3 + phase tokens" \
   || fail "TC-8b-a: non-verbose migrate format mismatch (expected 'migrated:.*v[12]→v3.*phase→phase'): '$err'"
 
@@ -200,7 +200,7 @@ rc=0; err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 ) || rc=$?
 # capture is empty. An aborted migrate also produces empty stderr, so the exit code is the sole
 # remaining signal distinguishing "correctly silent" from "crashed before printing anything".
 assert_migrate_rc "TC-8b-b" "$rc"
-if echo "$err" | grep -q "migrated:\|skip (already v3)"; then
+if grep -q "migrated:\|skip (already v3)" <<< "$err"; then
   fail "TC-8b-b: non-verbose migrate of v3-only emitted output (should be silent): '$err'"
 else
   pass "TC-8b-b: non-verbose migrate of v3-only stays silent"
@@ -216,7 +216,7 @@ cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
 EOF
 rc=0; err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 ) || rc=$?
 assert_migrate_rc "TC-8b-c" "$rc"
-echo "$err" | grep -qE 'migrated:.*v1→v3.*[a-z_]+→[a-z_]+' \
+grep -qE 'migrated:.*v1→v3.*[a-z_]+→[a-z_]+' <<< "$err" \
   && pass "TC-8b-c: non-verbose migrate of v1 (schema_version 欠落) announces 'migrated:' on stderr" \
   || fail "TC-8b-c: v1 schema 欠落 migrate did not emit expected 'migrated:.*v1→v3.*phase→phase' format: '$err'"
 
@@ -304,7 +304,7 @@ else
     migrated_lines=$(echo "$combined" | grep -c '^  migrated:' || true)
     # Why: counter が inflate しない invariant の direct verification。`_atomic_write` 失敗時に
     # `_migrate_file` が rc=1 を返し counter が 0 のままであることを確認する。
-    if [ "$migrated_lines" = "0" ] && echo "$combined" | grep -qE 'Migration complete: 0 file'; then
+    if [ "$migrated_lines" = "0" ] && grep -qE 'Migration complete: 0 file' <<< "$combined"; then
       pass "TC-8b-e/g: write-failure path emits no 'migrated:' and counter stays 0 (AC-8 negative regression + counter invariant)"
     else
       fail "TC-8b-e/g: write-failure path leaked output: migrated_lines=$migrated_lines; combined='$combined'"
@@ -324,7 +324,7 @@ cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
 EOF
 rc=0; err=$( (cd "$d" && bash "$HOOK" migrate --dry-run >/dev/null) 2>&1 ) || rc=$?
 assert_migrate_rc "TC-8b-f" "$rc"
-if echo "$err" | grep -q 'would migrate:'; then
+if grep -q 'would migrate:' <<< "$err"; then
   pass "TC-8b-f: --dry-run preview goes to stderr"
 else
   fail "TC-8b-f: --dry-run preview missing from stderr (regression — possibly moved back to stdout): '$err'"
@@ -609,7 +609,7 @@ rm -f "$d/.rite-session-id"
 err=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 )
 # ERE pattern: 文言の軽微なリネーム (e.g. cmd_get→get、prefix 変更) でも brittle に
 # silent regression しないようにする (cmd_get と "cannot resolve" の組合せのみ assert)
-if echo "$err" | grep -qE 'ERROR:.*cannot resolve session_id'; then
+if grep -qE 'ERROR:.*cannot resolve session_id' <<< "$err"; then
   pass "TC-15: cmd_get surfaces _resolve_session_id ERROR on stderr"
 else
   fail "TC-15: cmd_get silenced resolution ERROR (regression of the resolution-ERROR fix): '$err'"
@@ -627,13 +627,13 @@ echo "deadbeef-0000-0000-0000-000000000000" > "$d/.rite-session-id"
 err=$( (cd "$d" && bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 )
 # ERE pattern で文言 drift に耐性 (`(path|file):` を含めない柔軟な anchor で
 # WARNING 文言が path/file/その他に変わっても match する)。
-if echo "$err" | grep -qE 'WARNING:.*cmd_get.*state file not found'; then
+if grep -qE 'WARNING:.*cmd_get.*state file not found' <<< "$err"; then
   pass "TC-16.1: cmd_get WARNs on stale sid drift"
 else
   fail "TC-16.1: cmd_get silent on stale sid drift: '$err'"
 fi
 # basename leak 抑制 (multi-tenant 環境での絶対 path leak を防ぐ negative-assert)
-if echo "$err" | grep -qE 'WARNING:.*\.rite/sessions/'; then
+if grep -qE 'WARNING:.*\.rite/sessions/' <<< "$err"; then
   fail "TC-16.1: stale sid WARNING に絶対 path (.rite/sessions/) が leak: '$err'"
 else
   pass "TC-16.1: stale sid WARNING に絶対 path leak なし"
@@ -643,7 +643,7 @@ rm -f "$d/.rite-session-id"
 err=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
 # The resolution-ERROR is expected here; WARNING about state-file-not-found must NOT
 # fire because we never resolved a sid.
-if echo "$err" | grep -qE 'WARNING:.*cmd_get.*state file not found'; then
+if grep -qE 'WARNING:.*cmd_get.*state file not found' <<< "$err"; then
   fail "TC-16.2: cmd_get emitted state-file WARNING when sid was not resolved (regression)"
 else
   pass "TC-16.2: cmd_get silent about state-file-not-found when sid resolution itself failed"
@@ -660,13 +660,13 @@ echo "=== TC-17: AC-2/AC-3 cmd_set --if-exists WARNs on stale sid; first-time si
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 echo "deadbeef-0000-0000-0000-000000000000" > "$d/.rite-session-id"
 err=$( (cd "$d" && bash "$HOOK" set --phase plan --issue 1 --branch "b" --pr 0 --next "n" --if-exists) 2>&1 )
-if echo "$err" | grep -qE 'WARNING:.*cmd_set:.*if-exists skipped'; then
+if grep -qE 'WARNING:.*cmd_set:.*if-exists skipped' <<< "$err"; then
   pass "TC-17.1: cmd_set --if-exists WARNs on stale sid drift"
 else
   fail "TC-17.1: cmd_set --if-exists silent on stale sid drift: '$err'"
 fi
 # basename leak 抑制 (multi-tenant 環境での絶対 path leak を防ぐ negative-assert)
-if echo "$err" | grep -qE 'WARNING:.*\.rite/sessions/'; then
+if grep -qE 'WARNING:.*\.rite/sessions/' <<< "$err"; then
   fail "TC-17.1: stale sid WARNING に絶対 path (.rite/sessions/) が leak: '$err'"
 else
   pass "TC-17.1: stale sid WARNING に絶対 path leak なし"
@@ -679,7 +679,7 @@ result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 rm -f "$d/.rite-session-id"
 combined=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" set --phase plan --issue 1 --branch "b" --pr 0 --next "n" --if-exists) 2>&1 || true )
 # WARNING about "--if-exists skipped" must NOT appear because we never reached that branch.
-if echo "$combined" | grep -qE 'WARNING:.*cmd_set:.*if-exists skipped'; then
+if grep -qE 'WARNING:.*cmd_set:.*if-exists skipped' <<< "$combined"; then
   fail "TC-17.2: emitted --if-exists WARNING when sid resolution itself failed (regression)"
 else
   pass "TC-17.2: silent about --if-exists skip when sid resolution failed (ERROR surfaces instead)"
@@ -698,20 +698,20 @@ echo "=== TC-18: env-var session_id path-traversal validation ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 rm -f "$d/.rite-session-id"
 err=$( (cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="../../tmp/pwned" bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
-if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*path-traversal'; then
+if grep -qE 'ERROR:.*invalid session_id.*path-traversal' <<< "$err"; then
   pass "TC-18.1: CLAUDE_CODE_SESSION_ID rejects '..' path traversal"
 else
   fail "TC-18.1: path traversal not rejected: '$err'"
 fi
 err=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID="abc/def" bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
-if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*path-traversal'; then
+if grep -qE 'ERROR:.*invalid session_id.*path-traversal' <<< "$err"; then
   pass "TC-18.2: CLAUDE_SESSION_ID rejects '/' path traversal"
 else
   fail "TC-18.2: path traversal not rejected: '$err'"
 fi
 # TC-18.3: --session override 経路。validator が chokepoint で発火することを pin
 err=$( (cd "$d" && bash "$HOOK" get --session "../../tmp/pwned" --field phase --default "DEF" >/dev/null) 2>&1 || true )
-if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*path-traversal'; then
+if grep -qE 'ERROR:.*invalid session_id.*path-traversal' <<< "$err"; then
   pass "TC-18.3: --session override rejects '..' path traversal"
 else
   fail "TC-18.3: override path traversal not rejected: '$err'"
@@ -720,7 +720,7 @@ fi
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 echo "../../tmp/pwned-from-file" > "$d/.rite-session-id"
 err=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
-if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*path-traversal'; then
+if grep -qE 'ERROR:.*invalid session_id.*path-traversal' <<< "$err"; then
   pass "TC-18.4: SESSION_ID_FILE content rejects '..' path traversal"
 else
   fail "TC-18.4: SESSION_ID_FILE path traversal not rejected: '$err'"
@@ -741,20 +741,20 @@ echo "=== TC-19: env-var session_id control-character validation (log injection 
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 rm -f "$d/.rite-session-id"
 err=$( (cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID=$'sid-with\nnewline' bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
-if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*control characters'; then
+if grep -qE 'ERROR:.*invalid session_id.*control characters' <<< "$err"; then
   pass "TC-19.1: CLAUDE_CODE_SESSION_ID rejects embedded newline (log injection)"
 else
   fail "TC-19.1: newline not rejected: '$err'"
 fi
 err=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID=$'sid\twith-tab' bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
-if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*control characters'; then
+if grep -qE 'ERROR:.*invalid session_id.*control characters' <<< "$err"; then
   pass "TC-19.2: CLAUDE_SESSION_ID rejects embedded tab (log injection)"
 else
   fail "TC-19.2: tab not rejected: '$err'"
 fi
 # TC-19.3: \r (CR) — CRLF splitting attack の primary vector
 err=$( (cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID=$'sid\rwith-cr' bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
-if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*control characters'; then
+if grep -qE 'ERROR:.*invalid session_id.*control characters' <<< "$err"; then
   pass "TC-19.3: CLAUDE_CODE_SESSION_ID rejects embedded CR (CRLF injection)"
 else
   fail "TC-19.3: CR not rejected: '$err'"
@@ -762,14 +762,14 @@ fi
 # TC-19.4 (negative assertion): injection 内容が stderr に**漏出していない**ことを assert
 # validator partial regression (例: [[:cntrl:]] を `\n` のみに狭めた変更) に対する直接 guard
 inj_err=$( (cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID=$'sid\nWARNING: fake injected by attacker' bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
-if echo "$inj_err" | grep -qE 'WARNING:.*fake injected by attacker'; then
+if grep -qE 'WARNING:.*fake injected by attacker' <<< "$inj_err"; then
   fail "TC-19.4: injection content leaked into stderr (validator regression): '$inj_err'"
 else
   pass "TC-19.4: injection content not present in stderr (validator chokepoint pin)"
 fi
 # TC-19.5: --session override 経路 control-char rejection (TC-18 と symmetric な 4 entry point pin)
 err=$( (cd "$d" && bash "$HOOK" get --session $'sid\nwith-newline' --field phase --default "DEF" >/dev/null) 2>&1 || true )
-if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*control characters'; then
+if grep -qE 'ERROR:.*invalid session_id.*control characters' <<< "$err"; then
   pass "TC-19.5: --session override rejects embedded newline (control-char chokepoint)"
 else
   fail "TC-19.5: --session override で control-char not rejected: '$err'"
@@ -781,7 +781,7 @@ fi
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 printf 'sid\x01with-soh' > "$d/.rite-session-id"
 err=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
-if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*control characters'; then
+if grep -qE 'ERROR:.*invalid session_id.*control characters' <<< "$err"; then
   pass "TC-19.6: SESSION_ID_FILE 内容 rejects embedded SOH (4 entry point の対称 pin 完成)"
 else
   fail "TC-19.6: SESSION_ID_FILE control-char not rejected: '$err'"
@@ -793,7 +793,7 @@ fi
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 rm -f "$d/.rite-session-id"
 err=$( (cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID=$'sid\x9bwith-csi' bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
-if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*control characters'; then
+if grep -qE 'ERROR:.*invalid session_id.*control characters' <<< "$err"; then
   pass "TC-19.7: CLAUDE_CODE_SESSION_ID rejects C1 0x9b byte"
 else
   fail "TC-19.7: C1 0x9b not rejected: '$err'"
@@ -814,7 +814,7 @@ echo "{this is not valid JSON" > "$state_file"
 # TC-20.1: --field path で jq read failed WARNING + rc=0 + stdout に default 返却 + 診断行 (2-space indent)
 combined=$( (cd "$d" && bash "$HOOK" get --field phase --default "DEF") 2>&1 )
 get_rc=$?
-if echo "$combined" | grep -qE 'WARNING:.*cmd_get: jq read failed'; then
+if grep -qE 'WARNING:.*cmd_get: jq read failed' <<< "$combined"; then
   pass "TC-20.1: corrupt JSON で --field 経路の jq read failed WARNING が発火"
 else
   fail "TC-20.1: WARNING missing on corrupt JSON --field: '$combined'"
@@ -824,19 +824,19 @@ if [ "$get_rc" = "0" ]; then
 else
   fail "TC-20.1: jq read failure で rc=$get_rc (expected 0)"
 fi
-if echo "$combined" | grep -qE '^DEF$'; then
+if grep -qE '^DEF$' <<< "$combined"; then
   pass "TC-20.1: jq read failure でも stdout に default 返却"
 else
   fail "TC-20.1: default not returned on jq read failure: '$combined'"
 fi
 # 診断 stderr の indented 行 (jq error 内容、`sed 's/^/  /'` で prefix される) が出ること
-if echo "$combined" | grep -qE '^  [^ ]'; then
+if grep -qE '^  [^ ]' <<< "$combined"; then
   pass "TC-20.1: jq read failure 時に診断 stderr の indented 行が出力される (observability 確保)"
 else
   fail "TC-20.1: 診断 stderr の indented 行が欠落: '$combined'"
 fi
 # basename leak 抑制 (multi-tenant 環境での絶対 path leak を防ぐ negative-assert)
-if echo "$combined" | grep -qE 'WARNING:.*\.rite/sessions/'; then
+if grep -qE 'WARNING:.*\.rite/sessions/' <<< "$combined"; then
   fail "TC-20.1: WARNING に絶対 path (.rite/sessions/) が leak: '$combined'"
 else
   pass "TC-20.1: WARNING に絶対 path leak なし (basename 化が機能している)"
@@ -844,7 +844,7 @@ fi
 # TC-20.2: --jq-filter 経路の jq filter failed WARNING + rc=0 + stdout に default 返却 + 診断行
 combined=$( (cd "$d" && bash "$HOOK" get --jq-filter '.phase' --default "DEF") 2>&1 )
 get_rc=$?
-if echo "$combined" | grep -qE 'WARNING:.*cmd_get: jq filter failed'; then
+if grep -qE 'WARNING:.*cmd_get: jq filter failed' <<< "$combined"; then
   pass "TC-20.2: corrupt JSON で --jq-filter 経路の jq filter failed WARNING が発火"
 else
   fail "TC-20.2: WARNING missing on corrupt JSON --jq-filter: '$combined'"
@@ -854,17 +854,17 @@ if [ "$get_rc" = "0" ]; then
 else
   fail "TC-20.2: jq filter failure で rc=$get_rc (expected 0)"
 fi
-if echo "$combined" | grep -qE '^DEF$'; then
+if grep -qE '^DEF$' <<< "$combined"; then
   pass "TC-20.2: jq filter failure でも stdout に default 返却"
 else
   fail "TC-20.2: default not returned on jq filter failure: '$combined'"
 fi
-if echo "$combined" | grep -qE '^  [^ ]'; then
+if grep -qE '^  [^ ]' <<< "$combined"; then
   pass "TC-20.2: jq filter failure 時に診断 stderr の indented 行が出力される"
 else
   fail "TC-20.2: 診断 stderr の indented 行が欠落: '$combined'"
 fi
-if echo "$combined" | grep -qE 'WARNING:.*\.rite/sessions/'; then
+if grep -qE 'WARNING:.*\.rite/sessions/' <<< "$combined"; then
   fail "TC-20.2: WARNING に絶対 path (.rite/sessions/) が leak: '$combined'"
 else
   pass "TC-20.2: WARNING に絶対 path leak なし"
@@ -887,7 +887,7 @@ result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 combined=$( (cd "$d" && bash "$HOOK" get --default "DEF"; echo "__RC=$?") 2>&1 || true )
 get_rc=$(printf '%s' "$combined" | sed -n 's/.*__RC=\([0-9]*\).*/\1/p')
 combined="${combined%__RC=*}"
-if echo "$combined" | grep -qE 'ERROR: --field or --jq-filter required'; then
+if grep -qE 'ERROR: --field or --jq-filter required' <<< "$combined"; then
   pass "TC-21.1: --field/--jq-filter 両方未指定で ERROR メッセージが stderr に出る"
 else
   fail "TC-21.1: ERROR missing: '$combined'"
@@ -909,7 +909,7 @@ result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 rm -f "$d/.rite-session-id"
 # TC-22.1: cmd_set --if-exists の symmetric pin
 combined=$( (cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$sid" bash "$HOOK" set --phase plan --issue 1 --branch "b" --pr 0 --next "n" --if-exists) 2>&1 )
-if echo "$combined" | grep -qE 'WARNING:.*cmd_set:.*if-exists skipped'; then
+if grep -qE 'WARNING:.*cmd_set:.*if-exists skipped' <<< "$combined"; then
   fail "TC-22.1: env-set first-time で if-exists skipped WARNING が漏出 (gate 除去 regression): '$combined'"
 else
   pass "TC-22.1: env-set first-time で cmd_set --if-exists が graceful silent (依存先契約保持)"
@@ -918,7 +918,7 @@ fi
 combined=$( (cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$sid" bash "$HOOK" get --field phase --default "DEF"; echo "__RC=$?") 2>&1 || true )
 get_rc=$(printf '%s' "$combined" | sed -n 's/.*__RC=\([0-9]*\).*/\1/p')
 combined="${combined%__RC=*}"
-if echo "$combined" | grep -qE 'WARNING:.*cmd_get:.*state file not found'; then
+if grep -qE 'WARNING:.*cmd_get:.*state file not found' <<< "$combined"; then
   fail "TC-22.2: env-set first-time で state-file-not-found WARNING が漏出 (gate 除去 regression): '$combined'"
 else
   pass "TC-22.2: env-set first-time で cmd_get が graceful silent (依存先契約保持)"
@@ -1116,13 +1116,13 @@ combined=$( (cd "$d" && bash "$HOOK" get --jq-filter "$filter" --default "DEF") 
 # snippet = helper が emit する 2-space indent 診断行 (= jq stderr の corrupt-fragment 相当)
 snippet=$(printf '%s\n' "$combined" | grep '^  ' || true)
 # TC-23.1: jq filter failed WARNING 発火 (中和 helper を呼ぶ経路に到達した sanity pin)
-if echo "$combined" | grep -qE 'WARNING:.*cmd_get: jq filter failed'; then
+if grep -qE 'WARNING:.*cmd_get: jq filter failed' <<< "$combined"; then
   pass "TC-23.1: jq filter failed WARNING 発火 (中和 helper 経路に到達)"
 else
   fail "TC-23.1: WARNING missing: '$combined'"
 fi
 # TC-23.2 (core): snippet 行に生 ESC (0x1b) が残らない = 制御文字が中和されている
-if printf '%s' "$snippet" | LC_ALL=C grep -q "$esc"; then
+if LC_ALL=C grep -q "$esc" <<< "$snippet"; then
   fail "TC-23.2: snippet 行に生 ESC が残存 (control-char 中和が機能していない): '$(printf '%s' "$snippet" | cat -v)'"
 else
   pass "TC-23.2: snippet 行の生 ESC が中和されている"
@@ -1147,7 +1147,7 @@ combined_c1=$( (cd "$d" && bash "$HOOK" get --jq-filter "$filter_c1" --default "
 snippet_c1=$(printf '%s\n' "$combined_c1" | grep -a '^  ' || true)
 if [ -z "$snippet_c1" ]; then
   fail "TC-23.4: snippet 行が emit されていない (C1 経路に到達せず): '$(printf '%s' "$combined_c1" | cat -v)'"
-elif printf '%s' "$snippet_c1" | LC_ALL=C grep -q $'\x9b'; then
+elif LC_ALL=C grep -q $'\x9b' <<< "$snippet_c1"; then
   fail "TC-23.4: snippet 行に生 0x9b (C1 CSI) が残存: '$(printf '%s' "$snippet_c1" | cat -v)'"
 else
   pass "TC-23.4: C1 0x9b (U+009B 経由) が snippet 行で中和されている"
@@ -1335,16 +1335,17 @@ assert "TC-27b: ordinary set default-clears stop_reason" "false" "$(jq -r 'has("
 # --- TC-27c: iterate producer persists the breaker reason in the reset set ---
 echo ""
 echo "=== TC-27c: iterate breaker preamble owns the stop_reason producer contract ==="
-iterate_skill="$PLUGIN_ROOT/skills/iterate/SKILL.md"
+# The breaker preamble body lives in scripts/iterate-step.sh (step_breaker); the skill only calls it.
+iterate_step="$PLUGIN_ROOT/scripts/iterate-step.sh"
 breaker_set_block="$(awk '
   /if cb_reset_out=.*flow-state\.sh set/ { capture=1 }
   capture { print }
   capture && /2>&1\); then/ { exit }
-' "$iterate_skill")"
+' "$iterate_step")"
 assert "TC-27c: breaker reset call resets cycle_count" "1" \
   "$(printf '%s\n' "$breaker_set_block" | grep -c -- '--cycle-count 0' || true)"
 assert "TC-27c: same breaker reset call persists the reason token" "1" \
-  "$(printf '%s\n' "$breaker_set_block" | grep -cF -- '--stop-reason "circuit-breaker:{cb_reason}"' || true)"
+  "$(printf '%s\n' "$breaker_set_block" | grep -cF -- '--stop-reason "circuit-breaker:$cb_reason"' || true)"
 
 # A failure of that one atomic set loses both writes. Pin the user-visible
 # diagnostic so the recovery path cannot silently promise that the reason survived.
@@ -1353,7 +1354,7 @@ breaker_failure_block="$(awk '
   /if cb_reset_out=.*flow-state\.sh set/ { seen_set=1 }
   capture { print }
   capture && /^fi$/ { exit }
-' "$iterate_skill")"
+' "$iterate_step")"
 assert "TC-27c: failed atomic set diagnoses counter reset" "1" \
   "$(printf '%s\n' "$breaker_failure_block" | grep -cF -- 'cycle counter リセット' || true)"
 assert "TC-27c: failed atomic set diagnoses missing reason persistence" "1" \
@@ -1400,7 +1401,7 @@ sfile4="$d4/.rite/sessions/${sid4}.flow-state"
 esc=$(printf '\033')
 jq --arg v "${esc}[31mnot-a-number" '. + {wm_comment_id: $v}' "$sfile4" > "$sfile4.tmp" && mv "$sfile4.tmp" "$sfile4"
 corrupt_set_stderr=$( (cd "$d4" && bash "$HOOK" set --phase branch --issue 1813 --branch "fix/issue-1813" --pr 0 --next "n2") 2>&1 1>/dev/null || true )
-if printf '%s' "$corrupt_set_stderr" | LC_ALL=C grep -q "$esc"; then
+if LC_ALL=C grep -q "$esc" <<< "$corrupt_set_stderr"; then
   fail "TC-28: corrupt wm_comment_id 由来の生 ESC が write エラー出力に残存 (control-char 中和が機能していない): '$(printf '%s' "$corrupt_set_stderr" | cat -v)'"
 else
   pass "TC-28: corrupt wm_comment_id 由来の write エラー出力の生 ESC が中和されている"
@@ -1913,6 +1914,165 @@ assert_grep "T-04: WARNING names the corrupt flow-state path" "$stderr_reap04" \
 assert "T-04: corrupt flow-state is left in place" "present" \
   "$([ -e "$d/.rite/sessions/${sid_b}.flow-state" ] && echo present || echo absent)"
 rm -f "$stderr_reap04"
+
+# --- pause / resume ---
+assert_neq() { if [ "$2" != "$3" ]; then pass "$1"; else fail "$1: got '$3'"; fi; }
+iso_ago() { jq -nr --argjson s "$1" '(now - $s) | floor | todate'; }
+same_bytes() { cmp -s "$1" "$2" && echo same || echo changed; }
+# A closed / open review clock segment in the shape review-clock-open writes.
+write_clock() {
+  mkdir -p "$(dirname "$1")"
+  jq -n --arg start "$2" \
+    '{review_context:{session_id:"ctx",run_id:"r1",pr_number:1,cycle:1,head:"abc"},segment_id:"seg.1",kind:"work",started_at:$start}' > "$1"
+}
+
+echo ""
+echo "=== PZ-01: pause records once; a second pause changes nothing; resume removes it ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+rec="$d/.rite/state/pause-${sid}.json"
+rc_pz=0; (cd "$d" && bash "$HOOK" pause) || rc_pz=$?
+assert "PZ-01: pause exits 0" "0" "$rc_pz"
+assert "PZ-01: record carries paused_at" "true" "$(jq -r '(.paused_at // "") | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$")' "$rec")"
+# Age the record so a second pause that rewrote it would show a newer time (timestamps have 1 s resolution).
+jq --arg t "$(iso_ago 600)" '.paused_at = $t' "$rec" > "$rec.tmp" && mv "$rec.tmp" "$rec"
+cp "$rec" "$d/pz01.before"
+rc_pz=0; (cd "$d" && bash "$HOOK" pause) || rc_pz=$?
+assert "PZ-01: second pause exits 0" "0" "$rc_pz"
+assert "PZ-01: second pause leaves the aged record byte-identical" "same" "$(same_bytes "$rec" "$d/pz01.before")"
+assert "PZ-01: exactly one pause record" "1" "$(find "$d/.rite/state" -name 'pause-*.json' | wc -l | tr -d ' ')"
+assert "PZ-01: pause leaves no lock file behind" "0" "$(find "$d/.rite/state" -name 'pause-*.lock' | wc -l | tr -d ' ')"
+rc_pz=0; (cd "$d" && bash "$HOOK" resume) || rc_pz=$?
+assert "PZ-01: resume exits 0" "0" "$rc_pz"
+assert "PZ-01: resume removes the record" "absent" "$([ -e "$rec" ] && echo present || echo absent)"
+
+echo ""
+echo "=== PZ-02: resume without a record is a no-op; pause without a session fails loudly ==="
+result=$(new_sandbox); d="${result%|*}"
+rc_pz=0; (cd "$d" && bash "$HOOK" resume) || rc_pz=$?
+assert "PZ-02: resume without a record exits 0" "0" "$rc_pz"
+assert "PZ-02: resume creates nothing" "0" "$(find "$d/.rite" -name 'pause-*' 2>/dev/null | wc -l | tr -d ' ')"
+rm -f "$d/.rite-session-id"
+rc_pz=0; (cd "$d" && bash "$HOOK" pause) 2>/dev/null || rc_pz=$?
+assert_neq "PZ-02: pause without a session exits non-zero" "0" "$rc_pz"
+assert "PZ-02: no record without a session" "0" "$(find "$d/.rite" -name 'pause-*' 2>/dev/null | wc -l | tr -d ' ')"
+
+echo ""
+echo "=== PZ-03: pause and resume leave flow-state and run-queue untouched (and work without flow-state) ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+rc_pz=0; (cd "$d" && bash "$HOOK" pause) || rc_pz=$?
+assert "PZ-03: pause works without a flow-state file" "0" "$rc_pz"
+(cd "$d" && bash "$HOOK" resume)
+(cd "$d" && bash "$HOOK" set --phase review --issue 42 --branch b --pr 9 --next n)
+mkdir -p "$d/.rite/state"
+jq -n '{issues:[42], cursor:0, mode:"default", failed:[], outstanding:[], active:true, updated_at:"2026-01-01T00:00:00Z"}' \
+  > "$d/.rite/state/run-queue-${sid}.json"
+cp "$d/.rite/sessions/${sid}.flow-state" "$d/pz03.fs"; cp "$d/.rite/state/run-queue-${sid}.json" "$d/pz03.q"
+(cd "$d" && bash "$HOOK" pause)
+assert "PZ-03: flow-state unchanged while paused" "same" "$(same_bytes "$d/.rite/sessions/${sid}.flow-state" "$d/pz03.fs")"
+assert "PZ-03: run-queue unchanged while paused" "same" "$(same_bytes "$d/.rite/state/run-queue-${sid}.json" "$d/pz03.q")"
+(cd "$d" && bash "$HOOK" resume)
+assert "PZ-03: flow-state unchanged after resume" "same" "$(same_bytes "$d/.rite/sessions/${sid}.flow-state" "$d/pz03.fs")"
+assert "PZ-03: run-queue unchanged after resume" "same" "$(same_bytes "$d/.rite/state/run-queue-${sid}.json" "$d/pz03.q")"
+
+echo ""
+echo "=== PZ-04: pause closes the open review clock segment once; no clock means no clock file ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+clock="$d/.rite/state/review-clock-${sid}.json"
+(cd "$d" && bash "$HOOK" pause)
+assert "PZ-04: pause without a clock creates none" "absent" "$([ -e "$clock" ] && echo present || echo absent)"
+(cd "$d" && bash "$HOOK" resume)
+write_clock "$clock" "$(iso_ago 600)"
+before_clock=$(jq -cS . "$clock")
+t0=$(jq -nr 'now | floor')
+(cd "$d" && bash "$HOOK" pause)
+t1=$(jq -nr 'now | floor')
+ended=$(jq -r '.ended_at // ""' "$clock")
+ended_epoch=$(jq -nr --arg e "$ended" '$e | fromdateiso8601' 2>/dev/null || echo 0)
+if [ "$ended_epoch" -ge "$t0" ] && [ "$ended_epoch" -le "$t1" ] && [ "$(jq -cS 'del(.ended_at)' "$clock")" = "$before_clock" ]; then
+  pass "PZ-04: pause stamps ended_at at the pause and keeps every other field"
+else
+  fail "PZ-04: ended_at='$ended' window=$t0..$t1 record=$(cat "$clock")"
+fi
+assert "PZ-04: pause leaves no lock file behind for the clock" "0" "$(find "$d/.rite/state" -name 'review-clock-*.lock' | wc -l | tr -d ' ')"
+
+echo ""
+echo "=== PZ-05: a segment that already has ended_at is left as it is (the usage-limit stop wrote it earlier) ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+clock="$d/.rite/state/review-clock-${sid}.json"
+write_clock "$clock" "$(iso_ago 900)"
+jq --arg e "$(iso_ago 300)" '.ended_at = $e' "$clock" > "$clock.tmp" && mv "$clock.tmp" "$clock"
+cp "$clock" "$d/pz05.before"
+(cd "$d" && bash "$HOOK" pause)
+assert "PZ-05: the earlier ended_at is not moved to the pause time" "same" "$(same_bytes "$clock" "$d/pz05.before")"
+
+echo ""
+echo "=== PZ-06: resume that cannot save the paused segment warns, keeps it frozen and still clears the pause ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+clock="$d/.rite/state/review-clock-${sid}.json"
+write_clock "$clock" "$(iso_ago 600)"
+(cd "$d" && bash "$HOOK" pause)
+cp "$clock" "$d/pz06.before"
+stderr_pz06="$(mktemp)"
+# No review run exists in this sandbox, so the paused segment cannot be recorded.
+(cd "$d" && bash "$HOOK" resume) 2>"$stderr_pz06" || true
+assert "PZ-06: pause record cleared" "absent" "$([ -e "$d/.rite/state/pause-${sid}.json" ] && echo present || echo absent)"
+assert "PZ-06: frozen segment left byte-identical" "same" "$(same_bytes "$clock" "$d/pz06.before")"
+assert_grep "PZ-06: WARNING says the paused segment could not be recorded" "$stderr_pz06" "could not record the paused review clock segment"
+rm -f "$stderr_pz06"
+
+echo ""
+echo "=== PZ-07: a clock record that is not a JSON object does not stop the pause; --session resume keeps the segment frozen ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+clock="$d/.rite/state/review-clock-${sid}.json"
+mkdir -p "$d/.rite/state"; printf '[1,2]\n' > "$clock"
+cp "$clock" "$d/pz07.before"
+stderr_pz07="$(mktemp)"
+rc_pz=0; (cd "$d" && bash "$HOOK" pause) 2>"$stderr_pz07" || rc_pz=$?
+assert "PZ-07: pause still exits 0" "0" "$rc_pz"
+assert "PZ-07: the pause record is written" "present" "$([ -e "$d/.rite/state/pause-${sid}.json" ] && echo present || echo absent)"
+assert "PZ-07: the malformed clock is left unchanged" "same" "$(same_bytes "$clock" "$d/pz07.before")"
+assert_grep "PZ-07: WARNING names the malformed clock" "$stderr_pz07" "not a JSON object"
+write_clock "$clock" "$(iso_ago 600)"
+jq --arg e "$(iso_ago 300)" '.ended_at = $e' "$clock" > "$clock.tmp" && mv "$clock.tmp" "$clock"
+cp "$clock" "$d/pz07.frozen"
+(cd "$d" && bash "$HOOK" resume --session "$sid") 2>"$stderr_pz07" || true
+assert "PZ-07: --session resume clears the record" "absent" "$([ -e "$d/.rite/state/pause-${sid}.json" ] && echo present || echo absent)"
+assert "PZ-07: --session resume leaves the frozen segment as it is" "same" "$(same_bytes "$clock" "$d/pz07.frozen")"
+assert_grep "PZ-07: WARNING says the segment stays frozen" "$stderr_pz07" "so the paused review clock segment is left frozen"
+rm -f "$stderr_pz07"
+
+# A mktemp that fails only for paths containing $2, so one failure path can be forced without
+# breaking the other files the command writes.
+make_failing_mktemp() {
+  mkdir -p "$1"
+  printf '%s\n' '#!/bin/bash' "case \"\$*\" in *\"$2\"*) echo 'mktemp: forced failure' >&2; exit 1 ;; esac" \
+    "exec \"$(command -v mktemp)\" \"\$@\"" > "$1/mktemp"
+  chmod +x "$1/mktemp"
+}
+
+echo ""
+echo "=== PZ-08: failure to create the pause temporary file exits non-zero without a pause record ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+make_failing_mktemp "$d/stub" "pause-"
+rc_pz=0; (cd "$d" && PATH="$d/stub:$PATH" bash "$HOOK" pause) 2>/dev/null || rc_pz=$?
+assert_neq "PZ-08: pause exits non-zero" "0" "$rc_pz"
+assert "PZ-08: no pause record" "0" "$(find "$d/.rite/state" -name 'pause-*' 2>/dev/null | wc -l | tr -d ' ')"
+
+echo ""
+echo "=== PZ-09: a clock that cannot be stamped warns, keeps the pause record and leaves the segment open ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+clock="$d/.rite/state/review-clock-${sid}.json"
+(cd "$d" && bash "$HOOK" pause)
+write_clock "$clock" "$(iso_ago 600)"
+cp "$clock" "$d/pz09.before"
+make_failing_mktemp "$d/stub" "review-clock-"
+stderr_pz09="$(mktemp)"
+rc_pz=0; (cd "$d" && PATH="$d/stub:$PATH" bash "$HOOK" pause) 2>"$stderr_pz09" || rc_pz=$?
+assert "PZ-09: pause still exits 0" "0" "$rc_pz"
+assert "PZ-09: the pause record is kept" "present" "$([ -e "$d/.rite/state/pause-${sid}.json" ] && echo present || echo absent)"
+assert "PZ-09: the segment stays open and unchanged" "same" "$(same_bytes "$clock" "$d/pz09.before")"
+assert_grep "PZ-09: WARNING says the pause will count as work time" "$stderr_pz09" "failed to stamp ended_at"
+rm -f "$stderr_pz09"
 
 if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del + non-UUID acceptance (Layer 1 format-agnostic contract pin) + phase-transition append log + reap-issue cross-session deactivate"; then
   exit 1

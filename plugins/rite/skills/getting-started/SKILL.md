@@ -173,13 +173,20 @@ schema が古いときは fresh setup ではなく upgrade を案内する。手
 は `を実行してください。`）、CHANGELOG の新セクション欠落、`schema_version` の乖離。
 rationale: references/rationale.md#upgrade-delegate
 
-Check if `rite-config.yml` exists:
+Resolve `rite-config.yml` with the shared resolver (a session worktree falls back to the main checkout's file). Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version):
 
 ```bash
-ls rite-config.yml 2>/dev/null || ls .claude/rite-config.yml 2>/dev/null
+bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh
 ```
 
-**If it exists:**
+| rc | Action |
+|----|--------|
+| 0 | Show "If rc=0" below and continue |
+| 1 | Show "If rc=1" below |
+| 2 | The file is unreadable or the main checkout root cannot be resolved. Show the resolver's stderr and stop |
+| other | The resolver could not run. Show its stderr and stop |
+
+**If rc=0 (found):**
 
 ```
 ✅ Already initialized (rite-config.yml found)
@@ -194,7 +201,7 @@ bundled template in `plugins/rite/templates/config/rite-config.yml`, run
 up to date.
 ```
 
-**If it does not exist:**
+**If rc=1 (not found):**
 
 ```
 ⚡ Action Required: Run /rite:setup to set up rite workflow

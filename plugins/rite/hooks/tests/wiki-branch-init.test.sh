@@ -6,6 +6,8 @@
 # 旧 inline block を参照実装として verbatim 再現し、同一構成の sandbox git repo
 # (bare origin 付き) で実行して、正規化済み出力と end state (ブランチ構成 /
 # wiki tree / commit subject / stash / dirty 変更の復元) を比較する。
+# stash の扱い (自分の entry を SHA で特定して pop する) は参照実装と意図的に異なり、
+# 共有 stash を再現する TC-11〜TC-15 で pin する。
 #
 # Usage: bash plugins/rite/hooks/tests/wiki-branch-init.test.sh
 set -uo pipefail
@@ -214,8 +216,11 @@ render_reference() {
 
 # git 出力の commit hash と sandbox 固有 path (ref-* / new-* の origin 名差) を
 # 正規化して比較可能にする
+# helper は stash@{n} を名指しで pop するため、引数なし pop の "Dropped refs/stash@{0}" と
+# 表記だけが異なる。同じ entry の drop なので揃えて比較する
 normalize_output() {
   sed -E 's/[0-9a-f]{7,40}/HASH/g' \
+    | sed -E 's#Dropped refs/stash@#Dropped stash@#' \
     | sed -E 's#/(ref|new)-([A-Za-z-]+)-origin\.git#/SANDBOX-origin.git#g' \
     | sed -E 's#nonexistent-(ref|new)\.git#nonexistent-SANDBOX.git#g'
 }
@@ -521,6 +526,538 @@ if grep -qF 'why from file' <<<"$state"; then
   pass "--message-file body is in the commit"
 else
   fail "body missing: $state"
+fi
+
+# --------------------------------------------------------------------------
+# TC-11〜TC-14: stash は全 worktree で共有される。別の worktree（並行セッション）の
+# 退避が混ざっても、自分が積んだ entry だけを SHA で特定して戻す
+# --------------------------------------------------------------------------
+REAL_GIT=$(command -v git)
+
+# make_shared_stash_sandbox <name> — 自分の dirty 変更と、変更を持つ linked worktree を用意する
+make_shared_stash_sandbox() {
+  local repo other
+  repo=$(make_sandbox "$1")
+  other="$repo-other"
+  git -C "$repo" worktree add -q -b other "$other" main
+  echo "other" > "$other/base.txt"
+  echo "modified" > "$repo/base.txt"
+  # global の core.hooksPath があっても sandbox の hook が発火するよう local で固定する
+  git -C "$repo" config core.hooksPath "$repo/.git/hooks"
+  echo "$repo"
+}
+
+# install_pre_push <repo> <body> — push の直前（wiki ブランチ上、自分の退避は積まれた後）に body を実行する
+install_pre_push() {
+  printf '#!/bin/bash\nunset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE\n%s\n' "$2" > "$1/.git/hooks/pre-push"
+  chmod +x "$1/.git/hooks/pre-push"
+}
+
+stash_shas() { git -C "$1" stash list --format='%H'; }
+
+echo "TC-11: another session's stash on top — only our own entry is popped"
+repo=$(make_shared_stash_sandbox tc11)
+rec="$TEST_DIR/tc11-rec"
+install_pre_push "$repo" "git -C '$repo-other' stash push -q -m other-session && git -C '$repo-other' rev-parse refs/stash > '$rec'"
+run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+state=$(dump_state "$repo")
+if [ -s "$rec" ] && [ "$HELPER_RC" = "0" ] && grep -q "^base_content=modified$" <<<"$state" \
+   && [ "$(stash_shas "$repo")" = "$(cat "$rec")" ] && [ "$(cat "$repo-other/base.txt")" = "base" ]; then
+  pass "own change restored, other session's entry left intact"
+else
+  fail "rec=$(cat "$rec" 2>/dev/null) stash=$(stash_shas "$repo") other=$(cat "$repo-other/base.txt") rc=$HELPER_RC state=$state output=$HELPER_OUTPUT"
+fi
+
+echo "TC-12: cleanup trap pops only our own entry after a failed push"
+repo=$(make_shared_stash_sandbox tc12)
+rec="$TEST_DIR/tc12-rec"
+install_pre_push "$repo" "git -C '$repo-other' stash push -q -m other-session && git -C '$repo-other' rev-parse refs/stash > '$rec'; exit 1"
+run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+state=$(dump_state "$repo")
+if [ -s "$rec" ] && [ "$HELPER_RC" = "1" ] && grep -q "^current=main$" <<<"$state" \
+   && grep -q "^base_content=modified$" <<<"$state" && [ "$(stash_shas "$repo")" = "$(cat "$rec")" ]; then
+  pass "trap restores own change, other session's entry left intact"
+else
+  fail "rec=$(cat "$rec" 2>/dev/null) stash=$(stash_shas "$repo") rc=$HELPER_RC state=$state output=$HELPER_OUTPUT"
+fi
+
+echo "TC-13: own entry gone — ERROR and the other entries are untouched"
+repo=$(make_shared_stash_sandbox tc13)
+git -C "$repo-other" stash push -q -m other-session
+before=$(stash_shas "$repo")
+rec="$TEST_DIR/tc13-rec"
+install_pre_push "$repo" "ref=\$(git -C '$repo-other' stash list --format='%gd %gs' | awk '/rite-wiki-init-stash/ {print \$1; exit}') && git -C '$repo-other' stash drop -q \"\$ref\" && echo dropped > '$rec'"
+run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+if [ -s "$rec" ] && [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"ERROR: 退避した変更"*"見つかりません"* ]] \
+   && [ "$(stash_shas "$repo")" = "$before" ]; then
+  pass "missing own entry → ERROR + exit 1, stash unchanged"
+else
+  fail "rec=$(cat "$rec" 2>/dev/null) before=$before stash=$(stash_shas "$repo") rc=$HELPER_RC output=$HELPER_OUTPUT"
+fi
+
+echo "TC-14: stash push that creates no entry stops before touching branches"
+repo=$(make_shared_stash_sandbox tc14)
+git -C "$repo-other" stash push -q -m other-session
+before=$(stash_shas "$repo")
+fakebin="$TEST_DIR/tc14-bin"
+mkdir -p "$fakebin"
+printf '#!/bin/bash\n[ "$1 $2" = "stash push" ] && exit 0\nexec %q "$@"\n' "$REAL_GIT" > "$fakebin/git"
+chmod +x "$fakebin/git"
+PATH="$fakebin:$PATH" run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+state=$(dump_state "$repo")
+if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"新しい entry を作りませんでした"* ]] \
+   && grep -q "^current=main$" <<<"$state" && grep -q "^wiki_tree=<none>$" <<<"$state" \
+   && [ "$(stash_shas "$repo")" = "$before" ]; then
+  pass "no new stash entry → ERROR + exit 1 before orphan checkout, stash unchanged"
+else
+  fail "before=$before stash=$(stash_shas "$repo") rc=$HELPER_RC state=$state output=$HELPER_OUTPUT"
+fi
+
+echo "TC-16: a submodule-only change stops with its cause and keeps the submodule edit"
+# git stash does not save submodule changes, so the helper stops before stashing. The stop must
+# name the cause and leave the submodule edit in place.
+repo=$(make_sandbox tc16)
+sub="$TEST_DIR/tc16-sub"
+git init -q -b main "$sub"
+(cd "$sub" && git config user.email t@e && git config user.name t && echo a > a && git add a && git commit -qm s)
+(cd "$repo" && git -c protocol.file.allow=always submodule add -q "$sub" sub >/dev/null 2>&1 && git commit -qm sub && git push -q origin main 2>/dev/null)
+echo "edited" > "$repo/sub/a"
+run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"submodule"* ]] \
+   && [ "$(cat "$repo/sub/a")" = "edited" ] && ! git -C "$repo" rev-parse --verify -q wiki >/dev/null; then
+  pass "submodule-only change → ERROR names submodule, edit kept, no wiki branch"
+else
+  fail "rc=$HELPER_RC sub/a=$(cat "$repo/sub/a" 2>/dev/null) output=$HELPER_OUTPUT"
+fi
+# The printed remedy must actually unblock a rerun: commit inside the submodule, then the pointer in the parent
+(cd "$repo/sub" && git config user.email t@e && git config user.name t && git commit -qam edit)
+(cd "$repo" && git add sub && git commit -qm "sub pointer")
+run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+if [ "$HELPER_RC" = "0" ] && git -C "$repo" rev-parse --verify -q wiki >/dev/null; then
+  pass "following the printed remedy lets the rerun succeed"
+else
+  fail "rerun after remedy: rc=$HELPER_RC output=$HELPER_OUTPUT"
+fi
+# Each of these four submodule-only states stops the helper, and once git status no longer shows the submodule
+# (the exit condition the message names) the rerun proceeds
+(cd "$sub" && echo b > a && git commit -qam s2)
+for kind in content pointer staged-pointer staged-in-sub; do
+  repo=$(make_sandbox "tc16-$kind")
+  (cd "$repo" && git -c protocol.file.allow=always submodule add -q "$sub" sub >/dev/null 2>&1 && git commit -qm sub && git push -q origin main 2>/dev/null)
+  case "$kind" in
+    content) echo edited > "$repo/sub/a" ;;
+    pointer) git -C "$repo/sub" checkout -q HEAD~1 ;;
+    staged-pointer) git -C "$repo/sub" checkout -q HEAD~1; git -C "$repo" add sub ;;
+    staged-in-sub) echo edited > "$repo/sub/a"; git -C "$repo/sub" add a ;;
+  esac
+  run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+  first_rc=$HELPER_RC first_output=$HELPER_OUTPUT
+  git -C "$repo" reset -q -- sub
+  git -C "$repo" submodule update -q --force
+  status_sub=$(git -C "$repo" status --porcelain -- sub)
+  run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+  if [ "$first_rc" = "1" ] && [[ "$first_output" == *"git status"* ]] && [ -z "$status_sub" ] \
+     && [ "$HELPER_RC" = "0" ] && git -C "$repo" rev-parse --verify -q wiki >/dev/null; then
+    pass "$kind: stops, and proceeds once git status no longer shows the submodule"
+  else
+    fail "$kind: first rc=$first_rc status=[$status_sub] rerun rc=$HELPER_RC first_output=$first_output output=$HELPER_OUTPUT"
+  fi
+done
+
+echo "TC-15: no argument-less stash pop remains in the helper or its reference pattern"
+PATTERNS_DOC="$SCRIPT_DIR/../../references/wiki-patterns.md"
+for f in "$TARGET" "$PATTERNS_DOC"; do
+  if [ ! -f "$f" ]; then
+    fail "missing target: $f"
+    continue
+  fi
+  bare=$(grep -nE 'git stash pop( +[^" ]| *$| *2>|;|\|)' "$f")
+  if [ -z "$bare" ]; then
+    pass "$(basename "$f"): no argument-less stash pop"
+  else
+    fail "$(basename "$f"): argument-less stash pop: $bare"
+  fi
+done
+# 正の件数: 自 entry を指す pop の呼び出し箇所 (helper は関数 1 箇所、参照 doc は 2 ブロックに 1 箇所ずつ)
+if [ "$(grep -c 'git stash pop "\$ref"' "$TARGET")" = "1" ] && [ "$(grep -c 'git stash pop "\$ref"' "$PATTERNS_DOC")" = "2" ]; then
+  pass "SHA-resolved pop sites: helper 1, reference doc 2"
+else
+  fail "SHA-resolved pop sites: helper=$(grep -c 'git stash pop "\$ref"' "$TARGET") doc=$(grep -c 'git stash pop "\$ref"' "$PATTERNS_DOC")"
+fi
+
+# --------------------------------------------------------------------------
+# TC-17〜TC-23: separate_branch は submodule の作業ツリーと未追跡ファイルを失わない
+# --------------------------------------------------------------------------
+# submodule の元になる repo (このセクション専用。ほかのテストケースの実行順に依存しない)
+sub_src="$TEST_DIR/sub-src"
+git init -q -b main "$sub_src"
+(cd "$sub_src" && git config user.email t@e && git config user.name t && echo a > a && git add a && git commit -qm s)
+
+# make_submodule_sandbox <name> [path] — 展開済みの submodule (既定の path は sub) を持つ sandbox
+make_submodule_sandbox() {
+  local repo
+  repo=$(make_sandbox "$1")
+  (cd "$repo" && git -c protocol.file.allow=always submodule add -q "$sub_src" "${2:-sub}" >/dev/null 2>&1 && git commit -qm sub && git push -q origin main 2>/dev/null)
+  echo "$repo"
+}
+
+# sub_snapshot <repo> [path] — submodule の展開状態と、作業ツリーの全ファイルの内容
+sub_snapshot() {
+  (
+    cd "$1" || exit 1
+    git submodule status
+    git status --porcelain --ignore-submodules=none -- "${2:-sub}" .gitmodules
+    [ -d "${2:-sub}" ] && find "${2:-sub}" -type f ! -name .git | sort | while IFS= read -r f; do echo "$f=$(cat "$f")"; done
+  )
+}
+
+# add_ignored_file <repo> [path] — submodule 内に、git status に現れない ignored ファイルを置く
+add_ignored_file() {
+  echo "cache.tmp" >> "$(git -C "$1/${2:-sub}" rev-parse --absolute-git-dir)/info/exclude"
+  echo "cached" > "$1/${2:-sub}/cache.tmp"
+}
+
+# assert_clean_submodule <label> <repo> [path] — 前提: submodule が展開済みで、追跡ファイルと ignored ファイルがあり、変更として現れない
+assert_clean_submodule() {
+  local p="${3:-sub}"
+  if [[ "$(git -C "$2" submodule status)" == " "*" $p "* ]] && [ -f "$2/$p/a" ] && [ -f "$2/$p/cache.tmp" ] \
+     && [ -z "$(git -C "$2" status --porcelain --ignore-submodules=none -- "$p" .gitmodules)" ]; then
+    pass "$1: precondition — populated clean submodule with an ignored file"
+  else
+    fail "$1: precondition not met: $(sub_snapshot "$2" "$p")"
+  fi
+}
+
+# make_fake_git <name> <body> — 本物の git の前に body を実行する偽 git を置いた bin ディレクトリ
+make_fake_git() {
+  local bin="$TEST_DIR/$1-bin"
+  mkdir -p "$bin"
+  printf '#!/bin/bash\n%s\nexec %q "$@"\n' "$2" "$REAL_GIT" > "$bin/git"
+  chmod +x "$bin/git"
+  echo "$bin"
+}
+
+# count_lines <needle> — HELPER_OUTPUT のうち needle を含む行数
+count_lines() { grep -cF -- "$1" <<<"$HELPER_OUTPUT" || true; }
+
+echo "TC-17: untracked file inside a submodule stops before anything changes"
+repo=$(make_submodule_sandbox tc17)
+echo "new" > "$repo/sub/new.txt"
+before=$(stash_shas "$repo")
+run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+state=$(dump_state "$repo")
+if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"ERROR: submodule に変更または未追跡ファイルがあります"* ]] \
+   && [[ "$HELPER_OUTPUT" == *"対象: sub"* ]] && [[ "$HELPER_OUTPUT" != *"WARNING: 未コミットの変更があります"* ]] \
+   && [ "$(cat "$repo/sub/new.txt" 2>/dev/null)" = "new" ] && grep -q "^wiki_tree=<none>$" <<<"$state" \
+   && grep -q "^current=main$" <<<"$state" && [ "$(stash_shas "$repo")" = "$before" ]; then
+  pass "untracked-only submodule → ERROR names it, file kept, no wiki branch, no stash"
+else
+  fail "rc=$HELPER_RC new.txt=$(cat "$repo/sub/new.txt" 2>/dev/null) state=$state output=$HELPER_OUTPUT"
+fi
+# The printed remedy must actually unblock a rerun: move the untracked file out of the submodule
+mv "$repo/sub/new.txt" "$TEST_DIR/tc17-new.txt"
+run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+if [ "$HELPER_RC" = "0" ] && git -C "$repo" rev-parse --verify -q wiki >/dev/null; then
+  pass "moving the untracked file out of the submodule lets the rerun succeed"
+else
+  fail "rerun after remedy: rc=$HELPER_RC output=$HELPER_OUTPUT"
+fi
+
+echo "TC-17b: the submodule check overrides settings that would hide the change"
+# .gitmodules の ignore 設定と、未追跡ファイルを表示しない設定のどちらでも検出が外れない
+repo=$(make_submodule_sandbox tc17b)
+(cd "$repo" && git config -f .gitmodules submodule.sub.ignore all && git commit -qam "ignore all" && git push -q origin main 2>/dev/null)
+git -C "$repo" config status.showUntrackedFiles no
+git -C "$repo/sub" config status.showUntrackedFiles no
+echo "new" > "$repo/sub/new.txt"
+if [ -z "$(git -C "$repo" status --porcelain)" ]; then
+  pass "TC-17b: precondition — the settings hide the submodule's untracked file from plain git status"
+else
+  fail "TC-17b: precondition not met: $(git -C "$repo" status --porcelain)"
+fi
+run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"対象: sub"* ]] && [ "$(cat "$repo/sub/new.txt" 2>/dev/null)" = "new" ] \
+   && ! git -C "$repo" rev-parse --verify -q wiki >/dev/null; then
+  pass "ignore=all and showUntrackedFiles=no → still stops, file kept, no wiki branch"
+else
+  fail "rc=$HELPER_RC new.txt=$(cat "$repo/sub/new.txt" 2>/dev/null) output=$HELPER_OUTPUT"
+fi
+# ERROR に書かれた確認コマンドは、同じ設定のもとで検出と同じ結果を返す (解除前は submodule を表示し、解除後は表示しない)
+read -r -a remedy_check <<<"$(grep -oE 'git -c [^ ]+ status --ignore-submodules=none' <<<"$HELPER_OUTPUT" | head -n 1)"
+if [ "${#remedy_check[@]}" -gt 0 ] && [[ "$(cd "$repo" && "${remedy_check[@]}" 2>&1)" == *"sub"* ]]; then
+  pass "the printed check command shows the submodule while the untracked file is there"
+else
+  fail "printed check command missing or blind: [${remedy_check[*]:-}] output=$HELPER_OUTPUT"
+fi
+mv "$repo/sub/new.txt" "$TEST_DIR/tc17b-new.txt"
+remedy_after=$(cd "$repo" && "${remedy_check[@]}" 2>&1)
+run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+if [[ "$remedy_after" != *"sub"* ]] && [ "$HELPER_RC" = "0" ] && git -C "$repo" rev-parse --verify -q wiki >/dev/null; then
+  pass "after the remedy the check command no longer shows the submodule and the rerun succeeds"
+else
+  fail "after remedy: check=[$remedy_after] rc=$HELPER_RC output=$HELPER_OUTPUT"
+fi
+
+echo "TC-18: a parent change alongside a submodule change stops before the stash"
+repo=$(make_submodule_sandbox tc18)
+echo "modified" > "$repo/base.txt"
+echo "edited" > "$repo/sub/a"
+before=$(stash_shas "$repo")
+run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+state=$(dump_state "$repo")
+if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"対象: sub"* ]] \
+   && [[ "$HELPER_OUTPUT" != *"WARNING: 未コミットの変更があります"* ]] \
+   && [ "$(cat "$repo/sub/a")" = "edited" ] && grep -q "^base_content=modified$" <<<"$state" \
+   && grep -q "^wiki_tree=<none>$" <<<"$state" && grep -q "^current=main$" <<<"$state" \
+   && [ "$(stash_shas "$repo")" = "$before" ]; then
+  pass "parent + submodule change → ERROR, both edits kept, no wiki branch, no stash"
+else
+  fail "rc=$HELPER_RC sub/a=$(cat "$repo/sub/a" 2>/dev/null) state=$state output=$HELPER_OUTPUT"
+fi
+
+echo "TC-19: a clean submodule keeps its working tree, ignored files included"
+repo=$(make_submodule_sandbox tc19)
+add_ignored_file "$repo"
+assert_clean_submodule "TC-19" "$repo"
+snap_before=$(sub_snapshot "$repo")
+run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+state=$(dump_state "$repo")
+if [ "$HELPER_RC" = "0" ] && [ "$(sub_snapshot "$repo")" = "$snap_before" ] \
+   && grep -q "^wiki_tree=.rite/wiki/index.md,.rite/wiki/log.md,$" <<<"$state" && grep -q "^current=main$" <<<"$state"; then
+  pass "submodule tree identical after init, wiki branch holds only .rite/wiki"
+else
+  fail "rc=$HELPER_RC before=[$snap_before] after=[$(sub_snapshot "$repo")] state=$state output=$HELPER_OUTPUT"
+fi
+
+echo "TC-19b: a submodule whose path git quotes in line output keeps its working tree"
+# 行出力では "s\"q" と引用される path。index の entry と一致しない名前で外そうとすると submodule が消える
+repo=$(make_submodule_sandbox tc19b 's"q')
+add_ignored_file "$repo" 's"q'
+assert_clean_submodule "TC-19b" "$repo" 's"q'
+snap_before=$(sub_snapshot "$repo" 's"q')
+run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+state=$(dump_state "$repo")
+if [ "$HELPER_RC" = "0" ] && [ "$(sub_snapshot "$repo" 's"q')" = "$snap_before" ] \
+   && grep -q "^wiki_tree=.rite/wiki/index.md,.rite/wiki/log.md,$" <<<"$state" && grep -q "^current=main$" <<<"$state"; then
+  pass "quoted-path submodule tree identical after init"
+else
+  fail "rc=$HELPER_RC before=[$snap_before] after=[$(sub_snapshot "$repo" 's"q')] state=$state output=$HELPER_OUTPUT"
+fi
+
+echo "TC-20: a failed push leaves the submodule working tree as it was"
+repo=$(make_submodule_sandbox tc20)
+add_ignored_file "$repo"
+assert_clean_submodule "TC-20" "$repo"
+snap_before=$(sub_snapshot "$repo")
+(cd "$repo" && git remote set-url origin "$TEST_DIR/nonexistent-origin.git")
+run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+state=$(dump_state "$repo")
+if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"ERROR: git push failed"* ]] \
+   && [ "$(sub_snapshot "$repo")" = "$snap_before" ] && grep -q "^current=main$" <<<"$state"; then
+  pass "push failure → back on main, submodule tree identical"
+else
+  fail "rc=$HELPER_RC before=[$snap_before] after=[$(sub_snapshot "$repo")] state=$state output=$HELPER_OUTPUT"
+fi
+
+echo "TC-21: same_branch does not switch branches, so a submodule's untracked file does not stop it"
+repo=$(make_submodule_sandbox tc21)
+echo "new" > "$repo/sub/new.txt"
+run_helper "$repo" --branch-strategy same_branch --wiki-branch wiki
+state=$(dump_state "$repo")
+if [ "$HELPER_RC" = "0" ] && grep -q "^main_subject=feat(wiki): initialize Wiki structure$" <<<"$state" \
+   && [ "$(cat "$repo/sub/new.txt" 2>/dev/null)" = "new" ]; then
+  pass "same_branch commits as before, untracked file kept"
+else
+  fail "rc=$HELPER_RC state=$state output=$HELPER_OUTPUT"
+fi
+
+echo "TC-22: failures of the submodule checks stop with an ERROR"
+repo=$(make_sandbox tc22a)
+before=$(stash_shas "$repo")
+fakebin=$(make_fake_git tc22a 'case " $* " in *" status --porcelain=v2 "*) exit 1 ;; esac')
+PATH="$fakebin:$PATH" run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+state=$(dump_state "$repo")
+if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"ERROR: git status failed"* ]] \
+   && grep -q "^current=main$" <<<"$state" && grep -q "^wiki_tree=<none>$" <<<"$state" \
+   && [ "$(stash_shas "$repo")" = "$before" ]; then
+  pass "git status failure → ERROR + exit 1 before touching branches or stash"
+else
+  fail "rc=$HELPER_RC state=$state output=$HELPER_OUTPUT"
+fi
+repo=$(make_submodule_sandbox tc22b)
+# stale_submodule_status <marker> — 2 回目以降の `git submodule status` が、submodule が展開されていない状態を返す偽 git の body
+stale_submodule_status() {
+  printf 'if [ "$1 $2" = "submodule status" ]; then\n  if [ -e %q ]; then echo "-0000000 sub"; exit 0; fi\n  : > %q\nfi' "$1" "$1"
+}
+fakebin=$(make_fake_git tc22b "$(stale_submodule_status "$TEST_DIR/tc22b-called")")
+PATH="$fakebin:$PATH" run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+state=$(dump_state "$repo")
+if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"ERROR: submodule の状態が実行前と一致しません"* ]] \
+   && [[ "$HELPER_OUTPUT" == *"git submodule update"* ]] && [[ "$HELPER_OUTPUT" != *"✅"* ]] \
+   && grep -q "^current=main$" <<<"$state"; then
+  pass "submodule state differs after returning → ERROR + exit 1 with the recovery command"
+else
+  fail "rc=$HELPER_RC state=$state output=$HELPER_OUTPUT"
+fi
+
+# 失敗時の復帰経路でも照合する。push 失敗と重なっても復旧方法は 1 回だけ出る
+repo=$(make_submodule_sandbox tc22c)
+(cd "$repo" && git remote set-url origin "$TEST_DIR/nonexistent-origin.git")
+fakebin=$(make_fake_git tc22c "$(stale_submodule_status "$TEST_DIR/tc22c-called")")
+PATH="$fakebin:$PATH" run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+state=$(dump_state "$repo")
+if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"ERROR: git push failed"* ]] \
+   && [ "$(count_lines "ERROR: submodule の状態が実行前と一致しません")" = "1" ] && grep -q "^current=main$" <<<"$state"; then
+  pass "push failure + submodule state differs → both reported, recovery shown once"
+else
+  fail "rc=$HELPER_RC state=$state output=$HELPER_OUTPUT"
+fi
+
+# signal で中断しても、復旧方法は 1 回だけ出る (signal trap の exit で EXIT trap も走る)
+repo=$(make_submodule_sandbox tc22d)
+fakebin=$(make_fake_git tc22d "$(stale_submodule_status "$TEST_DIR/tc22d-called")
+if [ \"\$1\" = push ]; then kill -TERM \"\$PPID\"; exit 1; fi")
+PATH="$fakebin:$PATH" run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+state=$(dump_state "$repo")
+if [ "$HELPER_RC" = "143" ] && [ "$(count_lines "ERROR: submodule の状態が実行前と一致しません")" = "1" ] \
+   && grep -q "^current=main$" <<<"$state"; then
+  pass "SIGTERM during push + submodule state differs → exit 143, recovery shown once"
+else
+  fail "rc=$HELPER_RC state=$state output=$HELPER_OUTPUT"
+fi
+
+# 開始時の submodule の状態を記録できなければ、何も変更せずに止まる
+repo=$(make_sandbox tc22e)
+before=$(stash_shas "$repo")
+fakebin=$(make_fake_git tc22e '[ "$1 $2" = "submodule status" ] && exit 1')
+PATH="$fakebin:$PATH" run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+state=$(dump_state "$repo")
+if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"ERROR: git submodule status failed"* ]] \
+   && grep -q "^current=main$" <<<"$state" && grep -q "^wiki_tree=<none>$" <<<"$state" \
+   && [ "$(stash_shas "$repo")" = "$before" ]; then
+  pass "git submodule status failure → ERROR + exit 1 before touching branches or stash"
+else
+  fail "rc=$HELPER_RC state=$state output=$HELPER_OUTPUT"
+fi
+
+# gitlink を index から外せなければ、作業ツリーを消す前に止まる
+# <label> <偽 git の body> <期待する ERROR>
+for case_spec in \
+  'update-index fails|[ "$1" = "update-index" ] && exit 1|ERROR: submodule '"'sub'"' を index から外せませんでした' \
+  'update-index removes nothing|[ "$1" = "update-index" ] && exit 0|ERROR: submodule を index から外せませんでした。作業ツリーを消さずに停止します' \
+  'ls-files fails|[ "$1" = "ls-files" ] && exit 1|ERROR: git ls-files failed'; do
+  IFS='|' read -r case_label case_body case_error <<<"$case_spec"
+  repo=$(make_submodule_sandbox "tc22f-${case_label// /-}")
+  add_ignored_file "$repo"
+  assert_clean_submodule "TC-22 ($case_label)" "$repo"
+  snap_before=$(sub_snapshot "$repo")
+  fakebin=$(make_fake_git "tc22f-${case_label// /-}" "$case_body")
+  PATH="$fakebin:$PATH" run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+  state=$(dump_state "$repo")
+  if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"$case_error"* ]] && [ "$(sub_snapshot "$repo")" = "$snap_before" ] \
+     && grep -q "^current=main$" <<<"$state" && ! grep -q "refs/heads/wiki" <<<"$(grep '^origin_branches=' <<<"$state")"; then
+    pass "$case_label → ERROR + exit 1, submodule tree identical, nothing pushed"
+  else
+    fail "$case_label: rc=$HELPER_RC before=[$snap_before] after=[$(sub_snapshot "$repo")] state=$state output=$HELPER_OUTPUT"
+  fi
+done
+
+echo "TC-23: the reference doc's init block behaves like the helper"
+DOC_INIT="$TEST_DIR/doc-init.sh"
+awk '/^#### Wiki ブランチの作成（初期化時）/ {h=1; next} h && /^```bash/ {f=1; next} f && /^```/ {exit} f' "$PATTERNS_DOC" \
+  | sed "s#{plugin_root}#$SCRIPT_DIR/../..#g" > "$DOC_INIT"
+if [ -s "$DOC_INIT" ] && grep -q -- '--ignore-submodules=none' "$DOC_INIT" && grep -q 'update-index --force-remove' "$DOC_INIT"; then
+  pass "init block extracted with the submodule check and the index-only removal"
+else
+  fail "init block missing or out of sync with the helper: $(wc -c < "$DOC_INIT") bytes"
+fi
+doc_msg="$TEST_DIR/doc-init-msg"
+printf 'feat(wiki): initialize Wiki structure\n' > "$doc_msg"
+run_doc_init() {
+  local rc=0
+  HELPER_OUTPUT=$( (cd "$1" && wiki_init_msg_file="$doc_msg" _timeout 20 bash "$DOC_INIT") 2>&1 ) || rc=$?
+  HELPER_RC=$rc
+}
+repo=$(make_submodule_sandbox tc23a)
+echo "new" > "$repo/sub/new.txt"
+run_doc_init "$repo"
+state=$(dump_state "$repo")
+if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"対象: sub"* ]] && [ "$(cat "$repo/sub/new.txt" 2>/dev/null)" = "new" ] \
+   && grep -q "^wiki_tree=<none>$" <<<"$state" && grep -q "^current=main$" <<<"$state"; then
+  pass "doc block: untracked-only submodule → ERROR, file kept, no wiki branch"
+else
+  fail "doc block: rc=$HELPER_RC state=$state output=$HELPER_OUTPUT"
+fi
+repo=$(make_submodule_sandbox tc23b)
+add_ignored_file "$repo"
+assert_clean_submodule "TC-23" "$repo"
+snap_before=$(sub_snapshot "$repo")
+run_doc_init "$repo"
+state=$(dump_state "$repo")
+if [ "$HELPER_RC" = "0" ] && [ "$(sub_snapshot "$repo")" = "$snap_before" ] \
+   && grep -q "^wiki_tree=.rite/wiki/index.md,.rite/wiki/log.md,$" <<<"$state" && grep -q "^current=main$" <<<"$state"; then
+  pass "doc block: submodule tree identical after init"
+else
+  fail "doc block: rc=$HELPER_RC before=[$snap_before] after=[$(sub_snapshot "$repo")] state=$state output=$HELPER_OUTPUT"
+fi
+repo=$(make_submodule_sandbox tc23c 's"q')
+add_ignored_file "$repo" 's"q'
+assert_clean_submodule "TC-23 (quoted path)" "$repo" 's"q'
+snap_before=$(sub_snapshot "$repo" 's"q')
+run_doc_init "$repo"
+if [ "$HELPER_RC" = "0" ] && [ "$(sub_snapshot "$repo" 's"q')" = "$snap_before" ]; then
+  pass "doc block: quoted-path submodule tree identical after init"
+else
+  fail "doc block (quoted path): rc=$HELPER_RC before=[$snap_before] after=[$(sub_snapshot "$repo" 's"q')] output=$HELPER_OUTPUT"
+fi
+repo=$(make_submodule_sandbox tc23d)
+fakebin=$(make_fake_git tc23d "$(stale_submodule_status "$TEST_DIR/tc23d-called")")
+PATH="$fakebin:$PATH" run_doc_init "$repo"
+if [ "$HELPER_RC" = "1" ] && [ "$(count_lines "ERROR: submodule の状態が実行前と一致しません")" = "1" ]; then
+  pass "doc block: submodule state differs after returning → ERROR + exit 1, shown once"
+else
+  fail "doc block (state differs): rc=$HELPER_RC output=$HELPER_OUTPUT"
+fi
+repo=$(make_submodule_sandbox tc23e)
+fakebin=$(make_fake_git tc23e "$(stale_submodule_status "$TEST_DIR/tc23e-called")
+if [ \"\$1\" = push ]; then kill -TERM \"\$PPID\"; exit 1; fi")
+PATH="$fakebin:$PATH" run_doc_init "$repo"
+if [ "$HELPER_RC" = "143" ] && [ "$(count_lines "ERROR: submodule の状態が実行前と一致しません")" = "1" ]; then
+  pass "doc block: SIGTERM during push + submodule state differs → exit 143, shown once"
+else
+  fail "doc block (SIGTERM): rc=$HELPER_RC output=$HELPER_OUTPUT"
+fi
+# 参照手順ブロックも、設定で隠れる変更を検出し、開始時の記録失敗と index に残る gitlink で止まる
+repo=$(make_submodule_sandbox tc23f)
+(cd "$repo" && git config -f .gitmodules submodule.sub.ignore all && git commit -qam "ignore all" && git push -q origin main 2>/dev/null)
+git -C "$repo" config status.showUntrackedFiles no
+git -C "$repo/sub" config status.showUntrackedFiles no
+echo "new" > "$repo/sub/new.txt"
+run_doc_init "$repo"
+if [ -z "$(git -C "$repo" status --porcelain)" ] && [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"対象: sub"* ]] \
+   && [ "$(cat "$repo/sub/new.txt" 2>/dev/null)" = "new" ]; then
+  pass "doc block: ignore=all and showUntrackedFiles=no → still stops, file kept"
+else
+  fail "doc block (hidden change): status=[$(git -C "$repo" status --porcelain)] rc=$HELPER_RC output=$HELPER_OUTPUT"
+fi
+repo=$(make_submodule_sandbox tc23g)
+fakebin=$(make_fake_git tc23g '[ "$1 $2" = "submodule status" ] && exit 1')
+PATH="$fakebin:$PATH" run_doc_init "$repo"
+if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"ERROR: git submodule status failed"* ]] \
+   && ! git -C "$repo" rev-parse --verify -q wiki >/dev/null; then
+  pass "doc block: git submodule status failure → ERROR + exit 1, no wiki branch"
+else
+  fail "doc block (submodule status failure): rc=$HELPER_RC output=$HELPER_OUTPUT"
+fi
+repo=$(make_submodule_sandbox tc23h)
+add_ignored_file "$repo"
+snap_before=$(sub_snapshot "$repo")
+fakebin=$(make_fake_git tc23h '[ "$1" = "update-index" ] && exit 0')
+PATH="$fakebin:$PATH" run_doc_init "$repo"
+if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"作業ツリーを消さずに停止します"* ]] && [ "$(sub_snapshot "$repo")" = "$snap_before" ]; then
+  pass "doc block: gitlink left in the index → ERROR + exit 1, submodule tree identical"
+else
+  fail "doc block (gitlink left): rc=$HELPER_RC before=[$snap_before] after=[$(sub_snapshot "$repo")] output=$HELPER_OUTPUT"
 fi
 
 run_differential "separate-clean" separate_branch wiki 0 0

@@ -69,7 +69,9 @@ bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number}
 **Step 1**: Wiki 設定:
 
 ```bash
-wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
+# config は worktree 自身のもの、無ければ main checkout のものを読む
+rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+wiki_section=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null) || wiki_section=""
 wiki_enabled=""
 if [[ -n "$wiki_section" ]]; then
   wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
@@ -110,7 +112,9 @@ printf '%s\n' "$wiki_context"
 
 ```bash
 # tdd.enabled を読む (opt-out default: tdd: キー欠落 / enabled: 欠落 はいずれも true 扱い)
-tdd_section=$(sed -n '/^tdd:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || tdd_section=""
+# config は worktree 自身のもの、無ければ main checkout のものを読む
+rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+tdd_section=$(sed -n '/^tdd:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null) || tdd_section=""
 tdd_enabled=""
 if [[ -n "$tdd_section" ]]; then
   tdd_enabled=$(printf '%s\n' "$tdd_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
@@ -118,7 +122,7 @@ if [[ -n "$tdd_section" ]]; then
 fi
 case "$tdd_enabled" in false|no|0) tdd_enabled="false" ;; *) tdd_enabled="true" ;; esac  # opt-out default
 # commands.test の有無を判定 (degrade detection)
-test_cmd=$(awk '/^commands:/{c=1;next} c&&/^[a-zA-Z]/{exit} c&&/^[[:space:]]+test:/{print;exit}' rite-config.yml 2>/dev/null \
+test_cmd=$(awk '/^commands:/{c=1;next} c&&/^[^[:space:]#]/{exit} c&&/^[[:space:]]+test:/{print;exit}' "$rite_config" 2>/dev/null \
   | sed 's/[[:space:]]#.*//' | sed 's/.*test:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 case "$test_cmd" in ''|null|'~') test_cmd="" ;; esac
 echo "[CONTEXT] TDD_ENABLED=$tdd_enabled; TEST_CMD_SET=$([ -n "$test_cmd" ] && echo yes || echo no)"
@@ -235,7 +239,7 @@ git worktree list --porcelain
 ls -d {worktree_base}/*/* 2>/dev/null
 ```
 
-If stale worktrees are found, offer cleanup via `AskUserQuestion` (see [Safety Mechanisms](../../references/git-worktree-patterns.md#safety-mechanisms)).
+If stale worktrees are found, inspect each one per [残骸の確認](../../references/git-worktree-patterns.md#5-残骸ディレクトリの削除確認) and offer cleanup via `AskUserQuestion` with what was found (see [Safety Mechanisms](../../references/git-worktree-patterns.md#safety-mechanisms)).
 
 Verify `.worktrees/` is in `.gitignore`:
 
@@ -305,12 +309,10 @@ _par_msg=$(mktemp "${TMPDIR:-/tmp}/rite-parallel-merge-XXXXXX") || {
 cat > "$_par_msg" <<'EOF'
 {parallel_merge_message}
 EOF
-case "$(cat -- "$_par_msg")" in
-  "{"*"}")
-    echo "ERROR: {parallel_merge_message} が未置換です" >&2
-    exit 1
-    ;;
-esac
+if grep -qx '[{].*[}]' "$_par_msg"; then
+  echo "ERROR: マージメッセージが未置換です" >&2
+  exit 1
+fi
 git merge --no-ff {branch_name}/{task_id} -F "$_par_msg"
 ```
 
@@ -346,8 +348,8 @@ rationale: references/rationale.md#adaptive-no-fixed-checklist
 
 各ステップ完了時に、次の 4 つを状況に応じて判断し、判断の痕跡を work memory に残す:
 
-1. **完了の確証**: このステップは計画の意図（`検証基準` 列があればその基準）を本当に満たしたか。ツールで確認できるもの（ファイル存在・パターン・テスト通過・設定値）は Read / Grep / Glob / Bash で確認してから完了にする。基準を満たせないまま完了扱いにしない。再試行しても満たせない場合は、基準側が誤っているのか実装が誤っているのかを判断し、基準を更新したなら「計画逸脱ログ」に記録する。繰り返し失敗して判断に迷うときは `AskUserQuestion` でユーザーに委ねる（続行 / 基準更新 / 逸脱記録つきスキップ）
-2. **逸脱の検知と記録**: スコープ逸脱（計画外ファイルの変更）・共有コード変更の影響範囲・Issue の What/Why との乖離に気付いたら、work memory の「計画逸脱ログ」に既存のテーブル形式で記録する（記録は義務。閾値や固定チェックリストはない）。軽微な調整（同一ステップ内の手法変更・不要になったステップのスキップ・小さな補助ステップの追加）は記録して続行する。計画の前提を変える変更（計画外の新規ファイル追加・公開 API / 契約の変更・見積もりを大きく超えるスコープ拡大・残ステップの依存構造の組み替え）は `AskUserQuestion` でユーザーに確認する
+1. **完了の確証**: このステップは計画の意図（`検証基準` 列があればその基準）を本当に満たしたか。ツールで確認できるもの（ファイル存在・パターン・テスト通過・設定値）は Read / Grep / Glob / Bash で確認してから完了にする。基準を満たせないまま完了扱いにしない。再試行しても満たせない場合は、基準側が誤っているのか実装が誤っているのかを判断し、基準を更新したなら「計画逸脱ログ」に記録する。繰り返し失敗して判断に迷うときは `AskUserQuestion` でユーザーに委ねる（続行 / 基準更新 / 逸脱記録つきスキップ）。依頼には、どの基準を何で確かめて何が満たせなかったか・なぜ AI では決められないか・選択肢ごとの帰結・期待する回答を示す（[question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) 規則 6）
+2. **逸脱の検知と記録**: スコープ逸脱（計画外ファイルの変更）・共有コード変更の影響範囲・Issue の What/Why との乖離に気付いたら、work memory の「計画逸脱ログ」に既存のテーブル形式で記録する（記録は義務。閾値や固定チェックリストはない）。軽微な調整（同一ステップ内の手法変更・不要になったステップのスキップ・小さな補助ステップの追加）は記録して続行する。計画の前提を変える変更（計画外の新規ファイル追加・公開 API / 契約の変更・見積もりを大きく超えるスコープ拡大・残ステップの依存構造の組み替え）は `AskUserQuestion` でユーザーに確認する。依頼には、何をどう変えるか・なぜ AI では決められないか・変える場合と変えない場合の帰結・期待する回答を示す（同 規則 6）
 3. **次ステップの選定**: `depends_on` が解けたステップの中から「次に最も明白な問題」を選ぶ。目安: 下流を最も多く解放するもの・リスクが高く早く失敗を表面化させたいもの・小さく完了して勢いを保てるもの — どれを優先するかは残りの計画全体を見て判断する
 4. **行き詰まりの検知**: このステップが計画時の粒度見積もりを明らかに超えて膨らんでいる（修正の往復が続く、変更ファイル・行数が想定と乖離した）と感じたら、[Bottleneck Detection Reference](../../references/bottleneck-detection.md) の Oracle discovery（既存の正しい実装を構造ガイドに使う）でステップをサブステップ `S{n}.1`, `S{n}.2`, ... に再分解し、work memory の「ボトルネック検出ログ」に記録する（記録は次回 bulk update = commit 時）。固定閾値は使わない — 膨らみの判断は計画粒度との乖離で行う。再分解後は最初のサブステップから実行を続ける
 
@@ -434,7 +436,7 @@ skip 時の表示:
 
 Phase 5.1 へ戻る。commit しない。
 
-再実行上限は `safety.max_implementation_rounds`。到達時は `AskUserQuestion`: `テスト再実行の上限に達しました（{max_implementation_rounds}回）。続行しますか？ オプション: 継続する / 中断してユーザーに確認`
+再実行上限は `safety.max_implementation_rounds`。到達時は、先に直近のラウンド間で失敗したテストの数と内容が減っているかを比べる（[question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) 規則 5）。減っていれば続行し、変わらなければ失敗の内容を示して停止する。どちらとも判定できないときだけ `AskUserQuestion`: `テスト再実行の上限に達しました（{max_implementation_rounds}回）。続行しますか？ オプション: 継続する / 中断してユーザーに確認`
 
 E2E では結果を context に残す（`/rite:lint` Phase 3.4 が再利用できる）。
 
@@ -468,7 +470,7 @@ E2E では結果を context に残す（`/rite:lint` Phase 3.4 が再利用で�
 | Result | Action |
 |--------|--------|
 | All criteria satisfied | Proceed to 5.1.0.7 (documentation impact investigation) → 5.1.0.8 (XS/S production constraint) → 5.1.1 (commit) |
-| Some need attention | Display via `AskUserQuestion`: `受入条件の一部が未確認です。続行しますか？ オプション: コミットに進む / 実装に戻る` |
+| Some need attention | First check each such criterion by running its Given / When and observing the Then (tests, commands, `grep`). Go back to 5.1 when a check contradicts the Then. For criteria that no run here can check, display via `AskUserQuestion` with the four elements of [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) rule 6: `受入条件の一部が未確認です。続行しますか？ オプション: コミットに進む / 実装に戻る` |
 
 advisory。ユーザーが続行を選べば止めない。
 
@@ -550,6 +552,7 @@ rationale: references/rationale.md#push-no-upstream
 未指定時の形式 `{type}({scope}): {description}`。type/scope は常に英語。規約が本文を禁じない限り body は why を自由形式（必須。typo 以外も含め省略しない）。description との間に空行。
 
 ```bash
+# implement-commit
 status_out=$(git status --porcelain) || { echo "ERROR: git status に失敗しました" >&2; exit 1; }
 if [ -z "$status_out" ]; then
   echo "ERROR: コミット対象の変更がありません" >&2
@@ -569,13 +572,14 @@ commit_msg_file=$(mktemp "${TMPDIR:-/tmp}/rite-impl-msg-XXXXXX") || {
 cat > "$commit_msg_file" <<'EOF'
 {commit_message}
 EOF
-case "$(cat -- "$commit_msg_file")" in
-  "{"*"}")
-    echo "ERROR: {commit_message} が未置換です" >&2
-    exit 1
-    ;;
-esac
-bash {plugin_root}/hooks/scripts/git-commit-file.sh --file "$commit_msg_file"
+if grep -qx '[{].*[}]' "$commit_msg_file"; then
+  echo "ERROR: コミットメッセージが未置換です" >&2
+  exit 1
+fi
+if ! bash {plugin_root}/hooks/scripts/git-commit-file.sh --file "$commit_msg_file"; then
+  echo "ERROR: コミットに失敗したため push しません" >&2
+  exit 1
+fi
 git push origin {branch_name}
 ```
 

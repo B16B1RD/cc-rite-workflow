@@ -124,6 +124,14 @@ fi
 
 missing_wt_repo="$(new_repo true)"; SANDBOXES+=("$missing_wt_repo")
 assert "worktree missing exits 1" "1" "$(rc_in "$missing_wt_repo")"
+# The setup hint names the setup script by its absolute path, also when started from a subdirectory.
+mkdir -p "$missing_wt_repo/sub"
+mw_rc=0
+( cd "$missing_wt_repo/sub" && bash "$SCRIPT" ) >/dev/null 2>"$missing_wt_repo/mw_err.txt" || mw_rc=$?
+printf -v mw_setup_q '%q' "$(cd -P "$(dirname "$SCRIPT")" && pwd)/wiki-worktree-setup.sh"
+assert "worktree missing from a subdirectory exits 1" "1" "$mw_rc"
+assert "worktree missing hint runs the setup script by its absolute path" "1" \
+  "$(grep -cxF " hint: run 'bash $mw_setup_q' first" "$missing_wt_repo/mw_err.txt" || true)"
 
 # --- No pending changes → no-op commit=0 -------------------------------------
 nopending_repo="$(new_repo true)"; SANDBOXES+=("$nopending_repo")
@@ -202,7 +210,7 @@ assert "local bare origin/wiki advanced (push landed, no network)" \
   "advanced" \
   "$([ "$origin_before" != "$origin_after" ] && echo advanced || echo unchanged)"
 # The committed page is now tracked on the wiki branch.
-if git -C "$commit_repo" ls-tree -r --name-only wiki | grep -q '.rite/wiki/pages/test.md'; then
+if _gq_out=$(git -C "$commit_repo" ls-tree -r --name-only wiki) && grep -q '.rite/wiki/pages/test.md' <<< "$_gq_out"; then
   pass "committed page is tracked on the wiki branch"
 else
   fail "committed page not found on wiki branch"
@@ -300,6 +308,16 @@ fi
 wiki_head_after_push="$(git -C "$pushfail_repo" rev-parse wiki)"
 assert "local wiki commit survives a failed deferred push" \
   "$wiki_head_before_push" "$wiki_head_after_push"
+# The push hint names the wiki worktree by its absolute path, also when started from a subdirectory.
+mkdir -p "$pushfail_repo/sub"
+( cd "$pushfail_repo/sub" && bash "$SCRIPT" --push-only ) >/dev/null 2>"$pushfail_repo/pf_err.txt" || true
+pf_wt="$(cd "$pushfail_repo" && pwd -P)/.rite/wiki-worktree"
+printf -v pf_wt_q '%q' "$pf_wt"
+if grep -qF " manual recovery: git -C $pf_wt_q push origin wiki" "$pushfail_repo/pf_err.txt"; then
+  pass "--push-only failure hint names the wiki worktree by its absolute path"
+else
+  fail "expected push hint with git -C $pf_wt_q; got: $(grep 'manual recovery' "$pushfail_repo/pf_err.txt" || true)"
+fi
 
 # --- --commit-only / --push-only mutual exclusivity + --dry-run guard --------
 assert "--commit-only and --push-only together exits 1" "1" \
@@ -328,7 +346,7 @@ else
 fi
 wiki_after_nr="$(git -C "$numref_repo" rev-parse wiki)"
 assert "numref pending does not advance wiki HEAD" "$wiki_before_nr" "$wiki_after_nr"
-if git -C "$numref_repo" ls-tree -r --name-only wiki | grep -q 'numref.md'; then
+if _gq_out=$(git -C "$numref_repo" ls-tree -r --name-only wiki) && grep -q 'numref.md' <<< "$_gq_out"; then
   fail "numref page must not be tracked on wiki after a refused commit"
 else
   pass "numref page is not tracked on wiki after a refused commit"
@@ -348,7 +366,7 @@ else
 fi
 assert "numref --commit-only does not advance wiki HEAD" \
   "$wiki_before_co_nr" "$(git -C "$numref_co_repo" rev-parse wiki)"
-if git -C "$numref_co_repo" ls-tree -r --name-only wiki | grep -q 'page-co.md'; then
+if _gq_out=$(git -C "$numref_co_repo" ls-tree -r --name-only wiki) && grep -q 'page-co.md' <<< "$_gq_out"; then
   fail "numref --commit-only must not land the page on wiki"
 else
   pass "numref --commit-only does not land the page on wiki"
@@ -455,12 +473,12 @@ nl_rc=0
 ( cd "$nl_repo" && bash "$SCRIPT" --commit-only --message-file "$nl_msg" >/dev/null ) || nl_rc=$?
 assert "--message-file with newline commits (exit 0)" "0" "$nl_rc"
 nl_body=$(git -C "$nl_repo/.rite/wiki-worktree" log -1 --format=%B)
-if printf '%s' "$nl_body" | grep -q '`date`'; then
+if grep -q '`date`' <<< "$nl_body"; then
   pass "--message-file keeps backtick text in the wiki commit"
 else
   fail "--message-file lost backtick text: $nl_body"
 fi
-if printf '%s' "$nl_body" | grep -q 'second line'; then
+if grep -q 'second line' <<< "$nl_body"; then
   pass "--message-file keeps a second body line"
 else
   fail "--message-file lost second line: $nl_body"
@@ -475,7 +493,7 @@ printf 'Commit messages must be English one-liners.\n' > "$conv_repo/CLAUDE.md"
 conv_rc=0
 conv_err=$(cd "$conv_repo" && bash "$SCRIPT" --commit-only 2>&1) || conv_rc=$?
 assert "CLAUDE.md present without --message-file exits 1" "1" "$conv_rc"
-if printf '%s' "$conv_err" | grep -q -- '--message-file'; then
+if grep -q -- '--message-file' <<< "$conv_err"; then
   pass "missing --message-file names the required flag"
 else
   fail "convention-present diagnostic: $conv_err"
@@ -485,7 +503,7 @@ assert "convention-present failure does not advance wiki" "$wiki_before_conv" "$
 empty_rc=0
 empty_err=$(cd "$conv_repo" && bash "$SCRIPT" --commit-only --message-file "" 2>&1) || empty_rc=$?
 assert "empty --message-file exits 1" "1" "$empty_rc"
-if printf '%s' "$empty_err" | grep -q 'requires a value'; then
+if grep -q 'requires a value' <<< "$empty_err"; then
   pass "empty --message-file names the required value"
 else
   fail "empty --message-file diagnostic: $empty_err"

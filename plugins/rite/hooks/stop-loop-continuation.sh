@@ -6,7 +6,7 @@
 # 出した直後に turn を終了してしまっても、構造的な層で差し戻すことを保証する。
 #   - 継続 sentinel ([review:fix-needed:N] / [fix:pushed] / [fix:pushed-wm-stale]) → 次ループへ自動継続
 #   - 終了 sentinel ([review:mergeable] / [fix:non-fatal-only] / [fix:replied-only] / [fix:cancelled-by-user]) → 完了通知を強制
-#     FINALIZE:* では transcript 最終 assistant に完了通知（`## /rite:iterate 完了` /
+#     FINALIZE:* では Stop payload の最終 assistant テキスト（last_assistant_message）に完了通知（`## /rite:iterate 完了` /
 #     `## /rite:iterate 中断`）があるか検査し、出力済みなら差し戻さない。検査不能は差し戻す側へ
 #     fail-safe。FINALIZE:review:mergeable / FINALIZE:fix:non-fatal-only では加えて「未処理 non-blocking」欄を検査し、
 #     欠落 / 判定不能は差し戻し reason に欄の再出力を要求する（1 回制限は consume に相乗り）
@@ -32,13 +32,15 @@
 #   - 削除済みのため、進捗 (次コマンド実行 / 完了通知出力) の後に再度停止すれば handoff は空
 #     → block しない (無限 block ループ防止)。handoff が空でも、自セッションの
 #     run-queue が active で未完了なら batch watchdog が停止を差し戻す（handoff は読まない）。
+#   - 利用者の求めによる一時停止の記録（flow-state.sh pause）があるあいだは、handoff の consume より前に
+#     停止を許可する（handoff は消費せず残し、batch watchdog も評価しない）。
 #   - 各継続点で継続 handoff が再セットされるため複数サイクル継続する。
 #     終了点では、同一ターンの最終 assistant に完了通知が既にあれば block せず、未出力 /
 #     検査不能のときだけ 1 回 block する。WIKICHAIN handoff も 1 回だけ block する one-shot で、
 #     チェーン再開後の再停止は許可される（ただし batch 稼働中は watchdog が別軸で差し戻す）。
 #
 # Exit behavior:
-#   exit 0 (no stdout)        — allow stop (handoff 不在かつ batch 非稼働 / loop 外 / 解決失敗 = fail-open)
+#   exit 0 (no stdout)        — allow stop (handoff 不在かつ batch 非稼働 / loop 外 / 解決失敗 = fail-open / 一時停止の記録あり)
 #   stdout {"decision":"block"} — block stop and re-inject the continuation command, finalize directive, or batch-run 続行先
 set -euo pipefail
 
@@ -58,11 +60,10 @@ source "$SCRIPT_DIR/control-char-neutralize.sh"
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
 
-# Parse session_id + cwd + transcript_path from the Stop payload (single jq invocation).
+# Parse session_id + cwd from the Stop payload (single jq invocation).
 # Unit separator (\x1f) avoids IFS collapsing an empty field and left-shifting cwd.
-# transcript_path が string 以外（array/object）なら空扱い = 残件欄検査不能 → fail-safe 差し戻し。
-_jq_out=$(printf '%s' "$INPUT" | jq -r '[(.session_id // ""), (.cwd // ""), ((.transcript_path | if type == "string" then . else "" end) // "")] | join("")' 2>/dev/null) || _jq_out=$'\x1f\x1f'
-IFS=$'\x1f' read -r SESSION_ID CWD TRANSCRIPT_PATH <<< "$_jq_out"
+_jq_out=$(printf '%s' "$INPUT" | jq -r '[(.session_id // ""), (.cwd // "")] | join("")' 2>/dev/null) || _jq_out=$'\x1f'
+IFS=$'\x1f' read -r SESSION_ID CWD <<< "$_jq_out"
 
 # session_id 不在 → loop state を解決できない → 停止許可 (fail-open)。
 # Claude Code の Stop payload は常に session_id を含むため、空は非 Claude Code クライアント等の例外。
@@ -71,6 +72,14 @@ IFS=$'\x1f' read -r SESSION_ID CWD TRANSCRIPT_PATH <<< "$_jq_out"
 
 # Resolve state root (git root or CWD) — post-tool-wm-sync.sh と同じ解決経路。
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
+
+# 利用者の求めによる一時停止の記録（`flow-state.sh pause` が書く）があるあいだは、handoff の再注入も
+# batch watchdog も行わず停止を許可する。handoff は消費せず残すので、再開後の最初の停止で従来どおり効く。
+# 記録は存在だけを見る（中身が空・壊れていても一時停止として扱う）。許可のたびに解除方法を stderr に出す。
+if [ -e "$STATE_ROOT/.rite/state/pause-${SESSION_ID}.json" ]; then
+  echo "rite: 一時停止中のため継続ガードは無効です。再開するときは flow-state.sh resume を実行してください" >&2
+  exit 0
+fi
 
 # Read + clear the one-shot handoff marker. 通常は stderr を握る (loop 外セッションでは
 # state file 不在が常態で diagnostic がノイズになるため)。RITE_DEBUG set 時のみ consume-handoff の
@@ -102,7 +111,7 @@ _rite_emit_block() {
 _rite_batch_watchdog() {
   local queue_file sidecar_file
   local q_active q_cursor q_total q_mode q_updated q_issue
-  local fs_file fs_phase fs_pr fs_branch fs_active fs_stop fs_issue
+  local fs_file fs_phase fs_pr fs_branch fs_active fs_next fs_stop fs_issue
   local hint count prev_cursor prev_updated prev_phase prev_pr
   local sidecar_ok _pr_state
 
@@ -133,6 +142,7 @@ _rite_batch_watchdog() {
   fs_pr="0"
   fs_branch=""
   fs_active=""
+  fs_next=""
   fs_stop=""
   fs_issue=""
   if [ -f "$fs_file" ]; then
@@ -140,6 +150,7 @@ _rite_batch_watchdog() {
     fs_pr=$(jq -r '.pr_number // 0 | tostring' "$fs_file" 2>/dev/null) || fs_pr="0"
     fs_branch=$(jq -r '.branch // ""' "$fs_file" 2>/dev/null) || fs_branch=""
     fs_active=$(jq -r '.active // false' "$fs_file" 2>/dev/null) || fs_active=""
+    fs_next=$(jq -r '.next_action // ""' "$fs_file" 2>/dev/null) || fs_next=""
     fs_stop=$(jq -r '.stop_reason // ""' "$fs_file" 2>/dev/null) || fs_stop=""
     fs_issue=$(jq -r '.issue_number // "" | tostring' "$fs_file" 2>/dev/null) || fs_issue=""
     [ -n "$q_issue" ] || q_issue="$fs_issue"
@@ -151,7 +162,7 @@ _rite_batch_watchdog() {
     :
   else
     case "$fs_stop" in
-      circuit-breaker:*)
+      circuit-breaker:*|stagnation:*)
         hint="batch-run ステップ 8（breaker_failed=true で failed 記録 + 停止、cursor は保持）"
         ;;
       *)
@@ -175,7 +186,10 @@ _rite_batch_watchdog() {
             ;;
           merge) hint="/rite:cleanup ${fs_branch}" ;;
           cleanup|ingest|completed)
-            if [ "$fs_active" = "false" ]; then
+            # A finished cleanup writes next_action=none with active=false. SessionEnd
+            # also leaves an interrupted cleanup inactive until a resume turns it active
+            # again, and keeps its next_action either way.
+            if [ "$fs_active" = "false" ] && [ "$fs_next" = "none" ]; then
               hint="batch-run ステップ 6（cursor 前進）"
             else
               hint="batch-run の cleanup 未実行ステップを継続（/rite:cleanup をステップ 0 から呼び直さない。cursor は進めない）"
@@ -254,39 +268,37 @@ case "$HANDOFF" in
     _nb_status=""
     _last_text=""
     _notice_status=unknown
-    if [ -n "${TRANSCRIPT_PATH:-}" ] && [ -f "$TRANSCRIPT_PATH" ] && [ -r "$TRANSCRIPT_PATH" ]; then
-      _last_text=$(tail -n 200 "$TRANSCRIPT_PATH" | jq -rs '
-        [ .[]
-          | select(.type == "assistant")
-          | .message.content
-          | if type == "string" then .
-            elif type == "array" then ([.[] | select(.type == "text") | .text] | join("\n"))
-            else empty end
-        ] | last // empty
-      ' 2>/dev/null) || _last_text=""
-      if [ -z "$_last_text" ]; then
-        _notice_status=unknown
-      elif grep -qE '## /rite:iterate (完了|中断)' <<< "$_last_text"; then
+    _text_note=""
+    # 最終テキストは Stop payload の last_assistant_message から読む（lastAssistantMessage は Grok 形式の
+    # キー名。Grok の payload は session_id を持たず上流で素通りするため、現状この分岐には届かない）。
+    # transcript は非同期に書かれて遅れうるため、欠落時も transcript へは戻らず差し戻す側へ倒す。
+    if printf '%s' "$INPUT" | jq -e '(.last_assistant_message // .lastAssistantMessage) | type == "string"' >/dev/null 2>&1; then
+      _last_text=$(printf '%s' "$INPUT" | jq -r '.last_assistant_message // .lastAssistantMessage')
+      if grep -qE '## /rite:iterate (完了|中断)' <<< "$_last_text"; then
         _notice_status=present
       else
         _notice_status=missing
       fi
+    else
+      echo "WARNING: Stop payload に last_assistant_message（string）が無いため、完了通知を判定できません" >&2
+      _text_note="Stop hook の payload に最終テキスト（last_assistant_message）が無いため、完了通知を判定できませんでした。"
     fi
     case "$_result" in
       review:mergeable:*|fix:non-fatal-only:*)
         # 残件欄検査。判定不能は差し戻す側へ fail-safe。1 回制限は既存 consume に相乗り。
-        # transcript 抽出は上で済んでいるので、空 / grep だけ見る。
-        _nb_status=unknown
-        if [ -z "$_last_text" ]; then
+        if [ "$_notice_status" = unknown ]; then
           _nb_status=unknown
+        elif [ "$_notice_status" = missing ]; then
+          _nb_status=no_notice
         elif grep -q '未処理 non-blocking' <<< "$_last_text"; then
           _nb_status=present
         else
           _nb_status=missing
         fi
         case "$_nb_status" in
-          present) _nb_note="完了通知に「未処理 non-blocking:」欄を必ず含めてください（0 件でも省略しない）。" ;;
+          present) ;;  # 通知と欄がそろっていれば下で停止を許可するため、差し戻し文言は要らない
           missing) _nb_note="直前の完了通知に「未処理 non-blocking:」欄がありません。欄を含む完了通知を再出力してください（0 件でも省略しない）。" ;;
+          no_notice) _nb_note="直前の応答に完了通知が出力されていません。「未処理 non-blocking:」欄を含む完了通知を出力してください（0 件でも省略しない）。" ;;
           *)       _nb_note="残件欄の有無を判定できなかったため、確認を出す側へ倒します。「未処理 non-blocking:」欄を含む完了通知を再出力してください（0 件でも省略しない）。" ;;
         esac
         ;;
@@ -306,8 +318,8 @@ case "$HANDOFF" in
       esac
     fi
     case "$_result" in
-      fix:non-fatal-only:*|review:mergeable:*)
-        _nb_note="5.S 未実施なら先に NB digest sweep を実行し、成功後は完了前確認（目的整合）を経てから完了通知へ進んでください。再フルレビューは禁止です。${_nb_note}"
+      fix:non-fatal-only:*|review:mergeable:*|fix:sweep-done:*)
+        _nb_note="5.S 未実施なら先に NB digest sweep を実行し、成功後は PR 内推奨の修正（未着手の推奨があれば /rite:fix の後にステップ 1 の再レビュー）と完了前確認（目的整合）を経てから完了通知へ進んでください。それ以外の再フルレビューは禁止です。${_nb_note}"
         ;;
     esac
     _purpose_mid="ステップ5 の完了通知 (終了理由 + 次ステップ案内) を必ず出力してください。"
@@ -316,10 +328,11 @@ case "$HANDOFF" in
       fix:cancelled-by-user:*) ;;
       *)
         _purpose_mid="の完了前確認（目的整合）を経てからステップ5 の完了通知 (終了理由 + 次ステップ案内) を必ず出力してください。"
-        _purpose_extra="目的逸脱なら完了通知は出さず REVIEW_STOP=purpose_unaligned で停止してください。"
+        _purpose_extra="目的逸脱なら完了通知は出さず、PR の追加行の逸脱は review-deviate で記録して /rite:fix へ、それ以外は REVIEW_STOP=purpose_unaligned で停止してください。"
         ;;
     esac
-    _reason="rite の review↔fix ループ (/rite:iterate) が終了 sentinel (${_result}) に到達しました。停止する前に /rite:iterate ${_purpose_mid}${_purpose_extra}${_nb_note:+
+    _reason="rite の review↔fix ループ (/rite:iterate) が終了 sentinel (${_result}) に到達しました。停止する前に /rite:iterate ${_purpose_mid}${_purpose_extra}${_text_note:+
+$_text_note}${_nb_note:+
 $_nb_note}
 
 handoff は consume 済みのため、完了通知を出力した後に再度停止すれば停止が許可されます (無限 block しません)。"

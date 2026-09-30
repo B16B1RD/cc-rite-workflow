@@ -152,11 +152,10 @@ Phase 5 / Step 7b が明示 if/else でリテラルを選ぶ。`wiki_status` か
 `wiki.enabled` の欠落 / キー欠落 / 解釈不能は `true`（opt-out）。`wiki-init` ステップ 1.1
 と同じで、typo 検出 WARNING 経路も含む。
 
-`sed -n '/^wiki:/,/^[a-zA-Z]/p'` は次の ASCII 英字始まり行（次のトップレベル YAML キー）で
-終わる。template 形状（wiki の次が別トップレベルキーまたは EOF）に依存する。wiki が末尾
-ブロックで後続がコメントのみなら EOF まで読むが、それでも正しい。既知の限界は wiki 節の
-**内部**に英字始まりコメント行を挿む非標準 config で、template 形状の drift は既知制限であり
-blocker ではない。
+`sed -n '/^wiki:/,/^[^[:space:]#]/p'` は、空白と `#` 以外で始まる次の行（数字や `_` で
+始まるものを含む次のトップレベル YAML キー）で終わる。列 0 のコメント行と空行では終わらない
+ため、wiki 節の途中にコメント行を挿んでも後続のサブキーを読み続ける。wiki が末尾ブロックなら
+EOF まで読むが、それでも正しい。
 
 ## wiki-init-delegate
 

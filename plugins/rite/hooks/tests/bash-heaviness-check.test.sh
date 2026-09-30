@@ -44,7 +44,7 @@ if [ "$rc" -eq 2 ]; then pass "no args → exit 2"; else fail "expected rc=2, go
 # --------------------------------------------------------------------------
 echo "TC-002: non-existent repo-root → exit 2"
 rc=0; output=$(bash "$TARGET" --all --repo-root "$TEST_DIR/nope" 2>&1) || rc=$?
-if [ "$rc" -eq 2 ] && echo "$output" | grep -q "repo-root not a directory"; then
+if [ "$rc" -eq 2 ] && grep -q "repo-root not a directory" <<< "$output"; then
   pass "bad repo-root → exit 2"
 else fail "expected rc=2 + message, got rc=$rc: $output"; fi
 
@@ -59,7 +59,7 @@ echo "TC-003: clean short helper-call block → exit 0"
   echo '```'
 } > "$F"
 rc=0; output=$(run "$REL") || rc=$?
-if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total bash-heaviness findings: 0"; then
+if [ "$rc" -eq 0 ] && grep -q "Total bash-heaviness findings: 0" <<< "$output"; then
   pass "clean block not flagged → exit 0"
 else fail "expected rc=0 + 0 findings, got rc=$rc: $output"; fi
 
@@ -74,8 +74,8 @@ echo "TC-004: python-inline + long-block → exit 1"
   echo '```'
 } > "$F"
 rc=0; output=$(run "$REL") || rc=$?
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q "python-inline" \
-   && echo "$output" | grep -q "long-block"; then
+if [ "$rc" -eq 1 ] && grep -q "python-inline" <<< "$output" \
+   && grep -q "long-block" <<< "$output"; then
   pass "python-inline + long-block flagged → exit 1"
 else fail "expected rc=1 + both signals, got rc=$rc: $output"; fi
 
@@ -90,7 +90,7 @@ echo "TC-005: nested-cmdsub + long-block → exit 1"
   echo '```'
 } > "$F"
 rc=0; output=$(run "$REL") || rc=$?
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q "nested-cmdsub"; then
+if [ "$rc" -eq 1 ] && grep -q "nested-cmdsub" <<< "$output"; then
   pass "nested-cmdsub + long-block flagged → exit 1"
 else fail "expected rc=1 + nested-cmdsub, got rc=$rc: $output"; fi
 
@@ -110,7 +110,7 @@ echo "TC-006: multi-heredoc + long-block → exit 1"
   echo '```'
 } > "$F"
 rc=0; output=$(run "$REL") || rc=$?
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q "multi-heredoc(2)"; then
+if [ "$rc" -eq 1 ] && grep -q "multi-heredoc(2)" <<< "$output"; then
   pass "two heredocs flagged → exit 1"
 else fail "expected rc=1 + multi-heredoc(2), got rc=$rc: $output"; fi
 
@@ -125,7 +125,7 @@ echo "TC-007: long-block alone (1 signal) → exit 0"
   echo '```'
 } > "$F"
 rc=0; output=$(run "$REL") || rc=$?
-if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total bash-heaviness findings: 0"; then
+if [ "$rc" -eq 0 ] && grep -q "Total bash-heaviness findings: 0" <<< "$output"; then
   pass "single signal not flagged → exit 0"
 else fail "expected rc=0 (1 signal), got rc=$rc: $output"; fi
 
@@ -175,7 +175,7 @@ echo "TC-010: heredoc body data not counted → exit 0"
   echo '```'
 } > "$F"
 rc=0; output=$(run "$REL") || rc=$?
-if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total bash-heaviness findings: 0"; then
+if [ "$rc" -eq 0 ] && grep -q "Total bash-heaviness findings: 0" <<< "$output"; then
   pass "heredoc body data ignored → exit 0"
 else fail "expected rc=0 (body is data), got rc=$rc: $output"; fi
 
@@ -206,7 +206,7 @@ echo "TC-012: three signals → exit 1"
   echo '```'
 } > "$F"
 rc=0; output=$(run "$REL") || rc=$?
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q "3 signals"; then
+if [ "$rc" -eq 1 ] && grep -q "3 signals" <<< "$output"; then
   pass "three signals reported → exit 1"
 else fail "expected rc=1 + 3 signals, got rc=$rc: $output"; fi
 
@@ -222,7 +222,7 @@ echo "TC-013: non-bash fence ignored → exit 0"
   echo '```'
 } > "$F"
 rc=0; output=$(run "$REL") || rc=$?
-if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total bash-heaviness findings: 0"; then
+if [ "$rc" -eq 0 ] && grep -q "Total bash-heaviness findings: 0" <<< "$output"; then
   pass "non-bash fence skipped → exit 0"
 else fail "expected rc=0 (non-bash), got rc=$rc: $output"; fi
 
@@ -243,7 +243,7 @@ echo "TC-014: --all excludes tests/"
   echo '```'
 } > "$F"
 rc=0; output=$(bash "$TARGET" --all --repo-root "$TEST_DIR" 2>&1) || rc=$?
-if [ "$rc" -eq 0 ] && ! echo "$output" | grep -q "bad-fixture.md"; then
+if [ "$rc" -eq 0 ] && ! grep -q "bad-fixture.md" <<< "$output"; then
   pass "tests/ fixtures excluded from --all → exit 0"
 else fail "expected rc=0 with no tests/ finding, got rc=$rc: $output"; fi
 
@@ -262,8 +262,8 @@ echo "TC-015: long-block boundary 24 lines (< 25) → exit 0"
   echo '```'
 } > "$F"
 rc=0; output=$(run "$REL") || rc=$?
-if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total bash-heaviness findings: 0" \
-   && ! echo "$output" | grep -q "long-block"; then
+if [ "$rc" -eq 0 ] && grep -q "Total bash-heaviness findings: 0" <<< "$output" \
+   && ! grep -q "long-block" <<< "$output"; then
   pass "24-line body below threshold → exit 0, no long-block"
 else fail "expected rc=0 + no long-block (24 lines), got rc=$rc: $output"; fi
 
@@ -282,7 +282,7 @@ echo "TC-016: long-block boundary 25 lines (== 25) → exit 1"
   echo '```'
 } > "$F"
 rc=0; output=$(run "$REL") || rc=$?
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q "long-block(25)"; then
+if [ "$rc" -eq 1 ] && grep -q "long-block(25)" <<< "$output"; then
   pass "25-line body at threshold → exit 1 + long-block(25)"
 else fail "expected rc=1 + long-block(25), got rc=$rc: $output"; fi
 
@@ -297,7 +297,7 @@ echo "TC-017: literal --title standalone → exit 1"
   echo '```'
 } > "$F"
 rc=0; output=$(run "$REL") || rc=$?
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q "inline-gh-create-title"; then
+if [ "$rc" -eq 1 ] && grep -q "inline-gh-create-title" <<< "$output"; then
   pass "literal --title flagged standalone → exit 1"
 else fail "expected rc=1 + inline-gh-create-title, got rc=$rc: $output"; fi
 
@@ -313,7 +313,7 @@ echo "TC-018: variable --title → exit 0"
   echo '```'
 } > "$F"
 rc=0; output=$(run "$REL") || rc=$?
-if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total bash-heaviness findings: 0"; then
+if [ "$rc" -eq 0 ] && grep -q "Total bash-heaviness findings: 0" <<< "$output"; then
   pass "variable --title not flagged → exit 0"
 else fail "expected rc=0 (variable title), got rc=$rc: $output"; fi
 
@@ -328,7 +328,7 @@ echo "TC-019: gh issue create + --title= equals form → exit 1"
   echo '```'
 } > "$F"
 rc=0; output=$(run "$REL") || rc=$?
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q "inline-gh-create-title"; then
+if [ "$rc" -eq 1 ] && grep -q "inline-gh-create-title" <<< "$output"; then
   pass "gh issue create literal (equals form) flagged → exit 1"
 else fail "expected rc=1 + inline-gh-create-title, got rc=$rc: $output"; fi
 
@@ -345,7 +345,7 @@ echo "TC-020: literal --title in heredoc body → exit 0"
   echo '```'
 } > "$F"
 rc=0; output=$(run "$REL") || rc=$?
-if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total bash-heaviness findings: 0"; then
+if [ "$rc" -eq 0 ] && grep -q "Total bash-heaviness findings: 0" <<< "$output"; then
   pass "heredoc-body literal title ignored → exit 0"
 else fail "expected rc=0 (body is data), got rc=$rc: $output"; fi
 
@@ -378,7 +378,7 @@ echo "TC-022: gh issue edit literal --title → exit 0 (not flagged)"
   echo '```'
 } > "$F"
 rc=0; output=$(run "$REL") || rc=$?
-if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total bash-heaviness findings: 0"; then
+if [ "$rc" -eq 0 ] && grep -q "Total bash-heaviness findings: 0" <<< "$output"; then
   pass "gh issue edit literal title not flagged → exit 0"
 else fail "expected rc=0 (edit is not create), got rc=$rc: $output"; fi
 
@@ -393,7 +393,7 @@ echo "TC-023: gh pr edit literal --title → exit 0 (not flagged)"
   echo '```'
 } > "$F"
 rc=0; output=$(run "$REL") || rc=$?
-if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total bash-heaviness findings: 0"; then
+if [ "$rc" -eq 0 ] && grep -q "Total bash-heaviness findings: 0" <<< "$output"; then
   pass "gh pr edit literal title not flagged → exit 0"
 else fail "expected rc=0 (edit is not create), got rc=$rc: $output"; fi
 
@@ -412,7 +412,7 @@ echo "TC-024: multi-line gh create + continuation literal --title → exit 1"
   echo '```'
 } > "$F"
 rc=0; output=$(run "$REL") || rc=$?
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q "inline-gh-create-title"; then
+if [ "$rc" -eq 1 ] && grep -q "inline-gh-create-title" <<< "$output"; then
   pass "continuation-line literal --title flagged → exit 1"
 else fail "expected rc=1 + inline-gh-create-title, got rc=$rc: $output"; fi
 
@@ -427,7 +427,7 @@ echo "TC-025: empty --title \"\" → exit 0 (not flagged)"
   echo '```'
 } > "$F"
 rc=0; output=$(run "$REL") || rc=$?
-if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total bash-heaviness findings: 0"; then
+if [ "$rc" -eq 0 ] && grep -q "Total bash-heaviness findings: 0" <<< "$output"; then
   pass "empty --title not flagged → exit 0"
 else fail "expected rc=0 (empty title), got rc=$rc: $output"; fi
 
@@ -445,7 +445,7 @@ echo "TC-026: single-quote literal --title standalone → exit 1"
   echo '```'
 } > "$F"
 rc=0; output=$(run "$REL") || rc=$?
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q "inline-gh-create-title"; then
+if [ "$rc" -eq 1 ] && grep -q "inline-gh-create-title" <<< "$output"; then
   pass "single-quote literal --title flagged standalone → exit 1"
 else fail "expected rc=1 + inline-gh-create-title, got rc=$rc: $output"; fi
 
@@ -464,7 +464,7 @@ echo "TC-027: single-quote '\$pr_title' (literal but sentinel-skipped) → exit 
   echo '```'
 } > "$F"
 rc=0; output=$(run "$REL") || rc=$?
-if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total bash-heaviness findings: 0"; then
+if [ "$rc" -eq 0 ] && grep -q "Total bash-heaviness findings: 0" <<< "$output"; then
   pass "single-quote \$-title sentinel-skipped → exit 0"
 else fail "expected rc=0 (single-quote \$ skipped), got rc=$rc: $output"; fi
 
@@ -482,7 +482,7 @@ echo "TC-028: literal --title inside non-bash fence → exit 0"
   echo '```'
 } > "$F"
 rc=0; output=$(run "$REL") || rc=$?
-if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total bash-heaviness findings: 0"; then
+if [ "$rc" -eq 0 ] && grep -q "Total bash-heaviness findings: 0" <<< "$output"; then
   pass "non-bash fence literal title skipped → exit 0"
 else fail "expected rc=0 (non-bash fence), got rc=$rc: $output"; fi
 

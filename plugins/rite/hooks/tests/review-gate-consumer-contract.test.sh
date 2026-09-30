@@ -3,7 +3,10 @@ set -u
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)
 FIX="$ROOT/plugins/rite/skills/fix/SKILL.md"
+# fix の検査・停止のコード片は scripts/fix-step.sh にあり、SKILL.md はその 1 行呼び出しを持つ
+FIX_STEP="$ROOT/plugins/rite/scripts/fix-step.sh"
 REVIEW="$ROOT/plugins/rite/skills/pr-review/SKILL.md"
+REVIEW_STEP="$ROOT/plugins/rite/scripts/pr-review-step.sh"
 pass=0
 fail=0
 
@@ -16,11 +19,19 @@ check() {
   fi
 }
 
-check "fix は file JSON の receipt を検査" '.measured_gate.commit_sha == .commit_sha' "$FIX"
-check "fix は未適用 JSON で停止" '[fix:error] reason=gate_not_applied' "$FIX"
+check "fix は file JSON の receipt を検査" '.measured_gate.commit_sha == .commit_sha' "$FIX_STEP"
+check "fix は未適用 JSON で停止" '[fix:error] reason=gate_not_applied' "$FIX_STEP"
+# 非 fatal の移送は実測済みの指摘も含むため、fix の表示は実測の有無を断定しない。
+if [ "$(grep -cF 'non-blocking（fix 対象外）' "$FIX")" -eq 4 ] && ! grep -qF '非 fatal・実測なし' "$FIX"; then
+  echo "  ✅ fix の non-blocking 表示は実測なしと断定しない"; pass=$((pass + 1))
+else
+  echo "  ❌ fix の non-blocking 表示は実測なしと断定しない"; fail=$((fail + 1))
+fi
 check "pr-review は incremental も連続レール" 'full / incremental を問わない単一の連続レール' "$REVIEW"
-check "pr-review は gate helper を実行" 'bash {plugin_root}/scripts/review-measured-gate.sh' "$REVIEW"
-check "pr-review は検証済み終了操作を実行" 'bash {plugin_root}/hooks/flow-state.sh review-finish' "$REVIEW"
+check "pr-review は gate helper を実行" 'bash {plugin_root}/scripts/pr-review-step.sh measured-gate ' "$REVIEW"
+check "pr-review の手順 helper は gate helper を実行" 'bash "$plugin_root"/scripts/review-measured-gate.sh' "$REVIEW_STEP"
+check "pr-review は検証済み終了操作を実行" 'bash {plugin_root}/scripts/pr-review-step.sh review-finish ' "$REVIEW"
+check "pr-review の手順 helper は検証済み終了操作を実行" 'bash "$plugin_root"/hooks/flow-state.sh review-finish' "$REVIEW_STEP"
 check "終了操作は既存 saver を再利用" 'str(hooks / "review-result-save.sh")' "$ROOT/plugins/rite/hooks/scripts/lib/review-cycle.py"
 if bash "$ROOT/plugins/rite/hooks/tests/review-cycle-caller.test.sh"; then
   echo '  ✅ documented review-finish saves through the real saver'; pass=$((pass + 1))
@@ -28,9 +39,28 @@ else
   echo '  ❌ documented review-finish persistence'; fail=$((fail + 1))
 fi
 
+# The triage-target rules are read only inside 1.2.2, and each pinned sentence must appear there exactly once,
+# so a copy of the sentence elsewhere or a leftover old sentence cannot satisfy the pin. Occurrences are
+# counted, not lines: a step is one long line, and a duplicate on the same line must still be caught.
+FIX_TRIAGE=$(awk '/^### 1\.2\.2 Common Fatal Triage and Recording/ { f = 1 } /^### 1\.3 Classify Comments/ { f = 0 } f' "$FIX")
+triage_count() {
+  label=$1 pattern=$2 want=$3
+  if [ "$(printf '%s\n' "$FIX_TRIAGE" | grep -oF -- "$pattern" | wc -l)" -eq "$want" ]; then
+    echo "  ✅ $label"; pass=$((pass + 1))
+  else
+    echo "  ❌ $label"; fail=$((fail + 1))
+  fi
+}
+triage_count "外部ファイルは HEAD の保存済み JSON を特定する" 'P0 で選んだファイルが `.rite/review-results/` の外にある（外部ファイル）ときは、下の bash で HEAD の保存済み JSON を特定する' 1
+triage_count "外部ファイルの複写は保存済み JSON が無いときだけ" 'P0 の外部ファイルで HEAD の保存済み JSON が無かった場合だけ、新しいファイルのトップレベルを `producer: "fix"` にした' 1
+triage_count "外部ファイルを無条件に複写しない" 'P0 など元ファイルが `.rite/review-results/` 外の場合は、コピー側の' 0
+triage_count "P0 の中のファイルと P2 は元のファイルを triage し producer を変えない" 'P0（`.rite/review-results/` の中のファイル）/P2 は選択した元のファイルを `{triage_review_path}` とし、producer を変更しない' 1
+triage_count "表から組み立てた JSON は producer: fix" '新規 JSON のトップレベルに `producer: "fix"` を設定する' 1
+
 # Execute the documented callers so a zero exit from a failed record cannot pass.
 if python3 - "$ROOT" <<'PY_CHECK'
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -40,49 +70,382 @@ import tempfile
 root = Path(sys.argv[1])
 fix = (root / 'plugins/rite/skills/fix/SKILL.md').read_text()
 common = fix.split('### 1.2.2 Common Fatal Triage and Recording', 1)[1].split('### 1.3 Classify Comments', 1)[0]
-triage = re.search(r'```bash\n(.*?)\n```', common, re.S).group(1)
+blocks = re.findall(r'```bash\n(.*?)\n```', common, re.S)
+triage = next(b for b in blocks if 'scripts/fix-step.sh triage ' in b)
+materialize = next(b for b in blocks if '# fix-conversation-review-json' in b)
+# SKILL.md の caller は scripts/fix-step.sh の 1 行呼び出し。fixture の plugin にも helper と、
+# helper が読み込む control-char-neutralize.sh を置く（helper は自分の位置から plugin_root を決める）。
+def link_fix_step(plugin_dir):
+    (plugin_dir / 'scripts').mkdir(parents=True, exist_ok=True)
+    (plugin_dir / 'hooks').mkdir(parents=True, exist_ok=True)
+    (plugin_dir / 'scripts/fix-step.sh').symlink_to(root / 'plugins/rite/scripts/fix-step.sh')
+    (plugin_dir / 'hooks/control-char-neutralize.sh').symlink_to(root / 'plugins/rite/hooks/control-char-neutralize.sh')
+# non-fatal-record.md の caller は fix-step.sh non-fatal-record の 1 行呼び出し。記録の本体は helper の関数にある。
 record = re.search(r'```bash\n(.*?)\n```', (root / 'plugins/rite/skills/fix/references/non-fatal-record.md').read_text(), re.S).group(1)
+assert 'scripts/fix-step.sh non-fatal-record ' in record
+record_src = (root / 'plugins/rite/scripts/fix-step.sh').read_text().split('\nstep_non_fatal_record() {\n', 1)[1].split('\n# --- ', 1)[0]
+# The ledger splice must stop on failure, not fall through to an unspliced PATCH.
+assert 'reason=nonblocking_record_ledger_extract_failed' in record_src
+assert 'reason=nonblocking_record_ledger_merge_failed' in record_src
+assert not [l for l in record_src.splitlines() if 'nb-sweep-ledger.sh' in l and '|| true' in l]
 with tempfile.TemporaryDirectory() as temp:
     temp = Path(temp)
     plugin = temp / 'plugin'
     (plugin / 'scripts').mkdir(parents=True)
-    (plugin / 'hooks').mkdir()
+    (plugin / 'hooks/scripts').mkdir(parents=True)
     (plugin / 'scripts/review-findings-maps.sh').symlink_to(root / 'plugins/rite/scripts/review-findings-maps.sh')
+    (plugin / 'hooks/scripts/nb-sweep-ledger.sh').symlink_to(root / 'plugins/rite/hooks/scripts/nb-sweep-ledger.sh')
+    link_fix_step(plugin)
     source = temp / 'review.json'
     values = {'plugin_root': str(plugin), 'triage_review_path': str(source),
               'triage_helper_source': 'explicit_file', 'pr_number': '42',
               'owner_repo': 'owner/repo', 'review_cycle_id': '42-test', 'non_fatal_moved_count': '1'}
-    def run(block):
+    # gh stub: answers only the calls the real record helper's read-only mode makes, so a real gh is
+    # never reached. The helper selects the record comment itself, so the selection is tested too.
+    stub_dir = temp / 'bin'
+    stub_dir.mkdir()
+    gh_log = temp / 'gh-calls'
+    pr_json = temp / 'pr.json'
+    comments = temp / 'comments.json'
+    (stub_dir / 'gh').write_text(f"""#!/bin/bash
+printf '%s\\n' "$*" >> '{gh_log}'
+case "$1 $2" in
+  'pr view')
+    case " $* " in *' headRefName '*) jq -r '.headRefName' '{pr_json}' ;; *) jq -r '.body' '{pr_json}' ;; esac
+    exit 0 ;;
+  'api user') printf 'rite-bot\\n'; exit 0 ;;
+  'issue view') exit 0 ;;
+esac
+if [ "$*" = "api --paginate --slurp repos/owner/repo/issues/7/comments" ]; then
+  [ -f '{temp}/comments-fail' ] && exit 1
+  exec jq '[.]' '{comments}'
+fi
+case "$1 $2" in
+  'api repos/owner/repo/issues/comments/'*) exec jq --argjson id "${{2##*/}}" '.[] | select(.id == $id)' '{comments}' ;;
+esac
+exit 97
+""")
+    (stub_dir / 'gh').chmod(0o755)
+    env = {**os.environ, 'PATH': f"{stub_dir}:{os.environ['PATH']}"}
+    ledger_row = '| F-09 | b.sh:3 | recorded | severity=LOW; measured=false |'
+    # A non-record comment carrying a ledger comes first: taking it instead of the record must fail.
+    other_comment = '\n'.join([
+        'progress note', '', '### 却下台帳', '', '| finding_id | file:line | 判定 | 判定文 |',
+        '|------------|-----------|------|--------|', '| F-77 | z.sh:1 | recorded | severity=LOW; measured=false |', ''])
+    record_with_ledger = '\n'.join([
+        '## 📜 rite 非実測指摘の記録 (non-blocking)', '', 'old', '',
+        '### 却下台帳', '', '| finding_id | file:line | 判定 | 判定文 |',
+        '|------------|-----------|------|--------|', ledger_row, '',
+        '📎 non_blocking_count: 0', '', '<!-- rite:nbr:v1 -->', ''])
+    record_without_ledger = '\n'.join([
+        '## 📜 rite 非実測指摘の記録 (non-blocking)', '', 'old', '',
+        '📎 non_blocking_count: 0', '', '<!-- rite:nbr:v1 -->', ''])
+    # An older duplicate record (ledger F-55) and a same-marker comment by another author (ledger F-66)
+    # surround the record the helper PATCHes: only its ledger may be carried.
+    def ledger_record(row):
+        return record_with_ledger.replace(ledger_row, row)
+    def comment(cid, body, login='rite-bot'):
+        return {'id': cid, 'user': {'login': login}, 'body': body}
+    stale_row = '| F-55 | old.sh:1 | recorded | severity=LOW; measured=false |'
+    foreign_row = '| F-66 | x.sh:1 | recorded | severity=LOW; measured=false |'
+    existing_with_ledger = json.dumps([
+        comment(1, ledger_record(stale_row)), comment(2, other_comment), comment(3, record_with_ledger),
+        comment(4, ledger_record(foreign_row), 'someone-else')])
+    existing_without_ledger = json.dumps([comment(2, other_comment), comment(3, record_without_ledger)])
+    def set_pr(body, head):
+        pr_json.write_text(json.dumps({'body': body, 'headRefName': head}))
+    set_pr('Closes #7', 'fix/issue-8-other')
+    comments.write_text(existing_with_ledger)
+    def run(block, extra_env=None):
         for key, value in values.items():
             block = block.replace('{' + key + '}', value)
-        return subprocess.run(['bash', '-c', block], text=True, capture_output=True, timeout=10)
+        return subprocess.run(['bash', '-c', block], text=True, capture_output=True, timeout=10,
+                              env={**env, **(extra_env or {})})
     findings = [{'id':'F-01', 'severity':'MEDIUM', 'scope':'current-pr', 'file':'a.sh', 'line':1,
-                 'reviewer':'test-reviewer', 'description':'private-detail', 'verification':{'measured':True}}]
+                 'reviewer':'test-reviewer', 'description':'private-detail', 'verification':{'measured':True},
+                 'consequence_class':'B'}]
     source.write_text(json.dumps({'findings': findings}))
     result = run(triage)
     assert result.returncode == 0, result
     assert json.loads(source.read_text())['findings'] == []
     assert json.loads(result.stdout)['fatal_map'] == {'F-01':False}
     assert 'FIX_TRIAGE_REVIEW_PATH=' in result.stderr
+
+    # The conversation route triages the saved review JSON of HEAD itself, so the gate-written
+    # class reaches triage and the receipt that completion reads is the triaged file.
+    state = temp / 'state'
+    results = state / '.rite/review-results'
+    results.mkdir(parents=True)
+    copier = temp / 'copier'
+    (copier / 'hooks/scripts').mkdir(parents=True)
+    for name in ('review-save-json-verify.sh', 'lib'):
+        (copier / 'hooks/scripts' / name).symlink_to(root / 'plugins/rite/hooks/scripts' / name)
+    (copier / 'hooks/state-path-resolve.sh').write_text(f"#!/bin/bash\nprintf '%s\\n' '{state}'\n")
+    link_fix_step(copier)
+    repo = temp / 'repo'
+    repo.mkdir()
+    git = ['git', '-C', str(repo), '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false']
+    subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+    subprocess.run(git + ['commit', '-q', '--allow-empty', '-m', 'reviewed'], check=True)
+    sha = subprocess.run(git + ['rev-parse', 'HEAD'], text=True, capture_output=True, check=True).stdout.strip()
+    saved_review = {'commit_sha': sha, 'findings': [
+        {'id': 'F-01', 'severity': 'MEDIUM', 'scope': 'current-pr', 'file': 'a.sh', 'line': 1,
+         'verification': {'measured': True}, 'consequence_class': 'A'},
+        {'id': 'F-02', 'severity': 'MEDIUM', 'scope': 'current-pr', 'file': 'b.sh', 'line': 2,
+         'verification': {'measured': True}, 'consequence_class': 'B'}],
+        'non_blocking_findings': [], 'acceptance_criteria': {'skipped': 'no_ac_section'},
+        'measured_gate': {'commit_sha': sha, 'applied_at': '2026-01-01T00:00:00Z',
+                          'blocking': 2, 'demoted': 0, 'anchor_undetermined': 0}}
+    def copy_block(plugin_dir, reviewed=sha):
+        block = materialize
+        for key, value in {'plugin_root': str(plugin_dir), 'pr_number': '42', 'review_source': 'conversation',
+                           'reviewed_commit_sha': reviewed}.items():
+            block = block.replace('{' + key + '}', value)
+        assert not re.search(r'\{[a-z_]+\}', block), block
+        return subprocess.run(['bash', '-c', block], text=True, capture_output=True, timeout=30, cwd=repo)
+    def copy_run(reviewed=sha):
+        before = {f.name: f.read_bytes() for f in results.iterdir()}
+        result = copy_block(copier, reviewed)
+        assert result.returncode == 0, result
+        # Only the fix marker is emitted: helper markers of pr-review 8.0.4 are not re-emitted.
+        lines = result.stderr.splitlines()
+        assert len(lines) == 1 and lines[0].startswith('[CONTEXT] FIX_MATERIALIZED_JSON='), result
+        # Selecting the triage target writes nothing: no new file, no rewritten file.
+        assert {f.name: f.read_bytes() for f in results.iterdir()} == before, result
+        return lines[0].split('=', 1)[1]
+    def copy_fail(plugin_dir, reason):
+        before = sorted(results.iterdir())
+        result = copy_block(plugin_dir)
+        assert result.returncode == 1 and f'[fix:error] reason={reason}' in result.stdout, result
+        assert 'FIX_MATERIALIZED_JSON=' not in result.stderr, result
+        assert sorted(results.iterdir()) == before, result
+        return result
+    assert copy_run() == ''  # nothing saved yet: the caller falls back to the table
+    # A saved JSON of another commit is never borrowed.
+    (results / '42-20260101000000.json').write_text(json.dumps(
+        dict(saved_review, commit_sha='b' * 40, measured_gate=dict(saved_review['measured_gate'], commit_sha='b' * 40))))
+    assert copy_run() == ''
+    # A missing helper is a failure, not "no saved JSON": the block stops with the helper output.
+    broken = temp / 'broken'
+    (broken / 'hooks/scripts').mkdir(parents=True)
+    link_fix_step(broken)
+    failed = copy_fail(broken, 'conversation_json_verify_failed')
+    assert 'review-save-json-verify.sh' in failed.stderr, failed
+    # An undecidable helper result (exit 0 without the found marker) also stops.
+    degraded = temp / 'degraded'
+    (degraded / 'hooks/scripts').mkdir(parents=True)
+    for name in ('review-save-json-verify.sh', 'lib'):
+        (degraded / 'hooks/scripts' / name).symlink_to(root / 'plugins/rite/hooks/scripts' / name)
+    (degraded / 'hooks/state-path-resolve.sh').write_text("#!/bin/bash\nprintf '\\n'\n")
+    link_fix_step(degraded)
+    failed = copy_fail(degraded, 'conversation_json_verify_failed')
+    assert 'REVIEW_SAVE_GATE=degraded' in failed.stderr, failed
+    # A HEAD JSON whose gate receipt is broken stops instead of counting as "no saved JSON".
+    (results / '42-20260101000001.json').write_text(json.dumps(
+        dict(saved_review, measured_gate={k: v for k, v in saved_review['measured_gate'].items() if k != 'applied_at'})))
+    failed = copy_fail(copier, 'conversation_json_verify_failed')
+    assert 'reason=gate_record_mismatch' in failed.stderr, failed
+    original = results / '42-20260101000002.json'
+    original.write_text(json.dumps(saved_review))
+    # A table reviewed at another commit never takes the HEAD review's findings.
+    assert copy_run('c' * 40) == ''
+    # A found JSON whose path cannot be resolved stops instead of falling back to the table.
+    # The verify helper resolves the state root first, so only the block's own call fails.
+    flaky = temp / 'flaky'
+    (flaky / 'hooks/scripts').mkdir(parents=True)
+    for name in ('review-save-json-verify.sh', 'lib'):
+        (flaky / 'hooks/scripts' / name).symlink_to(root / 'plugins/rite/hooks/scripts' / name)
+    link_fix_step(flaky)
+    calls = temp / 'resolve-calls'
+    (flaky / 'hooks/state-path-resolve.sh').write_text(
+        f"#!/bin/bash\necho x >> '{calls}'\n[ \"$(wc -l < '{calls}')\" -eq 1 ] || exit 1\nprintf '%s\\n' '{state}'\n")
+    copy_fail(flaky, 'conversation_json_resolve_failed')
+    resolve_calls = len(calls.read_text().splitlines())
+    assert resolve_calls == 2, f'flaky resolver assumes one call by the verify helper, then the block; got {resolve_calls} calls'
+    # The triage target is the saved file itself, the receipt that completion and the plan check read.
+    assert Path(copy_run()) == original
+    assert json.loads(original.read_text()) == saved_review
+    # An external file of HEAD resolves to the same saved JSON, so the receipt is triaged instead of a copy.
+    external = temp / 'external.json'
+    external.write_text(json.dumps(dict(saved_review, timestamp='__RITE_TS_PLACEHOLDER__')))
+    assert Path(copy_run(json.loads(external.read_text())['commit_sha'])) == original
+    compare = next(b for b in blocks if '# fix-explicit-review-json' in b)
+    def compare_run(given):
+        block = compare.replace('{review_source_path}', str(given)).replace('{materialized_json}', str(original)) \
+            .replace('{plugin_root}', str(root / 'plugins/rite'))
+        assert not re.search(r'\{[a-z_]+\}', block), block
+        return subprocess.run(['bash', '-c', block], text=True, capture_output=True, timeout=10)
+    same = compare_run(external)
+    assert same.returncode == 0 and '[fix:error]' not in same.stdout, same
+    # The saved JSON is not triaged in place of a file that differs from it in findings,
+    # non_blocking_findings or measured_gate.
+    differs = temp / 'differs.json'
+    differs.write_text(json.dumps(dict(saved_review, findings=saved_review['findings'][:1])))
+    differ = compare_run(differs)
+    assert differ.returncode == 1 and '[fix:error] reason=explicit_json_differs_from_saved' in differ.stdout, differ
+    # Each compared key stops the triage on its own; findings stay identical to the saved JSON.
+    for key, value in {
+            'non_blocking_findings': [dict(saved_review['findings'][1], id='F-03')],
+            'measured_gate': dict(saved_review['measured_gate'], blocking=1)}.items():
+        variant = dict(saved_review, **{key: value})
+        others = [k for k in saved_review if k != key]
+        assert [variant[k] for k in others] == [saved_review[k] for k in others] and variant[key] != saved_review[key], key
+        one_key = temp / f'differs-{key}.json'
+        one_key.write_text(json.dumps(variant))
+        result = compare_run(one_key)
+        assert result.returncode == 1 and '[fix:error] reason=explicit_json_differs_from_saved' in result.stdout, (key, result)
+    unreadable = compare_run(temp / 'missing.json')
+    assert unreadable.returncode == 1 and '[fix:error] reason=explicit_json_compare_failed' in unreadable.stdout, unreadable
+    assert json.loads(original.read_text()) == saved_review
+    def triage_original():
+        return subprocess.run(['bash', str(root / 'plugins/rite/scripts/review-findings-maps.sh'),
+                               '--review-source', 'local_file', '--review-source-path', str(original)],
+                              text=True, capture_output=True, timeout=30)
+    # An unwritable result directory stops the triage and leaves the receipt untouched.
+    results.chmod(0o555)
+    try:
+        unwritable = triage_original()
+        assert unwritable.returncode != 0 and 'reason=io_error' in unwritable.stdout, unwritable
+        assert json.loads(original.read_text()) == saved_review
+    finally:
+        results.chmod(0o755)
+    triaged = triage_original()
+    assert triaged.returncode == 0 and json.loads(triaged.stdout)['fatal_map'] == {'F-01': True, 'F-02': False}, triaged
+    receipt = json.loads(original.read_text())
+    assert [f['id'] for f in receipt['findings']] == ['F-01'], receipt
+    assert [(f['id'], f['demotion_reason']) for f in receipt['non_blocking_findings']] == [('F-02', 'non_fatal')], receipt
+    assert 'producer' not in receipt and 'review_source' not in receipt, receipt
+    # A newer fix-made file of the same commit is not the receipt: triaging it would leave the receipt untriaged.
+    (results / '42-20260101000003.json').write_text(json.dumps(dict(saved_review, producer='fix')))
+    copy_fail(copier, 'conversation_json_not_original')
     saved = source.read_bytes()
     stub = plugin / 'hooks/review-nonblocking-record.sh'
-    for outcome, expected in [('updated',0), ('failed',1), ('skipped',1)]:
+    record_body = temp / 'record-body'
+    count_arg = temp / 'count-arg'
+    real_helper = root / 'plugins/rite/hooks/review-nonblocking-record.sh'
+    def set_outcome(outcome):
         stub.write_text("""#!/bin/bash
+[ "$1" = --print-record-body ] && exec bash REAL_HELPER "$@"
 while [ \"$#\" -gt 0 ]; do
-  case \"$1\" in --content-file) cp \"$2\" BODY_COPY; break ;; esac
+  case \"$1\" in
+    --count) printf '%s' \"$2\" > COUNT_ARG ;;
+    --content-file) cp \"$2\" BODY_COPY ;;
+  esac
   shift
 done
 printf '[CONTEXT] NONBLOCKING_RECORD_DONE=1; pr=42; outcome=%s; count=1; iteration_id=42-test; comment_id=1; degraded=0\n' OUTCOME >&2
 exit 0
-""".replace('OUTCOME', outcome).replace('BODY_COPY', str(temp / 'record-body')))
+""".replace('OUTCOME', outcome).replace('REAL_HELPER', str(real_helper)).replace('BODY_COPY', str(record_body)).replace('COUNT_ARG', str(count_arg)))
+    for outcome, expected in [('updated',0), ('failed',1), ('skipped',1)]:
+        set_outcome(outcome)
         result = run(record)
         assert result.returncode == expected, (outcome, result)
         assert source.read_bytes() == saved
-        body = (temp / 'record-body').read_text()
+        body = record_body.read_text()
         assert 'private-detail' not in body
         assert 'F-01' in body and str(source) in body
         if expected:
             assert '[fix:error] reason=nonblocking_record_failed' in result.stdout
+    # The ledger of the record being replaced survives, spliced right before the count line.
+    set_outcome('updated')
+    gh_log.write_text('')
+    result = run(record)
+    assert result.returncode == 0, result
+    assert 'REJECTED_LEDGER_PRESERVE=ok' in result.stderr
+    lines = record_body.read_text().splitlines()
+    assert lines.count('### 却下台帳') == 1 and lines.count(ledger_row) == 1
+    assert not [l for l in lines if 'F-77' in l or 'F-55' in l or 'F-66' in l]
+    count_at = next(i for i, l in enumerate(lines) if l.startswith('📎 non_blocking_count:'))
+    assert lines.index('### 却下台帳') < count_at
+    assert [l for l in lines[:count_at] if l.strip()][-1] == ledger_row
+    assert lines[count_at] == '📎 non_blocking_count: 1' and count_arg.read_text() == '1'
+    assert [l for l in lines if l.strip()][-1] == '<!-- rite:nbr:v1 -->'
+    without_ledger = lines[:lines.index('### 却下台帳')] + lines[count_at:]
+    # The closing keyword wins over the branch name, as in the helper.
+    assert 'api --paginate --slurp repos/owner/repo/issues/7/comments' in gh_log.read_text()
+    # The read never writes.
+    assert not [l for l in gh_log.read_text().splitlines() if ' -X PATCH' in l or l.startswith(('issue comment', 'issue edit'))]
+    # No ledger to carry: the body is the generated one, without a heading.
+    for existing in (existing_without_ledger, json.dumps([comment(2, other_comment)]), '[]'):
+        comments.write_text(existing)
+        result = run(record)
+        assert result.returncode == 0, result
+        lines = record_body.read_text().splitlines()
+        assert lines == without_ledger, lines
+    comments.write_text(existing_with_ledger)
+    # Non-fatal moves carry measured findings too, so each row names its own reason and no heading says unmeasured.
+    mixed = temp / 'mixed.json'
+    mixed.write_text(json.dumps({'findings': [], 'non_blocking_findings': [
+        {'id':'F-02', 'reviewer':'r', 'severity':'MEDIUM', 'file':'b.sh', 'line':2, 'scope':'current-pr',
+         'verification':{'measured':True}, 'demotion_reason':'non_fatal'},
+        {'id':'F-03', 'reviewer':'r', 'severity':'HIGH', 'file':'c.sh', 'line':3, 'scope':'current-pr',
+         'verification':{'measured':False}, 'demotion_reason':'non_fatal'},
+        {'id':'F-04', 'reviewer':'r', 'severity':'LOW', 'file':'d.sh', 'line':4, 'scope':'current-pr',
+         'verification':{'measured':True}, 'demotion':{'policy':'class-b-demotion', 'reason':'局所的'}}]}))
+    values['triage_review_path'] = str(mixed)
+    result = run(record)
+    values['triage_review_path'] = str(source)
+    assert result.returncode == 0, result
+    lines = record_body.read_text().splitlines()
+    assert lines[0] == '## 📜 rite 非実測指摘の記録'
+    assert [l for l in lines if l.startswith('### non-blocking')] == ['### non-blocking（fix 対象外）']
+    assert not [l for l in lines if l.startswith('#') and '実測なし' in l]
+    labels = {l.split('\t')[0]: l.split('\t')[-1] for l in lines if '\t' in l}
+    assert labels == {'F-02':'実測済み（非 fatal）', 'F-03':'実測なし', 'F-04':'class B 降格: 局所的'}, labels
+    # Without a closing keyword the branch name decides.
+    gh_log.write_text('')
+    set_pr('no keyword', 'fix/issue-7-branch')
+    result = run(record)
+    assert result.returncode == 0, result
+    assert 'api --paginate --slurp repos/owner/repo/issues/7/comments' in gh_log.read_text()
+    # Failures stop before the helper, so nothing replaces the record.
+    for setup, reason in [
+            (lambda: set_pr('no keyword', 'topic-branch'), 'nonblocking_record_ledger_fetch_failed'),
+            (lambda: (temp / 'comments-fail').write_text(''), 'nonblocking_record_ledger_fetch_failed')]:
+        set_pr('Closes #7', 'fix/issue-7-branch')
+        setup()
+        record_body.unlink(missing_ok=True)
+        result = run(record)
+        assert result.returncode != 0, result
+        assert f'[fix:error] reason={reason}' in result.stdout, result
+        assert f'[CONTEXT] FIX_FALLBACK_FAILED=1; reason={reason}' in result.stderr, result
+        assert 'NONBLOCKING_RECORD_BODY=failed' in result.stderr, result
+        assert not record_body.exists()
+    (temp / 'comments-fail').unlink()
+    # The ledger tempfile, extract and merge-into failures after a readable record stop the same way.
+    real_ledger = root / 'plugins/rite/hooks/scripts/nb-sweep-ledger.sh'
+    ledger_link = plugin / 'hooks/scripts/nb-sweep-ledger.sh'
+    failing_ledger = temp / 'failing-ledger.sh'
+    failing_ledger.write_text(f"""#!/bin/bash
+[ "$1" = "$LEDGER_FAIL_OP" ] && exit 1
+exec bash '{real_ledger}' "$@"
+""")
+    failing_ledger.chmod(0o755)
+    shim_dir = temp / 'mktemp-shim'
+    shim_dir.mkdir()
+    real_mktemp = subprocess.run(['bash', '-c', 'command -v mktemp'], text=True, capture_output=True).stdout.strip()
+    (shim_dir / 'mktemp').write_text(f"""#!/bin/bash
+case "$*" in *rite-fix-nbr-existing-*) exit 1 ;; esac
+exec '{real_mktemp}' "$@"
+""")
+    (shim_dir / 'mktemp').chmod(0o755)
+    set_pr('Closes #7', 'fix/issue-7-branch')
+    comments.write_text(existing_with_ledger)
+    ledger_link.unlink()
+    ledger_link.symlink_to(failing_ledger)
+    for extra, reason in [
+            ({'PATH': f"{shim_dir}:{env['PATH']}"}, 'nonblocking_record_tempfile_failed'),
+            ({'LEDGER_FAIL_OP': 'extract'}, 'nonblocking_record_ledger_extract_failed'),
+            ({'LEDGER_FAIL_OP': 'merge-into'}, 'nonblocking_record_ledger_merge_failed')]:
+        record_body.unlink(missing_ok=True)
+        result = run(record, extra)
+        assert result.returncode != 0, (reason, result)
+        assert f'[fix:error] reason={reason}' in result.stdout, (reason, result)
+        assert f'[CONTEXT] FIX_FALLBACK_FAILED=1; reason={reason}' in result.stderr, (reason, result)
+        assert 'REJECTED_LEDGER_PRESERVE=ok' not in result.stderr, (reason, result)
+        assert not record_body.exists(), reason
+    ledger_link.unlink()
+    ledger_link.symlink_to(real_ledger)
     source.write_text(json.dumps({'findings':[], 'non_blocking_findings':[]}))
     result = run(record)
     assert result.returncode == 0, result  # skipped with zero findings is valid

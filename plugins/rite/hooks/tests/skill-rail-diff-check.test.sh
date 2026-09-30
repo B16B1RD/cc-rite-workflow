@@ -155,7 +155,7 @@ NEW_REL="plugins/rite/skills/brandnew/SKILL.md"
 mkdir -p "$TEST_DIR/$(dirname "$NEW_REL")"
 cp "$F" "$TEST_DIR/$NEW_REL"
 rc=0; output=$(bash "$TARGET" --repo-root "$TEST_DIR" --skill "$NEW_REL" --base-ref HEAD 2>&1) || rc=$?
-if [ "$rc" -eq 0 ] && echo "$output" | grep -q "not applicable"; then
+if [ "$rc" -eq 0 ] && grep -q "not applicable" <<< "$output"; then
   pass "absent at base → exit 0 with clean-skip notice"
 else fail "expected rc=0 + 'not applicable', got rc=$rc: $output"; fi
 
@@ -168,12 +168,12 @@ else fail "expected rc=0 + 'not applicable', got rc=$rc: $output"; fi
 echo "TC-010: --extract-only content"
 write_base
 output=$(bash "$TARGET" --repo-root "$TEST_DIR" --skill "$REL" --extract-only 2>/dev/null)
-if echo "$output" | grep -q 'FIXTURE=1' \
-  && echo "$output" | grep -q 'INDENTED=1' \
-  && echo "$output" | grep -q 'fixture:done' \
-  && echo "$output" | grep -q 'indented-row' \
+if grep -q 'FIXTURE=1' <<< "$output" \
+  && grep -q 'INDENTED=1' <<< "$output" \
+  && grep -q 'fixture:done' <<< "$output" \
+  && grep -q 'indented-row' <<< "$output" \
   && [ "$(echo "$output" | grep -c '```')" -eq 4 ] \
-  && ! echo "$output" | grep -q 'Long narration'; then
+  && ! grep -q 'Long narration' <<< "$output"; then
   pass "--extract-only keeps rail incl. fence lines, drops prose"
 else fail "unexpected --extract-only output: $output"; fi
 
@@ -194,7 +194,7 @@ rc=0; output=$(bash "$TARGET" --repo-root "$TEST_DIR" --skill "$REL" --base-ref 
 # Message-matched, not exit-code-only: deleting the empty-value guard still
 # yields rc=2 from the ref-resolution check below it, so rc alone cannot tell
 # the two apart and the guard would be free to disappear.
-if [ "$rc" -eq 2 ] && echo "$output" | grep -q "must not be empty"; then
+if [ "$rc" -eq 2 ] && grep -q "must not be empty" <<< "$output"; then
   pass "empty --base-ref → exit 2 with the empty-value message"
 else fail "expected rc=2 + 'must not be empty', got rc=$rc: $output"; fi
 
@@ -209,8 +209,8 @@ rc=0; output=$(bash "$TARGET" --repo-root "$TEST_DIR" --skill "$REL" --base-ref 
 # the former and silence the latter, leaving "See git's message above" pointing
 # at nothing — for a typo'd ref, git's line is the only one naming the cause.
 if [ "$rc" -eq 2 ] \
-  && echo "$output" | grep -q "could not resolve --base-ref" \
-  && echo "$output" | grep -q "Needed a single revision"; then
+  && grep -q "could not resolve --base-ref" <<< "$output" \
+  && grep -q "Needed a single revision" <<< "$output"; then
   pass "unresolvable --base-ref → exit 2 with git's own diagnosis"
 else fail "expected rc=2 + both messages, got rc=$rc: $output"; fi
 
@@ -224,7 +224,7 @@ write_base
 mkdir -p "$NONGIT_DIR/$(dirname "$REL")"
 cp "$F" "$NONGIT_DIR/$REL"
 rc=0; output=$(bash "$TARGET" --repo-root "$NONGIT_DIR" --skill "$REL" --base-ref HEAD 2>&1) || rc=$?
-if [ "$rc" -eq 2 ] && echo "$output" | grep -q "not a git repository"; then
+if [ "$rc" -eq 2 ] && grep -q "not a git repository" <<< "$output"; then
   pass "non-git --repo-root → exit 2 with git's own diagnosis"
 else fail "expected rc=2 + 'not a git repository', got rc=$rc: $output"; fi
 
@@ -242,7 +242,7 @@ printf '# prose only\n\nNo fences, no tables.\n' > "$TEST_DIR/$NORAIL_REL"
 # premise for any test added after this point.
 (cd "$TEST_DIR" && git add "$NORAIL_REL" && git commit -qm norail)
 rc=0; output=$(bash "$TARGET" --repo-root "$TEST_DIR" --skill "$NORAIL_REL" --base-ref HEAD 2>&1) || rc=$?
-if [ "$rc" -eq 2 ] && echo "$output" | grep -q "empty machine rail"; then
+if [ "$rc" -eq 2 ] && grep -q "empty machine rail" <<< "$output"; then
   pass "empty rail → exit 2"
 else fail "expected rc=2 + 'empty machine rail', got rc=$rc: $output"; fi
 
@@ -251,7 +251,7 @@ echo "TC-013b: Empty rail → exit 2 on --extract-only too"
 # that silently reports zero lines is the same vacuous proof. Moving the floor
 # back behind the branch passes every other TC, so this one pins the order.
 rc=0; output=$(bash "$TARGET" --repo-root "$TEST_DIR" --skill "$NORAIL_REL" --extract-only 2>&1) || rc=$?
-if [ "$rc" -eq 2 ] && echo "$output" | grep -q "empty machine rail"; then
+if [ "$rc" -eq 2 ] && grep -q "empty machine rail" <<< "$output"; then
   pass "empty rail on --extract-only → exit 2"
 else fail "expected rc=2 + 'empty machine rail', got rc=$rc: $output"; fi
 
@@ -268,7 +268,7 @@ mkdir -p "$TEST_DIR/$(dirname "$ONE_REL")"
 printf '# t\n\nprose\n\n| a | b |\n\nmore prose\n' > "$TEST_DIR/$ONE_REL"
 (cd "$TEST_DIR" && git add "$ONE_REL" && git commit -qm oneline)
 rc=0; output=$(bash "$TARGET" --repo-root "$TEST_DIR" --skill "$ONE_REL" --base-ref HEAD 2>&1) || rc=$?
-if [ "$rc" -eq 0 ] && echo "$output" | grep -q "(1 rail lines)"; then
+if [ "$rc" -eq 0 ] && grep -q "(1 rail lines)" <<< "$output"; then
   pass "one-line rail → exit 0 with count 1"
 else fail "expected rc=0 + '(1 rail lines)', got rc=$rc: $output"; fi
 
@@ -304,7 +304,7 @@ if [ -n "$REPO_ROOT_REAL" ] && git -C "$PLUGIN_ROOT" rev-parse --verify -q origi
   output=$(bash "$TARGET" --repo-root "$REPO_ROOT_REAL" --skill "plugins/rite/skills/open/SKILL.md" 2>&1) || rc=$?
   case "$rc" in
     0)
-      if echo "$output" | grep -q "machine rail identical"; then
+      if grep -q "machine rail identical" <<< "$output"; then
         pass "open/SKILL.md rail identical to origin/develop"
       else
         fail "rc=0 but no 'machine rail identical' — comparison did not run: $output"
@@ -346,6 +346,15 @@ if [ -n "$REPO_ROOT_REAL" ] && git -C "$PLUGIN_ROOT" rev-parse --verify -q origi
       base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv 'bash {plugin_root}/hooks/scripts/projects-status-gate.sh --issue {issue_number} --expect "In Progress"' || true)
       base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv '| `ok` | 盤面が `In Progress` 以降に到達済み。ステップ 3 へ進む |' || true)
       base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv '| `missing` | 2.4(A) が盤面に届いていない（Status が期待に達していない / Status 値が空 / Issue が Project 未登録）。**2.4(A) の bash を 1 回だけ再実行**してステップ 3 へ進む |' || true)
+      # The multi_session section read now ends at any line that starts with
+      # neither whitespace nor `#`, not only at a letter. Drop only the superseded
+      # line, matched as a whole line. After the base advances this exclusion
+      # matches nothing.
+      base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv 'ms_section=$(sed -n '\''/^multi_session:/,/^[a-zA-Z]/p'\'' rite-config.yml 2>/dev/null) || ms_section=""' || true)
+      # The stale_residue row now checks the directory contents before asking.
+      # Drop only the superseded line, matched as a whole line. After the base
+      # advances this exclusion matches nothing.
+      base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv '| `stale_residue` | パス存在・worktree 未登録（prune 後も残存）→ AskUserQuestion（「削除して再作成」= `rm -rf {path}` 後に create / 「中止」） |' || true)
       printf '%s\n' "$base_rail" > "$TEST_DIR/base-rail"
       printf '%s\n' "$head_rail" > "$TEST_DIR/head-rail"
       if [ -z "$base_rail" ] || [ -z "$head_rail" ]; then

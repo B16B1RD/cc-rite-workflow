@@ -22,7 +22,24 @@
 # detached `rite-review-mutation-*` worktrees that the Step 1 branch sweep cannot
 # catch (they have no named branch):
 #   T-14 → Step 4: aged orphan mutation worktree reaped (mutation_worktrees=1)
-#   T-15 → Step 4: age guard protects a fresh mutation worktree (in-flight safety)
+#   T-15 → Step 4-P: a fresh worktree whose name records no owner is reaped at once
+#
+# Step 4-P owner record — a reviewer names its worktree
+# `rite-review-mutation-owner.<session_id>.<random>`:
+#   T-60 / T-61 / T-67 → a live owner in another session keeps it (GNU / BSD / documented names)
+#   T-62 / T-63        → no owner state, inactive owner, or owner past the TTL: reaped
+#   T-64               → the running session's own worktree is reaped; no / invalid self ID
+#   T-65               → an unreadable owner record is kept with a WARNING
+#   T-66               → a mutant without the owner check loses T-60's worktree
+#   T-69 / T-70        → the Ready gate's `rite-ready-pr-head-owner.<session_id>.<random>`
+#                        (name taken from the gate's template): kept while live, reaped when inactive
+#   T-71               → the unowned `rite-ready-pr-head.<random>` is reaped at once
+#
+# Reviewer worktree guidance — _reviewer-base.md is where reviewers learn how to
+# create the worktrees this cleanup reaps:
+#   T-68 → every recommended `git worktree add` form (inline code spans and command
+#          lines in code blocks) is detached and works on a branch another worktree
+#          has checked out; the branch-naming form is gone
 #
 # Each test creates an isolated temp git repository, simulates branch /
 # worktree creation, runs the cleanup script, and asserts the result.
@@ -244,7 +261,7 @@ TEST_REPO=$(make_temp_repo)
 # not sufficient evidence that the orphan worktree metadata was reclaimed).
 t03_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
 remaining=$(count_pr_cycle_branches "$TEST_REPO")
-if [ "$remaining" = "0" ] && echo "$t03_output" | grep -q 'status=cleaned'; then
+if [ "$remaining" = "0" ] && grep -q 'status=cleaned' <<< "$t03_output"; then
   pass "T-03: 異常終了後の orphan branch が削除され、status=cleaned が返った"
 else
   fail "T-03: remaining=$remaining (expected 0), status check failed. Output: $t03_output"
@@ -373,7 +390,7 @@ cleanup_temp_repo "$TEST_REPO"
 echo "T-05: idempotent (no-op when nothing matches)"
 TEST_REPO=$(make_temp_repo)
 output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
-if echo "$output" | grep -q 'status=noop'; then
+if grep -q 'status=noop' <<< "$output"; then
   pass "T-05: noop status returned on clean repo"
 else
   fail "T-05: expected status=noop, got: $output"
@@ -398,7 +415,7 @@ touch -t 202001010000 "$WORKDIR_SCAN_TMP/rite-pr-create-old1" "$WORKDIR_SCAN_TMP
 TEST_REPO=$(make_temp_repo)
 t06_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
 if [ ! -d "$WORKDIR_SCAN_TMP/rite-pr-create-old1" ] && [ ! -d "$WORKDIR_SCAN_TMP/rite-pr-create-old2" ] \
-   && echo "$t06_output" | grep -q 'status=cleaned' && echo "$t06_output" | grep -q 'workdirs=2'; then
+   && grep -q 'status=cleaned' <<< "$t06_output" && grep -q 'workdirs=2' <<< "$t06_output"; then
   pass "T-06: 古い orphan workdir 2 件 (空 + 非空) が回収され workdirs=2"
 else
   fail "T-06: old1=$([ -d "$WORKDIR_SCAN_TMP/rite-pr-create-old1" ] && echo present || echo gone), old2=$([ -d "$WORKDIR_SCAN_TMP/rite-pr-create-old2" ] && echo present || echo gone). Output: $t06_output"
@@ -419,7 +436,7 @@ rm -rf "$WORKDIR_SCAN_TMP"/rite-pr-create-* 2>/dev/null || true
 mkdir -p "$WORKDIR_SCAN_TMP/rite-pr-create-fresh"  # just created -> mtime now -> must survive
 TEST_REPO=$(make_temp_repo)
 t07_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
-if [ -d "$WORKDIR_SCAN_TMP/rite-pr-create-fresh" ] && echo "$t07_output" | grep -q 'status=noop'; then
+if [ -d "$WORKDIR_SCAN_TMP/rite-pr-create-fresh" ] && grep -q 'status=noop' <<< "$t07_output"; then
   pass "T-07: age 未満の workdir が保護され status=noop"
 else
   fail "T-07: fresh=$([ -d "$WORKDIR_SCAN_TMP/rite-pr-create-fresh" ] && echo present || echo gone). Output: $t07_output"
@@ -464,7 +481,7 @@ mkdir -p "$WORKDIR_SCAN_TMP/rite-pr-create-dry"
 touch -t 202001010000 "$WORKDIR_SCAN_TMP/rite-pr-create-dry"
 TEST_REPO=$(make_temp_repo)
 t09_output=$( cd "$TEST_REPO" && bash "$CLEANUP" --dry-run 2>&1 )
-if [ -d "$WORKDIR_SCAN_TMP/rite-pr-create-dry" ] && echo "$t09_output" | grep -q 'would reap orphan workdir'; then
+if [ -d "$WORKDIR_SCAN_TMP/rite-pr-create-dry" ] && grep -q 'would reap orphan workdir' <<< "$t09_output"; then
   pass "T-09: dry-run は削除せず候補をリスト"
 else
   fail "T-09: dry=$([ -d "$WORKDIR_SCAN_TMP/rite-pr-create-dry" ] && echo present || echo gone). Output: $t09_output"
@@ -497,8 +514,8 @@ else
     TEST_REPO=$(make_temp_repo)
     t10_output=$( cd "$TEST_REPO" && TMPDIR="$T10_NOREAD_BASE" bash "$CLEANUP" 2>&1 )
     chmod 0700 "$T10_NOREAD_BASE"
-    if echo "$t10_output" | grep -q 'status=failed' \
-       && echo "$t10_output" | grep -q 'find による orphan workdir 走査が失敗'; then
+    if grep -q 'status=failed' <<< "$t10_output" \
+       && grep -q 'find による orphan workdir 走査が失敗' <<< "$t10_output"; then
       pass "T-10: find 失敗が WARNING + status=failed で surface される (silent 化しない)"
     else
       fail "T-10: status=failed と find WARNING を期待。Output: $t10_output"
@@ -531,8 +548,8 @@ TEST_REPO=$(make_temp_repo)
   git worktree lock .wt-locked
 )
 t11_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
-if echo "$t11_output" | grep -q 'status=failed' \
-   && echo "$t11_output" | grep -q 'failed to remove worktree' \
+if grep -q 'status=failed' <<< "$t11_output" \
+   && grep -q 'failed to remove worktree' <<< "$t11_output" \
    && [ -d "$TEST_REPO/.wt-locked" ]; then
   pass "T-11: locked worktree の削除失敗が WARNING + status=failed で surface"
 else
@@ -560,8 +577,8 @@ else
   ( cd "$TEST_REPO" && chmod 0700 .git/refs/heads )
   t12_br=$(cd "$TEST_REPO" && git for-each-ref --format='%(refname:short)' refs/heads/ \
     | { grep -c '^pr-200-cycle1$' || true; })
-  if echo "$t12_output" | grep -q 'status=failed' \
-     && echo "$t12_output" | grep -q 'failed to delete branch' \
+  if grep -q 'status=failed' <<< "$t12_output" \
+     && grep -q 'failed to delete branch' <<< "$t12_output" \
      && [ "$t12_br" = "1" ]; then
     pass "T-12: read-only refs/heads での branch -D 失敗が WARNING + status=failed で surface"
   else
@@ -612,8 +629,8 @@ else
     t13_output=$( cd "$TEST_REPO" && TMPDIR="$LOCKED_BASE" bash "$CLEANUP" 2>&1 )
     # Restore write permission so the survival check and cleanup can proceed.
     chmod 0700 "$LOCKED_BASE/rite-pr-create-victim"
-    if echo "$t13_output" | grep -q 'status=failed' \
-       && echo "$t13_output" | grep -q 'failed to reap orphan workdir' \
+    if grep -q 'status=failed' <<< "$t13_output" \
+       && grep -q 'failed to reap orphan workdir' <<< "$t13_output" \
        && [ -d "$LOCKED_BASE/rite-pr-create-victim" ]; then
       pass "T-13: read-only workdir 自身での rm 失敗が WARNING + status=failed で surface"
     else
@@ -644,8 +661,8 @@ touch -t 202001010000 "$WORKDIR_SCAN_TMP/rite-review-mutation-old"
 t14_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
 t14_registered=$( cd "$TEST_REPO" && git worktree list | { grep -c 'rite-review-mutation-old' || true; } )
 if [ ! -e "$WORKDIR_SCAN_TMP/rite-review-mutation-old" ] \
-   && echo "$t14_output" | grep -q 'status=cleaned' \
-   && echo "$t14_output" | grep -q 'mutation_worktrees=1' \
+   && grep -q 'status=cleaned' <<< "$t14_output" \
+   && grep -q 'mutation_worktrees=1' <<< "$t14_output" \
    && [ "$t14_registered" = "0" ]; then
   pass "T-14: 古い orphan mutation worktree が回収され mutation_worktrees=1 + deregistered"
 else
@@ -659,9 +676,9 @@ cleanup_temp_repo "$TEST_REPO"
 # Given: a freshly-created registered detached worktree under TMPDIR (mtime now)
 # When: Cleanup runs
 # Then: The worktree is reaped (porcelain path has no 24h age guard) and
-#       mutation_worktrees >= 1. In-flight protection is self-exclusion via
-#       worktree-foreign-cwd (別 live セッション), not age — cleanup only runs at
-#       review entry / iterate end, never mid-parallel-review.
+#       mutation_worktrees >= 1. Its name records no owner, so nothing protects
+#       it; in-flight protection comes from the owner record (T-60..) and
+#       worktree-foreign-cwd, not from age.
 # -----------------------------------------------------------------------
 echo "T-15: fresh detached TMPDIR worktree は Step 4-P で即回収"
 rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
@@ -719,9 +736,9 @@ else
     t16_output=$( cd "$TEST_REPO" && TMPDIR="$LOCKED_BASE" bash "$CLEANUP" 2>&1 )
     # Restore write permission so the survival check and cleanup can proceed.
     chmod 0700 "$LOCKED_BASE/rite-review-mutation-victim"
-    if echo "$t16_output" | grep -q 'status=failed' \
-       && echo "$t16_output" | grep -q 'mutation_worktrees=0' \
-       && echo "$t16_output" | grep -q 'failed to reap orphan mutation worktree' \
+    if grep -q 'status=failed' <<< "$t16_output" \
+       && grep -q 'mutation_worktrees=0' <<< "$t16_output" \
+       && grep -q 'failed to reap orphan mutation worktree' <<< "$t16_output" \
        && [ -d "$LOCKED_BASE/rite-review-mutation-victim" ]; then
       pass "T-16: read-only worktree 自身での reap 失敗が WARNING + status=failed (mutation_worktrees=0) で surface"
     else
@@ -766,8 +783,8 @@ if [ -n "$t17_nl_name" ]; then
   TEST_REPO=$(make_temp_repo)
   t17_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
   if [ ! -d "$WORKDIR_SCAN_TMP/$t17_nl_name" ] \
-     && echo "$t17_output" | grep -q 'status=cleaned' \
-     && echo "$t17_output" | grep -q 'workdirs=1'; then
+     && grep -q 'status=cleaned' <<< "$t17_output" \
+     && grep -q 'workdirs=1' <<< "$t17_output"; then
     pass "T-17: 改行入り名の workdir が単一エントリとして回収され workdirs=1"
   else
     fail "T-17: dir=$([ -d "$WORKDIR_SCAN_TMP/$t17_nl_name" ] && echo present || echo gone) を期待 gone / workdirs=1。Output: $t17_output"
@@ -808,7 +825,7 @@ TEST_REPO=$(make_temp_repo)
 ( cd "$TEST_REPO" && git branch pr-2024 >/dev/null 2>&1 )
 t18_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
 t18_remaining=$( cd "$TEST_REPO" && git for-each-ref --format='%(refname:short)' refs/heads/ | { grep -cx 'pr-2024' || true; } )
-if [ "$t18_remaining" = "0" ] && echo "$t18_output" | grep -q 'status=cleaned'; then
+if [ "$t18_remaining" = "0" ] && grep -q 'status=cleaned' <<< "$t18_output"; then
   pass "T-18: bare pr-2024 が削除された"
 else
   fail "T-18: remaining=$t18_remaining. Output: $t18_output"
@@ -845,8 +862,8 @@ touch -t 202001010000 "$WORKDIR_SCAN_TMP/rite-revert-test-old"
 t20_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
 t20_registered=$( cd "$TEST_REPO" && git worktree list | { grep -c 'rite-revert-test-old' || true; } )
 if [ ! -e "$WORKDIR_SCAN_TMP/rite-revert-test-old" ] \
-   && echo "$t20_output" | grep -q 'status=cleaned' \
-   && echo "$t20_output" | grep -q 'mutation_worktrees=1' \
+   && grep -q 'status=cleaned' <<< "$t20_output" \
+   && grep -q 'mutation_worktrees=1' <<< "$t20_output" \
    && [ "$t20_registered" = "0" ]; then
   pass "T-20: 古い revert-test worktree が回収され mutation_worktrees=1 + deregistered"
 else
@@ -881,8 +898,8 @@ t22_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
 t22_remaining=$( cd "$TEST_REPO" && git for-each-ref --format='%(refname:short)' refs/heads/ | { grep -cx 'zztmp-experiment-42' || true; } )
 t22_manifest_gone=$([ ! -f "$TEST_REPO/.rite/tmp-artifacts.tsv" ] && echo yes || echo no)
 if [ "$t22_remaining" = "0" ] \
-   && echo "$t22_output" | grep -q 'status=cleaned' \
-   && echo "$t22_output" | grep -q 'manifest=1' \
+   && grep -q 'status=cleaned' <<< "$t22_output" \
+   && grep -q 'manifest=1' <<< "$t22_output" \
    && [ "$t22_manifest_gone" = "yes" ]; then
   pass "T-22: 未知命名ブランチが manifest 経由で回収され manifest=1 + 空 manifest 削除"
 else
@@ -902,7 +919,7 @@ TEST_REPO=$(make_temp_repo)
 t23_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
 t23_registered=$( cd "$TEST_REPO" && git worktree list | { grep -c 'mf-wt-clean' || true; } )
 if [ ! -e "$WORKDIR_SCAN_TMP/mf-wt-clean" ] \
-   && echo "$t23_output" | grep -q 'manifest=1' \
+   && grep -q 'manifest=1' <<< "$t23_output" \
    && [ "$t23_registered" = "0" ]; then
   pass "T-23: manifest 記録の worktree が回収され manifest=1 + deregistered"
 else
@@ -927,7 +944,7 @@ t24_wt="$TEST_REPO/mf-wt-dirty"
 t24_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
 t24_kept=$( { grep -c 'mf-wt-dirty' "$TEST_REPO/.rite/tmp-artifacts.tsv" 2>/dev/null || true; } )
 if [ -e "$t24_wt" ] \
-   && echo "$t24_output" | grep -q 'manifest=0' \
+   && grep -q 'manifest=0' <<< "$t24_output" \
    && [ "$t24_kept" = "1" ]; then
   pass "T-24: dirty worktree は reap されず manifest=0 + manifest にエントリ保持"
 else
@@ -966,8 +983,8 @@ else
   t26_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 ); t26_rc=$?
   ( cd "$TEST_REPO" && chmod 0700 .git/refs/heads )   # restore so cleanup_temp_repo can rm
   t26_kept=$( { grep -c 'zztmp-reap-fail' "$TEST_REPO/.rite/tmp-artifacts.tsv" 2>/dev/null || true; } )
-  if echo "$t26_output" | grep -q 'status=failed' \
-     && echo "$t26_output" | grep -q 'manifest=0' \
+  if grep -q 'status=failed' <<< "$t26_output" \
+     && grep -q 'manifest=0' <<< "$t26_output" \
      && [ "$t26_rc" = "0" ] \
      && [ "$t26_kept" = "1" ]; then
     pass "T-26: 削除失敗が WARNING + status=failed + manifest=0 + exit 0、entry は manifest に保持"
@@ -988,7 +1005,7 @@ mkdir -p "$WORKDIR_SCAN_TMP/mf-nongit-dir"   # exists but is NOT a git worktree
 t27_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 ); t27_rc=$?
 t27_kept=$( { grep -c 'mf-nongit-dir' "$TEST_REPO/.rite/tmp-artifacts.tsv" 2>/dev/null || true; } )
 if [ "$t27_rc" = "0" ] \
-   && echo "$t27_output" | grep -q '\[pr-cycle-cleanup\] status=' \
+   && grep -q '\[pr-cycle-cleanup\] status=' <<< "$t27_output" \
    && [ -d "$WORKDIR_SCAN_TMP/mf-nongit-dir" ] \
    && [ "$t27_kept" = "1" ]; then
   pass "T-27: 非 git path は abort せず status 行に到達 + skip + manifest 保持 + dir 保護"
@@ -1010,8 +1027,8 @@ TEST_REPO=$(make_temp_repo)
 t28_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 ); t28_rc=$?
 t28_manifest_gone=$([ ! -f "$TEST_REPO/.rite/tmp-artifacts.tsv" ] && echo yes || echo no)
 if [ "$t28_rc" = "0" ] \
-   && ! echo "$t28_output" | grep -q 'status=failed' \
-   && echo "$t28_output" | grep -q 'manifest=0' \
+   && ! grep -q 'status=failed' <<< "$t28_output" \
+   && grep -q 'manifest=0' <<< "$t28_output" \
    && [ "$t28_manifest_gone" = "yes" ]; then
   pass "T-28: stale エントリは status≠failed + manifest=0 + 空 manifest 削除で drop"
 else
@@ -1089,8 +1106,8 @@ cleanup_temp_repo "$TEST_REPO"
 echo "T-32: Step 4-P 対象 0 件で mutation_worktrees=0 + status=noop (AC-3)"
 TEST_REPO=$(make_temp_repo)
 t32_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
-if echo "$t32_output" | grep -q 'status=noop' \
-   && echo "$t32_output" | grep -q 'mutation_worktrees=0'; then
+if grep -q 'status=noop' <<< "$t32_output" \
+   && grep -q 'mutation_worktrees=0' <<< "$t32_output"; then
   pass "T-32: 対象 0 件で status=noop / mutation_worktrees=0"
 else
   fail "T-32: Output: $t32_output"
@@ -1158,7 +1175,7 @@ rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
 )
 t35_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
 if [ -d "$WORKDIR_SCAN_TMP/rite-review-mutation-orphan-commit" ] \
-   && echo "$t35_output" | grep -q '到達不能 commit'; then
+   && grep -q '到達不能 commit' <<< "$t35_output"; then
   pass "T-35: 到達不能 commit worktree が WARNING 付きで残存"
 else
   fail "T-35: dir=$([ -d "$WORKDIR_SCAN_TMP/rite-review-mutation-orphan-commit" ] && echo present || echo gone). Output: $t35_output"
@@ -1182,7 +1199,7 @@ t36_wt="$WORKDIR_SCAN_TMP/rite-review-mutation-broken-head"
 printf 'gitdir: /nonexistent/rite-broken-gitdir\n' > "$t36_wt/.git"
 t36_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
 if [ -d "$t36_wt" ] \
-   && echo "$t36_output" | grep -qE 'HEAD 判定に失敗|到達可能性判定に失敗'; then
+   && grep -qE 'HEAD 判定に失敗|到達可能性判定に失敗' <<< "$t36_output"; then
   pass "T-36: 判定不能 worktree が WARNING 付きで残存"
 else
   fail "T-36: dir=$([ -d "$t36_wt" ] && echo present || echo gone). Output: $t36_output"
@@ -1253,8 +1270,8 @@ t38_output=$(cd "$TEST_REPO" && \
 if [ ! -e "$TEST_REPO/.rite/review-results/701-clean.json" ] && [ ! -e "$TEST_REPO/.rite/state/review-run-since-701.txt" ] && [ ! -e "$TEST_REPO/.rite/state/nb-sweep-done-701.txt" ]; then pass "T-38 orphan nb=0 JSON + pin + sweep-done deleted"; else fail "T-38 orphan nb=0 residue remained"; fi
 if [ -e "$TEST_REPO/.rite/review-results/archive/702-notes.json" ] && [ ! -e "$TEST_REPO/.rite/review-results/702-notes.json" ]; then pass "T-39 orphan nb>0 JSON archived"; else fail "T-39 nb>0 JSON not archived"; fi
 if [ -e "$TEST_REPO/.rite/review-results/700-active.json" ] && [ -e "$TEST_REPO/.rite/state/review-run-since-700.txt" ] && [ -e "$TEST_REPO/.rite/state/nb-sweep-done-700.txt" ]; then pass "T-40 active PR artifacts protected"; else fail "T-40 active PR artifacts changed"; fi
-if [ -e "$TEST_REPO/.rite/review-results/703-broken.json" ] && echo "$t38_output" | grep -q '解析できない'; then pass "T-41 malformed JSON protected with WARNING"; else fail "T-41 malformed JSON was not safely surfaced"; fi
-if echo "$t38_output" | grep -q 'orphan_reviews_deleted=1' && echo "$t38_output" | grep -q 'orphan_reviews_archived=1' && echo "$t38_output" | grep -q 'orphan_review_pins=1'; then pass "T-42 cleanup counters observable"; else fail "T-42 counters missing: $t38_output"; fi
+if [ -e "$TEST_REPO/.rite/review-results/703-broken.json" ] && grep -q '解析できない' <<< "$t38_output"; then pass "T-41 malformed JSON protected with WARNING"; else fail "T-41 malformed JSON was not safely surfaced"; fi
+if grep -q 'orphan_reviews_deleted=1' <<< "$t38_output" && grep -q 'orphan_reviews_archived=1' <<< "$t38_output" && grep -q 'orphan_review_pins=1' <<< "$t38_output"; then pass "T-42 cleanup counters observable"; else fail "T-42 counters missing: $t38_output"; fi
 cleanup_temp_repo "$TEST_REPO"
 
 echo "T-43: unreadable flow-state skips orphan review cleanup"
@@ -1263,7 +1280,19 @@ mkdir -p "$TEST_REPO/.rite/review-results" "$TEST_REPO/.rite/sessions"
 printf 'broken\n' > "$TEST_REPO/.rite/sessions/broken.flow-state"
 printf '{"non_blocking_findings":[]}\n' > "$TEST_REPO/.rite/review-results/704-clean.json"
 t43_output=$(cd "$TEST_REPO" && bash "$CLEANUP" 2>&1)
-if [ -e "$TEST_REPO/.rite/review-results/704-clean.json" ] && echo "$t43_output" | grep -q '回収をスキップ'; then pass "T-43 unreadable flow-state fails safe"; else fail "T-43 flow-state failure did not protect review JSON"; fi
+if [ -e "$TEST_REPO/.rite/review-results/704-clean.json" ] && grep -q '回収をスキップ' <<< "$t43_output"; then pass "T-43 unreadable flow-state fails safe"; else fail "T-43 flow-state failure did not protect review JSON"; fi
+cleanup_temp_repo "$TEST_REPO"
+
+echo "T-43b: orphan JSON with guardrail rows only is archived (a follow-up candidate)"
+TEST_REPO=$(make_temp_repo)
+write_gh_pr_mock "$TEST_REPO"
+mkdir -p "$TEST_REPO/.rite/review-results"
+printf '{"non_blocking_findings":[],"guardrail_audit_log":[{"reviewer":"r","file_line":"-","description":"d"}]}\n' > "$TEST_REPO/.rite/review-results/709-guard.json"
+printf '{"non_blocking_findings":[],"guardrail_audit_log":"broken"}\n' > "$TEST_REPO/.rite/review-results/710-badguard.json"
+t43b_output=$(cd "$TEST_REPO" && GH_PR_STATE_709=MERGED GH_PR_STATE_710=MERGED \
+  PATH="$TEST_REPO/bin:$PATH" bash "$CLEANUP" 2>&1)
+if [ -e "$TEST_REPO/.rite/review-results/archive/709-guard.json" ] && [ ! -e "$TEST_REPO/.rite/review-results/709-guard.json" ]; then pass "T-43b guardrail-only JSON archived"; else fail "T-43b guardrail-only JSON not archived: $t43b_output"; fi
+if [ -e "$TEST_REPO/.rite/review-results/710-badguard.json" ] && grep -q '710-badguard.json.*解析できない' <<< "$t43b_output"; then pass "T-43b malformed guardrail_audit_log kept with WARNING"; else fail "T-43b malformed guardrail_audit_log not kept: $t43b_output"; fi
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
@@ -1304,7 +1333,7 @@ else
   fail "T-45 OPEN PR nb=0 JSON or sweep-done was deleted"
 fi
 if [ -e "$TEST_REPO/.rite/review-results/707-notes.json" ] \
-  && echo "$t44_output" | grep -q 'GitHub 状態を取得できない'; then
+  && grep -q 'GitHub 状態を取得できない' <<< "$t44_output"; then
   pass "T-46 undetermined GitHub state keeps JSON (fail-safe)"
 else
   fail "T-46 gh failure did not keep JSON: $t44_output"
@@ -1321,6 +1350,74 @@ if [ -e "$TEST_REPO/.rite/review-results/archive/708-merged.json" ] \
   pass "T-48 MERGED PR without active flow-state still archived (AC-2)"
 else
   fail "T-48 MERGED PR JSON was not archived"
+fi
+cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
+# T-59..63: a MERGED PR with an adoption hold file keeps its review results
+# (held candidates are resumed from them). PR numbers 4 / 42 / 420 pin the
+# `{N}-` boundary: only 42 holds (followup) and 5 holds (triage).
+# -----------------------------------------------------------------------
+echo "T-59..63: adoption hold keeps orphan review JSON"
+TEST_REPO=$(make_temp_repo)
+write_gh_pr_mock "$TEST_REPO"
+mkdir -p "$TEST_REPO/.rite/review-results" "$TEST_REPO/.rite/sessions" "$TEST_REPO/.rite/state"
+printf '{"non_blocking_findings":[]}\n' > "$TEST_REPO/.rite/review-results/4-20260101000000.json"
+printf '{"non_blocking_findings":[{"id":"F-01"}]}\n' > "$TEST_REPO/.rite/review-results/42-20260101000000.json"
+printf '{"non_blocking_findings":[]}\n' > "$TEST_REPO/.rite/review-results/42-20260102000000.json"
+printf '{"non_blocking_findings":[{"id":"F-02"}]}\n' > "$TEST_REPO/.rite/review-results/420-20260101000000.json"
+printf '{"non_blocking_findings":[]}\n' > "$TEST_REPO/.rite/review-results/5-20260101000000.json"
+printf '4-pin\n' > "$TEST_REPO/.rite/state/review-run-since-4.txt"
+printf '42-pin\n' > "$TEST_REPO/.rite/state/review-run-since-42.txt"
+printf 'done 42-20260102000000.json\n' > "$TEST_REPO/.rite/state/nb-sweep-done-42.txt"
+printf '{"kind":"followup","pr":42}\n' > "$TEST_REPO/.rite/state/adoption-hold-42-followup.json"
+printf '{"kind":"triage","pr":5}\n' > "$TEST_REPO/.rite/state/adoption-hold-5-triage.json"
+t59_dry=$(cd "$TEST_REPO" && \
+  GH_PR_STATE_4=MERGED GH_PR_STATE_42=MERGED GH_PR_STATE_420=MERGED GH_PR_STATE_5=CLOSED \
+  PATH="$TEST_REPO/bin:$PATH" bash "$CLEANUP" --dry-run 2>&1)
+t59_output=$(cd "$TEST_REPO" && \
+  GH_PR_STATE_4=MERGED GH_PR_STATE_42=MERGED GH_PR_STATE_420=MERGED GH_PR_STATE_5=CLOSED \
+  PATH="$TEST_REPO/bin:$PATH" bash "$CLEANUP" 2>&1)
+if [ -e "$TEST_REPO/.rite/review-results/42-20260101000000.json" ] \
+  && [ -e "$TEST_REPO/.rite/review-results/42-20260102000000.json" ] \
+  && [ ! -e "$TEST_REPO/.rite/review-results/archive/42-20260101000000.json" ] \
+  && [ -e "$TEST_REPO/.rite/state/review-run-since-42.txt" ] \
+  && [ -e "$TEST_REPO/.rite/state/nb-sweep-done-42.txt" ] \
+  && [ -e "$TEST_REPO/.rite/review-results/5-20260101000000.json" ]; then
+  pass "T-59 held PR JSON (followup / triage hold) + pin + sweep-done kept"
+else
+  fail "T-59 held PR review results were archived or deleted: $t59_output"
+fi
+if [ ! -e "$TEST_REPO/.rite/review-results/4-20260101000000.json" ] \
+  && [ ! -e "$TEST_REPO/.rite/state/review-run-since-4.txt" ] \
+  && [ -e "$TEST_REPO/.rite/review-results/archive/420-20260101000000.json" ] \
+  && [ ! -e "$TEST_REPO/.rite/review-results/420-20260101000000.json" ]; then
+  pass "T-60 PRs 4 / 420 without a hold are reaped as before ({N}- boundary)"
+else
+  fail "T-60 PR 4 / 420 not reaped: $t59_output"
+fi
+if grep -qF "'42-20260101000000.json' は採否保留中" <<< "$t59_output" \
+  && grep -qF 'adoption-hold-42-followup.json' <<< "$t59_output" \
+  && grep -qF "'5-20260101000000.json' は採否保留中" <<< "$t59_output" \
+  && ! grep -qF "'4-20260101000000.json' は採否保留中" <<< "$t59_output" \
+  && ! grep -qF "'420-20260101000000.json' は採否保留中" <<< "$t59_output"; then
+  pass "T-61 kept held JSON is surfaced with a WARNING naming the hold file"
+else
+  fail "T-61 hold WARNING missing or misattributed: $t59_output"
+fi
+if grep -q 'orphan_reviews_deleted=1;' <<< "$t59_output" && grep -q 'orphan_reviews_archived=1;' <<< "$t59_output" \
+  && grep -q 'orphan_review_pins=1;' <<< "$t59_output" && ! grep -q 'status=failed' <<< "$t59_output" \
+  && [ -e "$TEST_REPO/.rite/state/adoption-hold-42-followup.json" ] && [ -e "$TEST_REPO/.rite/state/adoption-hold-5-triage.json" ]; then
+  pass "T-62 counters cover only unheld PRs; a hold is not an error and the hold files stay"
+else
+  fail "T-62 counters / status / hold files: $t59_output"
+fi
+if ! grep -qE 'would (archive|delete) orphan review JSON: (42|5)-' <<< "$t59_dry" \
+  && grep -qF 'would delete orphan review JSON: 4-20260101000000.json' <<< "$t59_dry" \
+  && grep -qF 'would archive orphan review JSON: 420-20260101000000.json' <<< "$t59_dry"; then
+  pass "T-63 dry-run does not list held PR JSON"
+else
+  fail "T-63 dry-run listed held JSON: $t59_dry"
 fi
 cleanup_temp_repo "$TEST_REPO"
 
@@ -1352,21 +1449,21 @@ t49_gi=$(cat "$TEST_REPO/.rite/release-promotions/.gitignore" 2>/dev/null || tru
 t49_porc=$(cd "$TEST_REPO" && git status --porcelain -uall -- .rite/release-promotions/)
 if [ ! -e "$TEST_REPO/.rite/release-promotions/801.json" ] \
   && [ ! -e "$TEST_REPO/.rite/release-promotions/804.json" ] \
-  && echo "$t49_output" | grep -q 'promotions_deleted=2' \
-  && echo "$t49_output" | grep -q 'status=cleaned'; then
+  && grep -q 'promotions_deleted=2' <<< "$t49_output" \
+  && grep -q 'status=cleaned' <<< "$t49_output"; then
   pass "T-49 AC-1 MERGED/CLOSED {N}.json deleted (promotions_deleted=2, status=cleaned)"
 else
   fail "T-49 consumed attestations not deleted: $t49_output"
 fi
 if [ -e "$TEST_REPO/.rite/release-promotions/802.json" ] \
-  && echo "$t49_output" | grep -q 'kept release-promotion attestation: 802.json (OPEN' \
-  && echo "$t49_output" | grep -qE 'promotions_kept=5(;|$)'; then
+  && grep -q 'kept release-promotion attestation: 802.json (OPEN' <<< "$t49_output" \
+  && grep -qE 'promotions_kept=5(;|$)' <<< "$t49_output"; then
   pass "T-50 AC-2 OPEN {N}.json kept with reason"
 else
   fail "T-50 OPEN attestation not kept observably: $t49_output"
 fi
 if [ -e "$TEST_REPO/.rite/release-promotions/803.json" ] \
-  && echo "$t49_output" | grep -q 'GitHub 状態を取得できないため release-promotion attestation を保持'; then
+  && grep -q 'GitHub 状態を取得できないため release-promotion attestation を保持' <<< "$t49_output"; then
   pass "T-51 unknown GitHub state keeps attestation with WARNING"
 else
   fail "T-51 unknown state did not keep: $t49_output"
@@ -1381,7 +1478,7 @@ fi
 if [ -e "$TEST_REPO/.rite/release-promotions/805.tmp" ] \
   && [ -e "$TEST_REPO/.rite/release-promotions/806-extra.json" ] \
   && [ -e "$TEST_REPO/.rite/release-promotions/notes.txt" ] \
-  && echo "$t49_output" | grep -q 'not {N}.json'; then
+  && grep -q 'not {N}.json' <<< "$t49_output"; then
   pass "T-53 non-{N}.json leftovers kept"
 else
   fail "T-53 leftovers changed: $t49_output"
@@ -1397,9 +1494,9 @@ write_promo_attestation "$TEST_REPO" 802
 t54_output=$(cd "$TEST_REPO" && \
   GH_PR_STATE_802=OPEN PATH="$TEST_REPO/bin:$PATH" bash "$CLEANUP" 2>&1)
 if [ -e "$TEST_REPO/.rite/release-promotions/802.json" ] \
-  && echo "$t54_output" | grep -q 'status=noop' \
-  && echo "$t54_output" | grep -q 'promotions_kept=1' \
-  && echo "$t54_output" | grep -q 'kept release-promotion attestation: 802.json (OPEN'; then
+  && grep -q 'status=noop' <<< "$t54_output" \
+  && grep -q 'promotions_kept=1' <<< "$t54_output" \
+  && grep -q 'kept release-promotion attestation: 802.json (OPEN' <<< "$t54_output"; then
   pass "T-54 keep-only OPEN is noop with promotions_kept=1"
 else
   fail "T-54 keep-only: $t54_output"
@@ -1418,8 +1515,8 @@ t55_output=$(cd "$TEST_REPO" && \
   GH_PR_STATE_807=MERGED PATH="$TEST_REPO/bin:$PATH" bash "$CLEANUP" 2>&1)
 if [ ! -e "$TEST_REPO/.rite/release-promotions/807.json" ] \
   && [ -e "$TEST_REPO/.rite/review-results/704-clean.json" ] \
-  && echo "$t55_output" | grep -q '回収をスキップ' \
-  && echo "$t55_output" | grep -q 'promotions_deleted=1'; then
+  && grep -q '回収をスキップ' <<< "$t55_output" \
+  && grep -q 'promotions_deleted=1' <<< "$t55_output"; then
   pass "T-55 Step 7 independent of review_gc_safe"
 else
   fail "T-55 review_gc_safe coupling: $t55_output"
@@ -1436,7 +1533,7 @@ t56_output=$(cd "$TEST_REPO" && \
   GH_PR_STATE_808=MERGED PATH="$TEST_REPO/bin:$PATH" bash "$CLEANUP" --dry-run 2>&1)
 if [ -e "$TEST_REPO/.rite/release-promotions/808.json" ] \
   && [ -f "$TEST_REPO/.rite/release-promotions/.gitignore" ] \
-  && echo "$t56_output" | grep -q '\[dry-run\] would delete consumed release-promotion attestation: 808.json'; then
+  && grep -q '\[dry-run\] would delete consumed release-promotion attestation: 808.json' <<< "$t56_output"; then
   pass "T-56 dry-run lists MERGED attestation and does not delete"
 else
   fail "T-56 dry-run: $t56_output"
@@ -1460,8 +1557,8 @@ else
   done
   t57_output=$(cd "$TEST_REPO" && PATH="$t57_bin" bash "$CLEANUP" 2>&1) || true
   if [ -e "$TEST_REPO/.rite/release-promotions/802.json" ] \
-    && echo "$t57_output" | grep -q 'gh が見つからないため release-promotion attestation を削除せず保持' \
-    && echo "$t57_output" | grep -qE 'promotions_kept=1(;|$)'; then
+    && grep -q 'gh が見つからないため release-promotion attestation を削除せず保持' <<< "$t57_output" \
+    && grep -qE 'promotions_kept=1(;|$)' <<< "$t57_output"; then
     pass "T-57 gh missing keeps OPEN attestation with WARNING"
   else
     fail "T-57 no-gh keep: $t57_output"
@@ -1484,14 +1581,341 @@ else
     GH_PR_STATE_809=MERGED PATH="$TEST_REPO/bin:$PATH" bash "$CLEANUP" 2>&1)
   chmod 0700 "$TEST_REPO/.rite/release-promotions"
   if [ -e "$TEST_REPO/.rite/release-promotions/809.json" ] \
-    && echo "$t58_output" | grep -q 'の削除に失敗しました' \
-    && echo "$t58_output" | grep -q 'status=failed'; then
+    && grep -q 'の削除に失敗しました' <<< "$t58_output" \
+    && grep -q 'status=failed' <<< "$t58_output"; then
     pass "T-58 MERGED attestation rm failure is status=failed"
   else
     fail "T-58 rm failure: exists=$([ -e "$TEST_REPO/.rite/release-promotions/809.json" ] && echo yes || echo no) $t58_output"
   fi
   cleanup_temp_repo "$TEST_REPO"
 fi
+
+# -----------------------------------------------------------------------
+# T-60..: Step 4-P owner record. A reviewer names its temporary worktree
+# `rite-review-mutation-owner.<session_id>.<random>`. Cleanup run by another
+# session keeps it while that owner session is live, even with no process cwd
+# inside it, and still reaps it once the owner is gone or is the running session.
+# -----------------------------------------------------------------------
+OWNER_SID=aaaaaaaa-1111-2222-3333-444444444444
+SELF_SID=bbbbbbbb-1111-2222-3333-444444444444
+
+# Run cleanup as a session whose runtime ID is $1 (empty = no runtime context).
+# Every runtime identity variable is set or cleared so the result does not depend
+# on the caller's environment (a dogfooding shell carries its own session ID).
+run_cleanup_as() {
+  local sid="$1" repo="$2" script="${3:-$CLEANUP}"
+  if [ -n "$sid" ]; then
+    ( cd "$repo" && env -u CLAUDE_SESSION_ID -u CODEX_THREAD_ID -u GROK_SESSION_ID -u RITE_HOST \
+        CLAUDE_CODE_SESSION_ID="$sid" bash "$script" 2>&1 )
+  else
+    ( cd "$repo" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID -u CODEX_THREAD_ID \
+        -u GROK_SESSION_ID -u RITE_HOST bash "$script" 2>&1 )
+  fi
+}
+
+# Write a session's flow-state: $2 = active (true/false), $3 = updated_at ("" omits the key),
+# $4 = session ID (default: the owner).
+write_owner_state() {
+  local repo="$1" active="$2" updated="$3" sid="${4:-$OWNER_SID}"
+  mkdir -p "$repo/.rite/sessions"
+  if [ -n "$updated" ]; then
+    jq -n --arg sid "$sid" --argjson a "$active" --arg u "$updated" \
+      '{schema_version:3, session_id:$sid, phase:"review", active:$a, updated_at:$u}' \
+      > "$repo/.rite/sessions/$sid.flow-state"
+  else
+    jq -n --arg sid "$sid" --argjson a "$active" \
+      '{schema_version:3, session_id:$sid, phase:"review", active:$a}' \
+      > "$repo/.rite/sessions/$sid.flow-state"
+  fi
+}
+
+now_utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+mut_count() { sed -n 's/.*mutation_worktrees=\([0-9]*\).*/\1/p' <<< "$1" | head -1; }
+status_of() { sed -n 's/.*\[pr-cycle-cleanup\] status=\([a-z]*\).*/\1/p' <<< "$1" | head -1; }
+registered() { grep -qxF "worktree $2" <<< "$(git -C "$1" worktree list --porcelain)"; }
+# A kept worktree must be kept by the owner check, not by the reachability / HEAD checks.
+no_other_keep_warning() { ! grep -qE '到達不能 commit|HEAD 判定に失敗|到達可能性判定に失敗' <<< "$1"; }
+
+# $1 = repo, $2 = worktree basename. Echoes the absolute worktree path.
+add_owner_wt() {
+  local wt="$WORKDIR_SCAN_TMP/$2"
+  ( cd "$1" && git worktree add --detach -q "$wt" HEAD )
+  wt=$(cd "$wt" && pwd -P)
+  echo "$wt"
+}
+
+drop_wt() {
+  ( cd "$1" && git worktree remove --force "$2" 2>/dev/null ) || true
+  rm -rf "$2"
+  ( cd "$1" && git worktree prune 2>/dev/null ) || true
+}
+
+# Assert the owner check kept $wt: dir and registration remain, the WARNING names
+# the owner and the path, no other keep reason fired, status is noop and nothing
+# was counted.
+assert_kept_by_owner() {
+  local label="$1" repo="$2" wt="$3" out="$4" warn="$5"
+  if [ -d "$wt" ] && registered "$repo" "$wt" \
+     && grep -qF "$wt" <<< "$(grep -F "$warn" <<< "$out")" \
+     && no_other_keep_warning "$out" \
+     && [ "$(status_of "$out")" = noop ] && [ "$(mut_count "$out")" = 0 ]; then
+    pass "$label"
+  else
+    fail "$label: dir=$([ -d "$wt" ] && echo present || echo gone) status=$(status_of "$out") mut=$(mut_count "$out"). Output: $out"
+  fi
+}
+
+# Assert $wt was reaped: dir and registration gone, one worktree counted, status cleaned.
+assert_reaped() {
+  local label="$1" repo="$2" wt="$3" out="$4"
+  if [ ! -e "$wt" ] && ! registered "$repo" "$wt" \
+     && [ "$(status_of "$out")" = cleaned ] && [ "$(mut_count "$out")" = 1 ]; then
+    pass "$label"
+  else
+    fail "$label: dir=$([ -e "$wt" ] && echo present || echo gone) status=$(status_of "$out") mut=$(mut_count "$out"). Output: $out"
+  fi
+}
+
+echo "T-60: 別の live セッションが所有する一時 worktree は cwd が無くても残る (AC-2)"
+TEST_REPO=$(make_temp_repo)
+write_owner_state "$TEST_REPO" true "$(now_utc)"
+t60_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner.$OWNER_SID.Ab12Cd")
+t60_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+assert_kept_by_owner "T-60: live な別セッションの一時 worktree を残す" "$TEST_REPO" "$t60_wt" "$t60_out" "別セッション $OWNER_SID が使用中"
+drop_wt "$TEST_REPO" "$t60_wt"
+cleanup_temp_repo "$TEST_REPO"
+
+echo "T-61: BSD mktemp の形（末尾に .<random> が付く）でも所有者を読む (AC-2)"
+TEST_REPO=$(make_temp_repo)
+write_owner_state "$TEST_REPO" true "$(now_utc)"
+t61_wt=$(add_owner_wt "$TEST_REPO" "rite-revert-test-owner.$OWNER_SID.XXXXXX.k3J9pQ2a")
+t61_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+assert_kept_by_owner "T-61: BSD 形の名前でも live な所有者の一時 worktree を残す" "$TEST_REPO" "$t61_wt" "$t61_out" "別セッション $OWNER_SID が使用中"
+drop_wt "$TEST_REPO" "$t61_wt"
+cleanup_temp_repo "$TEST_REPO"
+
+echo "T-62: 所有セッションの flow-state が無い一時 worktree は回収する (AC-3)"
+TEST_REPO=$(make_temp_repo)
+t62_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner.$OWNER_SID.Ef34Gh")
+t62_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+assert_reaped "T-62a: セッション一覧が無いとき、所有者の一時 worktree を回収する" "$TEST_REPO" "$t62_wt" "$t62_out"
+drop_wt "$TEST_REPO" "$t62_wt"
+# In real use the session list holds at least the running session's own state, so an
+# absent owner is decided by the scan over that list, not by the missing directory.
+write_owner_state "$TEST_REPO" true "$(now_utc)" "$SELF_SID"
+t62_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner.$OWNER_SID.Ef56Gh")
+t62_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+assert_reaped "T-62b: セッション一覧に所有者がいないとき、その一時 worktree を回収する" "$TEST_REPO" "$t62_wt" "$t62_out"
+drop_wt "$TEST_REPO" "$t62_wt"
+cleanup_temp_repo "$TEST_REPO"
+
+echo "T-63: 所有セッションが active でない、または TTL を超えた一時 worktree は回収する (AC-3)"
+TEST_REPO=$(make_temp_repo)
+write_owner_state "$TEST_REPO" false "$(now_utc)"
+t63_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner.$OWNER_SID.Ij56Kl")
+t63_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+assert_reaped "T-63a: active=false の所有者の一時 worktree を回収する" "$TEST_REPO" "$t63_wt" "$t63_out"
+drop_wt "$TEST_REPO" "$t63_wt"
+write_owner_state "$TEST_REPO" true "2000-01-01T00:00:00Z"
+t63_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner.$OWNER_SID.Mn78Op")
+t63_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+assert_reaped "T-63b: updated_at が TTL を超えた所有者の一時 worktree を回収する" "$TEST_REPO" "$t63_wt" "$t63_out"
+drop_wt "$TEST_REPO" "$t63_wt"
+cleanup_temp_repo "$TEST_REPO"
+
+echo "T-64: 自セッションが所有する作成直後の一時 worktree は回収する (AC-4)"
+TEST_REPO=$(make_temp_repo)
+write_owner_state "$TEST_REPO" true "$(now_utc)"
+t64_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner.$OWNER_SID.Qr90St")
+t64_out=$(run_cleanup_as "$OWNER_SID" "$TEST_REPO")
+assert_reaped "T-64a: 自セッションの一時 worktree は所有者が live でも回収する" "$TEST_REPO" "$t64_wt" "$t64_out"
+drop_wt "$TEST_REPO" "$t64_wt"
+# No runtime context: the self match is not made, so the live owner still protects it.
+t64_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner.$OWNER_SID.Uv12Wx")
+t64_out=$(run_cleanup_as "" "$TEST_REPO")
+assert_kept_by_owner "T-64b: 自セッション ID が無いときは live な所有者の一時 worktree を残す" "$TEST_REPO" "$t64_wt" "$t64_out" "別セッション $OWNER_SID が使用中"
+if ! grep -q '自セッション ID を解決できません' <<< "$t64_out"; then
+  pass "T-64b: runtime context が無いだけでは自セッション ID の WARNING を出さない"
+else
+  fail "T-64b: runtime context 不在で WARNING が出た. Output: $t64_out"
+fi
+# An invalid runtime ID is reported once and also makes no self match.
+t64_out=$(run_cleanup_as "bad..id" "$TEST_REPO")
+if [ -d "$t64_wt" ] && [ "$(grep -c '自セッション ID を解決できません' <<< "$t64_out")" = 1 ] \
+   && grep -q '^ERROR: invalid session_id' <<< "$t64_out"; then
+  pass "T-64c: 不正な自セッション ID は理由つきの WARNING を 1 回出し、所有者の一時 worktree を残す"
+else
+  fail "T-64c: dir=$([ -d "$t64_wt" ] && echo present || echo gone). Output: $t64_out"
+fi
+drop_wt "$TEST_REPO" "$t64_wt"
+cleanup_temp_repo "$TEST_REPO"
+
+echo "T-65: 所有者を判定できない一時 worktree は残して WARNING を出す (AC-5)"
+TEST_REPO=$(make_temp_repo)
+t65_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner..Yz34Ab")
+t65_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+assert_kept_by_owner "T-65a: 名前の所有者を読めない一時 worktree を残す" "$TEST_REPO" "$t65_wt" "$t65_out" "名前の所有者を読めないため"
+drop_wt "$TEST_REPO" "$t65_wt"
+mkdir -p "$TEST_REPO/.rite/sessions"
+printf '{broken' > "$TEST_REPO/.rite/sessions/$OWNER_SID.flow-state"
+t65_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner.$OWNER_SID.Cd56Ef")
+t65_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+assert_kept_by_owner "T-65b: 所有者の flow-state を読めない一時 worktree を残す" "$TEST_REPO" "$t65_wt" "$t65_out" "の flow-state を読めないため"
+drop_wt "$TEST_REPO" "$t65_wt"
+write_owner_state "$TEST_REPO" true ""
+t65_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner.$OWNER_SID.Gh78Ij")
+t65_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+assert_kept_by_owner "T-65c: updated_at の無い live な所有者の一時 worktree を残す" "$TEST_REPO" "$t65_wt" "$t65_out" "の updated_at を読めないため"
+drop_wt "$TEST_REPO" "$t65_wt"
+write_owner_state "$TEST_REPO" true "yesterday"
+t65_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner.$OWNER_SID.Kl90Mn")
+t65_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+assert_kept_by_owner "T-65d: updated_at が不正な形の所有者の一時 worktree を残す" "$TEST_REPO" "$t65_wt" "$t65_out" "の updated_at を読めないため"
+drop_wt "$TEST_REPO" "$t65_wt"
+cleanup_temp_repo "$TEST_REPO"
+
+echo "T-66: 所有者の保護を外した mutant では T-60 の一時 worktree が消える (AC-6)"
+t66_copy=$(mktemp -d "$HOST_TMPDIR/rite-pr-cleanup-mutant-XXXXXX")
+TEST_REPOS+=("$t66_copy")
+cp -R "$SCRIPT_DIR/.." "$t66_copy/hooks"
+t66_mutant="$t66_copy/hooks/scripts/pr-cycle-cleanup.sh"
+sed -i.bak 's/^      elif ! _rite_mutation_owner_allows_reap "\$_p_path"; then$/      elif false; then/' "$t66_mutant"
+if cmp -s "$CLEANUP" "$t66_mutant" || ! bash -n "$t66_mutant"; then
+  fail "T-66: mutant が原本と同じか、構文が壊れている"
+else
+  TEST_REPO=$(make_temp_repo)
+  write_owner_state "$TEST_REPO" true "$(now_utc)"
+  t66_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner.$OWNER_SID.Op12Qr")
+  t66_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO" "$t66_mutant")
+  if [ ! -e "$t66_wt" ] && ! registered "$TEST_REPO" "$t66_wt"; then
+    pass "T-66: 所有者の判定を外すと live な所有者の一時 worktree が回収される（T-60 はこの判定を固定している）"
+  else
+    fail "T-66: mutant でも残った. Output: $t66_out"
+  fi
+  drop_wt "$TEST_REPO" "$t66_wt"
+  cleanup_temp_repo "$TEST_REPO"
+fi
+rm -rf "$t66_copy"
+
+echo "T-67: reviewer 手順の名前のテンプレートを掃除側が所有者として読む (AC-2)"
+# The documented templates and the cleanup's name parser must agree; if either side
+# drifts, every reviewer worktree silently falls back to "no owner" and is reaped.
+t67_doc=$(grep -o 'mktemp -d -t rite-review-mutation-owner\.<[^>]*>\.XXXXXX' "$SCRIPT_DIR/../../agents/_reviewer-base.md" | head -1)
+t67_guard=$(grep -o "mktemp -d -t rite-review-mutation-owner\.<[^>]*>\.XXXXXX" "$SCRIPT_DIR/../pre-tool-edit-guard.sh" | head -1)
+TEST_REPO=$(make_temp_repo)
+write_owner_state "$TEST_REPO" true "$(now_utc)"
+for t67_src in "_reviewer-base.md:$t67_doc" "pre-tool-edit-guard.sh:$t67_guard"; do
+  t67_tpl="${t67_src#*:}"
+  if [ -z "$t67_tpl" ]; then
+    fail "T-67: ${t67_src%%:*} に所有者入りの mktemp テンプレートが無い"
+    continue
+  fi
+  t67_name="${t67_tpl#mktemp -d -t }"
+  t67_name=$(printf '%s' "$t67_name" | sed -E "s/<[^>]*>/$OWNER_SID/; s/XXXXXX\$/Tp34Uv/")
+  t67_wt=$(add_owner_wt "$TEST_REPO" "$t67_name")
+  t67_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+  assert_kept_by_owner "T-67: ${t67_src%%:*} のテンプレートの名前を所有者つきとして読む" "$TEST_REPO" "$t67_wt" "$t67_out" "別セッション $OWNER_SID が使用中"
+  drop_wt "$TEST_REPO" "$t67_wt"
+done
+cleanup_temp_repo "$TEST_REPO"
+
+echo "T-68: reviewer 手順の worktree 作成の案内は、別の worktree が使用中の branch でも成功する detached 形だけ"
+# The review head is checked out in the session worktree, so a form that names the
+# branch fails there. Forbidden forms (`-b`, and `git worktree add <path>` with no ref)
+# are listed in the same file and are excluded span by span, not line by line: one
+# table row holds a forbidden form and its replacement. The procedure reviewers run
+# is a command line in a code block, not a code span, so both are collected.
+t68_doc="$SCRIPT_DIR/../../agents/_reviewer-base.md"
+t68_spans=$( { grep -o '`git worktree add[^`]*`' "$t68_doc"; grep -E '^[[:space:]]*git worktree add' "$t68_doc"; } \
+  | grep -v -- ' -b' | grep -vx '`git worktree add <path>`' || true)
+t68_count=$(printf '%s\n' "$t68_spans" | grep -c . || true)
+t68_undetached=$(printf '%s\n' "$t68_spans" | grep -v -- '--detach' || true)
+if [ "$t68_count" -ge 6 ] && [ -z "$t68_undetached" ]; then
+  pass "T-68a: 案内する $t68_count 件の worktree 作成の形（code span とコードブロックのコマンド行）がすべて --detach を含む"
+else
+  fail "T-68a: --detach を含まない案内がある、または検査した件数が足りない (count=$t68_count): $t68_undetached"
+fi
+if ! grep -q 'existing-branch' "$t68_doc"; then
+  pass "T-68b: branch を名指しする <existing-branch> の形を案内しない"
+else
+  fail "T-68b: <existing-branch> の形が残っている: $(grep -n 'existing-branch' "$t68_doc")"
+fi
+t68_row=$(grep '^| `git checkout <branch>` |' "$t68_doc" || true)
+t68_span=$(printf '%s\n' "$t68_row" | grep -o '`git worktree add[^`]*`' || true)
+if [ "$(printf '%s\n' "$t68_span" | grep -c . || true)" != 1 ] || [[ "$t68_span" != *' --detach <'* ]] \
+  || [[ "$t68_row" != *'rite-review-mutation-*'* ]]; then
+  fail "T-68c: git checkout <branch> 行の代替が detached 形 1 件と名前空間の案内になっていない: $t68_row"
+else
+  t68_cmd=${t68_span//\`/}
+  TEST_REPO=$(make_temp_repo)
+  git -C "$TEST_REPO" branch feat
+  t68_used="$WORKDIR_SCAN_TMP/rite-review-mutation-t68-used"
+  git -C "$TEST_REPO" worktree add --quiet "$t68_used" feat
+  t68_ok="$WORKDIR_SCAN_TMP/rite-review-mutation-t68-ok"
+  t68_old="$WORKDIR_SCAN_TMP/rite-review-mutation-t68-old"
+  t68_ok_cmd=${t68_cmd/<path>/$t68_ok}
+  t68_ok_cmd=${t68_ok_cmd/<ref>/feat}
+  read -r -a t68_ok_argv <<< "$t68_ok_cmd"
+  t68_old_cmd=${t68_cmd/--detach /}
+  t68_old_cmd=${t68_old_cmd/<path>/$t68_old}
+  t68_old_cmd=${t68_old_cmd/<ref>/feat}
+  read -r -a t68_old_argv <<< "$t68_old_cmd"
+  t68_ok_rc=0
+  t68_ok_out=$(cd "$TEST_REPO" && "${t68_ok_argv[@]}" 2>&1) || t68_ok_rc=$?
+  t68_old_rc=0
+  t68_old_out=$(cd "$TEST_REPO" && "${t68_old_argv[@]}" 2>&1) || t68_old_rc=$?
+  if [ "$t68_ok_rc" -eq 0 ] && [ -z "$(git -C "$t68_ok" symbolic-ref -q HEAD || true)" ]; then
+    pass "T-68c: 案内の形は別の worktree が使用中の branch でも detached worktree を作る"
+  else
+    fail "T-68c: 案内の形が使用中の branch で失敗した (rc=$t68_ok_rc): $t68_ok_out"
+  fi
+  if [ "$t68_old_rc" -ne 0 ] && [[ "$t68_old_out" == *already* ]]; then
+    pass "T-68d: --detach を外した形は同じ branch が使用中のため失敗する（T-68c は --detach の効果を見ている）"
+  else
+    fail "T-68d: --detach を外した形が使用中の branch として拒否されなかった (rc=$t68_old_rc): $t68_old_out"
+  fi
+  git -C "$TEST_REPO" worktree remove --force "$t68_ok" 2>/dev/null || true
+  git -C "$TEST_REPO" worktree remove --force "$t68_old" 2>/dev/null || true
+  git -C "$TEST_REPO" worktree remove --force "$t68_used" 2>/dev/null || true
+  rm -rf "$t68_ok" "$t68_old" "$t68_used"
+  cleanup_temp_repo "$TEST_REPO"
+fi
+
+echo "T-69: Ready 検査の一時 worktree は、live な別セッションが所有する間は残る"
+# The name comes from the gate's own mktemp template, so a drift on either side
+# (gate naming or cleanup parsing) fails here instead of silently reaping.
+t69_tpl=$(grep -o 'rite-ready-pr-head-owner\.\$[A-Za-z_]*\.XXXXXX' "$SCRIPT_DIR/../scripts/ready-pr-head-gate.sh" | head -1 || true)
+t69_name=$(printf '%s' "$t69_tpl" | sed -E "s/\\\$[A-Za-z_]*/$OWNER_SID/; s/XXXXXX\$/Rd12Ab/")
+TEST_REPO=$(make_temp_repo)
+write_owner_state "$TEST_REPO" true "$(now_utc)"
+if [ -z "$t69_tpl" ]; then
+  fail "T-69: ready-pr-head-gate.sh に所有者入りの mktemp テンプレートが無い"
+else
+  t69_wt=$(add_owner_wt "$TEST_REPO" "$t69_name")
+  t69_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+  assert_kept_by_owner "T-69: live な別セッションの Ready 検査の一時 worktree を残す" "$TEST_REPO" "$t69_wt" "$t69_out" "別セッション $OWNER_SID が使用中"
+  drop_wt "$TEST_REPO" "$t69_wt"
+
+  echo "T-70: 所有セッションが active でない Ready 検査の一時 worktree は回収する"
+  write_owner_state "$TEST_REPO" false "$(now_utc)"
+  t70_wt=$(add_owner_wt "$TEST_REPO" "${t69_name%Rd12Ab}Rd34Cd")
+  t70_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+  assert_reaped "T-70: active=false の所有者の Ready 検査の一時 worktree を回収する" "$TEST_REPO" "$t70_wt" "$t70_out"
+  drop_wt "$TEST_REPO" "$t70_wt"
+fi
+
+echo "T-71: 所有者の無い従来名の Ready 検査の一時 worktree は即回収する"
+write_owner_state "$TEST_REPO" true "$(now_utc)"
+t71_wt=$(add_owner_wt "$TEST_REPO" "rite-ready-pr-head.Ab12Cd")
+t71_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+assert_reaped "T-71: 従来名の Ready 検査の一時 worktree を回収する" "$TEST_REPO" "$t71_wt" "$t71_out"
+if ! grep -q '所有者を読めないため' <<< "$t71_out"; then
+  pass "T-71: 従来名を所有者の読めない名前として扱わない"
+else
+  fail "T-71: 従来名で所有者の WARNING が出た. Output: $t71_out"
+fi
+drop_wt "$TEST_REPO" "$t71_wt"
+cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
 # Summary

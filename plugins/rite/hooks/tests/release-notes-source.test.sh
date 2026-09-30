@@ -144,9 +144,9 @@ for case_spec in 'no-heading|の節がありません' 'near-heading|の節が�
   fx="$TMP_ROOT/$kind"; make_fixture "$fx" "$kind"
   run_notes "$fx"
   [ "$rc" = 1 ] || fail "$kind rc=$rc out=$out err=$err"
-  printf '%s\n' "$err" | grep -qF -- "$msg" || fail "$kind error message: $err"
+  grep -qF -- "$msg" <<< "$err" || fail "$kind error message: $err"
   [ "$(printf '%s\n' "$err" | grep -c '^ERROR: ')" = 1 ] || fail "$kind expected one ERROR line: $err"
-  printf '%s\n' "$out" | grep -q '^\[CONTEXT\] ' && fail "$kind emitted a marker: $out"
+  grep -q '^\[CONTEXT\] ' <<< "$out" && fail "$kind emitted a marker: $out"
   [ -z "$(ls -A "$fx/tmp")" ] || fail "$kind left scratch files: $(ls -A "$fx/tmp")"
 done
 
@@ -201,14 +201,14 @@ for stop_case in other:T-06 decoy:T-07; do
   fx="$TMP_ROOT/tag-$kind"; tag_fixture "$fx" "$kind"
   if [ "$kind" = decoy ]; then
     # The decoy only exercises the peeled branch if its "^{}" line comes back too.
-    git -C "$fx/work" ls-remote --tags origin "refs/tags/v9.9.9" "refs/tags/v9.9.9^{}" \
-      | grep -q 'refs/tags/a/refs/tags/v9.9.9\^{}' \
+    _gq_out=$(git -C "$fx/work" ls-remote --tags origin "refs/tags/v9.9.9" "refs/tags/v9.9.9^{}") \
+      && grep -q 'refs/tags/a/refs/tags/v9.9.9\^{}' <<< "$_gq_out" \
       || fail "$id fixture: the sibling peeled ref is not returned by the pattern"
   fi
   run_chain "$fx" "tag-$kind"
   [ "$rc" = 1 ] || fail "$id $kind mismatched tag rc=$rc out=$out"
-  printf '%s\n' "$err" | grep -qF -- 'と一致しません' || fail "$id $kind error message: $err"
-  printf '%s\n' "$out" | grep -q '^\[CONTEXT\] RELEASE_TAG_STATE=' && fail "$id $kind emitted a state marker: $out"
+  grep -qF -- 'と一致しません' <<< "$err" || fail "$id $kind error message: $err"
+  grep -q '^\[CONTEXT\] RELEASE_TAG_STATE=' <<< "$out" && fail "$id $kind emitted a state marker: $out"
   [ ! -s "$TMP_ROOT/gh-argv-tag-$kind.log" ] || fail "$id $kind called gh: $(cat "$TMP_ROOT/gh-argv-tag-$kind.log")"
 done
 for tag_case in none:absent:T-08 match:matched:T-09 annotated:matched:T-10 sibling-only:absent:T-14; do
@@ -216,8 +216,8 @@ for tag_case in none:absent:T-08 match:matched:T-09 annotated:matched:T-10 sibli
   fx="$TMP_ROOT/tag-$kind"; tag_fixture "$fx" "$kind"
   if [ "$kind" = sibling-only ]; then
     # Without a sibling in the pattern's output this case would just repeat T-08.
-    git -C "$fx/work" ls-remote --tags origin "refs/tags/v9.9.9" "refs/tags/v9.9.9^{}" \
-      | grep -q 'refs/tags/z/refs/tags/v9.9.9' \
+    _gq_out=$(git -C "$fx/work" ls-remote --tags origin "refs/tags/v9.9.9" "refs/tags/v9.9.9^{}") \
+      && grep -q 'refs/tags/z/refs/tags/v9.9.9' <<< "$_gq_out" \
       || fail "$id fixture: the sibling ref is not returned by the pattern"
   fi
   run_chain "$fx" "tag-$kind"

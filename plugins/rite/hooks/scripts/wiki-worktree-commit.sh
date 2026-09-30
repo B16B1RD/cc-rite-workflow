@@ -11,7 +11,7 @@
 # several raw sources (wiki-ingest) or delegating to wiki-lint mid-flow can
 # commit each one locally and push ONCE at the end of the flow, instead of
 # once per commit — see skills/wiki-ingest/SKILL.md ステップ 5.1 / 8.6 and
-# skills/wiki-lint/SKILL.md ステップ 8.3.
+# hooks/scripts/wiki-lint-log-commit.sh (called from skills/wiki-lint/SKILL.md ステップ 8.3).
 #
 # Design rationale: this script replaces the Block A/B
 # shell contract in ingest.md. Because the worktree lives at a stable
@@ -67,7 +67,7 @@
 # 3 git operation failure (add / commit — push NOT included)
 # 4 push failed (caller MUST emit wiki_ingest_push_failed sentinel;
 # commit is preserved on the local wiki branch and can be pushed
-# manually with `git -C .rite/wiki-worktree push origin wiki`).
+# manually with `git -C <main checkout>/.rite/wiki-worktree push origin wiki`).
 # Not reachable with --commit-only (no push is attempted).
 # 6 the worktree's admin dir (.git/worktrees/<name>/) is not writable
 # (reason=sandbox-mask) — nothing is staged or committed.
@@ -244,12 +244,14 @@ validate_wiki_branch_name "$wiki_branch" || exit 1
 # -----------------------------------------------------------------------
 # Verify the worktree exists at the expected path and is on wiki_branch.
 # -----------------------------------------------------------------------
-worktree_path=".rite/wiki-worktree"
-abs_worktree="${repo_root}/${worktree_path}"
+# Absolute, so the recovery hints the shared helpers print work from any cwd.
+worktree_path="${repo_root}/.rite/wiki-worktree"
+abs_worktree="$worktree_path"
+printf -v _q_setup_sh '%q' "$_SCRIPT_DIR/wiki-worktree-setup.sh"
 
 if [[ ! -d "$worktree_path" ]]; then
  echo "ERROR: worktree '$worktree_path' does not exist" >&2
- echo " hint: run 'bash plugins/rite/hooks/scripts/wiki-worktree-setup.sh' first" >&2
+ echo " hint: run 'bash $_q_setup_sh' first" >&2
  exit 1
 fi
 

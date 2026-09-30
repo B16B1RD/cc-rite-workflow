@@ -9,7 +9,11 @@
 # stderr: diagnostics and existing WM_UPDATE_FAILED retained flags. The caller
 #         owns the final [fix:*] outcome; this script does not emit it.
 # Exit: 0 on success, no_comment, or retained soft failure; 1 on existing fatal
-#       input/tempfile failures; 2 on invalid arguments; INT=130, TERM=143, HUP=129.
+#       input/tempfile failures or when rite-config.yml cannot be resolved (the file is
+#       unreadable or state-path-resolve.sh cannot run; reason=config_unreadable),
+#       or when rite-config.yml is absent or has no readable branch.base
+#       (reason=base_branch_unresolved); 2 on invalid arguments;
+#       INT=130, TERM=143, HUP=129.
 # A completion marker is emitted on EXIT after argument validation, including
 # failures/signals. The caller detects startup failure when it is absent.
 
@@ -126,9 +130,23 @@ fi
 
 [ "$wm_emit_done" = "0" ] || exit 0
 
-base_branch=$(grep -E '^\s*base:' rite-config.yml 2>/dev/null | head -1 \
-  | sed 's/.*base:[[:space:]]*"\?\([^"]*\)"\?.*/\1/')
-[ -z "$base_branch" ] && base_branch="develop"
+# worktree 自身の config、無ければ main checkout の config を読む
+rite_config=$(bash "$plugin_root/hooks/scripts/lib/rite-config-path.sh" --or-devnull) || {
+  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=config_unreadable; issue_number=${issue_number}" >&2
+  exit 1
+}
+base_branch=$(awk '
+  /^branch:/ { in_branch=1; next }
+  in_branch && /^[[:space:]]+base:/ { print; exit }
+  in_branch && /^[^[:space:]#]/ { in_branch=0 }
+' "$rite_config" 2>/dev/null \
+  | sed 's/[[:space:]]#.*//' | sed 's/.*base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
+if [ -z "$base_branch" ]; then
+  echo "ERROR: rite-config.yml の branch.base を読めません ($rite_config)。差分の基点を決められないため work memory を更新しません" >&2
+  echo "  対処: rite-config.yml の branch: 節に base: を設定してください" >&2
+  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=base_branch_unresolved; issue_number=${issue_number}" >&2
+  exit 1
+fi
 
 git_diff_failed=0
 if ! changed_files_tmp=$(mktemp); then

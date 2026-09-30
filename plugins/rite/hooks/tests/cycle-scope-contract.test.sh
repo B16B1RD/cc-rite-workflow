@@ -32,13 +32,13 @@ assert_grep "1.2.4 declares the persistent JSON as the sole input" "$PR_REVIEW" 
   '判定入力は ステップ 6\.1\.a が書く永続レビュー JSON のみ'
 # full/incremental の 2 値分岐表が本体に残っていること (marker を読んだ後の行動を決める唯一の表)
 assert_grep "1.2.4 keeps the full/incremental branch table in the body" "$PR_REVIEW" \
-  '^\| `incremental` \| `\{cycle_base_sha\}\.\.HEAD` の diff \+ 前回 blocking の解消検証'
+  '^\| `incremental` \| `\{cycle_scope_files\}` に列挙されたファイルの `\{cycle_base_sha\}\.\.HEAD` の diff \+ 前回 blocking の解消検証'
 
 echo "=== ステップ 1.2.4: fail-safe は必ず full へ倒れる (AC-3 / T-03) ==="
 # reason 語彙の列挙と「reason は分岐を変えない (全て full)」が 1 行に同居していることを pin する。
 # 語彙だけの pin だと「full へ倒す」規則が消えても green のままになる。
 assert_grep "1.2.4 enumerates every fail-safe reason and pins that they all fall back to full" "$PR_REVIEW" \
-  'no_prev_json.*prev_json_unreadable.*commit_sha_missing.*commit_sha_unreachable.*diff_failed.*empty_diff.*run_pin_unresolved.*run_pin_unreadable.*foreign_run_json.*jq_missing.*reason は分岐を変えない.*`full`'
+  'no_prev_json.*prev_json_unreadable.*commit_sha_missing.*commit_sha_unreachable.*diff_failed.*empty_diff.*base_only_diff.*scope_files_unwritable.*run_pin_unresolved.*run_pin_unreadable.*foreign_run_json.*jq_missing.*reason は分岐を変えない.*`full`'
 assert_grep "helper docstring is the reason SoT" "$HELPER" \
   'Fallback reason 語彙 \(SoT'
 assert_grep "cycle-scope.md forbids narrowing on missing information" "$CYCLE_SCOPE" \
@@ -49,7 +49,7 @@ assert_grep "cycle-scope.md states the safe side is always the wider scope" "$CY
 # 3 コピーのどれかが欠けると「その経路は fail-safe しない」と読める記述が残る。
 # jq_missing は cycle-scope.md の表から実際に欠落していた (SKILL.md と helper には存在)。
 for _f in "$HELPER" "$PR_REVIEW" "$CYCLE_SCOPE"; do
-  for _r in no_prev_json prev_json_unreadable commit_sha_missing commit_sha_unreachable diff_failed empty_diff run_pin_unresolved run_pin_unreadable foreign_run_json jq_missing; do
+  for _r in no_prev_json prev_json_unreadable commit_sha_missing commit_sha_unreachable diff_failed empty_diff base_only_diff scope_files_unwritable run_pin_unresolved run_pin_unreadable foreign_run_json jq_missing; do
     assert_grep "$(basename "$_f") documents reason '$_r'" "$_f" "$_r"
   done
 done
@@ -115,25 +115,54 @@ assert_grep "iterate completion uses the same placement viewpoints" "$ITERATE" \
   '証拠→PR details / 契約→規約 / Why→ソース / 再現→テスト'
 assert_grep "purpose unmet is iterate-terminal not inner mergeable" "$ITERATE" \
   '同一 invoke の pr-review `\[review:mergeable\]` と `FINALIZE:review:mergeable` を iterate 成功と読まない'
-assert_grep "purpose check sits after 5.S and before 5.0.1" "$ITERATE" \
-  '5\.S 成功後・5\.0\.1 の前に'
+assert_grep "purpose check sits after 5.S and the in-PR recommendation fix, before 5.0.1" "$ITERATE" \
+  '5\.S と PR 内推奨の修正の後・5\.0\.1 の前に'
 assert_grep "purpose unmet uses REVIEW_STOP like ac_unverified" "$ITERATE" \
   'REVIEW_STOP=purpose_unaligned'
 assert_grep "purpose unmet clears FINALIZE without --handoff" "$ITERATE" \
   '`--handoff` なしで実行し FINALIZE を消す'
-assert_grep "overview routes sweep-done to purpose check" "$ITERATE" \
-  '`\[fix:sweep-done\]` → 完了前確認'
-assert_grep "purpose unmet fenced set has no --handoff" "$ITERATE" \
+# [fix:sweep-done] は --nb-sweep（5.S）からだけ返るため、通常ループの経路として書かない。
+overview_line=$(grep -E '^4\. fix sentinel を判定（通常ループ:' "$ITERATE")
+overview_count=$(printf '%s' "$overview_line" | grep -c .)
+if [ "$overview_count" = 1 ] \
+   && ! grep -qF '[fix:sweep-done]' <<< "${overview_line%%--nb-sweep*}"; then
+  pass "overview keeps sweep-done out of the normal loop"
+else
+  fail "overview keeps sweep-done out of the normal loop (matched $overview_count lines)"
+fi
+sweep_origin_line=$(grep -E '^\| `\{sweep_origin\}` \| ステップ 5\.S へ入った' "$ITERATE")
+sweep_origin_count=$(printf '%s' "$sweep_origin_line" | grep -c .)
+# 5.S を経由しない終端の列挙だけを見る（前半は sweep 内の sentinel に触れうる）。
+sweep_origin_terminals=${sweep_origin_line#*5.S を経由せずに}
+if [ "$sweep_origin_count" = 1 ] \
+   && [ "$sweep_origin_terminals" != "$sweep_origin_line" ] \
+   && ! grep -qF '[fix:sweep-done]' <<< "$sweep_origin_terminals" \
+   && ! grep -qF 'ステップ 4 の' <<< "$sweep_origin_line"; then
+  pass "sweep_origin has no step-4 sweep-done terminal"
+else
+  fail "sweep_origin has no step-4 sweep-done terminal (matched $sweep_origin_count lines)"
+fi
+step4_section=$(sed -n '/^## ステップ 4: fix sentinel を判定/,/^## ステップ 5.S:/p' "$ITERATE")
+step4_pushed_rows=$(printf '%s\n' "$step4_section" | grep -c '^| `\[fix:pushed\]` |')
+step4_sweep_rows=$(printf '%s\n' "$step4_section" | grep -c '^|.*\[fix:sweep-done\]')
+if [ "$step4_pushed_rows" = 1 ] && [ "$step4_sweep_rows" = 0 ]; then
+  pass "step 4 routing table has no sweep-done row"
+else
+  fail "step 4 routing table has no sweep-done row (pushed rows: $step4_pushed_rows, sweep-done rows: $step4_sweep_rows)"
+fi
+# purpose-unaligned の set 本体は iterate-step.sh の step_purpose_unaligned 関数に置かれている。
+ITERATE_STEP="$SCRIPT_DIR/../../scripts/iterate-step.sh"
+assert_grep "purpose unmet fenced set has no --handoff" "$ITERATE_STEP" \
   'purpose_unaligned: 完了前確認で目的逸脱'
-purpose_set=$(awk '/^# purpose-unaligned:/{s=1} s{print} s && /^```$/{exit}' "$ITERATE")
+purpose_set=$(awk '/^# purpose-unaligned:/{s=1} s{print} s && /^}$/{exit}' "$ITERATE_STEP")
 purpose_body=$(printf '%s\n' "$purpose_set" | grep -v '^#')
-if printf '%s\n' "$purpose_body" | grep -q 'flow-state.sh set' \
-   && ! printf '%s\n' "$purpose_body" | grep -q -- '--handoff'; then
+if grep -q 'flow-state.sh set' <<< "$purpose_body" \
+   && ! grep -q -- '--handoff' <<< "$purpose_body"; then
   pass "purpose unmet fenced set body has no --handoff"
 else
   fail "purpose unmet fenced set body still has --handoff or missing set"
 fi
-if printf '%s\n' "$purpose_set" | grep -q 'WARNING: 目的逸脱停止時の handoff クリアに失敗'; then
+if grep -q 'WARNING: 目的逸脱停止時の handoff クリアに失敗' <<< "$purpose_set"; then
   pass "purpose unmet WARNING else remains"
 else
   fail "purpose unmet WARNING else missing"
@@ -149,12 +178,17 @@ pu_line=$(grep -nF 'REVIEW_STOP=purpose_unaligned' "$BATCH_RUN" | head -1 | cut 
 mg_line=$(grep -nF '[review:mergeable]` + `merge' "$BATCH_RUN" | head -1 | cut -d: -f1)
 assert "batch-run purpose_unaligned precedes mergeable" "true" \
   "$( [ -n "$pu_line" ] && [ -n "$mg_line" ] && [ "$pu_line" -lt "$mg_line" ] && echo true || echo "false pu=$pu_line mg=$mg_line" )"
+ah_line=$(grep -nF '| `[review:error]` + `REVIEW_STOP=adoption_held`（両モード） | **失敗** → ステップ 8（段階=iterate）' "$BATCH_RUN" | head -1 | cut -d: -f1)
+assert "batch-run adoption_held fails to step 8 before mergeable" "true" \
+  "$( [ -n "$ah_line" ] && [ -n "$mg_line" ] && [ "$ah_line" -lt "$mg_line" ] && echo true || echo "false ah=$ah_line mg=$mg_line" )"
+assert_grep "batch-run orchestration comment routes adoption_held to step 8" "$BATCH_RUN" \
+  'REVIEW_STOP=adoption_held \(both modes\) -> ステップ 8'
 assert_grep "parent discovery uses named 仕様との整合性 section" "$PR_REVIEW" \
   '`### 仕様との整合性` に 1 行で残す'
 
 echo "=== ステップ 2.2: 選抜は cap 後の filter でなくマッチ入力の差し替え (AC-2 / AC-4 / T-02 / T-04) ==="
 assert_grep "2.2 substitutes the matching input with the fix diff" "$PR_REVIEW" \
-  '^\| `incremental` \| `git diff --name-only \{cycle_base_sha\}\.\.HEAD` の結果'
+  '^\| `incremental` \| `\{cycle_scope_files\}` の一覧（= fix diff）に差し替える'
 assert_grep "2.2 keeps the pattern table itself unchanged across cycles" "$PR_REVIEW" \
   'パターン表は cycle で変わらない'
 # AC-2 の核: 前サイクル finder の合流が **mandatory** であること。`recommended` では
@@ -170,7 +204,7 @@ echo "=== reviewers/SKILL.md: 選抜表は複製せず入力定義だけを追�
 assert_grep "Phase 1 redefines 'changed file' per REVIEW_CYCLE_SCOPE" "$REVIEWERS" \
   '"changed file" の定義は review cycle で変わる'
 assert_grep "Phase 1 states the incremental input is the fix diff" "$REVIEWERS" \
-  '`incremental`（cycle 2\+）.*git diff --name-only \{cycle_base_sha\}\.\.HEAD'
+  '`incremental`（cycle 2\+）.*`\{cycle_scope_files\}` の一覧。起点の後に取り込んだ base ブランチ由来のファイルは含まない'
 assert_grep "Phase 1 pins the mandatory merge and its cap rationale" "$REVIEWERS" \
   'mandatory.*として合流.*Phase 5 が落とさないことを保証しているのは `mandatory` のみ'
 # 選抜表の複製を禁じる: Available Reviewers 表は 1 つだけであること
@@ -186,9 +220,26 @@ assert_grep "prompt template marks the section conditional on incremental" "$PRO
 assert_grep "4.5 placeholder table wires cycle_scope_mandate to cycle-scope.md" "$PR_REVIEW" \
   '\| `\{cycle_scope_mandate\}` \|.*cycle-scope\.md'
 assert_grep "4.5 scopes relevant_files to the fix diff under incremental" "$PR_REVIEW" \
-  '\{relevant_files\}.*REVIEW_CYCLE_SCOPE == incremental.*\{cycle_base_sha\}\.\.HEAD'
+  '\{relevant_files\}.*REVIEW_CYCLE_SCOPE == incremental.*`\{cycle_scope_files\}` の一覧から抽出する'
 assert_grep "4.5 scopes diff_content to the fix diff under incremental" "$PR_REVIEW" \
-  '\{diff_content\}.*REVIEW_CYCLE_SCOPE == incremental.*\{cycle_base_sha\}\.\.HEAD'
+  '\{diff_content\}.*REVIEW_CYCLE_SCOPE == incremental.*`\{cycle_scope_files\}` のファイルの `\{cycle_base_sha\}\.\.HEAD` の diff'
+assert_grep "1.2 limits the incremental diff to the listed files" "$PR_REVIEW" \
+  '`\{cycle_scope_files\}` に列挙されたファイルだけを対象に `git diff \{cycle_base_sha\}\.\.HEAD -- <列挙ファイル>`'
+assert_grep "1.2.4 treats an incremental marker without files= as full" "$PR_REVIEW" \
+  '`files=` が欠落した incremental は helper 失敗と同じく `full` として扱い.*reason=helper_failed'
+assert_grep "mandate 2 reviews the whole diff of each listed file (no hunk-level exclusion)" "$CYCLE_SCOPE" \
+  'hunk を選り分けず diff 全体を審査する'
+# 帰属判定は mandate 2 の行形に 1 本で pin する。rationale 節にも同じ照合の説明があるため、
+# 語ごとの pin では注入本文から文を消しても green のまま残る。審査範囲の文 → 帰属の文 →
+# 回し先の順序もこの 1 本で固定する。
+assert_grep "mandate 2 attributes findings to +/- lines of origin-first base...HEAD, relocates fix-removed PR lines, not context lines (範囲は維持)" "$CYCLE_SCOPE" \
+  '^2\. \*\*fix diff のフルレビュー\*\*.*hunk を選り分けず diff 全体を審査する.*ただし指摘の帰属は行単位で判定する.*`git diff origin/\{base_branch\}\.\.\.HEAD -- <file>`（`origin/\{base_branch\}` が無ければ `\{base_branch\}`）に `\+` / `-` 行として現れる行に依存する問題に限る.*例外として、fix diff の `-` 行のうち `origin/\{base_branch\}\.\.\.HEAD` に現れないものは、PR 自身が前 cycle で足した行を fix が消したものでありうる（足して消した行は差し引きで base との差分から消える。base の取り込みが無くても起きる）。その削除が生む問題は、影響を受ける行が `origin/\{base_branch\}\.\.\.HEAD` の `\+` / `-` 行に現れるならその行へ位置を付け替えて PR の指摘とし、現れなければ PR の正味の変更に影響しないので pre-existing として扱う。先頭が `\+` / `-` でない context 行と、差分に現れない行のうち上記の例外に当たらないものは PR の変更ではない.*pre-existing として指摘にしない（追加調査の価値があるものだけ `### 調査推奨` に書く）'
+# fix が消した PR 自身の行は base との差分に現れない。rationale がそれを否定する旧文言に戻ると
+# 例外の理由が消えるので、旧文言の不在を固定する（rationale 節は上の行形 pin の対象外）。
+assert_not_grep "rationale no longer claims every PR line appears in base...HEAD" "$CYCLE_SCOPE" \
+  'PR 自身の行は必ずこの差分の'
+assert_grep "4.5 fills base_branch into the cycle-scope mandate" "$PR_REVIEW" \
+  '\| `\{cycle_scope_mandate\}` \|.*`\{previous_blocking_findings\}` / `\{cycle_base_sha\}` / `\{base_branch\}` を埋めて注入する'
 
 echo "=== mandate 4 項目: 解消検証 / fix diff フル / Cross-File 維持 / 未変更部の再監査禁止 ==="
 # mandate 1 の語は SoT 宣言・合成理由・注入本文の 3 箇所に出るため、単語 pin だと

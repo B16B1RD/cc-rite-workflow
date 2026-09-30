@@ -137,7 +137,7 @@ What / Why / Where / Scope の充足度で A-D 評価。C/D の場合は AskUser
 あわせて `multi_session` を読み、ステップ 2.2-W / 2.3-W の分岐判定に使う marker を emit する:
 
 ```bash
-ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || ms_section=""
+ms_section=$(sed -n '/^multi_session:/,/^[^[:space:]#]/p' rite-config.yml 2>/dev/null) || ms_section=""
 ms_enabled=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+enabled:/ {print; exit}' \
   | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
 case "$ms_enabled" in true|yes|1) ms_enabled=true ;; *) ms_enabled=false ;; esac
@@ -198,7 +198,7 @@ echo "[CONTEXT] ISSUE_CLAIM=$claim_out; rc=$claim_rc"
 ブランチ作成へ分岐する**前に**、`multi_session` 状態を rite-config.yml から Bash で再取得する（記憶・context 残存に頼らない）。パースはステップ 1.4 と同一。rationale: references/rationale.md#branch-gate
 
 ```bash
-ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || ms_section=""
+ms_section=$(sed -n '/^multi_session:/,/^[^[:space:]#]/p' rite-config.yml 2>/dev/null) || ms_section=""
 ms_enabled=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+enabled:/ {print; exit}' \
   | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
 case "$ms_enabled" in true|yes|1) ms_enabled=true ;; *) ms_enabled=false ;; esac
@@ -290,7 +290,7 @@ fi
 | `WT_CASE` | アクション |
 |---|---|
 | `reuse` | worktree 登録済 + branch 一致 → 再利用（resume 相当、`git worktree add` しない） |
-| `stale_residue` | パス存在・worktree 未登録（prune 後も残存）→ AskUserQuestion（「削除して再作成」= `rm -rf {path}` 後に create / 「中止」） |
+| `stale_residue` | パス存在・worktree 未登録（prune 後も残存）→ [残骸の確認](../../references/git-worktree-patterns.md#5-残骸ディレクトリの削除確認)で中身を調べ、その結果を添えて AskUserQuestion（「削除して再作成」= `rm -rf {path}` 後に create / 「中止」） |
 | `branch_only` | branch 存在・worktree なし → `git worktree add "{path}" "{branch}"`（`-b` なし） |
 | `create_new` | branch も worktree もなし → `git worktree add --no-track -b "{branch}" "{path}" "origin/{base_branch}"`（`--no-track`: sandbox 有効環境で `branch.autoSetupMerge` の tracking 書込が `.git/config` 拒否に当たるのを回避。branch は origin 起点のまま tracking だけ張らない） |
 | `branch_other_worktree` | branch が**別の worktree** で checkout 中 → **中止**（他セッション作業中の可能性。`other=` のパスを表示。git が構造的に保証する二重着手ガード） |
@@ -447,6 +447,8 @@ echo "[CONTEXT] WM_REPLICA_INIT=$(printf '%s\n' "$init_out" | sed -n 's/^status=
 | `unverified` | 投稿は実行されたが検証 (3 回 retry) で発見できず | WARNING として続行 (以降の update が `no_comment` skip になる可能性を認識) |
 | (status 行なし = gh 失敗等) | 投稿失敗 | WARNING として続行 (non-blocking) |
 
+replica が作られないまま進むと、`review-close` はレビューの記録を作業メモリへ書けずに停止する。その場合は同じ init を再実行してから iterate を再開する。
+
 ### 2.6 flow-state 更新 + Projects Status 検証ゲート
 
 ゲートは flow-state の `set` と**同じ bash ブロック**に置く。別ブロックに分けると、2.4(A) を飛ばした実行はゲートのブロックも同じように飛ばせてしまう — 検証したい唯一の failure mode でゲートごと消える。`set` は phase を進める必須手順なので、そこに同乗させれば実行が保証される。
@@ -597,6 +599,15 @@ bash {plugin_root}/hooks/flow-state.sh set \
 ---
 
 ## ステップ 4: 実装
+
+invoke の前に `phase=implement` を書く。rationale: references/rationale.md#implement-phase-gate
+
+```bash
+# open-implement-state
+bash {plugin_root}/hooks/flow-state.sh set \
+  --phase implement --issue {issue_number} --branch {branch_name} --pr 0 \
+  --next "実装・コミット後に rite:lint へ進む"
+```
 
 ```text
 skill: rite:issue-implement

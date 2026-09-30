@@ -146,7 +146,7 @@ if [ "$mfail" = "2" ]; then
 else
   outer_fail "TC-4.2: expected FAIL=2 got FAIL=$mfail"
 fi
-if echo "$missing_state" | grep -q 'file not found'; then
+if grep -q 'file not found' <<< "$missing_state"; then
   outer_pass "TC-4.3: file-not-found diagnostic message is emitted"
 else
   outer_fail "TC-4.3: 'file not found' diagnostic missing in output"
@@ -175,7 +175,7 @@ echo
 echo "TC-6: print_summary drift hint propagation"
 
 summary_output=$(bash -c "source '$HELPERS'; fail 'sample' >/dev/null; print_summary 'self-test' 'CUSTOM-DRIFT-HINT' || true")
-if echo "$summary_output" | grep -q 'CUSTOM-DRIFT-HINT'; then
+if grep -q 'CUSTOM-DRIFT-HINT' <<< "$summary_output"; then
   outer_pass "TC-6.1: drift hint text appears in summary output"
 else
   outer_fail "TC-6.1: drift hint not found in: $summary_output"
@@ -435,7 +435,7 @@ out_of_scope_state=$(bash -c "
   echo \"FAIL=\$FAIL\"
 ")
 oof=$(echo "$out_of_scope_state" | grep -oE 'FAIL=[0-9]+' | tail -1 | cut -d= -f2)
-if [ "$oof" = "1" ] && echo "$out_of_scope_state" | grep -q 'pattern not found in section'; then
+if [ "$oof" = "1" ] && grep -q 'pattern not found in section' <<< "$out_of_scope_state"; then
   outer_pass "TC-12.2: pattern outside section fails with section-bound diagnostic"
 else
   outer_fail "TC-12.2: expected FAIL=1 + 'pattern not found in section' diagnostic, got '$out_of_scope_state'"
@@ -448,7 +448,7 @@ missing_file_state=$(bash -c "
   echo \"FAIL=\$FAIL\"
 ")
 mff=$(echo "$missing_file_state" | grep -oE 'FAIL=[0-9]+' | tail -1 | cut -d= -f2)
-if [ "$mff" = "1" ] && echo "$missing_file_state" | grep -q 'file not found'; then
+if [ "$mff" = "1" ] && grep -q 'file not found' <<< "$missing_file_state"; then
   outer_pass "TC-12.3: file-not-found path emits diagnostic and increments FAIL"
 else
   outer_fail "TC-12.3: expected FAIL=1 + 'file not found' got '$missing_file_state'"
@@ -461,7 +461,7 @@ empty_section_state=$(bash -c "
   echo \"FAIL=\$FAIL\"
 ")
 ess=$(echo "$empty_section_state" | grep -oE 'FAIL=[0-9]+' | tail -1 | cut -d= -f2)
-if [ "$ess" = "1" ] && echo "$empty_section_state" | grep -q 'empty section'; then
+if [ "$ess" = "1" ] && grep -q 'empty section' <<< "$empty_section_state"; then
   outer_pass "TC-12.4: empty section distinguished from pattern-not-found with explicit diagnostic"
 else
   outer_fail "TC-12.4: expected FAIL=1 + 'empty section' diagnostic, got '$empty_section_state'"
@@ -511,7 +511,7 @@ missing_state=$(bash -c "
 mp=$(echo "$missing_state" | grep -oE 'PASS=[0-9]+' | tail -1 | cut -d= -f2)
 mf=$(echo "$missing_state" | grep -oE 'FAIL=[0-9]+' | tail -1 | cut -d= -f2)
 mrc=$(echo "$missing_state" | grep -oE 'RC=[0-9]+' | tail -1 | cut -d= -f2)
-if [ "$mp" = "0" ] && [ "$mf" = "1" ] && [ "$mrc" = "1" ] && echo "$missing_state" | grep -q 'file not found'; then
+if [ "$mp" = "0" ] && [ "$mf" = "1" ] && [ "$mrc" = "1" ] && grep -q 'file not found' <<< "$missing_state"; then
   outer_pass "TC-13.2: missing file → FAIL=1 RC=1 + 'file not found' diagnostic (caller skips via || continue)"
 else
   outer_fail "TC-13.2: expected PASS=0 FAIL=1 RC=1 + diagnostic, got PASS=$mp FAIL=$mf RC=$mrc state='$missing_state'"
@@ -593,7 +593,7 @@ rm -rf "$tc14_real"
 # the ⏭️ line would still print and every suite would still be green, which is the
 # exact "green says nothing about what did not run" failure skip() was added for.
 skip_state=$(bash -c "source '$HELPERS'; skip TC-dummy >/dev/null; skip TC-dummy2 >/dev/null; print_summary skip-probe")
-if echo "$skip_state" | grep -qx 'SKIP: 2'; then
+if grep -qx 'SKIP: 2' <<< "$skip_state"; then
   outer_pass "TC-15.1: skip() increments SKIP and print_summary reports it"
 else
   # Newlines are folded out of the captured summary before it lands in the message:
@@ -603,7 +603,7 @@ else
   outer_fail "TC-15.1: expected 'SKIP: 2' in print_summary output, got: $(printf '%s' "$skip_state" | tr '\n' '|')"
 fi
 no_skip_state=$(bash -c "source '$HELPERS'; print_summary skip-probe-zero")
-if echo "$no_skip_state" | grep -q 'SKIP:'; then
+if grep -q 'SKIP:' <<< "$no_skip_state"; then
   outer_fail "TC-15.2: print_summary printed a SKIP line with SKIP=0 (should be omitted): $(printf '%s' "$no_skip_state" | tr '\n' '|')"
 else
   outer_pass "TC-15.2: print_summary omits the SKIP line when nothing was skipped"
@@ -734,7 +734,8 @@ fi
 
 # These tests do not source _test-helpers.sh, so they read the list directly.
 for t in post-compact post-tool-wm-sync crash-resume cleanup-on-session-end cleanup-work-memory \
-  issue-comment-wm-sync pre-compact session-ownership-regression session-end session-start; do
+  issue-comment-wm-sync pre-compact session-ownership-regression session-end session-start \
+  pre-tool-bash-guard wiki-apply-gate; do
   if grep -Fxq "$hermetic_source_line" "$SCRIPT_DIR/$t.test.sh"; then
     outer_pass "TC-18.7: $t.test.sh fail-loud sources _hermetic-env.sh"
   else
@@ -755,6 +756,125 @@ for t in session-start cleanup-work-memory issue-comment-wm-sync; do
     outer_pass "TC-18.8: $t.test.sh sources _hermetic-env.sh before mktemp"
   else
     outer_fail "TC-18.8: $t.test.sh must source _hermetic-env.sh after SCRIPT_DIR and before mktemp"
+  fi
+done
+
+# A live checkout: .rite/session-id names an implement-phase flow-state. Hooks
+# resolve the state root from the process cwd, so a test started inside it reads
+# that session until hermetic_leave_checkout moves the cwd out.
+HERMETIC_ENV="$SCRIPT_DIR/_hermetic-env.sh"
+FLOW_STATE="$SCRIPT_DIR/../flow-state.sh"
+STATE_RESOLVE="$SCRIPT_DIR/../state-path-resolve.sh"
+live_repo=$(mktemp -d)
+git -C "$live_repo" init -q
+live_repo=$(cd "$live_repo" && pwd -P)
+trap 'rm -f "$tc13_existing" "$tc12_fixture" "$tmpfile"; rm -rf "${live_repo:-}" "${git_tmp:-}"' EXIT
+live_sid=11111111-2222-3333-4444-555555555555
+mkdir -p "$live_repo/.rite/sessions"
+printf '%s\n' "$live_sid" > "$live_repo/.rite/session-id"
+jq -n --arg wt "$live_repo" '{schema_version:1,active:true,phase:"implement",issue_number:1,branch:"x",worktree:$wt}' \
+  > "$live_repo/.rite/sessions/$live_sid.flow-state"
+live_probe=$(cd "$live_repo" && bash -c '
+  source "$2"
+  printf "before_path=%s\n" "$(bash "$3" path 2>/dev/null)"
+  source "$1" >/dev/null
+  printf "after_helpers_cwd=%s\n" "$(pwd -P)"
+  hermetic_leave_checkout; printf "leave_rc=%s\n" "$?"
+  printf "hermetic_cwd=%s\n" "$HERMETIC_CWD"
+  printf "cwd=%s\n" "$(pwd -P)"
+  # HERMETIC_CWD is a physical path, while the state root outside git is the logical cwd;
+  # compare physical paths so a symlinked TMPDIR (macOS /var/folders) does not break the match.
+  printf "resolve=%s\n" "$(root=$(bash "$4") && [ -n "$root" ] && cd "$root" && pwd -P)"
+  path_rc=0; path_out=$(bash "$3" path 2>/dev/null) || path_rc=$?
+  printf "after_path_rc=%s\n" "$path_rc"
+  printf "after_path=%s\n" "$path_out"
+  rm -rf "$HERMETIC_CWD"' _ "$HELPERS" "$HERMETIC_ENV" "$FLOW_STATE" "$STATE_RESOLVE" 2>&1)
+live_field() { printf '%s\n' "$live_probe" | sed -n "s/^$1=//p"; }
+live_hcwd=$(live_field hermetic_cwd)
+if [ "$(live_field before_path)" = "$live_repo/.rite/sessions/$live_sid.flow-state" ]; then
+  outer_pass "TC-18.9: inside the live checkout flow-state resolves the live session (fixture reaches the leak)"
+else
+  outer_fail "TC-18.9: fixture does not reach the live session: $(printf '%s' "$live_probe" | tr '\n' '|')"
+fi
+if [ "$(live_field after_helpers_cwd)" = "$live_repo" ]; then
+  outer_pass "TC-18.9: sourcing _test-helpers.sh leaves the cwd unchanged"
+else
+  outer_fail "TC-18.9: sourcing _test-helpers.sh changed the cwd: $(printf '%s' "$live_probe" | tr '\n' '|')"
+fi
+if [ "$(live_field leave_rc)" = 0 ] && [ -n "$live_hcwd" ] && [ "$(live_field cwd)" = "$live_hcwd" ] \
+  && [ "$(live_field resolve)" = "$live_hcwd" ] && [[ "$live_hcwd" != "$live_repo"* ]]; then
+  outer_pass "TC-18.9: hermetic_leave_checkout moves the cwd and the state root to HERMETIC_CWD"
+else
+  outer_fail "TC-18.9: cwd / state root not moved to HERMETIC_CWD: $(printf '%s' "$live_probe" | tr '\n' '|')"
+fi
+if [ "$(live_field after_path_rc)" != 0 ] && [ -z "$(live_field after_path)" ]; then
+  outer_pass "TC-18.9: after leaving, flow-state resolves no session"
+else
+  outer_fail "TC-18.9: flow-state still resolves a session after leaving: $(printf '%s' "$live_probe" | tr '\n' '|')"
+fi
+rm -rf "$live_repo"
+
+# A TMPDIR under a checkout, or one that cannot hold a directory, must stop the
+# caller in place rather than run it from the checkout.
+leave_fail_probe() {
+  (cd / && env TMPDIR="$1" bash -c '
+    source "$1"
+    hermetic_leave_checkout; printf "leave_rc=%s\n" "$?"
+    printf "cwd=%s\n" "$(pwd -P)"
+    printf "hermetic_cwd_set=%s\n" "${HERMETIC_CWD+set}"' _ "$HERMETIC_ENV" 2>&1)
+}
+git_tmp=$(mktemp -d)
+git -C "$git_tmp" init -q
+git_tmp_probe=$(leave_fail_probe "$git_tmp")
+if grep -qx 'leave_rc=1' <<<"$git_tmp_probe" \
+  && grep -qx 'cwd=/' <<<"$git_tmp_probe" \
+  && grep -qx 'hermetic_cwd_set=' <<<"$git_tmp_probe" \
+  && grep -q '^ERROR: hermetic_leave_checkout: .* is inside a git repository' <<<"$git_tmp_probe" \
+  && ! compgen -G "$git_tmp/rite-hermetic-cwd.*" >/dev/null; then
+  outer_pass "TC-18.10: a TMPDIR inside a repository stops with ERROR, keeps the cwd, and leaves nothing behind"
+else
+  outer_fail "TC-18.10: TMPDIR inside a repository not refused: $(printf '%s' "$git_tmp_probe" | tr '\n' '|')"
+fi
+rm -rf "$git_tmp"
+missing_tmp_probe=$(leave_fail_probe /nonexistent/rite-hermetic-tmp)
+if grep -qx 'leave_rc=1' <<<"$missing_tmp_probe" \
+  && grep -qx 'cwd=/' <<<"$missing_tmp_probe" \
+  && grep -qx 'hermetic_cwd_set=' <<<"$missing_tmp_probe" \
+  && grep -q '^ERROR: hermetic_leave_checkout: cannot create a scratch directory' <<<"$missing_tmp_probe"; then
+  outer_pass "TC-18.10: an unusable TMPDIR stops with ERROR and keeps the cwd"
+else
+  outer_fail "TC-18.10: unusable TMPDIR not refused: $(printf '%s' "$missing_tmp_probe" | tr '\n' '|')"
+fi
+
+# These tests run hooks from their own cwd, so they leave the checkout before
+# their first temporary file and remove the scratch cwd on exit.
+for t in pre-tool-bash-guard wiki-apply-gate; do
+  test_file="$SCRIPT_DIR/$t.test.sh"
+  script_dir_line=$(awk '/^SCRIPT_DIR=/{print NR; exit}' "$test_file")
+  hermetic_line=$(awk '/^source "\$SCRIPT_DIR\/_hermetic-env\.sh"/{print NR; exit}' "$test_file")
+  leave_line=$(grep -nFx 'hermetic_leave_checkout || exit 1' "$test_file" | head -1 | cut -d: -f1)
+  mktemp_line=$(awk '/mktemp/ && !/^[[:space:]]*#/{print NR; exit}' "$test_file")
+  if [ -n "$script_dir_line" ] && [ -n "$hermetic_line" ] && [ -n "$leave_line" ] && [ -n "$mktemp_line" ] \
+    && [ "$script_dir_line" -lt "$hermetic_line" ] && [ "$hermetic_line" -lt "$leave_line" ] \
+    && [ "$leave_line" -lt "$mktemp_line" ]; then
+    outer_pass "TC-18.11: $t.test.sh leaves the checkout after the hermetic source and before mktemp"
+  else
+    outer_fail "TC-18.11: $t.test.sh must call hermetic_leave_checkout || exit 1 between the hermetic source and the first mktemp"
+  fi
+  # Match scratch-removal text in the last EXIT line or in the function body
+  # selected by the last named EXIT trap. A later quoted trap can override that
+  # handler; this static check does not verify which handler runs on exit.
+  exit_line=$(awk '/^trap .* EXIT$/ {line = $0} END {print line}' "$test_file")
+  exit_handler=$(awk '/^trap [A-Za-z_]+ EXIT$/ {name = $2} END {print name}' "$test_file")
+  if [[ "$exit_line" == *'rm -rf '*'"$HERMETIC_CWD"'* ]] \
+    || { [ -n "$exit_handler" ] && awk -v h="$exit_handler" '
+      $0 == h "() {" {body = 1; next}
+      body && /^}/ {body = 0}
+      body && /rm -rf .*"\$HERMETIC_CWD"/ {found = 1}
+      END {exit !found}' "$test_file"; }; then
+    outer_pass "TC-18.11: $t.test.sh has scratch-removal text in its last EXIT line or last named EXIT handler"
+  else
+    outer_fail "TC-18.11: $t.test.sh must have scratch-removal text in its last EXIT line or last named EXIT handler"
   fi
 done
 

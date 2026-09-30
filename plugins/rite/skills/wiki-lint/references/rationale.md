@@ -82,3 +82,13 @@ emit する。ステップ 8.3 の `{log_entry}` 組み立てはこの emit 値�
 caller skill（ingest 等）の次 step を skip して turn が暗黙終了する事象が複数回再発した。
 `returned-to-caller` は「caller に return した = caller の次 step に進む」という semantic に
 置換することで、terminal vocabulary を構造的に排除する。
+
+## log-commit-helper
+
+commit 処理を SKILL.md の fenced bash に書くと、実行のたびに LLM が literal substitute しながら
+長い複数文ブロックを流すことになり、heredoc も 2 つ抱える。session worktree の隔離ガードは git を
+含む複数文ブロックを拒否するため、そのままでは退路（scratch へ書き出して実行）経由になる。本体を
+helper に移し、SKILL.md は top-level の 1 文で呼ぶ。commit メッセージはシェルを通すと展開・引用の
+事故が起きるため、Write でファイルに書いて `--message-file` で渡す。rc=6（sandbox-mask）の再実行は
+helper 呼び出しの 1 文だけを繰り返せば済むよう、そのときだけ helper がメッセージファイルを残す
+（Edit からやり直すと log.md に二重に追記される）。

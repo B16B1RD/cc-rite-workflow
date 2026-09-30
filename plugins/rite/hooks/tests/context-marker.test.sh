@@ -14,7 +14,7 @@
 #     the wrong branch's value while still passing AC-3 and AC-4 separately.
 #   - whole-token key: `ITERATE_CB` must not read an `ITERATE_CB_MODE=` line.
 #   - whole-token field: `--field RESET` must not read a `OTHER_RESET=` field.
-# Both token pairs are live in skills/iterate/SKILL.md; substring matching would
+# Both token pairs are live in scripts/iterate-step.sh; substring matching would
 # make the marker say the opposite of what was emitted.
 #
 # Rule 5 (value-side exact match) is a *consumer* contract — `marker_get` does
@@ -141,7 +141,7 @@ assert "同一ブランチが複数あれば最新が勝つ (AC-3 x AC-4)" "reco
      | marker_get WT_ENSURE --branch b1)"
 
 # --- Whole-token matching (key and field) -------------------------------------
-# Both pairs below are live in skills/iterate/SKILL.md. Substring matching on
+# Both pairs below are live in scripts/iterate-step.sh. Substring matching on
 # either axis makes marker_get report a value that was never emitted for the
 # key/field that was asked for — the exact class of defect the prose rule at
 # iterate/SKILL.md used to guard by asking the reader to be careful.
@@ -155,7 +155,7 @@ assert "field 完全一致: OTHER_RESET 自身は読める" "failed" \
   "$(printf '%s\n' '[CONTEXT] ITERATE_CB_MODE=batch; OTHER_RESET=failed' | marker_get ITERATE_CB_MODE --field OTHER_RESET)"
 
 # --- T-05 (AC-5): backward compatibility with plain `echo` --------------------
-# The migration is staged: iterate/SKILL.md goes through marker_emit, everything
+# The migration is staged: iterate's step bodies go through marker_emit, everything
 # else still echoes. Reading both must be the same operation, or the staging
 # itself would be a behaviour change.
 legacy_line=$(echo "[CONTEXT] WT_ENSURE=reenter; path=/wt/issue-9; branch=fix/issue-9-x")
@@ -312,14 +312,16 @@ _timeout 5 bash -c "source '$LIB'; printf '%s' 'not a marker' | marker_get ITERA
 loop_rc=$?
 assert "末尾改行の無い非 marker 行で無限ループしない (rc≠124)" "0" "$loop_rc"
 
-# --- T-08 (AC-6): no direct [CONTEXT] echo left in skills/iterate/SKILL.md ----
+# --- T-08 (AC-6): no direct [CONTEXT] echo left in iterate's step bodies ------
+# The shell text of every iterate step lives in scripts/iterate-step.sh (the
+# skill only calls it), so the emit sites are counted there.
 # Anchored on the emit idiom, not on the string `[CONTEXT]`: the branch tables,
 # the placeholder legend and the routing prose all name markers and must survive.
 # A count of 0 only means something if the pattern can reach 1, so the pattern is
 # pinned in both directions against inline fixtures below — not against git
 # history, which would resolve to the post-change file once this lands and turn
 # the "it can still fire" check permanently red.
-ITERATE_SKILL="$REPO_ROOT/plugins/rite/skills/iterate/SKILL.md"
+ITERATE_STEP="$REPO_ROOT/plugins/rite/scripts/iterate-step.sh"
 EMIT_IDIOM='(echo|printf)[[:space:]]+([^|;&]*[[:space:]])?["'"'"']?\[CONTEXT\]'
 assert "T-08 grep が直接 echo emit を検出する (positive)" "1" \
   "$(printf '%s\n' 'echo "[CONTEXT] ITERATE_CB=ok; cycle=1"' | grep -cE "$EMIT_IDIOM" || true)"
@@ -329,19 +331,19 @@ assert "T-08 grep は marker を語る散文・分岐表を拾わない (negativ
   "$(printf '%s\n' '| `[CONTEXT] ITERATE_CB=fire` | 発火 (ステップ 6 へ) |' | grep -cE "$EMIT_IDIOM" || true)"
 assert "T-08 grep は共有関数の呼び出しを拾わない (negative)" "0" \
   "$(printf '%s\n' 'marker_emit ITERATE_CB fire "cycle=1"' | grep -cE "$EMIT_IDIOM" || true)"
-if assert_file_exists_or_fail "T-08 iterate/SKILL.md が存在する" "$ITERATE_SKILL"; then
-  direct_emits=$(grep -cE "$EMIT_IDIOM" "$ITERATE_SKILL" || true)
-  assert "T-08 iterate/SKILL.md に共有関数を経由しない emit が無い (AC-6)" "0" "$direct_emits"
+if assert_file_exists_or_fail "T-08 iterate-step.sh が存在する" "$ITERATE_STEP"; then
+  direct_emits=$(grep -cE "$EMIT_IDIOM" "$ITERATE_STEP" || true)
+  assert "T-08 iterate-step.sh に共有関数を経由しない emit が無い (AC-6)" "0" "$direct_emits"
 
   # The shared-function call sites must actually exist — "0 direct emits"
   # would also be satisfied by deleting every marker from the file.
   # Anchored at line start so the prose line that *names* marker_emit is not
   # counted as a call — otherwise deleting one real emit would still pass.
-  shared_emits=$(grep -cE '^[[:space:]]*marker_emit[[:space:]]' "$ITERATE_SKILL" || true)
+  shared_emits=$(grep -cE '^[[:space:]]*marker_emit[[:space:]]' "$ITERATE_STEP" || true)
   if [ "$shared_emits" -ge 6 ]; then
-    pass "T-08 iterate/SKILL.md が marker_emit を 6 箇所以上呼ぶ ($shared_emits)"
+    pass "T-08 iterate-step.sh が marker_emit を 6 箇所以上呼ぶ ($shared_emits)"
   else
-    fail "T-08 iterate/SKILL.md の marker_emit 呼び出しが不足 ($shared_emits < 6)"
+    fail "T-08 iterate-step.sh の marker_emit 呼び出しが不足 ($shared_emits < 6)"
   fi
 fi
 

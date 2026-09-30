@@ -88,6 +88,40 @@ assert_grep 'sample comparison includes caller contract' "$reviewer" \
   'prerequisites supplied by the caller'
 assert_grep 'nonidentical samples narrow their claim' "$reviewer" \
   'narrow the claim instead of saying "verbatim" or "identical"'
+# 移動・格上げ・削除の検査はゲート節（次の `## ` 見出しまで）の中に置く。折り返し位置に
+# 依存しないよう、節の空白を 1 つの空白に正規化してから文単位で固定する
+gate_text=$(awk '/^## /{in_gate = ($0 == "## Documentation Fidelity Gate")} in_gate' "$reviewer" | tr -s '[:space:]' ' ')
+assert_sentence() {
+  local label=$1 sentence=$2
+  if grep -Fq -- "$sentence" <<<"$gate_text"; then
+    printf 'PASS: %s\n' "$label"
+  else
+    printf 'FAIL: %s\n' "$label" >&2
+    failures=$((failures + 1))
+  fi
+}
+assert_sentence 'gate section ends at its checklist' \
+  '### Documentation Fidelity Checklist'
+assert_sentence 'relocation item and its triggers are inside the gate' \
+  '10. **Relocation, promotion, and deletion**: Trigger on any of these diffs: prose that moves, splits, or is extracted; an added normative keyword (MUST, SHALL, 必須); a raised document status (for example `accepted`).'
+assert_sentence 'carried claims must hold in the implementation' \
+  '`Read` the implementation each carried claim names and verify the claim holds there.'
+assert_sentence 'source agreement is not claim truth' \
+  'Agreement with the source text proves only a faithful copy, not a true claim.'
+assert_sentence 'deletions and stubs are inventoried' \
+  'When the diff deletes or stubs out procedures, commands, or guidance, inventory every deleted item and locate where it now lives.'
+assert_sentence 'items with no destination are reported' \
+  'Report each deleted item with no destination as a lost instruction.'
+assert_sentence 'added pointers are followed and their outcome compared' \
+  'When the diff adds a pointer (an index entry, "see §N") to other content, follow the pointer and trace the destination as a reader would execute it, then verify the outcome matches what the deleted or replaced text produced (or, when nothing was deleted, what the pointer'"'"'s label promises).'
+assert_sentence 'state-changing steps are traced statically' \
+  'Trace steps that would change state outside a disposable copy made for the review statically instead of running them.'
+assert_sentence 'changes are checked in combination' \
+  'Check the combination, not each change alone: an added pointer, a deleted command, and an option in the destination can each look correct while together they overwrite a reader'"'"'s existing settings.'
+assert_sentence 'lost instructions and outcome mismatches are reportable' \
+  'fails one of these checks and the resulting contradiction, wrong target, lost instruction, or outcome mismatch is demonstrable.'
+assert_sentence 'shared checklist names relocation checks' \
+  'For moved, promoted, or deleted prose, verify carried claims against the implementation, inventory where deleted items went, and compare the outcome of following added pointers with the text they replace, in combination.'
 assert_grep 'findings remain evidence gated' "$reviewer" \
   'or sample fails one of these checks'
 assert_grep 'shared checklist maps the gate' "$reviewer" \
@@ -118,16 +152,33 @@ assert_grep 'merge preserves irreversible approval boundary' \
   "$ROOT/plugins/rite/skills/merge/SKILL.md" 'merge 自体は不可逆操作として既存の承認境界を維持する'
 assert_grep 'cleanup preserves destructive confirmation' \
   "$ROOT/plugins/rite/skills/cleanup/SKILL.md" '削除・close・新規 Issue 公開は不可逆操作として確認を維持する'
-assert_grep 'review auto-records reversible recommendations' \
-  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" 'Decision Log への記録である候補は可逆なので質問せず推奨で処理'
-assert_grep 'review legacy gate covers automatic disposition' \
-  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '自動 Decision Log 経路でも emit する'
-assert_grep 'review interactive triage waits for confirmation before write' \
-  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '回答を得るまで 7.4（Decision Log 追記・Issue 作成）を実行しない'
-assert_grep 'review e2e missing marker fail-safes to ask' \
-  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '欠落は `false`（確認を出す側）'
-assert_grep 'review undecidable triage fail-safes to ask' \
-  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '判定不能時は確認を出す側へ倒す'
+# スコープ外候補の処分は採否ゲートの出口で決まり、候補ごとの質問もモードによる分岐も持たない。
+# 例外は /rite:iterate からの呼び出しかどうかで分かれる ADOPT・origin=pr の fix / hold だけ。
+# 呼び出し元は状態（e2e-detect）ではなく、iterate が渡す --from-iterate で決める。
+assert_grep 'review triage mode exception is only the fix loop' \
+  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '例外は手順 3 の `{fix_loop}` だけで、`/rite:iterate` からの呼び出しかどうかで ADOPT・origin=pr の fix / hold が分かれる'
+assert_grep 'review triage fix loop requires the iterate caller flag' \
+  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '`PR_REVIEW_FROM_ITERATE == true`（ステップ 1.0。`/rite:iterate` が `--from-iterate` を付けて呼んだ review）かつステップ 8.1 の出力表で `[review:mergeable]` に一致する review だけ `yes`'
+assert_not_grep 'review triage fix loop does not read e2e-detect' \
+  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" 'PR_REVIEW_IN_E2E == true'
+assert_grep 'iterate invokes review with the caller flag' \
+  "$ROOT/plugins/rite/skills/iterate/SKILL.md" 'args: "{pr_number} --from-iterate"'
+assert_grep 'iterate lost-repair re-review carries the caller flag' \
+  "$ROOT/plugins/rite/skills/iterate/SKILL.md" 'counter 不前進のまま `/rite:pr-review` を invoke（args は下の invoke ブロックと同じ `"{pr_number} --from-iterate"`）'
+assert_grep 'fix continuation handoff keeps the caller flag' \
+  "$ROOT/plugins/rite/scripts/fix-step.sh" '--handoff "/rite:pr-review ${pr_number} --from-iterate"'
+assert_grep 'review triage disposition comes from the adoption exit' \
+  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '候補ごとの処分は採否ゲート（`review-adoption-gate.sh --kind triage`）の出口だけで決める'
+assert_grep 'review triage asks no per-candidate question' \
+  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '人間に候補ごとの処分を尋ねない'
+assert_grep 'review triage disposition does not depend on the mode' \
+  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '`PR_REVIEW_IN_E2E` で処分を変えない'
+assert_grep 'review phase7 sentinel follows a decided gate' \
+  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" 'sentinel は **ゲートが decided を返した後** に emit する'
+for field in '# - {mode} → auto' '# - {choice} → file:{A}/record:{B}/fix:{C}（verdicts[] の verdict 別の件数）。空禁止' '# - {reason} → adoption_decided'; do
+  assert_grep "review phase7 sentinel field: $field" \
+    "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" "$field"
+done
 assert_grep 'review phase7 producer echo records confirmation evidence' \
   "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" \
   'echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iteration_id}; mode={mode}; choice={choice}; reason={reason}"'
@@ -157,7 +208,8 @@ assert_not_grep 'review retryable errors are not user prompts' \
 
 # 対象 6 スキルの質問点を棚卸した inventory。新しい AskUserQuestion を追加すると
 # 文言が異なっても fail し、2 類型のどちらかへの分類と inventory 更新を必須化する。
-assert_grep_count 'iterate question inventory is unchanged' "$ROOT/plugins/rite/skills/iterate/SKILL.md" 'AskUserQuestion' 5
+# The branch_absent question is gone: every option stopped, so iterate stops and shows the branch state.
+assert_grep_count 'iterate question inventory is unchanged' "$ROOT/plugins/rite/skills/iterate/SKILL.md" 'AskUserQuestion' 4
 # Count relocated procedures together with the entrypoint; keep the original totals.
 assert_grep_count 'fix question inventory is unchanged' "$ROOT/plugins/rite/skills/fix/SKILL.md" 'AskUserQuestion' 13 \
   "$ROOT/plugins/rite/skills/fix/references/"{target-comment,nb-sweep,accept-finding,wiki-recording}.md
@@ -165,10 +217,14 @@ assert_grep_count 'ready question inventory includes AC attestation' "$ROOT/plug
 assert_grep_count 'merge question inventory includes AC attestation' "$ROOT/plugins/rite/skills/merge/SKILL.md" 'AskUserQuestion' 3
 # 5 件目は 4-W の登録から補完した作業ツリーで未コミット変更を stash してから削除するかの確認で、
 # 類型 (b) 不可逆操作（未コミット変更を持つ作業ツリーの削除）の承認に当たる。
-assert_grep_count 'cleanup question inventory is unchanged' "$ROOT/plugins/rite/skills/cleanup/SKILL.md" 'AskUserQuestion' 5
+# 6・7 件目は単独実行時の follow-up Issue 起票前の確認（3 択と、本文表示後の再確認）で、
+# 類型 (b) 外部公開（新規 Issue の作成）の承認に当たる。batch-run 経由では出さない。
+assert_grep_count 'cleanup question inventory matches the approved set' "$ROOT/plugins/rite/skills/cleanup/SKILL.md" 'AskUserQuestion' 7
 # Reviewer resolution failures now stop with [review:error]; the three
 # references to bypassing missing reviewers through user confirmation are removed.
-assert_grep_count 'pr-review question inventory is unchanged' "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'AskUserQuestion' 32 \
+# The four scope-triage questions are gone: the adoption exit decides each out-of-scope candidate.
+# The quality-check run question is gone: the review runs the detected commands (the AI can check them).
+assert_grep_count 'pr-review question inventory is unchanged' "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'AskUserQuestion' 27 \
   "$ROOT/plugins/rite/skills/pr-review/references/"{doc-heavy-reviewers,doc-heavy-validation,output-diagnostics,scope-triage,wiki-recording}.md
 
 if [ "$failures" -ne 0 ]; then

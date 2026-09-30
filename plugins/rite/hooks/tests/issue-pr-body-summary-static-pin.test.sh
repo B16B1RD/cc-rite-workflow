@@ -177,7 +177,15 @@ dl_code=${dl_code//\{reason\}/why}
 dl_code=${dl_code//\{impact\}/what}
 dl_code=${dl_code//\{source_issue_number\}/7}
 dl_code=${dl_code//\{owner_repo\}/example\/repo}
-printf '%s\n' "$dl_code" > "$work/dl.sh"
+dl_code=${dl_code//\{pr_number\}/7}
+dl_code=${dl_code//\{write_key\}/0123456789abcdef}
+# 先送り欠陥トークンは候補ごとに空 / 付与の 2 通り。既定の dl.sh は空で、dl-deferred.sh は付与
+printf '%s\n' "${dl_code//\{deferred_token\}/}" > "$work/dl.sh"
+printf '%s\n' "${dl_code//\{deferred_token\}/ <!-- rite:deferred-defect pr=7 -->}" > "$work/dl-deferred.sh"
+# 2 件目の追記は別の判定記録（別の key）。同じ key の再実行は書き込み済みとして飛ばされる
+sed 's/0123456789abcdef/fedcba9876543210/g' "$work/dl.sh" > "$work/dl-next.sh"
+sed 's/0123456789abcdef/fedcba9876543210/g' "$work/dl-deferred.sh" > "$work/dl-deferred-next.sh"
+assert_not_grep 'Decision Log deferred block has no placeholder residue' "$work/dl-deferred.sh" '(^|[^$])\{[a-z_]+\}'
 assert_not_grep 'Decision Log block has no placeholder residue' "$work/dl.sh" '(^|[^$])\{[a-z_]+\}'
 mkdir "$work/dl-bin" "$work/awk-fail"
 cat > "$work/dl-bin/gh" <<'MOCK'
@@ -201,12 +209,12 @@ MOCK
 chmod +x "$work/dl-bin/gh" "$work/dl-bin/date" "$work/awk-fail/awk"
 REAL_AWK=$(command -v awk)
 export REAL_AWK
-dl_line='- 2026-01-02 D-01: decided / Reason: why / Impact: what'
+dl_line='- 2026-01-02 D-01: decided / Reason: why / Impact: what <!-- rite:triage-write pr=7 key=0123456789abcdef -->'
 run_decision_log() {
   local name="$1" body="$2" extra_path="${3:-}" rc=0
   : > "$work/$name.argv"; : > "$work/$name.awklog"
   AWK_LOG="$work/$name.awklog" MOCK_LOG="$work/$name.argv" MOCK_BODY="$body" MOCK_EDITED="$work/$name.edited" \
-    PATH="${extra_path:+$extra_path:}$work/dl-bin:$PATH" bash "$work/dl.sh" > "$work/$name.out" 2> "$work/$name.err" || rc=$?
+    PATH="${extra_path:+$extra_path:}$work/dl-bin:$PATH" bash "${DL_SCRIPT:-$work/dl.sh}" > "$work/$name.out" 2> "$work/$name.err" || rc=$?
   assert "Decision Log $name exit status" 0 "$rc"
 }
 edit_count() { jq -s '[.[] | select(.[0:2] == ["issue", "edit"] and index("--body-file") != null)] | length' "$work/$1.argv"; }
@@ -261,14 +269,14 @@ if cmp -s "$work/footer-expected.md" "$work/footer.edited"; then pass 'marker bo
 assert 'footer body heading appears once' 1 "$(heading_count footer)"
 
 # Free-text rule / </details> lines are not boundaries; the section goes to the end.
-printf '<!-- rite:follow-up -->\n## 残存非実測指摘\n\n- 説明: before\n---\n</details>\n- 提案: after\n' > "$work/freetext-body.md"
+printf '<!-- rite:follow-up -->\n## 残存 non-blocking 指摘\n\n- 説明: before\n---\n</details>\n- 提案: after\n' > "$work/freetext-body.md"
 { cat "$work/freetext-body.md"; printf '\n## 9. Decision Log\n\n%s\n' "$dl_line"; } > "$work/freetext-expected.md"
 run_decision_log freetext "$work/freetext-body.md"
 if cmp -s "$work/freetext-expected.md" "$work/freetext.edited"; then pass 'free-text rule body gets section at end'; else fail 'free-text rule body insertion'; fi
 assert 'free-text body heading appears once' 1 "$(heading_count freetext)"
 
 # The created section is the Section 9 of the next append.
-run_decision_log existing "$work/contract.edited"
+DL_SCRIPT="$work/dl-next.sh" run_decision_log existing "$work/contract.edited"
 assert_grep 'existing section appends D-02' "$work/existing.out" 'DECISION_LOG_APPENDED=1; issue=7; entry=D-02$'
 assert_not_grep 'existing section is not reported as created' "$work/existing.out" 'section=created'
 assert 'existing section heading stays single' 1 "$(heading_count existing)"
@@ -280,7 +288,7 @@ else fail 'D-02 position'; fi
 cat > "$work/prose-body.md" <<'BODY'
 **Type**: fix
 
-## 残存非実測指摘
+## 残存 non-blocking 指摘
 
 - 説明: 2 件目が D-04 に飛ぶ
 
@@ -297,7 +305,7 @@ cat > "$work/prose-body.md" <<'BODY'
 BODY
 run_decision_log prose-created "$work/prose-body.md"
 assert_grep 'prose body creates D-01' "$work/prose-created.out" 'entry=D-01; section=created'
-run_decision_log prose-appended "$work/prose-created.edited"
+DL_SCRIPT="$work/dl-next.sh" run_decision_log prose-appended "$work/prose-created.edited"
 assert_grep 'prose body appends D-02' "$work/prose-appended.out" 'entry=D-02$'
 assert_grep 'prose body records D-02' "$work/prose-appended.edited" ' D-02: decided'
 assert_not_grep 'prose body skips no number' "$work/prose-appended.edited" ' D-(05|10): '
@@ -313,7 +321,7 @@ assert_grep 'digit before D-NN still appends D-05' "$work/digit.out" 'entry=D-05
 for fail in partial:1 partial:2; do
   at=${fail##*:}
   name="existing-awk-$at"
-  AWK_FAIL_MODE=partial AWK_FAIL_AT=$at run_decision_log "$name" "$work/contract.edited" "$work/awk-fail"
+  DL_SCRIPT="$work/dl-next.sh" AWK_FAIL_MODE=partial AWK_FAIL_AT=$at run_decision_log "$name" "$work/contract.edited" "$work/awk-fail"
   if [ "$(wc -l < "$work/$name.awklog" | tr -d ' ')" -ge "$at" ]; then pass "$name mock reached the failing call"; else fail "$name mock did not reach the failing call"; fi
   assert "$name does not edit" 0 "$(edit_count "$name")"
   assert_not_grep "$name reports no append" "$work/$name.out" 'DECISION_LOG_APPENDED'
@@ -334,6 +342,21 @@ for fail in partial:1 partial:2 empty:2; do
   assert_grep "$name reports gh_edit_failure" "$work/$name.err" 'DECISION_LOG_APPEND_FAILED=1; reason=gh_edit_failure'
   assert_grep "$name prints the pending line" "$work/$name.err" 'D-01: decided'
 done
+
+# A deferred defect ends its one Decision Log line with the token; numbering and placement do not change.
+dl_deferred_line="$dl_line <!-- rite:deferred-defect pr=7 -->"
+DL_SCRIPT="$work/dl-deferred.sh" run_decision_log deferred "$work/footer-body.md"
+assert_grep 'deferred line is created as D-01' "$work/deferred.out" 'entry=D-01; section=created'
+assert 'deferred line is appended exactly as one line' 1 "$(grep -cxF -- "$dl_deferred_line" "$work/deferred.edited")"
+DL_SCRIPT="$work/dl-deferred-next.sh" run_decision_log deferred-next "$work/deferred.edited"
+assert_grep 'the token does not change the next number' "$work/deferred-next.out" 'entry=D-02$'
+: > "$work/empty-body.md"
+DL_SCRIPT="$work/dl-deferred.sh" run_decision_log deferred-fetch-fail "$work/empty-body.md"
+assert_grep 'body fetch failure keeps the token in the pending line' "$work/deferred-fetch-fail.err" \
+  '記録予定行（7.4.5 で止まった後の再実行が書くので、手で追記しない）: - 2026-01-02 D-NN: decided / Reason: why / Impact: what <!-- rite:triage-write pr=7 key=0123456789abcdef --> <!-- rite:deferred-defect pr=7 -->$'
+DL_SCRIPT="$work/dl-deferred.sh" AWK_FAIL_MODE=partial AWK_FAIL_AT=2 run_decision_log deferred-edit-fail "$work/footer-body.md" "$work/awk-fail"
+assert_grep 'edit failure keeps the token in the pending line' "$work/deferred-edit-fail.err" \
+  '記録予定行（7.4.5 で止まった後の再実行が書くので、手で追記しない）: - 2026-01-02 D-01: decided / Reason: why / Impact: what <!-- rite:triage-write pr=7 key=0123456789abcdef --> <!-- rite:deferred-defect pr=7 -->$'
 
 # The work-memory fallback is gone from the Decision Log contract.
 for gone in 'issue-comment-wm-sync' 'wm_sync_failure' 'fallback=work_memory' '決定事項・メモ'; do
@@ -403,31 +426,47 @@ done
 cleanup_skill="$PLUGIN_ROOT/skills/cleanup/SKILL.md"
 split="$PLUGIN_ROOT/skills/pr-review/references/finding-cycling.md"
 nb_sweep="$PLUGIN_ROOT/skills/fix/references/nb-sweep.md"
+# The sweep keeps its body template in nb-sweep.md and files it through fix-step.sh nb-sweep-file-issue,
+# which sets the Complexity sent to Projects.
+fix_step="$PLUGIN_ROOT/scripts/fix-step.sh"
+# A fix-step.sh function body runs from the line after `name() {` to the line before the next `# --- ` heading,
+# so a column-0 `}` inside the body does not cut it short.
+fix_step_body() {
+  awk -v head="$1() {" '$0 == head { s=1; next } s && /^# --- / { exit } s { print }' "$2"
+}
 route_section() {
   case "$1" in
     triage) awk '/^#### 7\.4\.2 / { s=1 } s && /^#### 7\.4\.3 / { exit } s { print }' "$2" ;;
     cleanup) awk '/^## ステップ 3:/ { s=1 } s && /^## ステップ 4:/ { exit } s { print }' "$2" ;;
     split) awk '/^## §4 / { s=1; print; next } s && /^## §/ { exit } s { print }' "$2" ;;
-    nb) awk '/^2\. \*\*route 適用\*\*/ { s=1 } s && /^3\. \*\*台帳 persist\*\*/ { exit } s { print }' "$2" ;;
+    nb) awk '/^2\. \*\*採否ゲートと起票\*\*/ { s=1 } s && /^3\. \*\*台帳 persist\*\*/ { exit } s { print }' "$2" ;;
   esac
 }
 # The readers drain their input instead of exiting at the end marker: route_section writes the
 # section in several buffered chunks, and a reader that exits early sends SIGPIPE to the writer.
 route_body() {
   case "$1" in
-    triage|split|nb) route_section "$@" | awk 'done { next } /cat <<.BODY_EOF. > "\$tmpfile"$/ { a=1; next } a && /^BODY_EOF$/ { done=1; next } a { print }' ;;
+    triage|split) route_section "$@" | awk 'done { next } /cat <<.BODY_EOF. > "\$tmpfile"$/ { a=1; next } a && /^BODY_EOF$/ { done=1; next } a { print }' ;;
     cleanup) route_section "$@" | awk 'done { next } /^\*\*Issue 本文テンプレート\*\*/ { s=1 } s && /^```markdown$/ { a=1; next } a && /^```$/ { done=1; next } a { print }' ;;
+    nb) route_section "$@" | awk 'done { next } /^```markdown$/ { a=1; next } a && /^```$/ { done=1; next } a { print }' ;;
+  esac
+}
+# The sweep's Projects complexity is set in the helper; nb_helper overrides the helper file for its mutation.
+route_complexity_source() {
+  case "$1" in
+    nb) fix_step_body step_nb_sweep_file_issue "${nb_helper:-$fix_step}" ;;
+    *) route_section "$@" ;;
   esac
 }
 route_projects_complexity() {
-  route_section "$@" | sed -n 's/^[[:space:]]*--arg complexity "\(.*\)" \\$/\1/p'
+  route_complexity_source "$@" | sed -n 's/^[[:space:]]*--arg complexity "\(.*\)" \\$/\1/p'
 }
 route_headings() {
   case "$1" in
     triage) printf '%s' '## 概要|## 背景|### 元のレビュー{source_label}|## 関連' ;;
     cleanup) printf '%s' '## 概要|## 背景・目的|## 関連|## 変更内容|## チェックリスト' ;;
     split) printf '%s' '## 概要|## 元の finding|## 関連' ;;
-    nb) printf '%s' '## 概要|## 提案|## 関連' ;;
+    nb) printf '%s' '## 概要|## 契約|## 根拠|## 受入条件|## 調査|## 観測した候補|## 関連' ;;
   esac
 }
 # Prints the first broken rule and returns 1; returns 0 when the Meta and headings hold.
@@ -445,7 +484,7 @@ route_meta_check() {
     [ "$(route_section "$1" "$2" | grep -c '^| `{type}` |' || true)" = 1 ] || { echo 'Placeholder table {type} row is outside the route section'; return 1; } ;;
   esac
   if [ "$1" = nb ]; then
-    for kept in '{description}' '{suggestion}' '{file}:{line}'; do
+    for kept in '{contract}' '{evidence}' '{acceptance}' '{observations}'; do
       [ "$(printf '%s\n' "$body" | grep -cF -- "$kept" || true)" = 1 ] || { echo "body does not keep $kept once"; return 1; }
     done
   fi
@@ -455,8 +494,9 @@ for route in "triage|$triage" "cleanup|$cleanup_skill" "split|$split" "nb|$nb_sw
   source=${route#*|}
   anchor="cat <<'BODY_EOF' > \"\$tmpfile\""
   [ "$name" != cleanup ] || anchor='**Issue 本文テンプレート**'
+  [ "$name" != nb ] || anchor='```markdown'
   assert "$name body template anchor is unique" 1 "$(route_section "$name" "$source" | grep -cF -- "$anchor" || true)"
-  assert "$name Projects complexity argument is unique" 1 "$(route_section "$name" "$source" | grep -c -- '--arg complexity' || true)"
+  assert "$name Projects complexity argument is unique" 1 "$(route_complexity_source "$name" "$source" | grep -c -- '--arg complexity' || true)"
   if reason=$(route_meta_check "$name" "$source"); then pass "$name body declares the Projects Complexity"; else fail "$name body Meta: $reason"; fi
   for mutation in \
     'deleted Complexity|/^\*\*Complexity\*\*: /d' \
@@ -471,11 +511,19 @@ for route in "triage|$triage" "cleanup|$cleanup_skill" "split|$split" "nb|$nb_sw
     fi
   done
 done
-# The sweep body keeps the finding fields it has always saved.
+# The sweep's Meta and its Projects complexity live in different files: drifting the helper side breaks the pin too.
+sed 's/^\([[:space:]]*--arg complexity \)"S" \\$/\1"XL" \\/' "$fix_step" > "$work/fix-step-mutant.sh"
+if assert_mutant_changed "nb helper drifted Complexity" "$fix_step" "$work/fix-step-mutant.sh"; then
+  if nb_helper="$work/fix-step-mutant.sh" route_meta_check nb "$nb_sweep" > /dev/null; then
+    fail "nb helper drifted Complexity is not detected"
+  else pass "nb helper drifted Complexity is detected"; fi
+fi
+# The sweep body carries the record's contract, evidence and acceptance, and the observed candidates.
 for mutation in \
-  'deleted {description}|/^{description}$/d' \
-  'deleted {suggestion}|/^{suggestion}$/d' \
-  'deleted {file}:{line}|s/^- 位置: {file}:{line}$/- 位置:/'; do
+  'deleted {contract}|/^{contract}$/d' \
+  'deleted {evidence}|/^{evidence}$/d' \
+  'deleted {acceptance}|/^{acceptance}$/d' \
+  'deleted {observations}|/^{observations}$/d'; do
   label=${mutation%%|*}
   sed "${mutation#*|}" "$nb_sweep" > "$work/nb-kept-mutant.md"
   if assert_mutant_changed "nb $label" "$nb_sweep" "$work/nb-kept-mutant.md"; then
@@ -493,44 +541,84 @@ for route in "split|$split" "nb|$nb_sweep"; do
 done
 # complexity-lane.md names every auto-created route this test checks.
 lane_doc=$(grep -F 'body 先頭に記法 1 の Meta を持ち' "$PLUGIN_ROOT/skills/pr-review/references/complexity-lane.md" || true)
-for named in 'scope-triage.md](./scope-triage.md) 7.4.2' '`/rite:cleanup` ステップ 3' 'finding-cycling.md](./finding-cycling.md) §4' '`/rite:fix --nb-sweep`' 'nb-sweep.md](../../fix/references/nb-sweep.md) 1.3.S の route 適用'; do
+for named in 'scope-triage.md](./scope-triage.md) 7.4.2' '`/rite:cleanup` ステップ 3' 'finding-cycling.md](./finding-cycling.md) §4' '`/rite:fix --nb-sweep`' 'nb-sweep.md](../../fix/references/nb-sweep.md) 1.3.S の採否ゲートと起票'; do
   if printf '%s\n' "$lane_doc" | grep -cF >/dev/null -- "$named"; then pass "complexity-lane lists route: $named"; else fail "complexity-lane misses route: $named"; fi
 done
 
-# The sweep runs its body block and the issue guard as one script: the guard must receive the built arguments.
-# extract_fix_block in the contract test runs the first block holding the guard reason, so the body block must not hold it.
-assert 'nb guard reason appears once' 1 "$(grep -c 'reason=nb_sweep_issue_failed' "$nb_sweep" || true)"
-assert 'nb body reason appears once' 1 "$(grep -c 'reason=nb_sweep_issue_body_failed' "$nb_sweep" || true)"
-if awk '/reason=nb_sweep_issue_body_failed/ { b=NR } /reason=nb_sweep_issue_failed/ { g=NR } END { exit !(b && g && b < g) }' "$nb_sweep"; then
-  pass 'nb body block precedes the issue guard'
-else fail 'nb body block precedes the issue guard'; fi
+# The sweep files each Issue through the one-line fix-step.sh nb-sweep-file-issue call. The helper checks the body
+# before it calls the Issue creator, and the body file written from the template reaches the creator unchanged.
+nb_file_fn=$(fix_step_body step_nb_sweep_file_issue "$fix_step")
+assert 'nb guard reason appears once' 1 "$(printf '%s\n' "$nb_file_fn" | grep -c 'reason=nb_sweep_issue_failed' || true)"
+assert 'nb body reason appears once' 1 "$(printf '%s\n' "$nb_file_fn" | grep -c 'reason=nb_sweep_issue_body_failed' || true)"
+if printf '%s\n' "$nb_file_fn" | awk '/reason=nb_sweep_issue_body_failed/ { b=NR } /reason=nb_sweep_issue_failed/ { g=NR } END { exit !(b && g && b < g) }'; then
+  pass 'nb body check precedes the issue guard'
+else fail 'nb body check precedes the issue guard'; fi
+assert 'nb route calls nb-sweep-file-issue once' 1 "$(route_section nb "$nb_sweep" | grep -c 'fix-step\.sh nb-sweep-file-issue' || true)"
 # The reader drains its input instead of exiting early, for the same SIGPIPE reason as route_body.
 nb_block() {
   route_section nb "$nb_sweep" | awk -v needle="$1" 'found { next } /^```bash$/ { inside=1; block=""; next } /^```$/ { if (inside && index(block, needle)) { printf "%s", block; found=1 } inside=0; next } inside { block=block $0 "\n" }'
 }
-nb_code="$(nb_block 'BODY_EOF')"$'\n'"$(nb_block 'reason=nb_sweep_issue_failed')"
-mkdir -p "$work/nb-plugin/scripts"
-cat > "$work/nb-plugin/scripts/create-issue-with-projects.sh" <<'MOCK'
+nb_call=$(nb_block 'fix-step.sh nb-sweep-file-issue')
+# Fixture plugin: a copy of fix-step.sh, a stub Issue creator that records its JSON argument and a copy of the body
+# file, and a state root holding the adoption records the helper writes the tracker back to.
+nb_plugin="$work/nb-plugin"
+mkdir -p "$nb_plugin/scripts" "$nb_plugin/hooks"
+cp "$fix_step" "$nb_plugin/scripts/fix-step.sh"
+ln -s "$PLUGIN_ROOT/hooks/control-char-neutralize.sh" "$nb_plugin/hooks/control-char-neutralize.sh"
+printf '#!/bin/bash\nprintf "%%s\\n" "${NB_STATE_ROOT:?}"\n' > "$nb_plugin/hooks/state-path-resolve.sh"
+cat > "$nb_plugin/scripts/create-issue-with-projects.sh" <<'MOCK'
 #!/bin/bash
 printf '%s\n' "$1" >> "$NB_ARGS_LOG"
 cp "$(printf '%s' "$1" | jq -r '.issue.body_file')" "$NB_BODY_COPY"
+[ "${NB_CREATE_FAIL:-0}" = 0 ] || exit 1
 printf '{"issue_number":5,"issue_url":"https://example.invalid/5"}\n'
 MOCK
-chmod +x "$work/nb-plugin/scripts/create-issue-with-projects.sh"
-nb_code=${nb_code//\{plugin_root\}/$work/nb-plugin}
-nb_code=${nb_code//\{projects_enabled\}/true}
-nb_code=${nb_code//\{project_number\}/1}
-nb_code=${nb_code//\{owner\}/example}
-printf '%s\n' "$nb_code" > "$work/nb-issue.sh"
-: > "$work/nb-args.log"
-rc=0
-NB_ARGS_LOG="$work/nb-args.log" NB_BODY_COPY="$work/nb-body.md" bash "$work/nb-issue.sh" > "$work/nb-issue.out" 2> "$work/nb-issue.err" || rc=$?
-assert 'nb body block + issue guard exit status' 0 "$rc"
-assert 'nb issue helper is called once' 1 "$(jq -s length "$work/nb-args.log" 2>/dev/null || true)"
-if jq -e '.projects.complexity == "S" and .options.source == "pr_review"' "$work/nb-args.log" > /dev/null 2>&1; then
+chmod +x "$nb_plugin/scripts/create-issue-with-projects.sh"
+printf 'fix: keep the sweep body intact\n' > "$work/nb-title.txt"
+route_body nb "$nb_sweep" > "$work/nb-body-in.md"
+: > "$work/nb-body-empty.md"
+# $1=case name $2=body file. Writes $work/nb-$1.{out,err,rc}, the creator's argument log and the body copy.
+run_nb_file() {
+  local call rc=0 root="$work/nb-$1-state"
+  mkdir -p "$root/.rite/state"
+  jq -n '{adoption: {records: [{ids: ["F-01"]}, {ids: ["F-02"]}]}}' > "$root/.rite/state/adoption-7-sweep.json"
+  call=${nb_call//\{plugin_root\}/$nb_plugin}
+  call=${call//\{pr_number\}/7}
+  call=${call//\{issue_title_file\}/$work/nb-title.txt}
+  call=${call//\{issue_body_file\}/$2}
+  call=${call//\{record_ids\}/[\"F-01\"]}
+  call=${call//\{projects_enabled\}/true}
+  call=${call//\{project_number\}/1}
+  call=${call//\{owner\}/example}
+  printf '%s\n' "$call" > "$work/nb-$1.sh"
+  : > "$work/nb-$1-args.log"
+  NB_STATE_ROOT="$root" NB_ARGS_LOG="$work/nb-$1-args.log" NB_BODY_COPY="$work/nb-$1-body.md" \
+    bash "$work/nb-$1.sh" > "$work/nb-$1.out" 2> "$work/nb-$1.err" || rc=$?
+  echo "$rc" > "$work/nb-$1.rc"
+}
+run_nb_file ok "$work/nb-body-in.md"
+assert 'nb issue helper exit status' 0 "$(cat "$work/nb-ok.rc")"
+assert 'nb issue helper is called once' 1 "$(jq -s length "$work/nb-ok-args.log" 2>/dev/null || true)"
+if jq -e '.projects.complexity == "S" and .options.source == "pr_review"' "$work/nb-ok-args.log" > /dev/null 2>&1; then
   pass 'nb issue helper receives complexity S from pr_review'
 else fail 'nb issue helper arguments lack complexity S / pr_review'; fi
-assert 'nb issue helper body opens with Meta' "$(printf '**Type**: {type}\n**Complexity**: S\n\n## 概要')" "$(head -n 4 "$work/nb-body.md" 2>/dev/null || true)"
+assert 'nb issue helper receives the title file first line' 'fix: keep the sweep body intact' "$(jq -r '.issue.title' "$work/nb-ok-args.log" 2>/dev/null || true)"
+if cmp -s "$work/nb-body-in.md" "$work/nb-ok-body.md"; then
+  pass 'nb issue helper body is the written body file byte for byte'
+else fail 'nb issue helper body differs from the written body file'; fi
+assert 'nb issue helper body opens with Meta' "$(printf '**Type**: {type}\n**Complexity**: S\n\n## 概要')" "$(head -n 4 "$work/nb-ok-body.md" 2>/dev/null || true)"
+assert 'nb issue result reaches stdout' 5 "$(jq -r '.issue_number' "$work/nb-ok.out" 2>/dev/null || true)"
+assert 'nb filed number is written back to the matching record only' '[5,null]' \
+  "$(jq -c '[.adoption.records[].tracker]' "$work/nb-ok-state/.rite/state/adoption-7-sweep.json" 2>/dev/null || true)"
+run_nb_file empty-body "$work/nb-body-empty.md"
+assert 'nb empty body exit status' 1 "$(cat "$work/nb-empty-body.rc")"
+assert_grep 'nb empty body stops with nb_sweep_issue_body_failed' "$work/nb-empty-body.err" 'reason=nb_sweep_issue_body_failed'
+assert 'nb empty body never calls the Issue creator' 0 "$(jq -s length "$work/nb-empty-body-args.log" 2>/dev/null || true)"
+NB_CREATE_FAIL=1 run_nb_file create-fail "$work/nb-body-in.md"
+assert 'nb creator failure exit status' 1 "$(cat "$work/nb-create-fail.rc")"
+assert_grep 'nb creator failure stops with nb_sweep_issue_failed' "$work/nb-create-fail.err" 'reason=nb_sweep_issue_failed'
+assert 'nb creator failure writes no tracker' '[null,null]' \
+  "$(jq -c '[.adoption.records[].tracker]' "$work/nb-create-fail-state/.rite/state/adoption-7-sweep.json" 2>/dev/null || true)"
 
 # The complexity helper reads the expanded bodies; gh is a local mock, never the CLI.
 mkdir "$work/lane-bin"

@@ -206,8 +206,8 @@ gh repo create "$owner/$repo_name" --source . "$visibility_flag" --remote origin
 
 The visibility flag is mandatory; never invoke the interactive form. If the command fails, display gh's stderr and probe both `gh repo view "$owner/$repo_name"` and `git remote get-url origin` before choosing recovery:
 
-- If neither repository nor origin exists, the create step failed before side effects. Use AskUserQuestion to offer retrying the create command or stopping.
-- If the repository and origin exist, treat this as a partial success in the push step. Resolve `current_branch=$(git branch --show-current)` and fail loudly if it is empty. Use AskUserQuestion to offer retrying only `git push origin "$current_branch"` or stopping; never rerun `gh repo create` on this path.
+- If neither repository nor origin exists, the create step failed before side effects. Classify gh's stderr first: retry a transient network/API failure once, and stop with the cause for a name conflict or missing permission. Use AskUserQuestion to offer retrying the create command or stopping only when the cause cannot be classified.
+- If the repository and origin exist, treat this as a partial success in the push step. Resolve `current_branch=$(git branch --show-current)` and fail loudly if it is empty. Classify the push stderr the same way (retry a transient failure once, stop with the cause for a permission or rejection). Use AskUserQuestion to offer retrying only `git push origin "$current_branch"` or stopping when it cannot be classified; never rerun `gh repo create` on this path.
 - If only one of repository/origin exists, show the observed state and stop for manual recovery rather than guessing.
 
 For a name collision, resolve `current_branch=$(git branch --show-current)` and the existing repository URL with `gh repo view "$owner/$repo_name" --json url --jq .url`. Fail loudly if either is empty. Then stop after showing these commands with the resolved values; do not execute them automatically:
@@ -1269,7 +1269,7 @@ rationale: references/rationale.md#hook-path-absolute
 
 If the file already contains hooks, check each hook command for rite hook patterns:
 
-1. Scan all `.hooks.{EventName}[*].hooks[*].command` values across PreCompact, PostCompact, SessionStart, SessionEnd, Stop, PreToolUse, and PostToolUse events (the same event set as the 4.5.1.2 required-hook table — an event missing here is never checked for a stale path, and 4.5.1.2 only checks presence, so the Decision logic would report "up to date" while the outdated path survives)
+1. Scan all `.hooks.{EventName}[*].hooks[*].command` values across PreCompact, PostCompact, SessionStart, SessionEnd, Stop, StopFailure, PreToolUse, and PostToolUse events (the same event set as the 4.5.1.2 required-hook table — an event missing here is never checked for a stale path, and 4.5.1.2 only checks presence, so the Decision logic would report "up to date" while the outdated path survives)
 2. Identify **rite hook commands** (per the 判定基準 above — `rite` as a full path segment above the hooks dir; this covers both `plugins/rite/hooks/` relative paths and any previous absolute paths, while excluding look-alikes such as `favorite/hooks/`)
 3. For each matching command, construct the expected full command string `bash {hooks_dir}/{script_name}` (where `{hooks_dir}` is the absolute path resolved in Phase 4.5.0 and `{script_name}` is the filename like `pre-tool-bash-guard.sh`). Compare the existing command string with the expected one
 4. If the existing command does NOT match the expected command, mark it as **needs update**
@@ -1277,7 +1277,7 @@ If the file already contains hooks, check each hook command for rite hook patter
 **Note**: 既存 hook が相対パスなら絶対パスと一致せず更新対象になる（意図どおり）。
 rationale: references/rationale.md#hook-path-absolute
 
-**Display when outdated paths are detected** (where `{event}` is the hook event name such as PreCompact/PostCompact/SessionStart/SessionEnd/Stop/PreToolUse/PostToolUse, and `{current_cmd}` is the existing command string):
+**Display when outdated paths are detected** (where `{event}` is the hook event name such as PreCompact/PostCompact/SessionStart/SessionEnd/Stop/StopFailure/PreToolUse/PostToolUse, and `{current_cmd}` is the existing command string):
 ```
 ⚠️ Outdated rite hook paths detected:
 | Hook Event | Current Command | Expected Command |
@@ -1300,6 +1300,7 @@ rationale: references/rationale.md#hook-path-absolute
 | SessionStart | `session-start.sh` | `""` | Re-inject state on startup/resume; on compact, emit recovery text |
 | SessionEnd | `session-end.sh` | `""` | Reset flow state on session end |
 | Stop | `stop-loop-continuation.sh` | `""` | Consume one-shot handoff and re-inject the next review↔fix loop / cleanup chain command |
+| StopFailure | `stop-failure.sh` | `""` | Freeze the open review clock when a turn ends on an API error |
 | PreToolUse | `pre-tool-bash-guard.sh` | `"Bash"` | Block known-bad Bash command patterns |
 | PreToolUse | `pre-tool-edit-guard.sh` | `"Edit\|Write\|MultiEdit\|NotebookEdit"` | Deny reviewer-subagent writes into a parent working tree |
 | PostToolUse | `post-tool-wm-sync.sh` | `"Bash"` | Auto-create local WM; sync Issue comment replica on phase change |
@@ -1313,7 +1314,7 @@ rationale: references/rationale.md#hook-path-absolute
 
 **Note**: 欠落がなければ本サブフェーズは無出力。判定は下記 Decision logic。
 
-**Display when missing hooks are detected** (`{total_count}` = number of required hooks, currently 9):
+**Display when missing hooks are detected** (`{total_count}` = number of required hooks, currently 10):
 ```
 ⚠️ Required rite hooks are missing ({missing_count}/{total_count}):
 | Hook Event | Script | Status |
@@ -1341,6 +1342,7 @@ Add the following hooks to `.claude/settings.local.json`:
 | PreToolUse (Edit\|Write\|MultiEdit\|NotebookEdit) | `bash {hooks_dir}/pre-tool-edit-guard.sh` | Deny reviewer-subagent writes into a parent working tree |
 | SessionEnd | `bash {hooks_dir}/session-end.sh` | Reset flow state on session end |
 | Stop | `bash {hooks_dir}/stop-loop-continuation.sh` | Consume one-shot handoff and re-inject the next review↔fix loop / cleanup chain command |
+| StopFailure | `bash {hooks_dir}/stop-failure.sh` | Freeze the open review clock when a turn ends on an API error |
 | PostToolUse (Bash) | `bash {hooks_dir}/post-tool-wm-sync.sh` | Auto-create local WM; sync Issue comment replica on phase change |
 | PostToolUse (Edit\|Write\|MultiEdit) | `bash {hooks_dir}/scripts/bang-backtick-edit-hook.sh` | Block bang-backtick adjacency that bash would interpret as history expansion |
 
@@ -1413,6 +1415,17 @@ Add the following hooks to `.claude/settings.local.json`:
         ]
       }
     ],
+    "StopFailure": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {hooks_dir}/stop-failure.sh"
+          }
+        ]
+      }
+    ],
     "SessionEnd": [
       {
         "matcher": "",
@@ -1453,7 +1466,7 @@ Add the following hooks to `.claude/settings.local.json`:
 - **rite hooks (path update)**: outdated **rite hook commands**（4.5.1.1）は `{hooks_dir}` パスへ **replace**。
 - **Missing rite hooks**: 必須 rite hook が無ければ追加。PostToolUse は 2 matcher（`Bash` と `Edit|Write|MultiEdit`）が、PreToolUse も 2 matcher（`Bash` と `Edit|Write|MultiEdit|NotebookEdit`）が共存必須。
 - **Obsolete hooks**: `post-compact-guard.sh` (PreToolUse) または `context-pressure.sh` (PostToolUse) があれば **remove**。
-- **Matcher rules**: `post-tool-wm-sync.sh` / `pre-tool-bash-guard.sh` は `"matcher": "Bash"`。`scripts/bang-backtick-edit-hook.sh` は `"matcher": "Edit|Write|MultiEdit"`。`pre-tool-edit-guard.sh` は `"matcher": "Edit|Write|MultiEdit|NotebookEdit"`。`stop-loop-continuation.sh` を含む他は `"matcher": ""`。
+- **Matcher rules**: `post-tool-wm-sync.sh` / `pre-tool-bash-guard.sh` は `"matcher": "Bash"`。`scripts/bang-backtick-edit-hook.sh` は `"matcher": "Edit|Write|MultiEdit"`。`pre-tool-edit-guard.sh` は `"matcher": "Edit|Write|MultiEdit|NotebookEdit"`。`stop-loop-continuation.sh` / `stop-failure.sh` を含む他は `"matcher": ""`。
 - **Permission for WM_SOURCE**: 未設定なら `.permissions.allow` へ `"Bash(WM_SOURCE:*)"` を追加。
 
 ### 4.5.3 Make Scripts Executable
@@ -1461,7 +1474,7 @@ Add the following hooks to `.claude/settings.local.json`:
 Attempt to set executable permissions regardless of source type (LOCAL or MARKETPLACE):
 
 ```bash
-chmod +x {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/pre-tool-edit-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/stop-loop-continuation.sh {hooks_dir}/post-tool-wm-sync.sh {hooks_dir}/scripts/bang-backtick-edit-hook.sh
+chmod +x {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/pre-tool-edit-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/stop-loop-continuation.sh {hooks_dir}/stop-failure.sh {hooks_dir}/post-tool-wm-sync.sh {hooks_dir}/scripts/bang-backtick-edit-hook.sh
 ```
 
 If `chmod` fails (e.g., permission denied, read-only filesystem), display a warning and continue:
@@ -1475,7 +1488,7 @@ If hooks fail to run, manually run: chmod +x {hooks_dir}/*.sh
 Verify the hook scripts exist and are executable:
 
 ```bash
-ls -la {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/pre-tool-edit-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/stop-loop-continuation.sh {hooks_dir}/post-tool-wm-sync.sh {hooks_dir}/scripts/bang-backtick-edit-hook.sh
+ls -la {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/pre-tool-edit-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/stop-loop-continuation.sh {hooks_dir}/stop-failure.sh {hooks_dir}/post-tool-wm-sync.sh {hooks_dir}/scripts/bang-backtick-edit-hook.sh
 ```
 
 If any file is missing or lacks execute permission, display a warning and continue to Phase 5:
@@ -1553,7 +1566,7 @@ Read `wiki.enabled` from `rite-config.yml`。Wiki は **opt-out**: セクショ�
 rationale: references/rationale.md#wiki-enabled-sed
 
 ```bash
-wiki_enabled=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+wiki_enabled=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' rite-config.yml 2>/dev/null \
   | grep -E '^[[:space:]]+enabled:' | head -1 | sed 's/#.*//' \
   | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]')
 wiki_enabled=$(echo "$wiki_enabled" | tr '[:upper:]' '[:lower:]')
@@ -1564,7 +1577,7 @@ case "$wiki_enabled" in
     # opt-out default: 未指定 / 不明値は有効として扱う
     _wiki_raw="$wiki_enabled"  # 上書き前に保存 (typo 検出用)
     wiki_enabled="true"
-    if [ -z "$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null | grep -E '^[[:space:]]+enabled:')" ]; then
+    if [ -z "$(sed -n '/^wiki:/,/^[^[:space:]#]/p' rite-config.yml 2>/dev/null | grep -E '^[[:space:]]+enabled:')" ]; then
       echo "INFO: wiki.enabled キーが rite-config.yml に見つかりません。デフォルト値 'true' (opt-out) を使用します" >&2
     elif [ -n "$_wiki_raw" ]; then
       echo "WARNING: wiki.enabled の値 '$_wiki_raw' を解釈できません。デフォルト 'true' (opt-out) を使用します。値は true/false/yes/no/1/0 のいずれかを指定してください" >&2
@@ -1590,12 +1603,12 @@ Determine if Wiki is already initialized. The detection logic depends on `branch
 - `same_branch`: check for `.rite/wiki/SCHEMA.md`
 
 ```bash
-wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+wiki_branch=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' rite-config.yml 2>/dev/null \
   | grep -E '^[[:space:]]+branch_name:' | head -1 | sed 's/#.*//' \
   | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 wiki_branch="${wiki_branch:-wiki}"
 
-branch_strategy=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+branch_strategy=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' rite-config.yml 2>/dev/null \
   | grep -E '^[[:space:]]+branch_strategy:' | head -1 | sed 's/#.*//' \
   | sed 's/.*branch_strategy:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 branch_strategy="${branch_strategy:-separate_branch}"

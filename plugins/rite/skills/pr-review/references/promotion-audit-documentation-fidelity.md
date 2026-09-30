@@ -21,5 +21,5 @@ comparison. None was already fully mechanized, so no page is shelved.
 
 The shared gate is deliberately evidence-gated: it activates only for changed
 explanations, commands, citations, or samples and reports a current-PR finding
-only when the source/consumer mismatch or wrong target is demonstrable. Blocking
+only when a failure the gate names is demonstrable. Blocking
 classification remains the responsibility of the measured-confirmed gate.

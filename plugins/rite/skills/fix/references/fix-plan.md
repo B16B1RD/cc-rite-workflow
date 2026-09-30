@@ -15,11 +15,11 @@
 | `groups[].semantic` | `approved`: boolean。`acceptance_criteria`: AC全体との照合根拠。`out_of_scope`: 要求外の動作変更を含まない根拠。違反・未判断は `approved:false` と理由を記録 |
 | `verifications[]` | `id`, `kind` (`related` / `full`), `command`, `inputs` (ファイル/ディレクトリ配列), `environment` (結果に影響する環境変数名配列) |
 
-`action` は既存の `fix` / `reply` / `accept` / `nit-noted`。全 blocking finding ID を重複なく処置へ対応付ける。fix は予定パスを持ち、全処置は検証 ID と根拠を持つ。全体検証 (`kind:full`) を最低1件定める。未解決の人間由来指摘は `external_findings` に `id`・元の `thread_id`・`description` を記録し、同じグループと検証に対応付ける。
+`action` は `fix` / `reply` / `accept` / `nit-noted` と、base 取り込み専用の `base-intake`（下記「base 取り込み」）。全 blocking finding ID と、レビュー済み commit に登録された PR 内推奨（`.rite/state/pr-recommendations-{pr_number}.json` の `recommendations[]`）の ID（`R-NN`）、flow-state の `review_run.deviations[]` のうち現在の review context の ID（`D-NN`）を重複なく処置へ対応付ける。fix は予定パスを持ち、全処置は検証 ID と根拠を持つ。全体検証 (`kind:full`) を最低1件定める。未解決の人間由来指摘は `external_findings` に `id`・元の `thread_id`・`description` を記録し、同じグループと検証に対応付ける。
 
-helper は標準 `### 4.2` 節内の backtick パスが `non_targets` に含まれることを確認する。それ以外の書式や散文制約は caller が全件抽出し根拠を記録する。パス検査は意味判断を代行しない。予定パスは相対表記とし親参照を含めない。Non-Target に達する symlink も対象外と扱う。
+helper は標準 `### 4.2` 節内の backtick 語のうち、作業ツリーに実在するパスが `non_targets` に含まれることを確認する。コマンド片やオプションはパスとして要求しない。まだ存在しないパスを含むそれ以外の書式や散文制約は caller が全件抽出し根拠を記録する。パス検査は意味判断を代行しない。予定パスは相対表記とし親参照を含めない。Non-Target に達する symlink も対象外と扱う。
 
-関連テストの `inputs` は実装・テスト・設定・依存lockfileを含め、影響するディレクトリを漏らさない。`environment` は必要な変数名を指定する。ツール版など環境変数にない関連環境は計画時にファイルへ実測出力し inputs に含め、再利用前に更新する。外部状態を固定できない検証は `full` として再実行する。stdout/stderr に秘密を出すコマンドは使わない。
+関連テストの `inputs` は実装・テスト・設定・依存lockfileを含め、影響するディレクトリを漏らさない。`environment` は必要な変数名を指定する。ツール版など環境変数にない関連環境は計画時にファイルへ実測出力し inputs に含め、再利用前に更新する。外部状態を固定できない検証は `full` として再実行する。stdout/stderr に秘密を出すコマンドは使わない。ディレクトリの入力は配下をたどって鮮度キーに含めるが、その途中にある Python のバイトコードキャッシュ（`__pycache__` と `.pyc`。symlink を除く）は含めない。テストの実行で書き換わるためである。キャッシュそのもの（symlink でないもの）を `inputs` に指定した場合は含める。
 
 `verifications[].command` は `bash -c` で実行され、**検証コマンド自身の終了コード 0 を成功**とする。検査対象が異常系で rc=2 を返すことを期待する場合は、その値をアサートし、期待どおりなら検証自身を 0 で終える。対象コマンドを直接登録して非ゼロ終了を成功扱いさせることはできない。`check` はコマンドの期待終了値を推測・実行しない。
 
@@ -45,11 +45,29 @@ assert_rc2 bash scripts/a.sh &&
   assert_rc2 bash scripts/b.sh
 ```
 
-失敗時も実測終了コード・stdout/stderr は検証記録に残る。診断の `actual_rc` と証跡を確認し、対象の欠陥とアサーションの誤りを区別する。固定済みの見直し計画を任意に書き換えて再登録できるという意味ではない。検証コマンドだけを同じ run / context で直すときは `review-replan --amend --reason "訂正理由"` を使う。許可する差分は既存 `verifications[].command` のみで、診断用 `review-replan`（代替案の保存）とは別操作である。訂正後は scope `check` と `verify --kind all` をやり直す。
+失敗時も実測終了コード・stdout/stderr は検証記録に残る。診断の `actual_rc` と証跡を確認し、対象の欠陥とアサーションの誤りを区別する。通常の計画で検証コマンドが誤っているときは、入力を直し、scope `check` と `verify --kind all` をやり直す。
 
-修正中は `review-fix-scope-check.sh verify --plan ... --issue ... --kind related` を使う。内容（追加・削除・modeを含む）・コマンド・指定環境・作業先・基本runtimeが同一で、当該 context の実測成功がある関連テストだけ再利用する。失敗・入力変化・新しいreview contextは再実行する。全修正後は `fix` 本体の最終検証ブロックを実行し、関連結果の鮮度を確認した後、全体検証を全件実行する。検証コマンドは入力を変更しない。
+修正中は `review-fix-scope-check.sh verify --plan ... --issue ... --kind related` を使う。内容（追加・削除・modeを含む）・コマンド・指定環境・作業先・基本runtimeが同一で、当該 context の実測成功がある関連テストだけ再利用する。失敗・入力変化・新しいreview contextは再実行する。全修正後は `fix` 本体の最終検証ブロックを実行し、関連結果の鮮度を確認した後、全体検証を全件実行する。検証コマンドは入力を変更しない（鮮度キーに含めないバイトコードキャッシュの生成は変更に数えない）。
 
 機械検査と意味判断を分けた検査記録は `.rite/state/fix-plan-{session}.json`、実測コマンド・終了コード・stdout/stderr・鮮度キーは `.rite/state/fix-verification-{session}.json` に保存する。検査記録は入力とは別ファイルであり、記録と同一実体を `--plan` に渡すと `check` は書き込み前に拒否する。保存失敗は成功にせず前の記録を保持する。復旧は同じ入力で check → verify。任意のファイル直接編集やホスト権限の遮断は保証しない。
+
+## mergeable の後の修正
+
+mergeable のレビューの後に手で commit すると、その HEAD には fix の検証記録が無いため、次のレビューは「変更された HEAD には完了した fix 検証が要る」で開始できない。PR が持ち込んだ根因（採否の出口 ADOPT・`origin=pr`）は、`/rite:iterate` 経由の mergeable の review では pr-review ステップ 7.2 が PR 内推奨として登録し、本計画を通して修正する（それ以外の review では採否保留で止まる）。完了前確認が PR の追加行に見つけた逸脱は、iterate が `review-deviate` で `D-NN` として記録し、同じく本計画を通して修正する。手で commit してしまったときの回復は、その commit を取り消してレビュー済み commit へ戻すことだけである。
+
+## base 取り込み
+
+レビューを始めた PR ブランチへ base ブランチを取り込む正規の手順。レビュー中の作業先では、検証を経ない merge commit は拒否される（自動で commit する `git merge <ref>`、計画なしの `git commit` / `git merge --continue`）。取り込み後の HEAD は次の `review-start` で検証済みでなければ再レビューできず、ready / merge にも進めないため、この順で行う:
+
+1. `git fetch origin <base>` のあと `git merge --no-commit --no-ff origin/<base>` で取り込み、競合を解消して `git add` する（HEAD はレビュー済み commit のまま）。`<base>` は `rite-config.yml` の `branch.base`（未設定なら取り込めず止まる）。merge が既に進行中（`MERGE_HEAD` がある）なら、取り込み相手が `origin/<base>` のときは競合解消と `git add` から始め、そうでなければ `git merge --abort` してからこの手順 1 に戻る
+2. `git diff --no-renames --name-only HEAD` の全パスを 1 つの `action: "base-intake"` グループの `paths` に並べ、全体検証を対応付ける。`finding_ids` は空でよい。改名は旧パスと新パスの 2 つとして並ぶ
+3. `check` → `verify --kind all` を通し、`git commit` で取り込みを確定する（`git merge --continue` も同じ検査を受ける）
+4. `git push origin HEAD` で取り込み commit を PR に反映する
+5. `/rite:iterate` で次のレビュー cycle を回し、mergeable になってから ready / merge へ進む
+
+制約の除外はファイル単位で、base 側が変更したファイル（merge-base から取り込み相手までの差分に出るファイル）だけが Issue の Non-Target / 閉じた対象の検査から外れる。競合を解消したファイルは base 側も変更しているので外れる。base 側が変更した symlink は、指す先が Non-Target でもそのパスの変更として取り込める。base-intake グループにだけ並べた symlink が覆うのはそのパス自体で、指す先は覆わない（他のグループにも並べた symlink は指す先も覆う）。指す先で base 側が変更していないファイルを変えたら、そのパスも `paths` に並べる（手順 2 の後で変えたなら追加し、手順 3 の `check` からやり直す）。並べたファイルは Issue の Non-Target / 閉じた対象の検査を受け、並べていない変更は verify / commit で計画外の変更として拒否される。base 側が変更していないファイル（base の変更に合わせて直した自ブランチのファイル等）は制約を受ける。
+
+`base-intake` は merge 進行中（`MERGE_HEAD` がある状態）でだけ有効で、取り込み相手は `origin/<base>` またはその祖先に限る（別ブランチや別の worktree で作った commit は取り込めない）。計画に 1 グループまで。`--no-commit` / `--squash` / `--abort` / `--quit` / `--ff-only` の merge は拒否されない（オプションは git と同じく後に書いたものが勝つ。これらのオプションの省略形は判定できないため拒否される）。`git pull` / rebase 等でレビュー済み HEAD を動かした場合は次の `review-start` が拒否する。レビュー済み commit（`flow-state.sh get --jq-filter .review_cycle.review_context.commit_sha`）へ `git reset --keep` で戻してから、この手順で取り込む。ただし、`git fetch origin <PR ブランチ>` のあと `git merge-base --is-ancestor origin/<PR ブランチ> <レビュー済み commit>` が失敗するなら、戻すと push 済みの commit を巻き戻すことになるため、戻さずに止まり、その状況を報告する（公開済み履歴の書き換えは人間が判断する）。
 
 ## 停滞時の見直し計画
 
@@ -65,5 +83,7 @@ assert_rc2 bash scripts/a.sh &&
 選択案の `paths` 集合は全 `groups[].paths` の集合と一致させる。非選択案には棄却理由を必須とし、`insoluble` は全案の棄却理由を保持する。再発防止検証は各案の根因を再現・検出できる内容を示し、選択案では `groups[].verification_ids` と `verifications[]` に接続する。未検証、証跡欠損、権限拒否を解決不能という意味判断に置き換えない。
 
 編集前に `flow-state.sh review-replan --plan "{fix_plan_file}" --issue "{fix_issue_file}"` を実行する。helper は既存の範囲検査を適用して見直し結果を run に保存する。失敗時は計画・履歴を保持して編集せず、同じ工程を復旧する。通常の scope check も、診断 run の観測欠損や未完了の見直しを拒否する。
+
+登録済み replan の検証コマンドだけを同じ run / context で直すときは `review-replan --amend --reason "訂正理由"` を使う。許可する差分は既存 `verifications[].command` のみで、診断用 `review-replan`（代替案の保存）とは別操作である。訂正後は scope `check` と `verify --kind all` をやり直す。固定済みの見直し計画を任意に書き換えて再登録できるという意味ではない。
 
 最終 `verify --kind all` の成功で検証済み tree fingerprint と対象根因を保存する。次レビュー開始時の新 HEAD・clean tree と検証済み内容の照合を経て修正履歴を確定するため、検証後に入力が変わった場合は最終検証をやり直す。同じ run の再開で見直し回数や観測履歴をリセットしない。

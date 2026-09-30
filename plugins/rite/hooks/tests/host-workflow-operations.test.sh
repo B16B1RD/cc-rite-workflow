@@ -186,6 +186,8 @@ class WorkflowContracts(unittest.TestCase):
             ("5", "[merge:returned-to-caller]", "ステップ 6"),
             ("5", "sentinel 不在", "ステップ 8"),
             ("6", "[cleanup:returned-to-caller]", "ステップ 1"),
+            ("7", "[issue-audit:returned-to-caller]", "完了通知"),
+            ("7", "[issue-audit:failed]", "完了通知"),
         ]
         for step, sentinel, destination in expectations:
             with self.subTest(step=step, sentinel=sentinel):
@@ -193,7 +195,7 @@ class WorkflowContracts(unittest.TestCase):
                 self.assertEqual(len(rows), 1, (step, sentinel, rows))
                 self.assertIn(destination, rows[0])
         invoked = re.findall(r"(?m)^skill: rite:([a-z-]+)$", batch)
-        self.assertEqual(invoked, ["open", "iterate", "ready", "merge", "cleanup"])
+        self.assertEqual(invoked, ["open", "iterate", "ready", "merge", "cleanup", "issue-audit"])
         self.assertNotRegex(self.block("8", "RUN_STOP;"), r"\.cursor\s*\+=" )
 
     def test_native_and_body_execution_share_e2e_and_permission_contracts(self):
@@ -228,18 +230,161 @@ class WorkflowContracts(unittest.TestCase):
                        "絶対パス方式による選定 reviewer 全員の回収は未検証",
                        "Codex を含むどのホストでも設計記録は裏付けていない"]:
             self.assertIn(clause, reviewer_part)
-        # The placeholder substitution rule lives in the handoff subsection and at the
-        # independent-child entry of pr-review, so both call sites agree on it.
+        # The shared reviewer principles travel as an absolute path with a read
+        # obligation on both the named and the independent-child path; neither
+        # path inlines them, and the independent child only adds its profile path.
         handoff_part = reviewer_part.split("### 本文の引き渡し\n", 1)[1].split("\n### ", 1)[0]
         self.assertNotIn("読取完了申告が渡した全パスと一致", handoff_part)
-        pr_review = (plugin / "skills/pr-review/SKILL.md").read_text(encoding="utf-8")
-        entry_part = pr_review.split("### 4.3.1 Task Tool Sub-Agent Invocation\n", 1)[1].split("\n### 4.4 ", 1)[0]
         for clause in ["4.5 の placeholder 表が定義する `{shared_reviewer_principles}`",
                        "4.5 テンプレートと 4.5.1 検証テンプレートの双方の出現箇所",
-                       "絶対パス行（読取義務付き）に置き換える",
-                       "その他の placeholder（差分・仕様・CI 状態・Wiki 等）は 4.5 のまま渡す"]:
+                       "named 経路と同じく `_reviewer-base.md` の絶対パス行（読取義務付き）で渡す",
+                       "その他の placeholder（差分・仕様・CI 状態・Wiki 等）は 4.5 のまま渡す",
+                       "その 1 パスの申告を同じ規則で確認する"]:
             self.assertIn(clause, handoff_part)
+        self.assertIn("`_reviewer-base.md` はどの経路でも prompt へ全文 inline せず", handoff_part)
+        self.assertIn("起動上限にも近づく", handoff_part)
+        for stale in ["named agent が公開されないホストでは、reviewer 本文を", "上限を超えて reviewer を回収できない"]:
+            self.assertNotIn(stale, reviewer_part)
+        named_row = next(line for line in reviewer_part.splitlines() if line.startswith("| native named Agent/Task |"))
+        for clause in ["`_reviewer-base.md`", "読取完了"]:
+            self.assertIn(clause, named_row)
+        self.assertNotIn("申告の対象外", reviewer_part)
+        self.assertIn("どの経路でも、helper を実行する前に各 raw 出力の先頭行の読取完了申告",
+                      reviewer_part.split("### 回収ゲート\n", 1)[1])
+        pr_review = (plugin / "skills/pr-review/SKILL.md").read_text(encoding="utf-8")
+        entry_part = pr_review.split("### 4.3.1 Task Tool Sub-Agent Invocation\n", 1)[1].split("\n### 4.4 ", 1)[0]
+        for clause in ["`{shared_reviewer_principles}` も named 経路と同じ絶対パス行",
+                       "`agents/{reviewer_type}-reviewer.md` の絶対パスを同じ読取義務・読取完了申告の対象として渡す"]:
             self.assertIn(clause, entry_part)
+        # 4.3 resolves the path and stops instead of launching with empty principles.
+        load_part = pr_review.split("**Loading sub-agent definition files:**\n", 1)[1].split("\n**並列（MUST）**", 1)[0]
+        self.assertNotIn("空なら空文字列", load_part)
+        self.assertNotIn("Extract `{shared_reviewer_principles}`", load_part)
+        self.assertIn("全文 inline せず", load_part)
+        # Run the real 4.3 block: each guard must stop on its own failure instead of
+        # handing an unreadable or relative path to the reviewers.
+        blocks = re.findall(r"(?ms)^ ```bash\n(.*?)^ ```", load_part)
+        self.assertEqual(len(blocks), 1, "expected one 4.3 bash block")
+        load_code = "\n".join(line[1:] if line.startswith(" ") else line for line in blocks[0].splitlines())
+
+        def run_load(plugin_root, cwd):
+            result = subprocess.run(["bash", "-c", load_code.replace("{plugin_root}", plugin_root)], cwd=cwd,
+                                    capture_output=True, text=True, timeout=20)
+            return result.returncode, result.stdout, result.stderr
+
+        rc, out, err = run_load(str(plugin), str(self.fixture))
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out.strip(), "[CONTEXT] SHARED_REVIEWER_PRINCIPLES=" + str(plugin / "agents/_reviewer-base.md"))
+        missing = self.fixture / "no-base"
+        (missing / "agents").mkdir(parents=True)
+        headless = self.fixture / "headless-base"
+        (headless / "agents").mkdir(parents=True)
+        (headless / "agents/_reviewer-base.md").write_text("# base without the output format section\n", encoding="utf-8")
+        # The call line runs the helper under the given plugin root, so each fixture carries a copy.
+        for fixture_root in (missing, headless):
+            (fixture_root / "scripts").mkdir(parents=True)
+            (fixture_root / "hooks").mkdir(parents=True)
+            shutil.copy(plugin / "scripts/pr-review-step.sh", fixture_root / "scripts/pr-review-step.sh")
+            shutil.copy(plugin / "hooks/control-char-neutralize.sh", fixture_root / "hooks/control-char-neutralize.sh")
+        for label, plugin_root, cwd, guard in [
+                ("missing base", str(missing), str(self.fixture), "読めません"),
+                ("base without Output Format", str(headless), str(self.fixture), "読めません")]:
+            rc, out, err = run_load(plugin_root, cwd)
+            self.assertNotEqual(rc, 0, label)
+            self.assertIn("[review:error]", out, label)
+            self.assertNotIn("[CONTEXT] SHARED_REVIEWER_PRINCIPLES=", out, label)
+            self.assertIn(guard, err, label)
+        # A relative plugin root in the call line still hands the reviewers an absolute path:
+        # the helper resolves the root from its own location.
+        rc, out, err = run_load("plugins/rite", str(root))
+        self.assertEqual(rc, 0, err)
+        self.assertNotIn("[review:error]", out)
+        self.assertEqual(out.strip(), "[CONTEXT] SHARED_REVIEWER_PRINCIPLES=" + str((root / "plugins/rite/agents/_reviewer-base.md").resolve()))
+        self.assertNotIn("絶対パスではありません", err)
+        row = next(line for line in pr_review.splitlines() if line.startswith("| `{shared_reviewer_principles}` |"))
+        for clause in ["全文 inline しない", "SHARED_REVIEWER_PRINCIPLES=", "着手前に Read tool で先頭から末尾まで全文読む",
+                       "offset / limit で分割して末尾まで", "読取完了: {絶対パス}", "named / 独立子の両経路で同じ"]:
+            self.assertIn(clause, row)
+        retry_part = pr_review.split("### 4.4 Retry Logic\n", 1)[1].split("\n### ", 1)[0]
+        self.assertEqual(2, retry_part.count("| Missing read declaration |"))
+        note = next(line for line in retry_part.splitlines() if line.startswith("**Note**:"))
+        self.assertIn("missing read declaration は質問せず", note)
+        # The read-declaration check is part of the collection gate, so every path
+        # that reruns the 5.1 gate rechecks the declaration of the replaced output.
+        collection = pr_review.split("### 5.1 Result Collection\n", 1)[1].split("\n### ", 1)[0]
+        self.assertNotIn("**読取完了申告の照合（全経路）**", collection)
+        gate = collection.split("**回収完了ゲート（全ホスト必須）**", 1)[1].split("# reviewer-completion-gate", 1)[0]
+        for clause in ["読取完了:", "Missing read declaration"]:
+            self.assertIn(clause, gate)
+        likelihood_retry = next(line for line in pr_review.splitlines()
+                                if line.startswith("| rc=1 + `reason ∈ {anchor_missing,"))
+        self.assertIn("読取完了申告の照合", likelihood_retry)
+        measured_reroll = next(line for line in pr_review.splitlines()
+                              if line.startswith("| `[CONTEXT] MEASURED_GATE_FAILED=1; reason=verification_preset_by_caller`"))
+        self.assertIn("update manifest", likelihood_retry)
+        self.assertIn("を更新し", measured_reroll)
+        for line, following in [(likelihood_retry, "and rerun this helper"),
+                                (measured_reroll, "step 1 の JSON を作り直し step 2")]:
+            with self.subTest(route=following):
+                for clause in ["manifest", "agent_id", "output_file", "読取完了申告の照合", "5.1 の回収完了ゲート"]:
+                    self.assertIn(clause, line)
+                self.assertLess(line.index("manifest"), line.index("5.1 の回収完了ゲート"))
+                self.assertLess(line.index("5.1 の回収完了ゲート"), line.index(following))
+        for marker in ["| rc=1 + `reason ∈ {table_missing,", "retry の回収結果で manifest を更新し",
+                       "| rc=1 + `reason=unmet_finding_not_blocking`"]:
+            line = next(line for line in pr_review.splitlines() if line.startswith(marker))
+            self.assertIn("5.1 の回収完了ゲート", line, marker)
+        # Every line that reruns the collection gate replaces a reviewer output, so it
+        # reruns the producer gate after it: a regenerated output never reaches
+        # aggregation unchecked. The checked lines are the ones that name the
+        # collection gate together with 再実行 / rerun. The producer gate's own
+        # retry row is left out: it reruns its helper directly (pinned above).
+        regenerating = [line for line in pr_review.splitlines()
+                        if "回収完了ゲート" in line and ("再実行" in line or "rerun" in line)
+                        and line != likelihood_retry]
+        for marker in ["| rc=1 + `reason ∈ {table_missing,", "retry の回収結果で manifest を更新し",
+                       "| `[CONTEXT] MEASURED_GATE_FAILED=1; reason=verification_preset_by_caller`",
+                       "| rc=1 + `reason=unmet_finding_not_blocking`"]:
+            self.assertTrue(any(line.startswith(marker) for line in regenerating), marker)
+        for line in regenerating:
+            with self.subTest(regenerated_by=line[:60]):
+                self.assertIn("5.1.0.L", line)
+                self.assertLess(line.index("回収完了ゲート"), line.index("5.1.0.L"))
+        # The retry of a missing verification table replaces the output too, so its
+        # recommendations are extracted again after the producer gate passed.
+        retry_row = next(line for line in regenerating if line.startswith("retry の回収結果で manifest を更新し"))
+        self.assertIn("推奨事項を抽出し直す", retry_row)
+        self.assertLess(retry_row.index("5.1.0.L"), retry_row.index("推奨事項を抽出し直す"))
+        # The measured-gate row rebuilds the JSON only after the regenerated output
+        # passed every output check and its recommendations were extracted again.
+        order = ["5.1 の回収完了ゲート", "5.1.0.L", "5.1.0.AC", "推奨事項を抽出し直し", "step 1 の JSON を作り直し step 2"]
+        for clause in order:
+            self.assertIn(clause, measured_reroll)
+        positions = [measured_reroll.index(clause) for clause in order]
+        self.assertEqual(positions, sorted(positions), order)
+        # Both review templates tell the reviewer where READ-ONLY Enforcement lives
+        # with the same sentence; the base is read from its path, not injected.
+        rules = []
+        for name in ["reviewer-prompt-generator.md", "reviewer-prompt-verification.md"]:
+            text = (plugin / "skills/pr-review/references" / name).read_text(encoding="utf-8")
+            self.assertNotIn("注入済み", text, name)
+            rule = [line for line in text.splitlines() if line.startswith("[READ-ONLY RULE]")]
+            self.assertEqual(len(rule), 1, name)
+            self.assertIn("で読取義務を課した `_reviewer-base.md`（絶対パス）の `## READ-ONLY Enforcement`", rule[0], name)
+            rules.append(rule[0])
+        self.assertEqual(rules[0], rules[1])
+        # Distributed agent bodies must not point at a development-repository path,
+        # and each Output Format section must send the reviewer to the caller's path.
+        agents = sorted((plugin / "agents").glob("*-reviewer.md"))
+        with_format = set()
+        for agent in agents:
+            text = agent.read_text(encoding="utf-8")
+            self.assertNotIn("plugins/rite/agents/_reviewer-base.md", text, agent.name)
+            if "\n## Output Format\n" in text:
+                section = text.split("\n## Output Format\n", 1)[1].split("\n## ", 1)[0]
+                self.assertIn("The caller passes its absolute path", section, agent.name)
+                with_format.add(agent.name)
+        self.assertEqual(with_format, {agent.name for agent in agents} - {"acceptance-reviewer.md"})
         # workdir is not a 4.5 placeholder; the handoff names it as a separately supplied item.
         self.assertNotIn("制約 / workdir）は 4.5 のまま", handoff_part)
         self.assertIn("制約・絶対 workdir は上記の項目として別途明示する", handoff_part)

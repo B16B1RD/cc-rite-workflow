@@ -11,7 +11,7 @@ plugins/rite/
 ├── skills/           # Claude Code が自動検出するスキル定義（SKILL.md）。/rite:<name> で起動
 │   │                 #   各スキル = 薄い SKILL.md + 同梱 references/（行数原則は下記）
 │   ├── PR lifecycle  #   open, iterate, pr-review, fix, ready, merge, cleanup, run, pr-create
-│   ├── issue 管理     #   issue-create, issue-list, issue-update, issue-close, issue-cancel, issue-edit, issue-implement
+│   ├── issue 管理     #   issue-create, issue-list, issue-update, issue-close, issue-cancel, issue-audit, issue-edit, issue-implement
 │   ├── wiki          #   wiki-init, wiki-query, wiki-ingest, wiki-lint
 │   ├── meta/top      #   setup, getting-started, workflow, investigate, learn, lint, recover, skill-suggest, template-reset
 │   ├── rite-workflow/  # orchestration context（状態検出・phase routing）+ references/（コーディング原則 等）
@@ -63,7 +63,7 @@ rite-config.yml        # プロジェクト固有設定（ブランチ戦略、P
 過去のセッションで繰り返し確認された設計原則。セッションを跨いで忘れられる傾向があるためここに明文化する。探索・設計・実装・レビューのすべてで適用する。
 
 - **ユーザー環境第一**: マーケットプレイス配布物は配布先だけで意味が完結するよう書き、開発リポジトリでしか解決できない番号・経緯を前提にしない。Issue / PR 番号を永続成果物に書かない（例外なし）
-- **人間の役割は 2 点のみ**: 「要件・仕様を伝える」と「完成品を動かして動作チェックする」。工程の途中に人間の品質判断を常駐させる設計をしない。人間へのエスカレーションは例外処理であり、定常運用の形にしない
+- **人間の役割は 2 点のみ**: 「要件・仕様を伝える」と「完成品を動かして動作チェックする」。工程の途中に人間の品質判断を常駐させる設計をしない。人間へのエスカレーションは例外処理であり、定常運用の形にしない。人間の確認は本当に必要なことだけにする。AI が書いたコードを人間がレビューすることは求めない（実行結果がすべて）。本当に人間にしか確認できないものかをよく考え、どうしても人間にしか確認できないものだけを依頼する。依頼するときは、前提知識のない人にも分かるように説明して確認を求める（規則の本体はプラグインの `question_resolution`）
 - **品質を予算で縛らない・無駄は排除する**: cycle 数やトークン予算を理由に品質を妥協する設計（「予算到達したから飲む」）は採らない。切るべきは発散・空転（無駄）であって、収束に向かう実サイクルではない
 - **将来拡張に備えない（no speculative structure）**: 将来の拡張に備えた構造・予約フィールド・拡張点・設定キーは、実需の Issue が存在しない限り追加しない。その未来は滅多に来ないし、来たらその時に時間をかけて対応すれば済む
 - **フォールバックよりエラー出力（fail-loud）**: 見過ごしは許さないが、既定の対処は「エラーとして捕捉し、出力して止める」。guard / fallback / 既定値代入が正当化されるのは fail-loud が不可能な場合のみ（coding-principles の `no_unnecessary_fallback` / reviewer 側の Fail-Fast First と同旨）

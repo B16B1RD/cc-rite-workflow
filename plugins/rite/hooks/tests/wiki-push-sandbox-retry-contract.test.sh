@@ -7,13 +7,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 
+# 5 番目の引数は、caller の手順本体を持つ helper の該当部分（手順書は 1 行呼び出しだけを持つ場合）。
 check_caller() {
-  local label="$1" file="$2" section_pattern="$3" rc_predicate="$4" section
+  local label="$1" file="$2" section_pattern="$3" rc_predicate="$4" helper_part="${5:-}" section
   section="$(awk -v start="$section_pattern" '
     index($0, start) { capture=1 }
     capture { print }
     capture && /^---$/ { exit }
   ' "$file")"
+  [ -n "$helper_part" ] && section="$section"$'\n'"$helper_part"
 
   assert "$label: section found" "1" "$([ -n "$section" ] && echo 1 || echo 0)"
   assert "$label: attempt ID uses portable seconds/pid/random components" "1" \
@@ -42,7 +44,10 @@ check_caller() {
 
 echo "=== wiki push sandbox retry caller parity ==="
 check_caller review "$PLUGIN_ROOT/skills/pr-review/references/wiki-recording.md" '#### 6.5.W.2 Wiki Raw Commit' '`commit_rc=4` を観測した場合'
-check_caller fix "$PLUGIN_ROOT/skills/fix/references/wiki-recording.md" '### 4.6.W.2 Wiki Raw Commit' '`wiki_ingest_commit_rc=4` を観測した場合'
+# fix の raw commit と push 再試行の本体は fix-step.sh の wiki-raw-commit / wiki-push-retry にある
+fix_helper_part="$(awk '/^# --- wiki-raw-commit /{f=1} /^# --- dispatch /{f=0} f' "$PLUGIN_ROOT/scripts/fix-step.sh")"
+assert "fix: helper part found" "1" "$(printf '%s\n' "$fix_helper_part" | grep -c '^step_wiki_push_retry() {$' || true)"
+check_caller fix "$PLUGIN_ROOT/skills/fix/references/wiki-recording.md" '### 4.6.W.2 Wiki Raw Commit' '`wiki_ingest_commit_rc=4` を観測した場合' "$fix_helper_part"
 check_caller issue-close "$PLUGIN_ROOT/skills/issue-close/SKILL.md" '### 4.4.W.2 Wiki Raw Commit' '`commit_rc=4` を観測した場合'
 
 echo ""

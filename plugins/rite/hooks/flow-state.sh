@@ -92,6 +92,21 @@ _resolve_session_id() {
   echo "ERROR: cannot resolve session_id" >&2; return 2
 }
 
+# reap-issue leaves this record when it cannot clear a suspended state's mark. While it exists,
+# session-start treats that session's marked inactive state as reaped. Writes that start or end
+# work (set, deactivate, review-cycle) remove it once the state has landed; writes that keep the
+# mark (SessionEnd, the worktree self-heal) do not. If it cannot be removed the write fails with
+# rc 3, so the caller can stop before work goes on over a record that would end it at the next
+# resume. rc 3 means the state itself was written and only the record was left.
+_reap_record_path() { printf '%s/.rite/state/reap-failed-%s.flow-state' "$STATE_ROOT" "$1"; }
+_clear_reap_record() {
+  local rec; rec=$(_reap_record_path "$1")
+  { [ -e "$rec" ] || [ -L "$rec" ]; } || return 0
+  rm -f "$rec" 2>/dev/null && return 0
+  echo "ERROR: the state was written, but the failed-reap record could not be removed; while it exists, a resume after the session ends treats this session's work as reaped and ends it. Remove it before continuing: $(printf '%s' "$rec" | neutralize_ctrl)" >&2
+  return 3
+}
+
 _state_path() {
   mkdir -p "$SESSION_DIR" 2>/dev/null || true
   if ! _ensure_rite_nested_gitignore "$STATE_ROOT/.rite"; then
@@ -467,16 +482,20 @@ cmd_set() {
   new=$(printf '%s' "$new" | python3 "$SCRIPT_DIR/scripts/lib/review-cycle.py" guard-set \
     --state "$path" --session "$sid" --results-dir "$STATE_ROOT/.rite/review-results") || return 1
   RITE_STATE_IF_MATCH="$expected_hash" _atomic_write "$path" "$new" || return 1
+  local reap_rc=0
+  _clear_reap_record "$sid" || reap_rc=$?
   # Record only after the write physically landed, so the log never claims a
   # transition that failed to persist. Reuses `$now` (the same timestamp the
   # state file's `updated_at` carries) so a record can be cross-referenced with
-  # the state file it describes. `|| true` keeps this trailing statement from
-  # becoming cmd_set's exit code under `set -e` (exit code unchanged) —
-  # belt-and-braces with the helper's own unconditional `return 0`.
+  # the state file it describes. `|| true` keeps a logging failure from failing
+  # the set under `set -e` — belt-and-braces with the helper's own unconditional
+  # `return 0`. The state has landed even when the record could not be removed,
+  # so the transition is recorded before that failure is returned.
   # Sets skipped by `--if-exists` return earlier and are correctly not recorded:
   # no write happened. A same-phase set (from == to) IS recorded — update
   # frequency inside a stage is part of what this log is for.
   _append_phase_transition "$cur_phase" "$phase" "$sid" "$issue" "$pr" "$now" || true
+  return "$reap_rc"
 }
 
 # clear-worktree: surgically remove the `worktree` field from a session's
@@ -580,10 +599,14 @@ cmd_deactivate() {
   local sid path; sid=$(_resolve_session_id "$session") || return 1
   path=$(_state_path "$sid"); [ ! -f "$path" ] && return 0
   local now updated; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  # deactivate ends the work, so SessionEnd's suspended mark must not survive it:
+  # a resumed session would otherwise turn the ended state active again.
   updated=$(jq --argjson a false --arg n "$next" --arg ts "$now" \
-    '.active = $a | (if $n != "" then .next_action = $n else . end) | .updated_at = $ts' "$path") || return 1
+    '.active = $a | (if $n != "" then .next_action = $n else . end) | .updated_at = $ts
+     | del(.suspended_by_session_end)' "$path") || return 1
   # `_atomic_write` rc 伝播 (cmd_set / `_migrate_file` と対称、header 契約遵守)。
   _atomic_write "$path" "$updated" || return 1
+  _clear_reap_record "$sid"
 }
 
 # reap-issue: 指定 Issue に紐づく全セッションの flow-state / run-queue を非 active 化し、
@@ -612,7 +635,7 @@ cmd_reap_issue() {
     return 0
   }
 
-  local f sid issue_n active q has others now updated jq_err=""
+  local f sid issue_n active q has others now updated jq_err="" deact_rc
   # RETURN trap は使わない: ネストした _reap_lock の return で発火し loop 途中で消える。
   jq_err=$(mktemp 2>/dev/null) || jq_err=""
   if [ -d "$SESSION_DIR" ]; then
@@ -632,8 +655,31 @@ cmd_reap_issue() {
       fi
       if [ "$active" = "true" ]; then
         echo "WARNING: reap-issue: stale flow-state (active=true) for issue #${issue}: $(printf '%s' "$f" | neutralize_ctrl)" >&2
-        cmd_deactivate --session "$sid" --next "none" \
-          || echo "WARNING: reap-issue: deactivate failed: $(printf '%s' "$f" | neutralize_ctrl)" >&2
+        # rc 3: the state was deactivated and cmd_deactivate reported the record it could not remove.
+        deact_rc=0
+        cmd_deactivate --session "$sid" --next "none" || deact_rc=$?
+        case "$deact_rc" in
+          0|3) ;;
+          *) echo "WARNING: reap-issue: deactivate failed: $(printf '%s' "$f" | neutralize_ctrl)" >&2 ;;
+        esac
+      elif jq -e '.suspended_by_session_end == true' "$f" >/dev/null 2>&1; then
+        # A session that ended mid-flow on this Issue would come back active on resume.
+        # rc 3 means the mark is already gone, so only a state that could not be written needs the record.
+        deact_rc=0
+        cmd_deactivate --session "$sid" --next "none" || deact_rc=$?
+        case "$deact_rc" in
+          0|3) ;;
+          *)
+            echo "WARNING: reap-issue: deactivate failed: $(printf '%s' "$f" | neutralize_ctrl)" >&2
+            # The mark survived, so resume would turn this reaped state active again. While this
+            # record exists, session-start keeps the state inactive and clears the mark instead.
+            local rec; rec=$(_reap_record_path "$sid")
+            if ! { mkdir -p "${rec%/*}" && cp "$f" "$rec.$$" && mv "$rec.$$" "$rec"; } 2>/dev/null; then
+              rm -f "$rec.$$" 2>/dev/null
+              echo "WARNING: reap-issue: could not record the failed reap, so resume may reactivate: $(printf '%s' "$f" | neutralize_ctrl)" >&2
+            fi
+            ;;
+        esac
       fi
       _reap_lock "${f}.lock"
     done
@@ -809,7 +855,7 @@ cmd_review_cycle() {
   while [ $# -gt 0 ]; do
     case "$operation:$1" in
       start:--stagnation|replan:--amend) args+=("$1"); shift ;;
-      start:--selection|finish:--manifest|finish:--content-file|finish:--pending-id|clock:--input|observe:--input|observe:--issue|replan:--plan|replan:--issue|replan:--reason|retry:--plan|retry:--issue|restart:--selection|restart:--approval|restart:--expected-run-id|abandon:--reason)
+      start:--selection|finish:--manifest|finish:--content-file|finish:--pending-id|clock:--input|observe:--input|observe:--issue|replan:--plan|replan:--issue|replan:--reason|retry:--plan|retry:--issue|restart:--selection|restart:--approval|restart:--expected-run-id|reconcile:--issue|reconcile:--approval|deviate:--input|abandon:--reason)
         [ $# -ge 2 ] || { echo "ERROR: missing value for $1" >&2; return 1; }
         args+=("$1" "$2"); shift 2 ;;
       *) echo "ERROR: unknown review-cycle option: $1" >&2; return 1 ;;
@@ -829,24 +875,193 @@ cmd_review_cycle() {
     echo "ERROR: review-cycle $operation persistence failed; retain evidence and retry the same operation" >&2
     return 1
   }
+  # Right after the write, so a failure in the steps below cannot skip the record.
+  local reap_rc=0
+  _clear_reap_record "$sid" || reap_rc=$?
   if [ "$operation" = restart ]; then
     pr_number=$(printf '%s' "$updated" | jq -r '.pr_number // empty')
     case "$pr_number" in
       ''|*[!0-9]*) ;;
-      *) rm -f "$STATE_ROOT/.rite/state/nb-sweep-done-${pr_number}.txt" ;;
+      *) rm -f "$STATE_ROOT/.rite/state/nb-sweep-done-${pr_number}.txt" "$STATE_ROOT/.rite/state/nb-sweep-origin-${pr_number}.txt" \
+           "$STATE_ROOT/.rite/state/pr-recommendations-done-${pr_number}.txt" ;;
     esac
   fi
   if [ "$operation" = finish ]; then
     printf '%s' "$updated" | jq -r '.review_cycle | "[CONTEXT] REVIEW_CYCLE=completed; verdict=\(.verdict); result=\(.result_path)"' >&2
   fi
   case "$operation" in
-    clock|observe|replan|retry|restart|close) printf '%s' "$updated" | jq '.review_run' ;;
+    clock|observe|replan|retry|restart|reconcile|close) printf '%s' "$updated" | jq '.review_run' ;;
     # After abandon `.review_cycle` is gone; the appended record is the outcome.
     # A no-op prints the last record, or null if none; REVIEW_ABANDON=noop
     # on stderr distinguishes it from a new abandonment.
     abandon) printf '%s' "$updated" | jq '.review_cycle_abandoned[-1]' ;;
     *) printf '%s' "$updated" | jq '.review_cycle' ;;
   esac
+  return "$reap_rc"
+}
+
+# The last status line of issue-comment-wm-sync.sh; empty when it printed none.
+_wm_sync_status() {
+  local out
+  # The helper reports non-blocking failures with exit 0; its status line is the verdict.
+  out=$(bash "$SCRIPT_DIR/issue-comment-wm-sync.sh" "$@") || true
+  printf '%s\n' "$out" | sed -n '/^status=/p' | tail -1
+}
+
+# Make the Issue work memory record the completed review cycle (skipped when the
+# run has no Issue). The work memory helper caches its comment id in this
+# flow-state, so it runs before any review-cycle state computation, never inside
+# one. `--closing` first applies every other close condition, so a refused close
+# records nothing.
+_review_record_ensure() {
+  local sid path record issue marker body content status
+  sid=$(_resolve_session_id) || return 1
+  path=$(_state_path "$sid")
+  record=$(RITE_STATE_ROOT="$STATE_ROOT" python3 "$SCRIPT_DIR/scripts/lib/review-cycle.py" record \
+    --state "$path" --session "$sid" --results-dir "$STATE_ROOT/.rite/review-results" "$@") || return 1
+  issue=$(printf '%s' "$record" | jq -r '.issue // empty') || return 1
+  if [ -z "$issue" ]; then
+    echo "[CONTEXT] REVIEW_RECORD=skipped; reason=no_issue" >&2
+    return 0
+  fi
+  marker=$(printf '%s' "$record" | jq -r '.marker') || return 1
+  body=$(mktemp "${TMPDIR:-/tmp}/rite-review-record-XXXXXX") || return 1
+  status=$(_wm_sync_status fetch --issue "$issue" --out "$body")
+  if [ "$status" != "status=success" ]; then
+    echo "ERROR: cannot read the work memory of Issue #$issue to confirm the review record (${status:-no status line})" >&2
+    echo "  If the work memory comment is missing, create it with issue-comment-wm-sync.sh init and run this again" >&2
+    rm -f "$body"
+    return 1
+  fi
+  if ! grep -qF -- "$marker" "$body"; then
+    content=$(mktemp "${TMPDIR:-/tmp}/rite-review-record-content-XXXXXX") || { rm -f "$body"; return 1; }
+    printf '%s' "$record" | jq -r '.content' > "$content" || { rm -f "$body" "$content"; return 1; }
+    status=$(_wm_sync_status update --issue "$issue" --transform append-section \
+      --section "レビュー対応履歴" --content-file "$content")
+    rm -f "$content"
+    if [ "$status" != "status=success" ]; then
+      echo "ERROR: cannot append the review record to the work memory of Issue #$issue (${status:-no status line})" >&2
+      rm -f "$body"
+      return 1
+    fi
+    status=$(_wm_sync_status fetch --issue "$issue" --out "$body")
+    if [ "$status" != "status=success" ]; then
+      echo "ERROR: appended the review record to Issue #$issue but cannot re-read the work memory to confirm it (${status:-no status line}); run this again" >&2
+      rm -f "$body"
+      return 1
+    fi
+    if ! grep -qF -- "$marker" "$body"; then
+      echo "ERROR: the work memory of Issue #$issue still has no record of this review: $marker" >&2
+      echo "  Restore the '### レビュー対応履歴' section of the work memory and run this again" >&2
+      rm -f "$body"
+      return 1
+    fi
+  fi
+  rm -f "$body"
+  echo "[CONTEXT] REVIEW_RECORD=recorded; issue=$issue" >&2
+}
+
+cmd_review_record() {
+  [ $# -eq 0 ] || { echo "ERROR: review-record takes no options" >&2; return 1; }
+  _review_record_ensure
+}
+
+# Cleanup deletes a clean receipt, so the Issue work memory is the lasting record
+# of the review; closing requires it.
+cmd_review_close() {
+  [ $# -eq 0 ] || { echo "ERROR: review-close takes no options" >&2; return 1; }
+  _review_record_ensure --closing || return 1
+  cmd_review_cycle close
+}
+
+# pause / resume: 利用者の求めによる一時停止の記録。Stop hook は記録があるあいだ、handoff の再注入も
+# batch watchdog も行わずに停止を許可する。記録は flow-state とは別ファイルに置く — `cmd_set` は
+# state を毎回作り直して未指定フィールドを default-clear するため、停止直前の `set` で記録が消えて
+# 再び差し戻されるのを避ける。flow-state / run-queue は書き換えないので、位置（phase・cursor・
+# review_cycle）は再開までそのまま残る。
+_pause_record_path() { printf '%s/.rite/state/pause-%s.json' "$STATE_ROOT" "$1"; }
+_review_clock_path() { printf '%s/.rite/state/review-clock-%s.json' "$STATE_ROOT" "$1"; }
+
+# 開いている review clock 区間に ended_at を刻み、一時停止の時間を作業時間に数えさせない
+# （usage limit 停止時の stop-failure.sh と同じ扱い）。区間が無い / 既に閉じていれば何もしない。
+# 失敗は WARNING にとどめる。記録済みの一時停止を取り消さない。
+_pause_freeze_clock() {
+  local clock; clock=$(_review_clock_path "$1")
+  [ -e "$clock" ] || return 0
+  if ! jq -e 'type == "object"' "$clock" >/dev/null 2>&1; then
+    echo "WARNING: pause: review clock record is not a JSON object; left unchanged: $(printf '%s' "$clock" | neutralize_ctrl)" >&2
+    return 0
+  fi
+  jq -e 'has("ended_at")' "$clock" >/dev/null && return 0
+  local tmp
+  if tmp=$(mktemp "$clock.XXXXXX") \
+     && jq --arg end "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" '.ended_at = $end' "$clock" > "$tmp" \
+     && mv "$tmp" "$clock"; then
+    return 0
+  fi
+  [ -z "${tmp:-}" ] || rm -f "$tmp"
+  echo "WARNING: pause: failed to stamp ended_at on the review clock; the pause will count as work time: $(printf '%s' "$clock" | neutralize_ctrl)" >&2
+  return 0
+}
+
+# 一時停止で凍結した区間を保存し、新しい区間を開き直す。保存できないときは凍結した区間を残す
+# （close / recover は既存の ended_at を保つ）。この場合、再開後から次の close までの作業は数えられない。
+_resume_reopen_clock() {
+  local clock; clock=$(_review_clock_path "$1")
+  [ -e "$clock" ] || return 0
+  jq -e 'type == "object" and has("ended_at")' "$clock" >/dev/null 2>&1 || return 0
+  local tmp
+  if ! cmd_review_cycle clock --input "$clock" >/dev/null; then
+    echo "WARNING: resume: could not record the paused review clock segment; it is left frozen, and work until the next close will not be counted: $(printf '%s' "$clock" | neutralize_ctrl)" >&2
+    return 0
+  fi
+  if tmp=$(mktemp "$clock.XXXXXX") \
+     && jq --arg id "$(basename "$tmp")" --arg start "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+          '{review_context, segment_id:$id, kind, started_at:$start}' "$clock" > "$tmp" \
+     && mv "$tmp" "$clock"; then
+    return 0
+  fi
+  # The paused segment is already recorded, so the frozen file must not be submitted again.
+  rm -f "${tmp:-}" "$clock"
+  echo "WARNING: resume: recorded the paused segment but could not open a new one; work until the next close will not be counted" >&2
+  return 0
+}
+
+cmd_pause() {
+  local session=""
+  while [ $# -gt 0 ]; do case "$1" in
+    --session) session="$2"; shift 2 ;;
+    *) echo "ERROR: unknown option: $1" >&2; return 1 ;;
+  esac; done
+  local sid rec; sid=$(_resolve_session_id "$session") || return 1
+  rec=$(_pause_record_path "$sid")
+  mkdir -p "$(dirname "$rec")" || return 1
+  if [ ! -e "$rec" ]; then
+    # `_atomic_write` は `.lock` を残す。Stop hook は存在しか見ないので、mktemp + mv で足りる。
+    local tmp; tmp=$(mktemp "$rec.XXXXXX") || return 1
+    jq -n --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" '{paused_at:$ts}' > "$tmp" && mv "$tmp" "$rec" \
+      || { rm -f "$tmp"; return 1; }
+  fi
+  _pause_freeze_clock "$sid"
+}
+
+# 記録が無ければ何もしない（冪等）。`--session` で他セッションを再開するときは、review clock の
+# 保存が呼び出しセッションの flow-state に対して行われるため、区間は開き直さず凍結のまま残す。
+cmd_resume() {
+  local session=""
+  while [ $# -gt 0 ]; do case "$1" in
+    --session) session="$2"; shift 2 ;;
+    *) echo "ERROR: unknown option: $1" >&2; return 1 ;;
+  esac; done
+  local sid rec; sid=$(_resolve_session_id "$session") || return 1
+  rec=$(_pause_record_path "$sid")
+  [ -e "$rec" ] || return 0
+  if [ -z "$session" ]; then
+    _resume_reopen_clock "$sid"
+  elif [ -e "$(_review_clock_path "$sid")" ]; then
+    echo "WARNING: resume: --session given, so the paused review clock segment is left frozen; run resume from that session to reopen it" >&2
+  fi
+  rm -f "$rec" || { echo "ERROR: resume: could not remove the pause record: $(printf '%s' "$rec" | neutralize_ctrl)" >&2; return 1; }
 }
 
 cmd_path() {
@@ -868,8 +1083,11 @@ case "${1:-}" in
   review-replan) shift; cmd_review_cycle replan "$@" ;;
   review-retry) shift; cmd_review_cycle retry "$@" ;;
   review-restart) shift; cmd_review_cycle restart "$@" ;;
-  review-close) shift; cmd_review_cycle close "$@" ;;
+  review-reconcile) shift; cmd_review_cycle reconcile "$@" ;;
+  review-record) shift; cmd_review_record "$@" ;;
+  review-close) shift; cmd_review_close "$@" ;;
   review-defer) shift; cmd_review_cycle defer "$@" ;;
+  review-deviate) shift; cmd_review_cycle deviate "$@" ;;
   review-abandon) shift; cmd_review_cycle abandon "$@" ;;
   get) shift; cmd_get "$@" ;;
   deactivate) shift; cmd_deactivate "$@" ;;
@@ -878,9 +1096,11 @@ case "${1:-}" in
   consume-handoff) shift; cmd_consume_handoff "$@" ;;
   migrate) shift; cmd_migrate "$@" ;;
   path) shift; cmd_path "$@" ;;
+  pause) shift; cmd_pause "$@" ;;
+  resume) shift; cmd_resume "$@" ;;
   *)
     cat >&2 <<EOF
-Usage: $0 {set|get|review-start|review-finish|review-retry|review-restart|review-abandon|deactivate|reap-issue|clear-worktree|consume-handoff|migrate|path} [options]
+Usage: $0 {set|get|review-start|review-finish|review-retry|review-restart|review-reconcile|review-deviate|review-abandon|deactivate|reap-issue|clear-worktree|consume-handoff|migrate|path|pause|resume} [options]
   set --phase <P> --next <T> [--issue N] [--branch S] [--pr N] [--parent-issue N]
       [--active true|false] [--handoff CMD] [--session UUID] [--if-exists] [--preserve-error-count]
       [--worktree PATH] [--require-worktree]   # --require-worktree: warn + emit WORKTREE_INVARIANT marker when worktree empty (non-blocking)
@@ -893,8 +1113,11 @@ Usage: $0 {set|get|review-start|review-finish|review-retry|review-restart|review
   review-replan --plan /absolute/fix-plan.json --issue /absolute/issue.json [--amend --reason TEXT]
   review-retry --plan /absolute/fix-plan.json --issue /absolute/issue.json
   review-restart --selection /absolute/selection.json --expected-run-id UUID --approval /absolute/approval.json
-  review-close
+  review-reconcile --issue /absolute/issue.json --approval /absolute/approval.json   # record an agreed Issue revision in the same run
+  review-record                      # append this review's record to the Issue work memory if absent
+  review-close                       # requires that record (written first when absent)
   review-defer
+  review-deviate --input /absolute/deviation.json   # reopen a mergeable review for a purpose deviation on a line the PR added
   review-abandon --reason TEXT       # drop an evidence-free collecting cycle; keeps counter and identity
   review-finish --manifest /absolute/completions.json --content-file /absolute/result.json [--pending-id TOKEN]
   deactivate [--next T] [--session UUID]
@@ -903,6 +1126,8 @@ Usage: $0 {set|get|review-start|review-finish|review-retry|review-restart|review
   consume-handoff [--session UUID]   # print + clear the one-shot handoff marker
   migrate [--dry-run] [--verbose]
   path [--session UUID]
+  pause [--session UUID]             # record a user-requested pause: the Stop hook stops re-injecting continuation while it exists; freezes the open review clock segment
+  resume [--session UUID]            # remove the pause record and reopen the review clock segment; no-op when not paused
 Phase enum (v3): $PHASE_ENUM_V3
 EOF
     exit 1

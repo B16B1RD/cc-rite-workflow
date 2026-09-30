@@ -693,9 +693,14 @@ EOF
     1)
       commit_reason=$(printf '%s\n' "$commit_out" | sed -n 's/.*reason=\([^;[:space:]]*\).*/\1/p' | tail -1)
       case "$commit_reason" in
-        numref-hit|numref-error)
-          echo "ERROR: wiki-worktree-commit.sh が番号参照の commit 前検査で拒否しました (rc=1, reason=$commit_reason)" >&2
-          echo "  対処: stdout の reason= と ステップ 5.0.n の hit 行を確認し、書き直してから再実行" >&2
+        numref-hit)
+          echo "ERROR: wiki-worktree-commit.sh が番号参照の commit 前検査で拒否しました (rc=1, reason=numref-hit)" >&2
+          echo "  対処: ステップ 5.0.n の hit 行を書き直してから再実行" >&2
+          ;;
+        numref-error)
+          # 検査自体が完了できなかった（helper 不在・stage や gitignore の不備）。hit 行は出ない。
+          echo "ERROR: wiki-worktree-commit.sh の番号参照の commit 前検査が完了できなかったため commit しませんでした (rc=1, reason=numref-error)" >&2
+          echo "  対処: 直前の stderr（[CONTEXT] WIKI_INGEST_NUMREF=error; reason= または ERROR 行）が示す原因を解消してから再実行" >&2
           ;;
         *)
           echo "ERROR: wiki-worktree-commit.sh が環境または引数エラーで停止しました (rc=1)" >&2
@@ -956,7 +961,9 @@ Ingest 直後、Wiki 全体の品質チェックを `/rite:wiki-lint --auto` と
 rationale: references/rationale.md#auto-lint-inline-parser
 
 ```bash
-wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
+# config は worktree 自身のもの、無ければ main checkout のものを読む
+rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+wiki_section=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null) || wiki_section=""
 auto_lint=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+auto_lint:/ { print; exit }' \
   | sed 's/[[:space:]]#.*//' | sed 's/.*auto_lint:[[:space:]]*//' | tr -d '[:space:]"'\''' | tr '[:upper:]' '[:lower:]')
 case "$auto_lint" in
@@ -977,7 +984,7 @@ LLM は `skill: "rite:wiki-lint", args: "--auto"` 形式で `/rite:wiki-lint` �
 - 常に exit 0 (非ブロッキング)
 rationale: references/rationale.md#lint-parser-first-line
 
-呼び出し時の CWD は常に dev ブランチ。lint ステップ 8.2 は `separate_branch` 時に worktree 内で log.md 追記 → `wiki-worktree-commit.sh` を呼ぶ。Skill return 後、8.3 → 8.4 → 8.5 → ステップ 9 の順。
+呼び出し時の CWD は常に dev ブランチ。wiki-lint のステップ 8.2 が log.md の書き込み先を決め（`separate_branch` では worktree 内）、wiki-lint のステップ 8.3 が追記して `wiki-lint-log-commit.sh` で commit する（`--auto` かつ `separate_branch` では commit のみで、push は本スキルのステップ 8.6 が行う）。Skill return 後、本スキルの 8.3 → 8.4 → 8.5 → 8.6 → ステップ 9 の順。
 
 ### 8.3 Lint 実行結果の取得とパース
 
@@ -1134,11 +1141,33 @@ fi
 
 ### 9.0 Ingest セッション lock の解放
 
-ステップ 1.4 で取得した ingest セッション lock を解放する:
+ステップ 1.4 で取得した ingest セッション lock がまだ自分のものかを確かめてから解放する。`own` 以外（奪われた・消えた・確認に失敗した）なら WARNING を出し、解放は必ず実行する。`own` 以外でも、解放に失敗しても、ingest は完了扱いとして完了レポートへ進み、WARNING は `{ingest_outstanding_line}` のロック系統の行に載せる。`own` 以外では stdout にも `[CONTEXT] WIKI_INGEST_LOCK_LOST=1; check={値}` を 1 行出す（`/rite:cleanup` ステップ 9 が拾う。確認に失敗したときの値は `unknown`。取り込みの成否は変えない）。block の終了コードは解放の終了コードをそのまま返す:
 rationale: references/rationale.md#lock-release-failsafe
 
 ```bash
-bash "{plugin_root}/hooks/scripts/wiki-ingest-lock.sh" release
+lock_state=$(bash "{plugin_root}/hooks/scripts/wiki-ingest-lock.sh" check) || lock_state=""
+case "$lock_state" in
+  own) ;;
+  "")
+    echo "WARNING: ingest 終了時に wiki ingest のロックの状態を確認できませんでした（直前の ERROR を参照）" >&2
+    echo "  同じ原因でロックが解放されていない可能性があります。解放されなかったロックは取得から最長 2 時間後に回収され、それまで他セッションの ingest は skip されます" >&2
+    ;;
+  *) echo "WARNING: ingest 中に wiki ingest のロックを失っていました (check=$lock_state)。別のセッションが同じ wiki worktree へ並行して書き込んだ可能性があります" >&2 ;;
+esac
+if [ "$lock_state" != "own" ]; then
+  echo "[CONTEXT] WIKI_INGEST_LOCK_LOST=1; check=${lock_state:-unknown}"
+  wiki_wt_abs="{wiki_worktree_abs}"; wiki_wt_abs="${wiki_wt_abs:-.rite/wiki-worktree}"
+  case "{branch_strategy}" in
+    separate_branch) echo "  対処: 直近の wiki の commit を確認し（git -C \"$wiki_wt_abs\" log --oneline -n 20）、重複や上書きがあれば手で直してください" >&2 ;;
+    same_branch) echo "  対処: 直近の wiki の commit を確認し（git log --oneline -n 20 -- .rite/wiki/）、重複や上書きがあれば手で直してください" >&2 ;;
+    *) echo "  対処: 直近の wiki の commit を確認し（separate_branch: git -C \"$wiki_wt_abs\" log --oneline -n 20 / same_branch: git log --oneline -n 20 -- .rite/wiki/）、重複や上書きがあれば手で直してください" >&2 ;;
+  esac
+fi
+bash "{plugin_root}/hooks/scripts/wiki-ingest-lock.sh" release || {
+  rc=$?
+  echo "WARNING: ingest 終了時に wiki ingest のロックを解放できませんでした（直前の ERROR を参照）。取得から最長 2 時間後に回収され、それまで他セッションの ingest は skip されます" >&2
+  exit "$rc"
+}
 ```
 
 ```
@@ -1195,7 +1224,7 @@ Wiki Ingest が完了しました。
 | `skipped; reason=same_branch` | `Wiki push: 対象外 (same_branch 戦略。通常の PR push に含まれる)` |
 | marker なし（ステップ 8.6 未到達などの想定外経路） | `⚠️ Wiki push: 実行結果が確認できませんでした。git -C {wiki_worktree_abs} status で確認してください` |
 
-`{ingest_outstanding_line}`（非ブロッキング失敗の集約欄。Wiki push については `{wiki_push_line}` と同じ `WIKI_INGEST_PUSH=` marker を再評価するだけで新しい記録先は持たない）。**ステップ 6 の index 更新と Wiki push の 2 系統を評価し、該当するものをすべて列挙する**:
+`{ingest_outstanding_line}`（非ブロッキング失敗の集約欄。Wiki push については `{wiki_push_line}` と同じ `WIKI_INGEST_PUSH=` marker を、ロックについてはステップ 9.0 が stderr に出した WARNING の文面を再評価するだけで新しい記録先は持たない）。**ステップ 6 の index 更新・Wiki push・ステップ 9.0 のロックの 3 系統を評価し、該当するものをすべて列挙する**:
 rationale: references/rationale.md#outstanding-no-new-store
 
 | 系統 | 条件 | 展開 |
@@ -1205,7 +1234,10 @@ rationale: references/rationale.md#outstanding-no-new-store
 | index 更新 | `{n_dedup_removed}` が 1 以上 | `- ℹ️ index 重複行を {n_dedup_removed} 件回収しました` |
 | Wiki push | `WIKI_INGEST_PUSH=failed` | `- ⚠️ Wiki push: commit は local wiki branch に landed しましたが origin への push に失敗しました。手動回復: git -C {wiki_worktree_abs} push origin {wiki_branch}（次回 /rite:wiki-ingest 実行時にも自動で flush を試みます）` |
 | Wiki push | marker なし（ステップ 8.6 未到達などの想定外経路） | `- ⚠️ Wiki push: 実行結果が確認できませんでした。git -C {wiki_worktree_abs} status で確認してください`（`{wiki_push_line}` の同ケースと同じ扱い — 未確認を「失敗なし」と断定しない） |
-| （両系統） | 上記のいずれにも該当しない（index 更新が全件成功し、回収した重複行が 0 件で、push も `ok` / `skipped; reason=same_branch`） | `- なし（非ブロッキングで継続した失敗はありませんでした）` |
+| ロック | ステップ 9.0 の stderr に `ロックを失っていました` を含む WARNING がある | `- ⚠️ ingest 中に wiki ingest のロックを失っていました（{WARNING 行の check= の値}）。直近の wiki の commit に重複や上書きが無いか確認してください` |
+| ロック | ステップ 9.0 の stderr に `ロックの状態を確認できませんでした` を含む WARNING がある | `- ⚠️ ingest 終了時に wiki ingest のロックの状態を確認できませんでした。ロックが解放されていない可能性があり、その場合は取得から最長 2 時間後に回収されます（直後の解放の出力を参照）` |
+| ロック | ステップ 9.0 の stderr に `ロックを解放できませんでした` を含む WARNING がある | `- ⚠️ ingest 終了時に wiki ingest のロックを解放できませんでした。取得から最長 2 時間後に回収され、それまで他セッションの ingest は skip されます` |
+| （全系統） | 上記のいずれにも該当しない（index 更新が全件成功し、回収した重複行が 0 件で、push も `ok` / `skipped; reason=same_branch` で、ステップ 9.0 がロックの WARNING を出していない） | `- なし（非ブロッキングで継続した失敗はありませんでした）` |
 
 ### 9.1 Return-to-Caller Signal
 
@@ -1230,7 +1262,8 @@ rationale: references/rationale.md#returned-to-caller
 | `lib/wiki-config.sh` 読込失敗 (helper 不在 / 解決失敗) | exit 1 で fail-fast（`[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1`。設定を判定できないまま無効扱いへ倒さない。plugin のインストール状態を確認するか `/rite:setup` を再実行、ステップ 1.1） |
 | Wiki 未初期化 / worktree セットアップ失敗 | `/rite:wiki-init` を案内、または `wiki-worktree-setup.sh` のエラー出力を確認して `git worktree prune` / `git fetch origin wiki:wiki` で復旧 (ステップ 1.3) |
 | 処理対象 0 件 | 静かに終了し情報メッセージのみ表示（ステップ 2.3） |
-| `wiki-worktree-commit.sh --commit-only` exit 1 + stdout `reason=numref-hit` / `numref-error`（ステップ 5.1） | exit 1 で fail-fast。番号参照の commit 前検査が拒否した。5.0.n の hit 行を書き直すか、stderr の error reason を直して再実行 |
+| `wiki-worktree-commit.sh --commit-only` exit 1 + stdout `reason=numref-hit`（ステップ 5.1） | exit 1 で fail-fast。番号参照の commit 前検査が拒否した。5.0.n の hit 行を書き直して再実行 |
+| `wiki-worktree-commit.sh --commit-only` exit 1 + stdout `reason=numref-error`（ステップ 5.1） | exit 1 で fail-fast。検査自体が完了できなかった。直前の stderr の `WIKI_INGEST_NUMREF=error; reason=` または ERROR 行が示す原因を解消して再実行 |
 | `wiki-worktree-commit.sh --commit-only` exit 1 + stdout に `reason=numref-hit` / `numref-error` なし（ステップ 5.1） | exit 1 で fail-fast。環境 / 引数エラーとして、直前の stderr が示す worktree・設定・引数の原因を解消して再実行 |
 | `wiki-worktree-commit.sh --commit-only` exit 3 (git add/commit 失敗、ステップ 5.1) | exit 1 で fail-fast。`git -C .rite/wiki-worktree status` で worktree の状態を確認 |
 | `wiki-worktree-commit.sh --commit-only` exit 6 + stdout `reason=sandbox-mask`（管理ディレクトリ書込不可、ステップ 5.1） | exit 1 で停止。5.1 の bash block を `dangerouslyDisableSandbox: true` で 1 回だけ再実行する。再実行でも exit 6 なら管理ディレクトリの権限・容量を確認して停止 |

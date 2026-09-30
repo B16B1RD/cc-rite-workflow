@@ -153,6 +153,7 @@ plugins/rite/hooks/
 ├── pre-tool-edit-guard.sh                    # PreToolUse (Edit|Write|MultiEdit|NotebookEdit): denies reviewer-subagent writes into a parent working tree
 ├── post-tool-wm-sync.sh                      # PostToolUse (Bash): auto-creates local work memory; syncs the Issue comment replica on phase change
 ├── stop-loop-continuation.sh                 # Stop: consume one-shot handoff → re-inject next review↔fix loop / cleanup chain / finalize
+├── stop-failure.sh                           # StopFailure: freeze the open review clock when a turn ends on an API error
 ├── flow-state.sh                             # Unified per-session flow-state management
 ├── session-ownership.sh / hook-preamble.sh   # Sourced helper libraries (not registered hooks)
 ├── work-memory-*.sh / local-wm-update.sh     # Local work memory read / write / lock helpers
@@ -164,7 +165,7 @@ plugins/rite/hooks/
 └── tests/                                    # Hook test suite
 ```
 
-> **Note**: This is a representative list, not a complete enumeration. The canonical full list is the `plugins/rite/hooks/` directory itself (and the Plugin Structure section of `docs/SPEC.md`). Only the seven events above — `SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse` / `Stop` — are registered in `hooks.json` (verify with `jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`); every other `.sh` is a sourced helper library or a script invoked from skills. New hooks are added to the directory and `hooks.json`, so this section does **not** need to be updated for each one.
+> **Note**: This is a representative list, not a complete enumeration. The canonical full list is the `plugins/rite/hooks/` directory itself (and the Plugin Structure section of `docs/SPEC.md`). Only the eight events above — `SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse` / `Stop` / `StopFailure` — are registered in `hooks.json` (verify with `jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`); every other `.sh` is a sourced helper library or a script invoked from skills. New hooks are added to the directory and `hooks.json`, so this section does **not** need to be updated for each one.
 
 > **Note**: The `Stop` event is registered to `stop-loop-continuation.sh`, which consumes the one-shot `handoff` marker and re-injects the next review↔fix loop command (`/rite:pr-review` ⇄ `/rite:fix`), the `/rite:cleanup` → wiki-ingest → wiki-lint chain continuation, or a terminal completion-notice (see the `handoff` field in `docs/SPEC.md`). This is **not** a stop-*prevention* hook: the legacy blocking `stop-guard.sh`, which made the LLM stall in thinking loops at phase boundaries, was removed, and general workflow halting is now prevented by the per-session flow-state structure and the orchestrator-level scaffolding contract instead. Compact recovery is handled by `pre-compact.sh` + `post-compact.sh` + `session-start.sh`.
 
@@ -203,6 +204,7 @@ Available hook events:
 | `PreToolUse` | Before a tool is executed | JSON via stdin (tool name via `matcher`) |
 | `PostToolUse` | After a tool is executed | JSON via stdin |
 | `Stop` | The agent finishes responding (turn end) | JSON via stdin (`stop_hook_active`) |
+| `StopFailure` | The turn ends on an API error (usage limit, overload, …) | JSON via stdin (`session_id`, `cwd`, `error`); output and exit code are ignored |
 
 ### Writing a New Hook
 
@@ -372,7 +374,11 @@ expected words. See the header of that file for the full API.
    source `_test-helpers.sh` and get them for free), write test cases. A test that reads ambient
    runtime identity and does not source `_test-helpers.sh` must
    `source "$SCRIPT_DIR/_hermetic-env.sh"` right after defining `SCRIPT_DIR`; otherwise a
-   standalone run inherits the launching session's identity
+   standalone run inherits the launching session's identity. A test that runs a hook from its
+   own cwd (so the hook resolves the state root from that cwd) must also call
+   `hermetic_leave_checkout || exit 1` right after that source and remove `"$HERMETIC_CWD"` in
+   its cleanup; otherwise a run started inside a checkout reads that checkout's live session
+   through `.rite/session-id`
 3. Use `mktemp -d` for isolated test environments, then canonicalize the root with
    `pwd -P` as the structure above does — anything that compares the sandbox path
    against a path the code under test resolved breaks on macOS otherwise

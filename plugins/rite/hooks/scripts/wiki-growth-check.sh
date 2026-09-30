@@ -3,7 +3,7 @@
 #
 # Detect Wiki growth stalls — fires when the last commit on the `wiki` branch
 # is older than `wiki.growth_check.threshold_prs` consecutive merged PRs on
-# the development base branch (default: develop). This catches "Wiki ingest is
+# the development base branch (`branch.base`). This catches "Wiki ingest is
 # silently broken" regressions where review/fix/close skip Phase X.X.W and the
 # wiki branch never grows even though PRs are landing.
 #
@@ -28,9 +28,12 @@
 #   -h, --help             Show this help
 #
 # Exit codes (drift-check と同一の非ブロッキング契約):
-#   0  Wiki growth healthy (or wiki branch absent / wiki disabled — skip silently)
+#   0  Wiki growth healthy, or skipped. Silent skips: rite-config.yml absent,
+#      wiki section absent, wiki disabled, wiki branch absent. Skips with a
+#      WARNING on stderr: branch.base unreadable, gh CLI absent, jq absent,
+#      git log failure, gh pr list failure, gh pr list JSON unparseable.
 #   1  Wiki growth threshold exceeded (warning — caller MUST keep [lint:success])
-#   2  Invocation error (bad args, missing repo, missing gh CLI)
+#   2  Invocation error (bad args, missing repo)
 #
 # Output:
 #   Always prints a `==> Total wiki-growth-check findings: N` line on stdout
@@ -74,7 +77,9 @@ Options:
   -h, --help               Show this help
 
 Exit codes:
-  0  No growth stall (or wiki disabled / wiki branch absent — skip silently)
+  0  No growth stall, or skipped (silently when rite-config.yml / the wiki
+     section / wiki.enabled / the wiki branch is absent; with a WARNING on
+     stderr when branch.base, gh, jq, git log or gh pr list is unavailable)
   1  Growth threshold exceeded (warning, non-blocking)
   2  Invocation error
 EOF
@@ -118,7 +123,8 @@ if [ ! -f "$config_file" ]; then
 fi
 
 # wiki.enabled (opt-out default true)
-wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$config_file" 2>/dev/null) || wiki_section=""
+# 節は空白と # 以外で始まる次の行で終える（数字や _ で始まるキーでも終え、列 0 のコメント行では終えない）
+wiki_section=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$config_file" 2>/dev/null) || wiki_section=""
 
 # wiki section が空 (rite-config.yml に wiki: セクション自体がない) なら早期 exit
 # (L-4 修正: 後続の branch_name 抽出等を無駄に試みない)
@@ -217,14 +223,18 @@ if [ -z "$last_wiki" ]; then
   exit 0
 fi
 
-# --- Determine base branch (default: develop, fallback: main) ---
+# --- Determine base branch (branch.base; no default) ---
 base_branch=$(awk '
   /^branch:/ { in_branch=1; next }
   in_branch && /^[[:space:]]+base:/ { print; exit }
-  in_branch && /^[a-zA-Z]/ { in_branch=0 }
+  in_branch && /^[^[:space:]#]/ { in_branch=0 }
 ' "$config_file" 2>/dev/null \
   | sed 's/[[:space:]]#.*//' | sed 's/.*base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
-[ -z "$base_branch" ] && base_branch="develop"
+if [ -z "$base_branch" ]; then
+  echo "WARNING: rite-config.yml の branch.base を読めないため wiki-growth-check を skip します ($config_file)" >&2
+  echo "==> Total wiki-growth-check findings: 0"
+  exit 0
+fi
 
 # --- Count merged PRs since last wiki commit ---
 if ! command -v gh >/dev/null 2>&1; then

@@ -53,18 +53,73 @@ Wiki データは開発ブランチとは別に管理し、PR diff との分離�
 > **Runtime 実装**: 初期化時のブランチ作成は `hooks/scripts/wiki-branch-init.sh` が単一プロセスで実行する (`/rite:wiki-init` ステップ 3.1 から委譲呼び出し)。下記は操作パターンの参照実装であり、動作を変更する際は helper 側を SoT として同期すること。
 
 ```bash
-wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+# config は worktree 自身のもの、無ければ main checkout のものを読む
+rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+wiki_branch=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null \
   | grep -E '^[[:space:]]+branch_name:' | head -1 | sed 's/[[:space:]]#.*//' \
   | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 wiki_branch="${wiki_branch:-wiki}"
 current_branch=$(git branch --show-current)
 
-# cleanup trap: 異常終了時に元のブランチに復帰を保証
+# stash は submodule の変更を退避せず、git diff は submodule 内の未追跡ファイルを変更と見なさない。
+# 何かを変更する前に両方を検出して止める。利用者の設定で検出が外れないよう、submodule の ignore 設定と
+# 未追跡ファイルの非表示設定をこの呼び出しに限って上書きする
+status_v2=$(git -c status.showUntrackedFiles=normal status --porcelain=v2 --ignore-submodules=none) || { echo "ERROR: git status failed" >&2; exit 1; }
+changed_submodules=$(printf '%s\n' "$status_v2" | awk '
+  ($1 == "1" || $1 == "2" || $1 == "u") && $3 ~ /^S/ {
+    n = ($1 == "1") ? 8 : ($1 == "2") ? 9 : 10
+    for (i = 0; i < n; i++) $0 = substr($0, index($0, " ") + 1)
+    sub(/\t.*/, "")
+    print
+  }')
+if [ -n "$changed_submodules" ]; then
+  echo "ERROR: submodule に変更または未追跡ファイルがあります。ブランチ・作業ツリー・stash を変更せずに停止します" >&2
+  printf '%s\n' "$changed_submodules" | sed 's/^/  対象: /' >&2
+  echo "  対処: 変更を残すなら submodule の変更（未追跡ファイルは commit するか submodule の外へ移す）と親の新しい参照先を commit し、残さないなら submodule を記録済みの commit と中身に戻して、git status に submodule が表示されなくなってから再実行してください" >&2
+  echo "  確認: git -c status.showUntrackedFiles=normal status --ignore-submodules=none" >&2
+  exit 1
+fi
+submodules_before=$(git submodule status) || { echo "ERROR: git submodule status failed" >&2; exit 1; }
+
+# 元のブランチへ戻ったあと、submodule が実行前と同じ commit で展開されていることを確かめる。
+# signal trap の exit で EXIT trap も走るため、照合の前に verify_needed を下ろして 2 回目を防ぐ
+verify_needed=true
+_rite_verify_submodules() {
+  local after
+  [ "$verify_needed" = true ] || return 0
+  verify_needed=false
+  if ! after=$(git submodule status) || [ "$after" != "$submodules_before" ]; then
+    echo "ERROR: submodule の状態が実行前と一致しません — git submodule update で記録済みの commit を展開し直してください" >&2
+    return 1
+  fi
+}
+
+stash_needed=false
+# stash は全 worktree で共有され、並行セッションが上に積みうる。自分の entry は push 時の SHA で特定する
+stash_sha=""
+
+# SHA が一致する stash@{n} だけを pop する。見つからなければほかの entry に触れず失敗を返す
+_rite_pop_own_stash() {
+  local ref
+  ref=$(git stash list --format='%gd %H' | awk -v s="$stash_sha" '$2 == s {print $1; exit}')
+  if [ -z "$ref" ]; then
+    echo "ERROR: 退避した変更 (stash $stash_sha) が stash に見つかりません。ほかの stash entry には触れずに停止します" >&2
+    echo "  確認: git stash list --format='%gd %H %gs'" >&2
+    return 1
+  fi
+  git stash pop "$ref" || { echo "ERROR: 退避した変更 ($ref) を戻せませんでした — git stash list --format='%gd %H %gs' で確認して手動で復旧してください" >&2; return 1; }
+}
+
+# cleanup trap: 異常終了時に元のブランチに復帰を保証。pop は元のブランチへ戻れたときだけ行う
 # canonical signal-specific trap パターン (references/bash-trap-patterns.md 準拠)
 _rite_wiki_init_cleanup() {
-  git checkout "$current_branch" 2>/dev/null || true
-  if [ "${stash_needed:-false}" = true ]; then
-    git stash pop 2>/dev/null || echo "WARNING: git stash pop failed in cleanup — manual recovery needed: git stash list" >&2
+  if git checkout "$current_branch" 2>/dev/null; then
+    # signal trap の exit で EXIT trap も走るため、pop の前に stash_needed を下ろして 2 回目を防ぐ
+    [ "$stash_needed" = true ] && { stash_needed=false; _rite_pop_own_stash; }
+    _rite_verify_submodules
+  elif [ "$stash_needed" = true ]; then
+    echo "WARNING: 元のブランチへ戻れなかったため、退避した変更 (stash $stash_sha) を戻していません" >&2
+    echo "  復旧: git checkout '$current_branch' のあと、git stash list --format='%gd %H %gs' で SHA が一致する entry を pop します" >&2
   fi
 }
 trap 'rc=$?; _rite_wiki_init_cleanup; exit $rc' EXIT
@@ -72,15 +127,33 @@ trap '_rite_wiki_init_cleanup; exit 130' INT
 trap '_rite_wiki_init_cleanup; exit 143' TERM
 trap '_rite_wiki_init_cleanup; exit 129' HUP
 
-# dirty tree チェック: stash が必要な場合のみ実行
-stash_needed=false
+# dirty tree チェック: stash が必要な場合のみ実行し、新しく積んだ entry の SHA を記録する
 if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/dev/null; then
-  git stash push -m "rite-wiki-init-stash"
+  stash_before=$(git rev-parse -q --verify refs/stash) || stash_before=""
+  git stash push -m "rite-wiki-init-stash" || { echo "ERROR: git stash push failed" >&2; exit 1; }
+  stash_sha=$(git rev-parse -q --verify refs/stash) || stash_sha=""
+  [ -n "$stash_sha" ] && [ "$stash_sha" != "$stash_before" ] || { echo "ERROR: git stash push が新しい entry を作りませんでした" >&2; exit 1; }
   stash_needed=true
 fi
 
 # orphan ブランチとして作成（開発履歴を含まない）
 git checkout --orphan "$wiki_branch" || { echo "ERROR: git checkout --orphan failed" >&2; exit 1; }
+# git rm は submodule の作業ツリーを中身ごと消し、元のブランチへ戻っても再展開されない。
+# gitlink は index からだけ外し、作業ツリーには触れさせない。
+# path は NUL 区切りで読む（行出力は " や \ を含む path を引用し、index の entry と一致しなくなる）
+while IFS= read -r -d '' index_entry; do
+  case "$index_entry" in
+    160000\ *)
+      git update-index --force-remove -- "${index_entry#*$'\t'}" \
+        || { echo "ERROR: submodule '${index_entry#*$'\t'}' を index から外せませんでした" >&2; exit 1; }
+      ;;
+  esac
+done < <(git ls-files -s -z)
+# update-index は対象の entry が無くても成功を返す。gitlink が残ったまま git rm へ進まないよう index を読み直す
+remaining_entries=$(git ls-files -s) || { echo "ERROR: git ls-files failed" >&2; exit 1; }
+case $'\n'"$remaining_entries" in
+  *$'\n160000 '*) echo "ERROR: submodule を index から外せませんでした。作業ツリーを消さずに停止します" >&2; exit 1 ;;
+esac
 git rm -rf . 2>/dev/null || true
 # Wiki ファイルを配置してコミット
 git add .rite/wiki/ || { echo "ERROR: git add .rite/wiki/ failed" >&2; exit 1; }
@@ -94,31 +167,53 @@ git checkout "$current_branch" || {
   exit 1
 }
 
-# stash した場合のみ pop
+# stash した場合のみ、自分の entry を pop
 if [ "$stash_needed" = true ]; then
-  git stash pop
-  stash_needed=false  # EXIT trap での二重 pop を防止
+  stash_needed=false  # 成否によらず EXIT trap での二重 pop を防止
+  _rite_pop_own_stash || exit 1
 fi
 
 # cleanup trap を解除（正常完了時は不要）
 trap - EXIT INT TERM HUP
+
+_rite_verify_submodules || exit 1
 ```
 
 #### Wiki ブランチへの書き込み（Ingest 時）
 
 ```bash
-wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+# config は worktree 自身のもの、無ければ main checkout のものを読む
+rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+wiki_branch=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null \
   | grep -E '^[[:space:]]+branch_name:' | head -1 | sed 's/[[:space:]]#.*//' \
   | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 wiki_branch="${wiki_branch:-wiki}"
 current_branch=$(git branch --show-current)
+stash_needed=false
+# stash は全 worktree で共有され、並行セッションが上に積みうる。自分の entry は push 時の SHA で特定する
+stash_sha=""
 
-# cleanup trap: 異常終了時に元のブランチに復帰を保証
+# SHA が一致する stash@{n} だけを pop する。見つからなければほかの entry に触れず失敗を返す
+_rite_pop_own_stash() {
+  local ref
+  ref=$(git stash list --format='%gd %H' | awk -v s="$stash_sha" '$2 == s {print $1; exit}')
+  if [ -z "$ref" ]; then
+    echo "ERROR: 退避した変更 (stash $stash_sha) が stash に見つかりません。ほかの stash entry には触れずに停止します" >&2
+    echo "  確認: git stash list --format='%gd %H %gs'" >&2
+    return 1
+  fi
+  git stash pop "$ref" || { echo "ERROR: 退避した変更 ($ref) を戻せませんでした — git stash list --format='%gd %H %gs' で確認して手動で復旧してください" >&2; return 1; }
+}
+
+# cleanup trap: 異常終了時に元のブランチに復帰を保証。pop は元のブランチへ戻れたときだけ行う
 # canonical signal-specific trap パターン (references/bash-trap-patterns.md 準拠)
 _rite_wiki_ingest_cleanup() {
-  git checkout "$current_branch" 2>/dev/null || true
-  if [ "${stash_needed:-false}" = true ]; then
-    git stash pop 2>/dev/null || echo "WARNING: git stash pop failed in cleanup — manual recovery needed: git stash list" >&2
+  if git checkout "$current_branch" 2>/dev/null; then
+    # signal trap の exit で EXIT trap も走るため、pop の前に stash_needed を下ろして 2 回目を防ぐ
+    [ "$stash_needed" = true ] && { stash_needed=false; _rite_pop_own_stash; }
+  elif [ "$stash_needed" = true ]; then
+    echo "WARNING: 元のブランチへ戻れなかったため、退避した変更 (stash $stash_sha) を戻していません" >&2
+    echo "  復旧: git checkout '$current_branch' のあと、git stash list --format='%gd %H %gs' で SHA が一致する entry を pop します" >&2
   fi
 }
 trap 'rc=$?; _rite_wiki_ingest_cleanup; exit $rc' EXIT
@@ -126,10 +221,12 @@ trap '_rite_wiki_ingest_cleanup; exit 130' INT
 trap '_rite_wiki_ingest_cleanup; exit 143' TERM
 trap '_rite_wiki_ingest_cleanup; exit 129' HUP
 
-# dirty tree チェック: stash が必要な場合のみ実行
-stash_needed=false
+# dirty tree チェック: stash が必要な場合のみ実行し、新しく積んだ entry の SHA を記録する
 if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/dev/null; then
-  git stash push -m "rite-wiki-stash"
+  stash_before=$(git rev-parse -q --verify refs/stash) || stash_before=""
+  git stash push -m "rite-wiki-stash" || { echo "ERROR: git stash push failed" >&2; exit 1; }
+  stash_sha=$(git rev-parse -q --verify refs/stash) || stash_sha=""
+  [ -n "$stash_sha" ] && [ "$stash_sha" != "$stash_before" ] || { echo "ERROR: git stash push が新しい entry を作りませんでした" >&2; exit 1; }
   stash_needed=true
 fi
 
@@ -149,10 +246,10 @@ git checkout "$current_branch" || {
   exit 1
 }
 
-# stash した場合のみ pop
+# stash した場合のみ、自分の entry を pop
 if [ "$stash_needed" = true ]; then
-  git stash pop
-  stash_needed=false  # EXIT trap での二重 pop を防止
+  stash_needed=false  # 成否によらず EXIT trap での二重 pop を防止
+  _rite_pop_own_stash || exit 1
 fi
 
 # cleanup trap を解除（正常完了時は不要）
@@ -162,7 +259,9 @@ trap - EXIT INT TERM HUP
 #### Wiki ブランチからの読み込み（Query 時）
 
 ```bash
-wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+# config は worktree 自身のもの、無ければ main checkout のものを読む
+rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+wiki_branch=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null \
   | grep -E '^[[:space:]]+branch_name:' | head -1 | sed 's/[[:space:]]#.*//' \
   | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 wiki_branch="${wiki_branch:-wiki}"
@@ -306,11 +405,15 @@ git clone https://github.com/GoogleCloudPlatform/knowledge-catalog /tmp/okf-visu
 
 ## Wiki 有効判定パターン
 
-Wiki 操作の前に必ず有効判定を行います。**Wiki は opt-out**: `wiki:` セクション自体や `enabled` キーが未指定の場合は default-on (有効) として扱います。明示的に `false|no|0` が指定された場合のみ無効化されます:
+Wiki 操作の前に必ず有効判定を行います。**Wiki は opt-out**: `wiki:` セクション自体や `enabled` キーが未指定の場合は default-on (有効) として扱います。明示的に `false|no|0` が指定された場合のみ無効化されます。
+
+`rite-config.yml` の節は `sed -n '/^{section}:/,/^[^[:space:]#]/p'` で切り出します。節は空白と `#` 以外で始まる次の行で終わります。数字や `_` で始まるトップレベルキーでも終わり、列 0 のコメント行と空行では終わりません。終端を英字始まりの行に限ると、数字や `_` で始まる後続キーの配下の値を節の値として読みます。skill 本文にある同型の切り出しも同じ終端を使います:
 
 ```bash
 # Wiki は opt-out — section/key 未指定時のデフォルトは true
-wiki_enabled=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+# config は worktree 自身のもの、無ければ main checkout のものを読む
+rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+wiki_enabled=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null \
   | grep -E '^[[:space:]]+enabled:' | head -1 | sed 's/[[:space:]]#.*//' \
   | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]')
 wiki_enabled=$(echo "$wiki_enabled" | tr '[:upper:]' '[:lower:]')
@@ -336,8 +439,8 @@ fi
 - `plugins/rite/skills/wiki-init/SKILL.md` (init 時の状態判定)
 - `plugins/rite/skills/setup/SKILL.md` Phase 4.7 (`/rite:setup` 内 Wiki 自動初期化判定、独自 inline 実装 + typo 検出 WARNING 付き)
 - `plugins/rite/skills/cleanup/SKILL.md` ステップ 9 (`parse_wiki_scalar` 委譲、auto_ingest 起動条件。helper 解決不可は skip reason `config_helper_unavailable`)
-- `plugins/rite/skills/fix/SKILL.md` ステップ 0.5.W / 4.6.W (Wiki query / ingest 起動条件)
-- `plugins/rite/skills/pr-review/SKILL.md` ステップ 4.0.W / 6.5.W (Wiki query / ingest 起動条件)
+- `plugins/rite/scripts/fix-step.sh` の `wiki-query-config` / `wiki-ingest-check` (fix ステップ 0.5.W / 4.6.W の Wiki query / ingest 起動条件)
+- `plugins/rite/scripts/pr-review-step.sh` の `wiki-query-config` / `wiki-ingest-config` (pr-review ステップ 4.0.W / 6.5.W から呼ぶ Wiki query / ingest 起動条件)
 - `plugins/rite/skills/issue-implement/SKILL.md` (Wiki query 起動条件)
 - `plugins/rite/skills/issue-close/SKILL.md` Phase 4.4.W (`parse_wiki_scalar` 委譲、Wiki ingest 起動条件。helper 解決不可は skip reason `config_helper_unavailable`)
 - `plugins/rite/hooks/wiki-query-inject.sh` (auto_query 注入の前提判定、ローカル helper `_extract_yaml_value`)
@@ -356,11 +459,13 @@ fi
 Wiki が既に初期化済みかを判定します:
 
 ```bash
-wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+# config は worktree 自身のもの、無ければ main checkout のものを読む
+rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+wiki_branch=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null \
   | grep -E '^[[:space:]]+branch_name:' | head -1 | sed 's/[[:space:]]#.*//' \
   | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 wiki_branch="${wiki_branch:-wiki}"
-branch_strategy=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+branch_strategy=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null \
   | grep -E '^[[:space:]]+branch_strategy:' | head -1 | sed 's/[[:space:]]#.*//' \
   | sed 's/.*branch_strategy:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 branch_strategy="${branch_strategy:-separate_branch}"

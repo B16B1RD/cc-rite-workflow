@@ -32,7 +32,10 @@ TEST_REPO=$(mktemp -d)
 # Detached worktrees whose ROOT dir carries the sanctioned isolation prefixes.
 ISO_MUT_DIR=$(mktemp -u -t rite-review-mutation-XXXXXX)
 ISO_REV_DIR=$(mktemp -u -t rite-revert-test-XXXXXX)
+# The owner-recording name the reviewer procedure now creates must stay in the namespace.
+ISO_OWN_DIR=$(mktemp -u -t rite-review-mutation-owner.aaaaaaaa-1111-2222-3333-444444444444.XXXXXX)
 ( cd "$TEST_REPO" && git worktree add --detach -q "$ISO_MUT_DIR" HEAD )
+( cd "$TEST_REPO" && git worktree add --detach -q "$ISO_OWN_DIR" HEAD )
 ( cd "$TEST_REPO" && git worktree add --detach -q "$ISO_REV_DIR" HEAD )
 OUTSIDE_DIR=$(mktemp -d)   # a plain, non-repo scratch dir
 shimdir=""                 # set by TC-FAILCLOSED; cleaned here so an interrupt leaves no residue
@@ -43,7 +46,8 @@ cleanup() {
   rm -f "$STDERR_FILE"
   ( cd "$TEST_REPO" 2>/dev/null && git worktree remove --force "$ISO_MUT_DIR" 2>/dev/null ) || true
   ( cd "$TEST_REPO" 2>/dev/null && git worktree remove --force "$ISO_REV_DIR" 2>/dev/null ) || true
-  rm -rf "$TEST_REPO" "$ISO_MUT_DIR" "$ISO_REV_DIR" "$OUTSIDE_DIR" ${shimdir:+"$shimdir"} ${rp_shimdir:+"$rp_shimdir"} ${rl_shimdir:+"$rl_shimdir"}
+  ( cd "$TEST_REPO" 2>/dev/null && git worktree remove --force "$ISO_OWN_DIR" 2>/dev/null ) || true
+  rm -rf "$TEST_REPO" "$ISO_MUT_DIR" "$ISO_REV_DIR" "$ISO_OWN_DIR" "$OUTSIDE_DIR" ${shimdir:+"$shimdir"} ${rp_shimdir:+"$rp_shimdir"} ${rl_shimdir:+"$rl_shimdir"}
 }
 trap cleanup EXIT
 
@@ -168,6 +172,18 @@ echo "TC-A: subagent Edit to parent working tree → deny"
 out=$(run_edit_guard "Edit" "$TEST_REPO/src/bets.py" "$TEST_REPO" "$SUBAGENT_TRANSCRIPT") || true
 assert_deny "subagent Edit to repo file blocked" "$out"
 if grep -q "edit-guard: BLOCKED" "$STDERR_FILE"; then pass "stderr contains block log"; else fail "stderr block log missing: $(cat "$STDERR_FILE")"; fi
+# The suggested procedure runs mktemp on its own: a worktree-isolated session refuses the
+# worktree command when mktemp is embedded in it.
+tca_reason=$(reason_of "$out")
+tca_hooks_dir=$(cd "$SCRIPT_DIR/.." && pwd)
+if [[ "$tca_reason" == *"'bash ${tca_hooks_dir}/session-identity.sh' on its own"* ]] \
+  && [[ "$tca_reason" == *"'mktemp -d -t rite-review-mutation-owner.<that session ID>.XXXXXX' on its own"* ]] \
+  && [[ "$tca_reason" == *"'git worktree add --detach <that literal path> HEAD'"* ]] \
+  && [[ "$tca_reason" != *'$(mktemp'* ]]; then
+  pass "deny reason names the hook's own session-identity.sh path and suggests mktemp and worktree add as separate calls"
+else
+  fail "deny reason does not name ${tca_hooks_dir}/session-identity.sh or suggest separate mktemp / worktree add calls: $tca_reason"
+fi
 echo ""
 
 # (a2) subagent Edit with RELATIVE path (cwd=repo) → deny (relative join)
@@ -210,6 +226,11 @@ echo ""
 echo "TC-B: subagent Edit inside real rite-review-mutation-* worktree → allow"
 out=$(run_edit_guard "Edit" "some-file.sh" "$ISO_MUT_DIR" "$SUBAGENT_TRANSCRIPT") && rc=0 || rc=$?
 assert_allow "isolated mutation-worktree edit allowed (AC-4)" "$out" "$rc"
+echo ""
+
+echo "TC-B-OWNER: subagent Edit inside a real owner-recording rite-review-mutation-owner.* worktree → allow"
+out=$(run_edit_guard "Edit" "some-file.sh" "$ISO_OWN_DIR" "$SUBAGENT_TRANSCRIPT") && rc=0 || rc=$?
+assert_allow "owner-recording mutation-worktree edit allowed" "$out" "$rc"
 echo ""
 
 # (e) subagent Edit inside a REAL rite-revert-test-* worktree → allow
@@ -339,6 +360,97 @@ echo ""
 echo "TC-GITDIR-config: subagent Edit to .git/config → deny"
 out=$(run_edit_guard "Edit" "$TEST_REPO/.git/config" "$TEST_REPO" "$SUBAGENT_TRANSCRIPT") || true
 assert_deny_gitdir "write into .git/config blocked" "$out"
+echo ""
+
+# --------------------------------------------------------------------------
+# Reviewer classification: only a subagent whose type names a reviewer (or whose type is
+# unknown) is guarded. Every case below runs on the SUBAGENT transcript, so an implementation
+# that denies on Tier 1 alone fails the allow cases.
+#   $1 path  $2 agent_type ("" = omit)  $3 subagent_type ("" = omit)
+# --------------------------------------------------------------------------
+run_typed() {
+  local path="$1" agent_type="$2" subagent_type="$3" rc=0 output
+  output=$(jq -n --arg p "$path" --arg cwd "$TEST_REPO" --arg tp "$SUBAGENT_TRANSCRIPT" \
+    --arg at "$agent_type" --arg st "$subagent_type" \
+    '{tool_name: "Edit", tool_input: {file_path: $p}, cwd: $cwd, transcript_path: $tp}
+     + (if $at == "" then {} else {agent_type: $at} end)
+     + (if $st == "" then {} else {subagent_type: $st} end)' \
+    | bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+  echo "$output"
+  return $rc
+}
+assert_reason_has() {
+  local label="$1" out="$2" needle="$3"
+  if [[ "$(reason_of "$out")" == *"$needle"* ]]; then
+    pass "$label"
+  else
+    fail "$label — reason lacks '$needle': $(reason_of "$out")"
+  fi
+}
+
+echo "TC-NR-general: non-reviewer subagent (agent_type=general-purpose) → allow"
+out=$(run_typed "$TEST_REPO/src/x.py" "general-purpose" "") && rc=0 || rc=$?
+assert_allow "general-purpose subagent edits the parent tree" "$out" "$rc"
+echo ""
+
+echo "TC-NR-control: same input with a plugin-scoped reviewer type → deny, reason names the type"
+out=$(run_typed "$TEST_REPO/src/x.py" "plugin:rite:code-quality-reviewer" "") || true
+assert_deny "plugin-scoped reviewer type blocked" "$out"
+assert_reason_has "reason carries the reviewer type" "$out" "type=plugin:rite:code-quality-reviewer"
+echo ""
+
+for t in "rite:code-quality-reviewer" "rite:_reviewer-base" "reviewer"; do
+  echo "TC-NR-reviewer-form: agent_type=$t → deny"
+  out=$(run_typed "$TEST_REPO/src/x.py" "$t" "") || true
+  assert_deny "reviewer type '$t' blocked" "$out"
+  echo ""
+done
+
+for t in "code-quality-reviewer-helper" "reviewer-general"; do
+  echo "TC-NR-suffix: agent_type=$t (reviewer only as a non-suffix) → allow"
+  out=$(run_typed "$TEST_REPO/src/x.py" "$t" "") && rc=0 || rc=$?
+  assert_allow "'$t' is not a reviewer type" "$out" "$rc"
+  echo ""
+done
+
+echo "TC-NR-mixed-json: subagent_type reviewer + agent_type general-purpose → deny"
+out=$(run_typed "$TEST_REPO/src/x.py" "general-purpose" "code-quality-reviewer") || true
+assert_deny "any reviewer type field wins over a non-reviewer one" "$out"
+echo ""
+
+echo "TC-NR-mixed-env: agent_type general-purpose + env CLAUDE_SUBAGENT_TYPE reviewer → deny"
+out=$(jq -n --arg p "$TEST_REPO/src/x.py" --arg cwd "$TEST_REPO" --arg tp "$SUBAGENT_TRANSCRIPT" \
+  '{tool_name: "Edit", tool_input: {file_path: $p}, cwd: $cwd, transcript_path: $tp, agent_type: "general-purpose"}' \
+  | CLAUDE_SUBAGENT_TYPE="code-quality-reviewer" bash "$HOOK" 2>"$STDERR_FILE") || true
+assert_deny "env reviewer type wins over a JSON non-reviewer type" "$out"
+echo ""
+
+echo "TC-NR-env: env-only non-reviewer type (CLAUDE_AGENT_TYPE=general-purpose) → allow"
+out=$(jq -n --arg p "$TEST_REPO/src/x.py" --arg cwd "$TEST_REPO" --arg tp "$MAIN_TRANSCRIPT" \
+  '{tool_name: "Edit", tool_input: {file_path: $p}, cwd: $cwd, transcript_path: $tp}' \
+  | CLAUDE_AGENT_TYPE="general-purpose" bash "$HOOK" 2>"$STDERR_FILE") && rc=0 || rc=$?
+assert_allow "env non-reviewer type edits the parent tree" "$out" "$rc"
+echo ""
+
+echo "TC-NR-unknown: transcript-only subagent (no type) → deny, reason says the type is unknown"
+out=$(run_typed "$TEST_REPO/src/x.py" "" "") || true
+assert_deny "untyped subagent stays blocked" "$out"
+assert_reason_has "reason states the type is unknown" "$out" "type unknown"
+echo ""
+
+echo "TC-NR-gitdir: non-reviewer subagent Write into .git/hooks → allow"
+out=$(run_typed "$TEST_REPO/.git/hooks/pre-commit" "general-purpose" "") && rc=0 || rc=$?
+assert_allow "non-reviewer is not subject to the git-dir deny" "$out" "$rc"
+echo ""
+
+echo "TC-NR-gitdir-reviewer: typed reviewer Write into .git/hooks → deny (git-dir)"
+out=$(run_typed "$TEST_REPO/.git/hooks/pre-commit" "plugin:rite:code-quality-reviewer" "") || true
+assert_deny_gitdir "typed reviewer git-dir write blocked" "$out"
+echo ""
+
+echo "TC-NR-iso-reviewer: typed reviewer Edit inside rite-review-mutation-* worktree → allow"
+out=$(run_typed "$ISO_MUT_DIR/src/x.py" "plugin:rite:code-quality-reviewer" "") && rc=0 || rc=$?
+assert_allow "typed reviewer keeps the isolation allowance" "$out" "$rc"
 echo ""
 
 # --------------------------------------------------------------------------

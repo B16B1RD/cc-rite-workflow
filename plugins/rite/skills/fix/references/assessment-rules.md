@@ -154,7 +154,7 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
 - finding の `id` (`F-NN`) は降格時に**振り直さず元の値を維持する** — `findings[]` と `non_blocking_findings[]` の**和集合で一意**になり、永続 JSON 単体を読む人間が 2 配列を跨いで finding を一意に参照できる (5.4 統合レポートのテーブルは `id` 列を持たないため、JSON ↔ レポート間の相互参照を目的とした規則ではない)。強制層は `hooks/review-result-save.sh` の id 検証 (**書式違反は本配列側でも hard fail** で保存しない。和集合に閉じた重複だけが非ブロッキング marker `NON_BLOCKING_FINDINGS_ID_UNION_VIOLATION` で報告され、保存は続行する)
 - 記録先は 4 経路すべてで、破棄経路は存在しない:
   1. **永続 JSON** (`.rite/review-results/*.json` の トップレベル `non_blocking_findings[]`、`pr-review/SKILL.md` ステップ 6.1.a) — 既定構成 (`pr_review.post_comment: false`) におけるローカル側の永続チャネル
-  2. **ステップ 6.1.d の関連 Issue 記録コメント** (`## 📜 rite 非実測指摘の記録`、`pr_review.post_comment` に**依存しない**。通常は cycle ごとに同じコメントを update-in-place するが、helper が自分の過去投稿を特定できない場合は縮退する — 本 cycle の指摘が 1 件以上なら新規作成となり 2 件目が並び、0 件でも本文に却下台帳のエントリがあれば新規作成し、無ければ投稿自体を省くため前 cycle の記録が stale で残る) — `.rite/review-results/` は gitignore 対象のため、cycle 中にレビュアーと共有できる永続チャネルはこちらのみ。関連 Issue を解決できないときは silent skip せず `related_issue_unresolved` で表面化する。記録コメントが担うのは reviewer / severity / `file:line` のポインタと降格理由の判定文までで、cycle 中の `description` / `suggestion` の全文を持つのは永続 JSON のみ。マージ時の残存分は `/rite:cleanup` が follow-up Issue 1 件へ全文転記し、`non_blocking_findings[]` が非空の JSON を archive/ へ退避する
+  2. **ステップ 6.1.d の関連 Issue 記録コメント** (`## 📜 rite 非実測指摘の記録`、`pr_review.post_comment` に**依存しない**。通常は cycle ごとに同じコメントを update-in-place するが、helper が自分の過去投稿を特定できない場合は縮退する — 本 cycle の指摘が 1 件以上なら新規作成となり 2 件目が並び、0 件でも本文に却下台帳のエントリがあれば新規作成し、無ければ投稿自体を省くため前 cycle の記録が stale で残る) — `.rite/review-results/` は gitignore 対象のため、cycle 中にレビュアーと共有できる永続チャネルはこちらのみ。関連 Issue を解決できないときは silent skip せず `related_issue_unresolved` で表面化する。記録コメントが担うのは reviewer / severity / `file:line` のポインタと降格理由 (class B 降格分は `demotion.reason` の判定文、`/rite:fix` が非 fatal として移送した実測済み分は「実測済み（非 fatal）」、それ以外は「実測なし」) までで、cycle 中の `description` / `suggestion` の全文を持つのは永続 JSON のみ。マージ時の残存分は `/rite:cleanup` が採否ゲートの出口が `file` の根因ごとに follow-up Issue へ全文転記し（出口が出ていなければ保留して何も起票しない）、`non_blocking_findings[]` が非空の JSON を archive/ へ退避する
   3. **ステップ 5.4 統合レポート** の `### 実測なし指摘 (non-blocking)` section (severity 明示) — E2E でも省略禁止 (`pr-review/SKILL.md` E2E Output Minimization 表の例外)
   4. **E2E output line** の `| non-blocking: {n}` suffix (件数のみ、`n > 0` のとき)
 - fix サイクルは起動しない (fix.md 側の除外分岐は [fix-relaxation-rules.md](./fix-relaxation-rules.md) §Fix Target Classification 参照)
@@ -179,8 +179,8 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
 
 > この指摘を放置してマージしたとき、今回の成果物の**どの操作で何が壊れるか**を実行時シナリオ 1 行で書けるか。
 
-- **class A** — 書ける (放置すると今回の成果物の実行時挙動が変わる)。テストへの指摘でも「clean fixture のため本番バグを検出できない」類は実行時帰結を持つ class A (ファイルパスで機械分類しない)
-- **class B** — 書けない (帰結が検出網の目の細かさ・可読性・文書整合に留まる: テスト assert の錨付け精度・コメント文言・文書同期など)。不確実な場合も class B へ倒す (攻め側既定 — 保守既定は判定者の萎縮で現状維持に退化する。誤降格は record で可視、最終防衛線は人間のマージ判断)
+- **class A** — 書ける (放置すると今回の成果物の実行時挙動が変わる)。テストへの指摘でも「clean fixture のため本番バグを検出できない」類は実行時帰結を持つ class A (ファイルパスで機械分類しない)。手順書・仕様書の散文への指摘でも、記述に字義どおり従う実行者が誤動作に至ることを、記述された手順（仕様書が記述する実装を含む）の実行で観測した指摘 ([`_reviewer-base.md` §手順書・仕様書ドメイン Finding Gate](../../../agents/_reviewer-base.md#prose-domain-finding-gate) の挙動的帰結クラス。`Verification:` 付き) は class A (文書だけの PR でも降格の対象外。不確実を理由に class B へ倒さない)
+- **class B** — 書けない (帰結が検出網の目の細かさ・可読性・文書整合に留まる: テスト assert の錨付け精度・コメント文言・文書同期など。文書整合は文書のテキスト差分だけを観測した字面整合クラスを指す)。不確実な場合も class B へ倒す (上の散文への実行観測の指摘を除く。攻め側既定 — 保守既定は判定者の萎縮で現状維持に退化する。誤降格は record で可視、最終防衛線は人間のマージ判断)
 
 **Mechanical enforcement** (helper の実装契約):
 
@@ -197,7 +197,7 @@ if acceptance_criteria が キー欠落 / {skipped: "no_issue"|"no_ac_section"} 
 For each finding in blocking:
   entry = classification map の同 id エントリ
   if entry が欠落 / class が A・B 以外 / class B なのに scenario (判定文) が欠落・空 /
-     class B で exclusion キーがあるのに非空文字列でない / 同 id の重複エントリ:
+     class B で exclusion キーがあるのに非空文字列でない / ac_claim が不正 / 同 id の重複エントリ:
     effective class = A + WARNING (判定不能を降格に丸めない。CLASS_DEMOTION_UNCLASSIFIED)
   else:
     effective class = entry.class
@@ -207,11 +207,19 @@ For each finding in blocking:
     effective class == B ∧ exclusion なし ∧ acceptance_criteria[] の status == "unmet" 行の finding_id が本 finding の id:
       consequence_exclusion = "ac_unmet:AC-N" (同じ finding を指す行が複数なら行順に "ac_unmet:AC-1,AC-2")
       class は B のまま。降格しない
+    effective class == B ∧ 上の 2 つの除外なし ∧ entry.ac_claim が有効:
+      consequence_exclusion = "ac_claim:AC-N" (複数なら ac_claim の配列順に "ac_claim:AC-3,AC-1")
+      class は B のまま。降格しない
   finding に consequence_class / consequence_scenario を記録 (書き手は helper のみ)
 
 acceptance_criteria[] の status == "unmet" 行で finding_id が findings[] に無いもの:
   除外判定に使わない。WARNING + 成功 marker 末尾に "; warning=ac_unmet_finding_missing; rows=AC-N:F-NN,..."
   (他 finding の判定は変わらない。finding_id が null の行は除外判定にも警告にも使わない)
+
+判定不能に倒れていないエントリの有効な ac_claim (class A・B や除外の出所によらない) が主張する AC で、acceptance_criteria[] の行の status が "unmet" でないもの:
+  判定は変えない。WARNING + 成功 marker 末尾 (上の suffix の後ろ) に
+  "; warning=ac_claim_disagreement; rows=AC-N:F-NN,..." (findings[] 順、同一 finding 内は ac_claim 順)
+  (unmet 行が別の finding を指すだけの AC は食い違いに数えない)
 
 if (effective A の件数) == 0 and (exclusion なし class B の件数) >= 1:
   exclusion なし class B を non_blocking_findings[] へ移送
@@ -226,13 +234,15 @@ else:
 トップレベル class_demotion = {applied, class_a, class_b, demoted} を記録 (監査フラグ)
 ```
 
-**分類入力 (classification map)**: `/rite:pr-review` ステップ 5.3.0.C step 1 が Write する独立 JSON (`{"classifications": [{"id", "class", "scenario", "exclusion"?}]}`)。`exclusion` は class B の任意キーで、非空文字列のときだけ「既存 (base 側) に存在した記述・ガード・禁止文を本 PR の diff が削除/弱体化した」判定文として読む。キー欠落 = 除外しない (従来どおり降格対象)。キーがあるのに非空文字列でない (空文字・非文字列) は不正 = class A 扱い + WARNING。review-result JSON の `findings[].consequence_class` を分類入力にはしない — 判定の入力と適用結果を同じフィールドに置くと、LLM の先書きがゲートを無音で迂回する (5.3.0.M の verification preset と同じ穴)。helper は map だけを読み、`consequence_class` / `consequence_scenario` / `consequence_exclusion` は算出結果として無条件に上書きする。
+**分類入力 (classification map)**: `/rite:pr-review` ステップ 5.3.0.C step 1 が Write する独立 JSON (`{"classifications": [{"id", "class", "scenario", "exclusion"?, "ac_claim"?}]}`)。`ac_claim` は各エントリ (class A / B とも) の任意キーで、意味と有効条件は下の第 3 除外入力源による。`exclusion` は class B の任意キーで、非空文字列のときだけ「既存 (base 側) に存在した記述・ガード・禁止文を本 PR の diff が削除/弱体化した」判定文として読む。キー欠落 = 除外しない (従来どおり降格対象)。キーがあるのに非空文字列でない (空文字・非文字列) は不正 = class A 扱い + WARNING。review-result JSON の `findings[].consequence_class` を分類入力にはしない — 判定の入力と適用結果を同じフィールドに置くと、LLM の先書きがゲートを無音で迂回する (5.3.0.M の verification preset と同じ穴)。helper は map だけを読み、`consequence_class` / `consequence_scenario` / `consequence_exclusion` は算出結果として無条件に上書きする。
 
 **第 2 除外入力源 (合意済み AC の実測済み未充足)**: review-result JSON の `acceptance_criteria[]` ([review-result-schema.md §acceptance_criteria](../../../references/review-result-schema.md#acceptance_criteria)) で `status == "unmet"` の行が `finding_id` で指す finding は、map が class B・exclusion なしでも降格しない。class は map の値のまま、`consequence_exclusion` に `ac_unmet:AC-N` を記録する。map に exclusion がある finding は map の判定文を保持し、class A (判定不能・category 固定を含む) には記録しない。判定表は acceptance reviewer の実測結果であり、分類主体の裁量を介さない。`finding_id` が `null` の未充足行は除外に使わない — その finding が blocking に残っているかの最終検査は `scripts/acceptance-criteria-check.sh final` が持つ。
 
+**第 3 除外入力源 (指摘が主張する AC 未充足)**: classification map の任意キー `ac_claim` (AC ID の非空配列) は、finding が受入条件の未充足を実測付きで主張していることを表す。判定表の `unmet` 行は AC ごとに `finding_id` を 1 つしか持てず、同じ AC を指す 2 件目以降の指摘や、acceptance reviewer が未充足と判定しなかった AC への指摘を拾えない。有効な `ac_claim` を持つ class B で、map の exclusion も判定表の未充足行も無い finding は `consequence_exclusion` に `ac_claim:AC-N` を記録して降格しない。有効とは、`acceptance_criteria` が行配列で、値が `AC-N` 書式・重複なし・行配列に実在する AC ID の非空配列であること。それ以外は判定不能として class A に倒す。判定不能に倒れていないエントリで主張した AC の行が `unmet` でなければ、class A・B や除外の出所によらず判定を変えずに WARNING と成功 marker の `ac_claim_disagreement` suffix で食い違いを可視化する — 実測を伴う未充足の主張を、別の実測との食い違いだけを理由に降格しない。
+
 **category 固定**: `category == "number_reference"` の blocking finding は classification map の内容にかかわらず class A に固定する。well-formed な class B が指定された場合は WARNING + `[CONTEXT] CLASS_DEMOTION_CATEGORY_PINNED=1; count={n}` を emit し、map と固定の矛盾を silent に上書きしない。map 欠落・不正は従来の `CLASS_DEMOTION_UNCLASSIFIED` 経路だけを通る。
 
-**判定不能の安全側**: map エントリの欠落・class 不正・class B の判定文欠落・class B の exclusion 不正・同 id の重複エントリは、いずれも当該 finding を **class A 扱い (blocking 維持)** にして WARNING + `[CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count={n}` を emit する。gated finding の `verification.measured` が boolean でない場合は map 判定と書き換えの前に `[CONTEXT] CLASS_DEMOTION_GATE_FAILED=1; reason=measured_undetermined; count={n}; findings={ids}` で停止し、入力 JSON を byte-identical に保つ。silent 降格は存在しない — 降格に入る経路は「実測判定済み ∧ well-formed な class B エントリ ∧ exclusion なし」のみ。
+**判定不能の安全側**: map エントリの欠落・class 不正・class B の判定文欠落・class B の exclusion 不正・`ac_claim` の不正・同 id の重複エントリは、いずれも当該 finding を **class A 扱い (blocking 維持)** にして WARNING + `[CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count={n}` を emit する。gated finding の `verification.measured` が boolean でない場合は map 判定と書き換えの前に `[CONTEXT] CLASS_DEMOTION_GATE_FAILED=1; reason=measured_undetermined; count={n}; findings={ids}` で停止し、入力 JSON を byte-identical に保つ。silent 降格は存在しない — 降格に入る経路は「実測判定済み ∧ well-formed な class B エントリ ∧ exclusion なし」のみ。
 
 **non_blocking_findings への移送**: 5.3.0.M と同じ移送メカニズムを流用する — `total_findings` にカウントしない / `id` は振り直さず和集合で一意 / 記録 4 経路 (永続 JSON・6.1.d 関連 Issue 記録コメント・5.4 統合レポート section・E2E suffix) は 5.3.0.M §non_blocking_findings の扱い と同一。降格分は `demotion` オブジェクト (policy + 判定文) で実測ゲート降格分と区別でき、後から監査できる。
 

@@ -58,6 +58,9 @@ trap 'cleanup; exit 129' HUP
 STUB_DIR="$(mktemp -d)"; SANDBOXES+=("$STUB_DIR")
 cat > "$STUB_DIR/gh" <<'EOF'
 #!/bin/bash
+# Record the full invocation so tests can assert which --base value was used
+# (the growth-stall base_branch extraction is otherwise opaque to the caller).
+if [ -n "${GH_STUB_ARGS_LOG:-}" ]; then printf '%s\n' "$*" >> "$GH_STUB_ARGS_LOG"; fi
 printf '%s\n' "${GH_STUB_PRS:-[]}"
 exit 0
 EOF
@@ -120,6 +123,73 @@ stall_repo="$(make_wiki_repo true yes)"; SANDBOXES+=("$stall_repo")
 assert "merged PRs >= threshold with stalled wiki → finding (exit 1)" "1" \
   "$(PATH="$STUB_DIR:$PATH" GH_STUB_PRS='[{"number":1}]' bash "$SCRIPT" \
       --repo-root "$stall_repo" --threshold 1 --pr-raw-threshold 999 --quiet >/dev/null 2>&1; echo $?)"
+
+# --- branch: 節の直後に数字始まりのトップレベルキーが来ても節終了を検出する -----
+# branch: に base: を持たせず、直後の 2fa: 配下に base: wrong を置く。旧実装
+# (/^[a-zA-Z]/) は "2fa:" で節終了を検出できず base: wrong を拾ってしまう。
+nonalpha_repo="$(make_wiki_repo true yes)"; SANDBOXES+=("$nonalpha_repo")
+printf 'wiki:\n  enabled: true\n  branch_name: wiki\nbranch:\n  pattern: "{type}/issue-{number}-{slug}"\n2fa:\n  base: wrong\n' \
+  > "$nonalpha_repo/rite-config.yml"
+git -C "$nonalpha_repo" add rite-config.yml \
+  && git -C "$nonalpha_repo" commit -q -m "reconfigure base" \
+  || { echo "FAIL: nonalpha_repo config commit failed" >&2; exit 1; }
+args_log="$(mktemp)"; SANDBOXES+=("$args_log")
+nonalpha_err="$(mktemp)"; SANDBOXES+=("$nonalpha_err")
+nonalpha_rc=0
+nonalpha_out="$(PATH="$STUB_DIR:$PATH" GH_STUB_PRS='[]' GH_STUB_ARGS_LOG="$args_log" \
+  bash "$SCRIPT" --repo-root "$nonalpha_repo" --quiet 2>"$nonalpha_err")" || nonalpha_rc=$?
+assert "branch section without base skips with exit 0" "0" "$nonalpha_rc"
+assert "branch section without base still prints the findings summary line" "1" \
+  "$(grep -c '^==> Total wiki-growth-check findings: 0$' <<<"$nonalpha_out")"
+assert "branch section without base does not query gh with any base" "0" \
+  "$(grep -c -- '--base' "$args_log")"
+assert "branch section without base warns instead of assuming develop" "1" \
+  "$(grep -c 'WARNING: .*branch\.base' "$nonalpha_err")"
+
+# --- gh が無いときは exit 0 で skip し、理由を WARNING で出す -----------------
+# gh 以外の PATH 上のコマンドだけを並べた bin を作り、gh 不在を再現する。
+nogh_bin="$(mktemp -d)"; SANDBOXES+=("$nogh_bin")
+IFS=: read -r -a _path_dirs <<<"$PATH"
+for _d in "${_path_dirs[@]}"; do
+  for _f in "$_d"/*; do
+    _n="${_f##*/}"
+    [ "$_n" = gh ] && continue
+    [ -x "$_f" ] && [ ! -e "$nogh_bin/$_n" ] && ln -s "$_f" "$nogh_bin/$_n"
+  done
+done
+nogh_repo="$(make_wiki_repo true yes)"; SANDBOXES+=("$nogh_repo")
+nogh_err="$(mktemp)"; SANDBOXES+=("$nogh_err")
+nogh_rc=0
+nogh_out="$(PATH="$nogh_bin" bash "$SCRIPT" --repo-root "$nogh_repo" --quiet 2>"$nogh_err")" || nogh_rc=$?
+assert "gh absent skips with exit 0" "0" "$nogh_rc"
+assert "gh absent still prints the findings summary line" "1" \
+  "$(grep -c '^==> Total wiki-growth-check findings: 0$' <<<"$nogh_out")"
+assert "gh absent explains the skip with a WARNING line" "1" \
+  "$(grep -c '^WARNING: gh CLI not found' "$nogh_err")"
+
+# --- /rite:lint が exit 0 の WARNING を 4.3 に表示する規則 -----------------------
+LINT_SKILL="$SCRIPT_DIR/../../skills/lint/SKILL.md"
+assert "lint 3.5 result substring about success, count and pattern appears on one line" "1" \
+  "$(grep -c '`{prefix}_status` は `success` のまま、件数と結果パターンも変えない' "$LINT_SKILL")"
+assert "lint 3.8 lists branch.base and gh among the skips that carry a WARNING" "1" \
+  "$(grep -c 'WARNING 付き（`branch.base` 未解決 / `gh` 不在 / `jq` 不在' "$LINT_SKILL")"
+assert "lint 4.3 shows the WARNING lines of a success row" "1" \
+  "$(grep -c '行頭 `WARNING:` の行があれば、`success (0 findings)` の後ろに' "$LINT_SKILL")"
+
+# --- 節の中の列 0 コメントで branch: 節を閉じない ------------------------------
+comment_repo="$(make_wiki_repo true yes)"; SANDBOXES+=("$comment_repo")
+printf 'wiki:\n  enabled: true\n  branch_name: wiki\nbranch:\n# note\n  base: main\n' \
+  > "$comment_repo/rite-config.yml"
+git -C "$comment_repo" add rite-config.yml \
+  && git -C "$comment_repo" commit -q -m "comment inside branch" \
+  || { echo "FAIL: comment_repo config commit failed" >&2; exit 1; }
+comment_log="$(mktemp)"; SANDBOXES+=("$comment_log")
+PATH="$STUB_DIR:$PATH" GH_STUB_PRS='[]' GH_STUB_ARGS_LOG="$comment_log" \
+  bash "$SCRIPT" --repo-root "$comment_repo" --quiet >/dev/null 2>&1
+assert "column-0 comment keeps branch section open (base main)" "2" \
+  "$(grep -c -- '--base main' "$comment_log")"
+assert "column-0 comment does not fall back to develop" "0" \
+  "$(grep -c -- '--base develop' "$comment_log")"
 
 # --- Findings line always emitted --------------------------------------------
 findings_out="$(PATH="$STUB_DIR:$PATH" GH_STUB_PRS='[]' bash "$SCRIPT" --repo-root "$healthy_repo" --quiet 2>/dev/null || true)"

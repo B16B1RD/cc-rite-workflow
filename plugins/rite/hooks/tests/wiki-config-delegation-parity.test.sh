@@ -55,7 +55,7 @@ for skill in wiki-ingest wiki-lint cleanup issue-close; do
     fail "$skill no longer references $LIB_REL — did it grow its own parser again?"
   fi
   # The delegation is pointless if the body still calls a parser it defines.
-  if grep -qE '^\s*(extract_yaml_key|parse_wiki_key)\s*\(\)' "$body"; then
+  if grep -qE '^[[:space:]]*(extract_yaml_key|parse_wiki_key)[[:space:]]*\(\)' "$body"; then
     fail "$skill defines an inline YAML parser again"
   else
     pass "$skill defines no inline YAML parser"
@@ -115,7 +115,7 @@ if [ -f "$CLEANUP_BODY" ]; then
   fi
   # The row must be the unchecked kind: this is a real failure, not a legitimate
   # skip like disabled / auto_ingest_off / no_pending.
-  if grep -F "WIKI_INGEST_SKIPPED=1; reason=$REASON" "$CLEANUP_BODY" | grep -qF '| ` ` |'; then
+  if _gq_out=$(grep -F "WIKI_INGEST_SKIPPED=1; reason=$REASON" "$CLEANUP_BODY") && grep -qF '| ` ` |' <<< "$_gq_out"; then
     pass "the row marks it as an outstanding item, not a clean skip"
   else
     fail "the reason=$REASON row is not marked as an outstanding item"

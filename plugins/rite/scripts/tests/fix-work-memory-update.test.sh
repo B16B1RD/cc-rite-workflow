@@ -11,12 +11,17 @@ fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
 check() { local label=$1; shift; if "$@"; then pass "$label"; else fail "$label"; fi; }
 contains() { "$REAL_GREP" -qF -- "$2" "$1"; }
 lacks() { ! contains "$1" "$2"; }
-export REAL_GREP=$(command -v grep) REAL_MKTEMP=$(command -v mktemp)
+export REAL_GREP=$(command -v grep) REAL_MKTEMP=$(command -v mktemp) REAL_GIT=$(command -v git)
 export CASE_DIR="$TEST_DIR/case"
 SANDBOX="$TEST_DIR/plugin"
 mkdir -p "$SANDBOX/scripts" "$SANDBOX/hooks" "$TEST_DIR/bin" "$CASE_DIR/tmp"
 cp "$PLUGIN_ROOT/scripts/fix-work-memory-update.sh" "$SANDBOX/scripts/fix-work-memory-update.sh"
+# SKILL.md 4.5.2 の caller は fix-step.sh の 1 行呼び出し。helper は自分の位置から plugin_root を決める。
+cp "$PLUGIN_ROOT/scripts/fix-step.sh" "$SANDBOX/scripts/fix-step.sh"
 cp "$PLUGIN_ROOT/hooks/control-char-neutralize.sh" "$SANDBOX/hooks/control-char-neutralize.sh"
+mkdir -p "$SANDBOX/hooks/scripts/lib"
+cp "$PLUGIN_ROOT/hooks/scripts/lib/rite-config-path.sh" "$SANDBOX/hooks/scripts/lib/rite-config-path.sh"
+cp "$PLUGIN_ROOT/hooks/state-path-resolve.sh" "$SANDBOX/hooks/state-path-resolve.sh"
 TARGET="$SANDBOX/scripts/fix-work-memory-update.sh"
 export TMPDIR="$CASE_DIR/tmp"
 export PATH="$TEST_DIR/bin:$PATH"
@@ -29,6 +34,8 @@ case "$1" in
     if [ -n "$TEST_SIGNAL" ]; then kill -s "$TEST_SIGNAL" "$(cat "$CASE_DIR/helper.pid")"; fi
     [ "$DIFF_RC" = 0 ] || { echo 'diff IO error' >&2; exit "$DIFF_RC"; }
     cat "$CASE_DIR/diff.fixture" ;;
+  # config の解決（rite-config-path.sh / state-path-resolve.sh）は実 git で行う
+  rev-parse) exec "$REAL_GIT" "$@" ;;
   *) exit 99 ;;
 esac
 STUB
@@ -123,15 +130,15 @@ reset_case; run
 check 'normal rc' test "$RC" = 0
 marker normal success 42
 check 'body first match overrides branch' lacks "$CASE_DIR/git.log" 'branch --show-current'
-# Frozen pre-extraction resolver: compare platform-local legacy behavior, since
-# its GNU regex extensions do not promise the same value under BSD tools.
-# Keep this oracle independent of the extracted helper; config changes belong
-# to a separate change, not this compatibility-preserving extraction.
+# Frozen pre-extraction resolver: kept independent of the extracted helper so this
+# check compares against the original inline behavior, not a copy of the new code.
+# Uses `sed -E` (POSIX ERE) rather than a `\?` BRE extension, since the latter is a
+# GNU-only extension that BSD sed (macOS) does not interpret the same way.
 legacy_base=$(
   set +e
   cd "$CASE_DIR"
-  base_branch=$(grep -E '^\s*base:' rite-config.yml 2>/dev/null | head -1 \
-    | sed 's/.*base:[[:space:]]*"\?\([^"]*\)"\?.*/\1/')
+  base_branch=$(grep -E '^[[:space:]]*base:' rite-config.yml 2>/dev/null | head -1 \
+    | sed -E 's/.*base:[[:space:]]*"?([^"]*)"?.*/\1/')
   [ -z "$base_branch" ] && base_branch="develop"
   printf '%s' "$base_branch"
 )
@@ -155,9 +162,68 @@ done
 check 'helper leaves final fix sentinel to caller' lacks "$CASE_DIR/out" '[fix:'
 cleaned normal
 
-reset_case; printf 'No issue reference\n' > "$CASE_DIR/pr body.txt"; rm "$CASE_DIR/rite-config.yml"; run
+reset_case; printf 'No issue reference\n' > "$CASE_DIR/pr body.txt"; run
 marker fallback success 77
-check 'default base branch preserved' contains "$CASE_DIR/git.log" 'origin/develop...HEAD'
+
+# config が無いと branch.base を決められない。既定の develop で diff せず停止する
+reset_case; rm "$CASE_DIR/rite-config.yml"; run
+check 'missing config stops' test "$RC" = 1
+marker 'missing config' failed 42
+reason 'missing config' base_branch_unresolved
+no_calls 'missing config'
+check 'missing config does not diff' lacks "$CASE_DIR/git.log" 'diff --name-status'
+check 'missing config warns with tried path' contains "$CASE_DIR/err" "WARNING: rite-config.yml が見つかりません (試したパス: $CASE_DIR/rite-config.yml)"
+
+# 引用符なしの値 + 行末コメントがコメントごと base_branch に紛れ込まないことを確認する
+reset_case; printf 'branch:\n  base: develop    # 開発ベース\n' > "$CASE_DIR/rite-config.yml"; run
+check 'unquoted base strips trailing comment' contains "$CASE_DIR/git.log" 'origin/develop...HEAD'
+
+# branch: 節より前に別の節が base: キーを持っていても、branch: 節の値だけを拾うことを確認する
+reset_case; printf 'other:\n  base: wrong\nbranch:\n  base: "main"\n' > "$CASE_DIR/rite-config.yml"; run
+check 'base outside branch section is not picked up' contains "$CASE_DIR/git.log" 'origin/main...HEAD'
+check 'base outside branch section does not leak into diff range' lacks "$CASE_DIR/git.log" 'origin/wrong...HEAD'
+
+# branch: 節の直後に数字始まりのトップレベルキー（例: 2fa:）が来ても節終了を検出し、
+# その配下の base: を branch.base として誤取り込みしないことを確認する
+reset_case; printf 'branch:\n  pattern: "{type}/issue-{number}-{slug}"\n2fa:\n  base: wrong\n' > "$CASE_DIR/rite-config.yml"; run
+check 'non-alpha top-level key ends branch section' test "$RC" = 1
+reason 'branch section without base' base_branch_unresolved
+check 'base outside branch via non-alpha key does not leak into diff range' lacks "$CASE_DIR/git.log" 'origin/wrong...HEAD'
+
+# 節の中の列 0 コメントで節を閉じない。コメントアウトした base も値として読まない
+reset_case; printf 'branch:\n# base: old\n  base: "main"\n' > "$CASE_DIR/rite-config.yml"; run
+check 'column-0 comment keeps branch section open' contains "$CASE_DIR/git.log" 'origin/main...HEAD'
+check 'commented-out base is not read' lacks "$CASE_DIR/git.log" 'origin/old...HEAD'
+
+# 追跡外 config は main checkout にだけある。linked worktree から main の base を読む
+WT_MAIN="$TEST_DIR/wtmain"; WT_DIR="$TEST_DIR/wtwt"
+"$REAL_GIT" init -q "$WT_MAIN"
+"$REAL_GIT" -C "$WT_MAIN" -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -q --allow-empty -m init
+WT_RC=0
+"$REAL_GIT" -C "$WT_MAIN" worktree add -q -b feat/wm "$WT_DIR" > "$TEST_DIR/wt-add.err" 2>&1 || WT_RC=$?
+check 'linked worktree fixture is created' test "$WT_RC" = 0
+[ "$WT_RC" = 0 ] || sed 's/^/    /' "$TEST_DIR/wt-add.err"
+printf 'branch:\n  base: "trunk"\n' > "$WT_MAIN/rite-config.yml"
+reset_case; rm "$CASE_DIR/rite-config.yml"; RC=0
+(cd "$WT_DIR" && bash "$TARGET" --pr-body-file "$CASE_DIR/pr body.txt" --history-file "$HISTORY_FILE" \
+  --impl-status "$IMPL" --test-status "$TEST_STATUS" --doc-status "$DOC") > "$CASE_DIR/out" 2> "$CASE_DIR/err" || RC=$?
+check 'worktree with main config rc' test "$RC" = 0
+marker 'worktree with main config' success 42
+check 'worktree reads base from the main checkout config' contains "$CASE_DIR/git.log" 'origin/trunk...HEAD'
+check 'worktree with main config does not warn' lacks "$CASE_DIR/err" 'WARNING: rite-config.yml'
+
+# 読めない config は既定値へ倒さず、reason 付きの retained flag を出して止まる
+# （root は権限を無視して読めるため検証できない）
+if [ "$(id -u)" != 0 ]; then
+  reset_case; chmod 000 "$CASE_DIR/rite-config.yml"; run; chmod 644 "$CASE_DIR/rite-config.yml"
+  check 'unreadable config exits 1' test "$RC" = 1
+  reason 'unreadable config' config_unreadable
+  check 'unreadable config does not diff with the default base' lacks "$CASE_DIR/git.log" 'origin/develop...HEAD'
+  no_calls 'unreadable config'
+else
+  echo '  SKIP: root では読み取り権限を外せないため unreadable config を検証しない'
+fi
+
 reset_case; printf 'Resolves #12\n' > "$CASE_DIR/pr body.txt"; run; marker resolves success 12
 reset_case; printf 'Closes #45\n' > "$CASE_DIR/pr body.txt"; run; marker closes success 45
 reset_case; BODY_GREP_RC=1; run

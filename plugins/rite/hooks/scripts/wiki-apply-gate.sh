@@ -4,11 +4,20 @@
 # The record's own status is not enough. This gate re-reads rite-config.yml,
 # HEAD, and the blob of each recorded path, and refuses a stale or mismatched
 # success. Commit mode skips unless flow-state phase is implement or fix and
-# this worktree is that session's worktree. Review mode checks the record.
+# this worktree is that session's worktree. A session whose flow-state records
+# no worktree works in the checkout that holds its flow-state
+# (<root>/.rite/sessions/<id>.flow-state), so that <root> is its worktree.
+# Review mode checks the record but
+# not its session: review authorizes no commit, and a review resumed from
+# another session reads the record the implementing session wrote.
 # WIKI_APPLY_FLOW_STATE and WIKI_APPLY_MEMORY select files for tests.
 #
 # Exit 0: WIKI_APPLY_GATE=allow or =skip, plus reason=
 # Exit 1: WIKI_APPLY_GATE=deny plus reason=<name>
+# Non-zero without a WIKI_APPLY_GATE= line: argument error (exit 1, reason on
+#   stderr) or internal failure, whose exit code and stderr come from the
+#   failing command (for example a record that is not valid UTF-8, or python3
+#   missing). Callers treat any non-zero exit as a denial.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,6 +25,10 @@ MODE="commit"
 WORKTREE=""
 BASE=""
 while [ $# -gt 0 ]; do
+  case "$1" in
+    --mode|--worktree|--base|--flow-state|--memory)
+      [ $# -ge 2 ] || { echo "ERROR: $1 requires a value" >&2; exit 1; } ;;
+  esac
   case "$1" in
     --mode) MODE="${2:-}"; shift 2 ;;
     --worktree) WORKTREE="${2:-}"; shift 2 ;;
@@ -25,6 +38,10 @@ while [ $# -gt 0 ]; do
     *) echo "ERROR: unknown argument: $1" >&2; exit 1 ;;
   esac
 done
+case "$MODE" in
+  commit|review) ;;
+  *) echo "ERROR: --mode must be commit or review (got: '$MODE')" >&2; exit 1 ;;
+esac
 
 _skip() { echo "WIKI_APPLY_GATE=skip"; echo "reason=$1"; exit 0; }
 _deny() { echo "WIKI_APPLY_GATE=deny"; echo "reason=$1"; exit 1; }
@@ -50,10 +67,13 @@ fi
 
 # A present file that jq cannot read is not an empty phase. Commit mode must
 # not skip that as "some other phase".
-if ! _flow_row=$(jq -r '[.phase // "", .worktree // "", (.issue_number // "")] | @tsv' "$FLOW" 2>/dev/null); then
+# Fields are joined on the unit separator, not a tab: a tab is IFS whitespace,
+# so an empty worktree field would collapse and shift the issue number into
+# FS_WT. Sessions that never record a worktree leave that field empty.
+if ! _flow_row=$(jq -r '[.phase // "", .worktree // "", (.issue_number // "" | tostring)] | join("\u001f")' "$FLOW" 2>/dev/null); then
   _deny "state_unreadable"
 fi
-IFS=$'\t' read -r PHASE FS_WT ISSUE <<<"$_flow_row"
+IFS=$'\x1f' read -r PHASE FS_WT ISSUE <<<"$_flow_row"
 if [ -z "$WORKTREE" ]; then
   WORKTREE=$(git rev-parse --show-toplevel 2>/dev/null) || WORKTREE=""
 fi
@@ -65,6 +85,11 @@ _canon() {
   fi
 }
 WORKTREE=$(_canon "$WORKTREE")
+if [ -z "$FS_WT" ]; then
+  case "$FLOW" in
+    */.rite/sessions/*.flow-state) FS_WT="${FLOW%/.rite/sessions/*}" ;;
+  esac
+fi
 FS_WT_C=$(_canon "$FS_WT")
 
 if [ "$MODE" = "commit" ]; then
@@ -88,11 +113,27 @@ if [ -z "$MEM" ] || [ ! -f "$MEM" ]; then
   _deny "record_missing"
 fi
 
-if [ -z "$BASE" ] && [ -n "$WORKTREE" ] && [ -f "$WORKTREE/rite-config.yml" ]; then
-  BASE=$(awk '/^branch:/{f=1;next} f&&/^[^ ]/{exit} f&&/base:/{print;exit}' "$WORKTREE/rite-config.yml" \
-    | sed 's/.*base:[[:space:]]*//' | tr -d '[:space:]"'"'"'') || BASE=""
+# config は worktree 自身のもの、無ければ main checkout のものを読む。空の WORKTREE では読まない
+CFG=""
+if [ -n "$WORKTREE" ]; then
+  cfg_rc=0
+  CFG=$(bash "$SCRIPT_DIR/lib/rite-config-path.sh" "$WORKTREE" 2>&1) || cfg_rc=$?
+  if [ "$cfg_rc" -eq 1 ]; then
+    echo "WARNING: ${CFG}。wiki 設定は既定値で続行します（branch.base は既定値で補いません）" >&2
+    CFG=""
+  elif [ "$cfg_rc" -ne 0 ]; then
+    echo "ERROR: $CFG" >&2
+    _deny "config_unreadable"
+  fi
 fi
-[ -n "$BASE" ] || BASE="develop"
+if [ -z "$BASE" ] && [ -n "$CFG" ]; then
+  BASE=$(awk '/^branch:/{f=1;next} f&&/^[^[:space:]#]/{exit} f&&/^[[:space:]]+base:/{print;exit}' "$CFG" \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*base:[[:space:]]*//' | tr -d '[:space:]"'"'"'') || BASE=""
+fi
+# 既定の base で補わない。実際の base と違う枝との差分で evidence を照合してしまうため
+if [ -z "$BASE" ]; then
+  echo "WARNING: rite-config.yml の branch.base を読めません。base との差分は照合できません" >&2
+fi
 
 # Same wiki-key read as wiki-apply-capture.sh. A missing file is enabled,
 # and auto_query is on only when the value is exactly true.
@@ -100,7 +141,7 @@ _yaml_at() {
   local file="$1" key="$2"
   awk -v k="$key" '
     /^wiki:/ {s=1; next}
-    s && /^[^ ]/ {exit}
+    s && /^[^[:space:]#]/ {exit}
     s && $0 ~ "^[[:space:]]+" k ":" {print; exit}
   ' "$file" 2>/dev/null \
     | sed 's/[[:space:]]#.*//' \
@@ -110,9 +151,9 @@ _yaml_at() {
 }
 enabled="true"
 auto_query=""
-if [ -n "$WORKTREE" ] && [ -f "$WORKTREE/rite-config.yml" ]; then
-  enabled=$(_yaml_at "$WORKTREE/rite-config.yml" enabled)
-  auto_query=$(_yaml_at "$WORKTREE/rite-config.yml" auto_query)
+if [ -n "$CFG" ]; then
+  enabled=$(_yaml_at "$CFG" enabled)
+  auto_query=$(_yaml_at "$CFG" auto_query)
 fi
 case "$enabled" in
   false|no|0) enabled="false" ;;
@@ -123,9 +164,29 @@ case "$auto_query" in
   *) auto_query="" ;;
 esac
 
-STAGED=$(git -C "$WORKTREE" diff --cached --name-only 2>/dev/null || true)
-DIFF_NAMES=$(git -C "$WORKTREE" diff --name-only "${BASE}...HEAD" 2>/dev/null || true)
-DIFF_TEXT=$(git -C "$WORKTREE" diff "${BASE}...HEAD" 2>/dev/null || true)
+# 差分と staged の一覧はファイルで python へ渡す。環境変数に載せると 1 つの値の長さ上限を
+# 超えた大きな差分で python の起動自体が失敗し、判定行を出さずに終わる
+DIFF_DIR=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-apply-gate-XXXXXX") || _deny "tmp_unavailable"
+trap 'rm -rf "$DIFF_DIR"' EXIT
+DIFF_ERRF="$DIFF_DIR/err"
+# staged の一覧を取れないまま空として続けると paths と blob の照合が黙って外れるため拒否する
+if ! git -C "$WORKTREE" diff --cached --name-only >"$DIFF_DIR/staged" 2>>"$DIFF_DIR/err"; then
+  echo "ERROR: staged の一覧を取得できません: $(cat "$DIFF_DIR/err")" >&2
+  _deny "staged_unreadable"
+fi
+# review は applied の evidence をこの差分と照合する。取得に失敗した空の差分で照合すると
+# 正しい evidence も evidence_mismatch になるため、照合が要るときに理由を分けて拒否する
+# 失敗時の git の出力は元の実行から保持する（再実行では失敗した側を再現できない）。
+# 外部 diff と textconv は固定し、ユーザーの diff 設定で照合対象の本文を変えない
+DIFF_OK=1
+if [ -z "$BASE" ]; then
+  : >"$DIFF_DIR/names"
+  : >"$DIFF_DIR/text"
+  DIFF_OK=0
+else
+  git -C "$WORKTREE" diff --no-ext-diff --no-textconv --name-only "${BASE}...HEAD" >"$DIFF_DIR/names" 2>>"$DIFF_ERRF" || DIFF_OK=0
+  git -C "$WORKTREE" diff --no-ext-diff --no-textconv "${BASE}...HEAD" >"$DIFF_DIR/text" 2>>"$DIFF_ERRF" || DIFF_OK=0
+fi
 
 reason=$(
   WIKI_APPLY_FLOW="$FLOW" \
@@ -134,9 +195,8 @@ reason=$(
   WIKI_APPLY_WT="$WORKTREE" \
   WIKI_APPLY_ENABLED="$enabled" \
   WIKI_APPLY_AUTO="$auto_query" \
-  WIKI_APPLY_STAGED="$STAGED" \
-  WIKI_APPLY_DIFF_NAMES="$DIFF_NAMES" \
-  WIKI_APPLY_DIFF_TEXT="$DIFF_TEXT" \
+  WIKI_APPLY_DIFF_DIR="$DIFF_DIR" \
+  WIKI_APPLY_DIFF_OK="$DIFF_OK" \
   python3 - <<'PY'
 import json, os, re, subprocess, sys
 
@@ -210,7 +270,7 @@ for line in lines:
 
 if fields.get("issue") != issue:
     fail("issue_mismatch")
-if fields.get("session") != session:
+if mode != "review" and fields.get("session") != session:
     fail("session_mismatch")
 if fields.get("worktree") != worktree:
     fail("worktree_mismatch")
@@ -255,7 +315,11 @@ if not re.fullmatch(r"[0-9a-f]{40}", recorded_head):
 if recorded_head != current:
     fail("stale_head")
 recorded_paths = [p for p in (fields.get("paths") or "").split(",") if p]
-staged = [p for p in os.environ.get("WIKI_APPLY_STAGED", "").splitlines() if p]
+diff_dir = os.environ["WIKI_APPLY_DIFF_DIR"]
+def diff_file(name):
+    with open(os.path.join(diff_dir, name), encoding="utf-8", errors="surrogateescape") as f:
+        return f.read()
+staged = [p for p in diff_file("staged").splitlines() if p]
 staged_set = set(staged)
 for path in recorded_paths:
     parts = path.split("/")
@@ -275,8 +339,8 @@ for path in staged:
 if status == "ok":
     if not pages:
         fail("pages_missing")
-    names = set(p for p in os.environ.get("WIKI_APPLY_DIFF_NAMES", "").splitlines() if p)
-    diff_text = os.environ.get("WIKI_APPLY_DIFF_TEXT", "")
+    names = set(p for p in diff_file("names").splitlines() if p)
+    diff_text = diff_file("text")
     for page in pages:
         if page.get("body") != "read":
             fail("body_missing")
@@ -301,6 +365,8 @@ if status == "ok":
                 fail("evidence_missing")
             if blank(page.get("result")):
                 fail("result_missing")
+            if mode == "review" and os.environ.get("WIKI_APPLY_DIFF_OK") != "1":
+                fail("base_diff_unreadable")
             if mode == "review" and evidence not in names and evidence not in diff_text:
                 fail("evidence_mismatch")
 print("allow")
@@ -309,5 +375,14 @@ PY
 case "$reason" in
   allow) _allow ;;
   "") _deny "record_corrupt" ;;
+  base_diff_unreadable)
+    # どの base で差分を取れなかったかを利用者に見せる（base の読み違いを原因まで辿れるように）
+    if [ -z "$BASE" ]; then
+      echo "ERROR: rite-config.yml の branch.base を読めないため、base との差分を取れません" >&2
+    else
+      echo "ERROR: git diff ${BASE}...HEAD に失敗しました: $(cat "$DIFF_ERRF")" >&2
+    fi
+    _deny "$reason"
+    ;;
   *) _deny "$reason" ;;
 esac

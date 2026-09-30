@@ -11,65 +11,123 @@
 archive より前に起票するのは、転記元 JSON がまだ元の場所にあるうちに読むため。archive を
 維持する (D-04) のは、follow-up body は共有記録だが JSON は機械可読のローカル保全かつ起票
 失敗時の受け皿だから。同定不能時に起票しないのは、重複 spam が取り返しつかない一方、失敗は
-WARNING から手動復旧できるから (D-03)。helper は API 失敗でも exit 0 のため、失敗の一次信号は
+再実行で復旧できるから (D-03。起票済みの根因は先頭行 marker で見分けるので再実行で増えない)。helper は API 失敗でも exit 0 のため、失敗の一次信号は
 `FOLLOW_UP_ISSUE` だけである。完了報告がこれを見ず `REVIEW_CLEANUP_PARTIAL_FAILURE` だけを見ると、
 起票失敗が「なし」に倒れる。marker 不在を成功と読まない規約はステップ 5 と同型。
+
+ただし転記元は cleanup の archive だけが動かすのではない。`pr-cycle-cleanup.sh` の orphan 回収は
+session start など cleanup 以外の契機でも走り、マージ済み PR の JSON を cleanup より先に `archive/`
+へ移しうる。回収側で cleanup 済みかを判定する記録は無く、マージ後に cleanup しない PR の JSON を
+回収する既存の契約も崩せないため、読む側 (helper) が直下と `archive/` の両方を読む。
+同じ basename が両方にあるときは直下だけを採る (回収も cleanup の archive も同名衝突では直下を
+残すため、両方を読むと 1 cycle を 2 回数え、同じ指摘が 2 つの候補になる)。
+
+## follow-up-adoption-records
+
+起票の可否を重要度・実測・残存の有無で決めると、起票してから採否を決めることになり、同じ前提の
+候補が cycle ごとに Issue 化されて Open Issue が収束しない。そこで起票は採否ゲートの出口だけで決め、
+外部へ書く直前に出口を読む。判定記録を書くのは本手順を実行している LLM (分類役) で、helper は記録の
+欄・引用・対象 commit を機械的に確かめるだけにする (意味の判定を bash に持たせない)。
+
+候補の列挙を helper の `--list-candidates` に任せ、起票実行と同じ式で作るのは、記録の `ids` と起票時の
+候補がずれるとゲートが全候補を保留するから。LLM が JSON を読んで id を組み立てると、和集合・除外・
+sweep 起票済みの除外・完全一致の集約の結果と食い違う。
+
+起票は根因 (記録) ごとに 1 件にする。PR 単位の 1 件にまとめると、別々の根因が 1 つの Issue に混ざり、
+片方だけ直したときに閉じられない。機械同定 marker を根因 key (記録の ids を整列して連結) にするのは、
+一部の根因だけ起票済みの再実行で残りだけを起票するため。起票済みの判定を key の一致ではなく ids の
+重なりにするのは、再実行で候補が解消済みになって記録の ids が減ると key が変わるから。1 つの候補は
+1 つの記録にしか入らないので、ids が重なる記録は同じ根因である。前回の記録を引き継ぐ規則も同じ理由で、
+候補を別の記録へ移すと、その根因は起票済みの Issue と重ならず二重に起票される。
+
+処分を再利用するのは、cleanup のたびに同じ候補の意味判定を繰り返さないため。解消済みかどうかは記録の
+`present` が持つ判定で、起票前の別の段で判定し直すと同じ判定を 2 回行い、再実行でも毎回やり直すことになる。再利用する
+処分は前提が変わっていないものに限る。前提が変わったかどうかは分類役に任せず helper が決める (判断を
+重ねると再利用の意味が無くなる)。台帳の REJECT / RESOLVED 行は、前提の起点から対象 commit
+までに指摘のファイルが変わっていなければ前提が保たれているとみなす。起点は判定文末尾の `@<commit>`
+(follow-up が判定した commit)、無ければ行の出典 JSON (出典の無い行は最新のレビュー結果 JSON) の commit。
+follow-up 自身の行を出典 JSON の commit から測ると、判定前の fix cycle の変更だけで失効してしまう。issued / LINK は追跡先が根因を
+引き受けているので、前提によらず除く (追跡の冪等性)。前回の実行の判定記録は、head が同じなら同じ commit
+で判定したものなので写す。採否ゲートが保留した候補は未処分なので写さず、判定し直す。
+
+旧形式の PR 単位 marker を持つ follow-up がある PR は、その PR の候補を当時すべて転記済みなので起票済み
+として扱う。根因ごとに起票し直すと同じ内容の Issue が並ぶ。この判定は出口が決まった後に行う (ゲートより
+先に既存検索が失敗すると、判定記録が無い状態が保留ではなく失敗として報告される)。
+
+対象 commit は最新の読める review JSON の `commit_sha` にする。マージ後の HEAD には review 時の差分が
+無く、引用や差分位置を確かめる基準にならない。JSON が 1 本も無い (別環境の cleanup で先送り行だけが
+残る) ときはマージ済み PR の head (PR ブランチの最終 commit) を使う。これも base との差分を持つ。
+それも決められなければ既定値で埋めず、保留ではなく失敗 (`head_unresolved`) で止める。
+
+## follow-up-held-no-purge
+
+保留中に state 整理を進めると、保留した候補の出典 (レビュー結果 JSON) が退避・削除され、判定記録を
+補って再実行しても同じ候補と対象 commit を作れない。指摘 0 件の最新 JSON は退避されず削除されるので、
+対象 commit も変わる。そこで purge helper 自身が採否保留ファイルを見て、1 つでもあれば何も削除・退避
+しない。follow-up に限らず sweep / triage の保留も同じで、iterate が採否保留で止まったままマージされた
+PR を cleanup しても保留候補の全文と出典が残る。判定を helper の `PR_STATE_PURGE=held` 1 つに寄せるのは、
+呼び出し側が hold ファイルを別途調べると経路ごとに判定がずれるから。ステップ 7 の orphan 回収も
+マージ済み PR の JSON を片付けるため held のときは止める (回収は他の起動経路でも走るので、回収側も
+採否保留ファイルがある PR のレビュー結果を残す)。保留を捨ててよいのは Issue の中止のように放棄が
+明示された経路だけで、その経路だけが `--drop-adoption-hold` を渡す。
+
+保留を `declined` や処分済みに変換しないのは、出口が出ていない候補を完了扱いにすると再実行の契機が
+失われるから。判定済み記録を書かないのも同じ理由で、書くと JSON を片付けた後の再実行が
+`already_processed` になり保留が消える。
 
 ## follow-up-sweep-issued-dedup
 
 sweep の起票 Issue に follow-up ラベルと先頭行 marker を付けて既存判定に乗せる方式は採らない。
-既存判定は「同一 PR 由来の marker を持つ Issue が 1 件でもあれば `already_exists` で全件 skip」
-するため、sweep 起票が 1 件あるだけで recorded 指摘まで転記されなくなる。除外は finding 単位で
+既存判定は先頭行 marker (根因 key、旧形式は PR 単位) で起票済みを決めるため、sweep の起票が
+follow-up の根因と一致しないと除外されず、PR 単位の marker を付ければ PR の全候補が転記されなくなる。除外は finding 単位で
 行う必要があり、その単位の記録は台帳にしか無い。
 
-台帳の取得を SKILL 側でなく helper 内で行うのは、除外 key が file パスを含むため。6.0.V の
-`{resolved_ids_csv}` を `{pr_number}-{14 桁}.json#F-NN`（同秒衝突時は `{pr_number}-{14 桁}~{4 桁小文字 hex}.json#F-NN`）の形のトークンに限っているのと同じ理由で、
-パス入りの値を二重引用符内へリテラル置換で渡す経路を増やさない。
+台帳の取得を SKILL 側でなく helper 内で行うのは、照合の key が file パスを含むため。パス入りの値を
+二重引用符内へリテラル置換で渡す経路を作らない。
 
-除外するのは、sweep が読んだ最新 JSON 由来の finding のうち、台帳の issued 行 `[finding_id, file:line]`
-と組が一致するものだけ。組は `nb-sweep-collect.sh` が台帳と照合する identity で、最新 JSON と一致すれば
-本 PR の sweep が起票した行だと言える（同じ関連 Issue には別 PR の台帳行も並びうる）。
+除外するのは、台帳の issued 行と `[finding_id, file:line]` の組が一致し、かつ行の出典（sweep が読んだ
+JSON の basename）が finding の出典 JSON と一致するものだけ。組は `nb-sweep-collect.sh` が台帳と照合する
+identity で、`id` は JSON ごとに振り直されるため、どの JSON の組かを出典で確定して初めて sweep が起票した
+その指摘だと言える。出典は sweep の完了記録（最後に sweep した JSON 1 本しか持たない）からは復元できない
+ため台帳行に持たせる。sweep 後に別の cycle が走って最新 JSON が変わっても、起票した cycle の指摘を
+除外できる。basename は PR 番号で始まるので、同じ関連 Issue に並ぶ別 PR の台帳行とは一致しない。
+出典の無い旧形式の行は、どの JSON を読んだかが分からないため最新 JSON 由来の finding とだけ照合する。
 
-先行 cycle の finding は、id や位置が最新 JSON の起票済み指摘と同じでも除外しない。重複防止
-（id が振り直された同じ指摘を二重に起票しない）と欠落防止（sweep 未実施の指摘は転記する）は、台帳が
-cycle 属性も指摘の内容も持たない現状では機械的に両立しない。同じ位置には cycle を跨いで別の指摘が
-並ぶことも多く、位置や id で推定して除外するとその本文がどの Issue にも残らない。欠落は共有経路から
-本文が消える取り返しのつかない損失で、重複は人が閉じれば済む損失なので、**欠落防止を優先する**。
-最新 JSON の起票済み指摘と同じ `file:line` にある先行 cycle の指摘に限り、重複しうる件数と
-位置を WARNING で出す。行がずれた再報告は台帳から判別できないため、WARNING なしで重複しうる。
+後の cycle は未解消の指摘を id を振り直し、description を書き直して再報告する。組も本文も一致しないため、
+出典の照合だけでは起票済みの指摘がもう一度 follow-up に載る。そこで、再報告が description の括弧内に
+残す再掲マーカー（NOT_FIXED / 再掲 と前回の F-NN）を、直前の cycle の同じ id・`file:line` の指摘への
+明示的な参照として辿り、起票した指摘と繋がる指摘をまとめて除外する。参照はマーカーを持つ側から張るので、
+マーカーの無い初出も、後の cycle のマーカーが指せば除外される。マーカーによる結びつきでは reviewer は
+比べない。同じ指摘でも cycle ごとに帰属する reviewer が変わるため、比べると再報告を取りこぼす。位置・id の
+いずれかが外れる参照や、2 つ前の cycle への参照は結ばない。PARTIAL / REGRESSION を含むマーカーは残りの問題を書き直した新しい本文を持ち、
+結ぶとその本文がどの Issue にも残らないため結ばない。マーカーは reviewer の自由記述で書式が固定されて
+いないため、見落とせば重複側（転記）に倒れる。逆に、括弧の中で NOT_FIXED / 再掲 と並べて別の指摘の
+F-NN に触れた本文は、再報告でなくても誤って結ばれ欠落側に倒れうる。この誤結合は参照先が直前の cycle・
+同じ id・同じ `file:line` の指摘である場合に限られ、括弧の外での言及やこの 3 条件を外れる参照を結ばない
+ことはテストで固定している。マーカーとは別に、`_src` と id 以外が完全一致する写しも同じ指摘として結ぶ
+（id は cycle ごとに振り直される）。写しは reviewer も含めて比べるので、reviewer だけが違う指摘は写しとしては結ばない（再掲マーカーが
+指していればマーカーによる結びつきで結ぶ）。
 
-## follow-up-exclude-key
+それ以外の出典が一致しない finding は、id や位置が起票済み指摘と同じでも除外しない。台帳は指摘の内容を
+持たず、マーカーの無い別 cycle の同じ位置の指摘が再報告か別の指摘かを判定できない。位置や id で推定して
+除外するとその本文がどの Issue にも残らない。欠落は共有経路から本文が消える取り返しのつかない損失で、
+重複は人が閉じれば済む損失なので、**欠落防止を優先する**。台帳の行と直接一致して除外した最新 JSON 由来の
+指摘と同じ `file:line` に残る先行 cycle の指摘に限り、重複しうる件数と位置を WARNING で出す。マーカーの
+無い行ずれした再報告と、それ以外の除外（最新 JSON 以外を出典とする除外、結びつきによる除外）と同じ
+`file:line` に残る指摘は、WARNING なしで重複しうる。
 
-6.0.V から helper へ渡す除外指定の単位は「出典 JSON の basename + `#` + id」。`id` は各 JSON 内で
-振り直される連番で、複数 cycle に同じ id が並ぶため、id だけでは解消済みの 1 件を指せない。id だけで
-照合すると helper は曖昧として除外を拒否し、解消済みの指摘がまとめて follow-up に転記される。
-
-`file:line` を key に含めないのは、同じ位置に cycle を跨いで別の指摘が並ぶため。位置で指すと、
-解消済みの指摘と同じ位置にある残存指摘まで落ちる。
-
-basename は rite が付けるファイル名の形（`{pr_number}-{14 桁}.json`、同秒衝突時に保存 helper が
-suffix を付けた `{pr_number}-{14 桁}~{4 桁小文字 hex}.json`）に限る。除外指定は二重引用符内へ
-リテラル置換される値なので、任意のパス文字列を通す経路を作らない。形が合わない出典（corrupt 退避
-ファイル等）の指摘は key を持たず `undecidable` として転記されるだけで、欠落は起きない。helper も
-形が合わないトークンを 1 つでも受け取ったら除外を部分適用せず全件を転記する。
-
-## reverify-no-extract-marker
-
-6.0.V の抽出が成功しても marker を出さないのは、抽出だけを示す marker が「判定に到達しなかった」
-経路で最後の marker として残り、ステップ 12 の **marker 不在の fail-loud 分岐を迂回させる**ため。
-判定未到達はその分岐が「実施結果を確認できませんでした」として捕まえる状態であり、抽出 marker が
-あるとそこへ落ちず、判定表のどの行にも一致しない未定義状態になる。0 件のときは finding が
-1 行も出力されないので、抽出 marker があるとそれが必ず終端になる。
-値を `done_extract` にすると `done` の接頭辞にもなり、判定表を前方一致で読む消費者に対して
-`done` 行へ吸われる第 2 の欠陥面を作る。成功の signal は判定を終えた `done` 1 本に絞り、
-marker 皆無は「節ごと未実行 or 判定未到達」として fail-loud に扱う（ステップ 12 の marker 不在分岐）。
+出典を欠く新規行が 1 行でもあれば、`nb-sweep-ledger.sh append` は entries 全体を書き込み前に拒否し、台帳を
+変更しない。黙って書くと cleanup がその行を旧形式として最新 JSON とだけ照合し、先行 cycle の起票済み指摘を
+再び転記する挙動へ戻るため。
 
 ## pr-merged-default
 
 `{pr_merged}` を全経路で既定するのは、ステップ 4-W の worktree パス manifest 記録とステップ 5 の
 ブランチ削除（squash 残渣の強制削除 / 遅延ブランチの manifest 記録）が未定義値を参照しないため。
 `mergedAt` 非 null 以外（未マージ PR の強制クリーンアップ、PR 未検出でブランチ削除を選んだ経路）を
-`false` に倒すのは、未マージ作業を reap 対象に混ぜないため。
+`false` に倒すのは、未マージ作業を reap 対象に混ぜないため。ステップ 8 / 10 / 11 も `{pr_merged}` を見て、未マージ PR の
+関連 Issue にマージの記録を書かず完了として閉じず、Projects Status・作業メモリ・親 Issue の Tasklist も完了にしない
+（Issue を開いたまま残すのに他の記録だけが完了になる食い違いを作らない）。
 
 ## tasklist-parent-verify
 
@@ -111,7 +169,7 @@ archive helper に対して既に採っている形を、抽出で新設した�
 ステップ 6.0（follow-up Issue 起票、`_fu_rc`）も同じ rc → marker の形を採るが、本 anchor の
 対象には数えない。消費側が marker 不在を「完了」と読まないため、上記の規約破れが起きないため。
 なお `cleanup-session-worktree-teardown.sh` 内で内側の分類 helper を呼ぶ境界も同型の扱いにして
-あり（失敗を `none` ではなく `CLEANUP_WT=unknown` へ寄せる。未記録 worktree の補完に必要な `git worktree list` の失敗も `reason=worktree_list_failed`、補完の候補パスを物理パスへ解決できない場合も `reason=candidate_unresolved` で同じく寄せる）、外側と内側で「分類不能」の表現を
+あり（失敗を `none` ではなく `CLEANUP_WT=unknown` へ寄せる。未記録 worktree の補完に必要な `git worktree list` の失敗も `reason=worktree_list_failed`、補完の候補パスを物理パスへ解決できない場合も `reason=candidate_unresolved`、rite-config.yml を読めない場合も `reason=config_unreadable` で同じく寄せる）、外側と内側で「分類不能」の表現を
 揃えている — `none` は消費側が唯一「行ごと省略」に routing する値なので、そこへ落とすと検出失敗が
 報告から消える。
 
@@ -166,9 +224,10 @@ dirty な基点ブランチを黙って上書きしないため。破棄・stash
 
 ## nb-sweep-done-sweep
 
-`nb-sweep-done-{pr}.txt` は 5.S 再入の権威（会話 marker は観測用）。寿命は本 run — 0.6 の
-`fresh || cur_cc == 0` で消し、cleanup でも回収する。cleanup まで残すと再 iterate の
-5.S が skip され、未消化 0 の再保証が死ぬ。
+`nb-sweep-done-{pr}.txt` は 5.S 再入の権威（形式は review-result-schema.md の却下台帳節）。`nb-sweep-origin-{pr}.txt` / `nb-sweep-entries-{pr}.md` は止まった sweep の戻り先で、マージ後は戻る先が無いので一緒に消す。
+cleanup が回収するのは、PR 単位の state の後片付けのため。同じ呼び出しでその PR の review JSON も
+削除・退避するので、残したファイルが同じ JSON への再入を skip させる状況は起きない。残しても害は
+ないが、参照先の JSON が消えた孤児を PR ごとに積み上げない（`review-run-since-{pr}.txt` と同じ扱い）。
 
 ## wiki-worktree-persist
 
@@ -233,6 +292,13 @@ summary の `failed` には数えられない（ファイル自体は処理済�
 載せた以上 corrupt を持つ PR は毎回この reason を出すので、失敗扱いのままだと存在しない手動
 対応を促し続ける。一方 `cause=jq_missing` は環境不備で、放置すると本来削除されるべき JSON まで
 無判定で退避され続ける。
+
+follow-up 側の `already_processed` を x 相当に置くのは、この reason が判定済み記録からしか出ないため。
+記録は follow-up helper 自身が x 相当の結果（created / no_findings / already_exists / all_issued /
+all_recorded）で終えたときだけ書く (held では書かない)。purge が JSON を片付けたかどうかには結び付けない — 片付けの成否は
+判定の成否を表さず、`json_undecidable` で終わった PR の JSON も片付けられうる。先送り欠陥があれば
+helper は skip せず採否の判定へ進む。記録が無い・読めない・内容が一致しないときは `no_json` に倒し、
+判定を終えていない PR を完了扱いにしない。
 
 ## outstanding-checkbox
 

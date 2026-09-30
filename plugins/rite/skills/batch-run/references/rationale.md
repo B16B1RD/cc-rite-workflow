@@ -54,7 +54,8 @@ flow-state の `handoff` は単一フィールド + default-clear で、iterate 
 Stop hook の batch watchdog は handoff フィールドではなく自セッションの run-queue を読む別軸
 である。handoff が非空なら既存の prefix 分岐が先に block し、watchdog は評価しない。handoff が
 空で run-queue が `active:true` かつ未完了のときだけ停止を差し戻す。batch-run は handoff を
-set しない契約のまま。
+set しない契約のまま。自セッションの一時停止の記録（`flow-state.sh pause`）があるときは、
+どちらの軸も評価せずに停止を許可する（handoff も消費しない）。
 
 ## session-scoped-queue
 
@@ -91,3 +92,25 @@ atomic は `jq → 一時ファイル → mv` で十分。
 
 `RUN_ADVANCE` の件数は「キューを進めた件数」であり成功件数ではない。デフォルトモードの
 `[fix:replied-only]` もこの前進 bash を通る。サーキットブレーカーは前進しない。内訳はステップ 7 の完了通知。
+
+## merge-conflict-route
+
+ready から merge までの間に base が進んで PR が競合すると、merge は `[merge:not-ready]` を返す。
+これを一律に失敗とすると、base 取り込みで人手なしに解消できる競合でも batch が止まり、merge が
+案内する解消手段（fix-plan の base 取り込み）と batch の挙動が食い違う。merge は sentinel の種類を
+増やさず、競合のときだけ理由 marker を併記する。run は marker を伴う not-ready だけを取り込み経路へ
+回し、それ以外の未マージ（CI / draft / BLOCKED / 受入条件）は従来どおり停止する。
+
+取り込み後は再レビューを必ず経由する。取り込み commit はレビュー済み HEAD を動かすため、
+reviewed HEAD の照合を通らずに merge へ戻る経路は作らない。PR を draft に戻してから取り込むのは、
+`/rite:ready` が既に Ready の PR に対して sentinel を出さずに終わるためである。Ready のまま iterate
+から ready へ戻ると、run は sentinel 不在を失敗と読んで同じ Issue で止まる。draft に戻せば既存の
+iterate → ready → merge の行をそのまま使え、phase=ready の記録（merge の e2e 判定の前提）と残存
+handoff の消去も ready 自身が行う。
+
+取り込みの前に phase を `fix` に戻すのは、途中で止まったときの再開先を iterate に揃えるためである。
+phase=`ready` のまま止まると、ステップ 1.5 は merge から続け、merge は draft の PR を競合以外の
+not-ready として返すため、同じ Issue で止まり続ける。
+
+差し戻しの回数に上限は設けない。再突入のたびに同じ run のレビュー cycle が進み、収束しない再レビューは
+iterate のサーキットブレーカーが止める。

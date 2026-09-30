@@ -47,7 +47,7 @@ cat > "$SAMPLE_PATH" <<'MD'
 tmpfile=$(mktemp /tmp/rite-wiki-content-XXXXXX)
 MD
 rc=0; output=$(run "$SAMPLE") || rc=$?
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q '\[tmp-hardcode\]\[P1\]'; then
+if [ "$rc" -eq 1 ] && grep -q '\[tmp-hardcode\]\[P1\]' <<< "$output"; then
   pass "mktemp /tmp template → exit 1 + [P1]"
 else fail "expected rc=1 with [P1], got rc=$rc: $output"; fi
 
@@ -171,7 +171,7 @@ cat > "$allroot/plugins/rite/skills/bad.md" <<'MD'
 git push -u origin wiki
 MD
 rc=0; output=$(bash "$TARGET" --all --repo-root "$allroot" 2>&1) || rc=$?
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q 'Total tmp-hardcode findings: 1'; then
+if [ "$rc" -eq 1 ] && grep -q 'Total tmp-hardcode findings: 1' <<< "$output"; then
   pass "--all finds violation, count line matches lint regex"
 else fail "expected rc=1 + 'Total tmp-hardcode findings: 1', got rc=$rc: $output"; fi
 rm -f "$allroot/plugins/rite/skills/bad.md"
@@ -183,7 +183,7 @@ echo "TC-011: --all without plugins/rite → exit 2"
 noplugin="$TEST_DIR/noplugin"
 mkdir -p "$noplugin"
 rc=0; output=$(bash "$TARGET" --all --repo-root "$noplugin" 2>&1) || rc=$?
-if [ "$rc" -eq 2 ] && echo "$output" | grep -q 'plugins/rite does not exist'; then
+if [ "$rc" -eq 2 ] && grep -q 'plugins/rite does not exist' <<< "$output"; then
   pass "--all without plugins/rite → exit 2"
 else fail "expected rc=2, got rc=$rc: $output"; fi
 
@@ -192,7 +192,7 @@ else fail "expected rc=2, got rc=$rc: $output"; fi
 # --------------------------------------------------------------------------
 echo "TC-012: --skip-if-no-target → exit 0"
 rc=0; output=$(bash "$TARGET" --all --skip-if-no-target --repo-root "$noplugin" 2>&1) || rc=$?
-if [ "$rc" -eq 0 ] && echo "$output" | grep -q 'not applicable'; then
+if [ "$rc" -eq 0 ] && grep -q 'not applicable' <<< "$output"; then
   pass "--skip-if-no-target → clean skip exit 0"
 else fail "expected rc=0 with skip notice, got rc=$rc: $output"; fi
 
@@ -201,7 +201,7 @@ else fail "expected rc=0 with skip notice, got rc=$rc: $output"; fi
 # --------------------------------------------------------------------------
 echo "TC-013: missing --target → exit 2"
 rc=0; output=$(bash "$TARGET" --repo-root "$TEST_DIR" --target no/such/file.md 2>&1) || rc=$?
-if [ "$rc" -eq 2 ] && echo "$output" | grep -q 'target not found'; then
+if [ "$rc" -eq 2 ] && grep -q 'target not found' <<< "$output"; then
   pass "missing --target → exit 2"
 else fail "expected rc=2 with 'target not found', got rc=$rc: $output"; fi
 
@@ -214,8 +214,8 @@ tmpfile=$(mktemp /tmp/rite-q-XXXXXX)
 MD
 rc=0; output=$(bash "$TARGET" --quiet --repo-root "$TEST_DIR" --target "$SAMPLE" 2>&1) || rc=$?
 if [ "$rc" -eq 1 ] \
-   && echo "$output" | grep -q '\[tmp-hardcode\]\[P1\]' \
-   && ! echo "$output" | grep -q 'Total tmp-hardcode findings'; then
+   && grep -q '\[tmp-hardcode\]\[P1\]' <<< "$output" \
+   && ! grep -q 'Total tmp-hardcode findings' <<< "$output"; then
   pass "--quiet: findings kept, count line suppressed"
 else fail "expected rc=1 with [P1] and no count line, got rc=$rc: $output"; fi
 

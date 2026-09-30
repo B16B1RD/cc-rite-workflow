@@ -971,7 +971,7 @@ if [ ! -f "$recon_dir/status-update-call.json" ] && grep -q 'post_compact_status
 else
   fail "expected skip + post_compact_status_config_invalid (helper=$([ -f "$recon_dir/status-update-call.json" ] && echo called || echo not-called)); stderr: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
 fi
-if grep 'post_compact_status_config_invalid' "$recon_stderr" | grep -q 'stderr=ERROR: github.projects.fields.status:'; then
+if _gq_out=$(grep 'post_compact_status_config_invalid' "$recon_stderr") && grep -q 'stderr=ERROR: github.projects.fields.status:' <<< "$_gq_out"; then
   pass "the WARNING carries the resolver's config diagnostic"
 else
   fail "expected the resolver diagnostic inside the WARNING line; stderr: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
@@ -1185,8 +1185,8 @@ jq -n '{compact_state: "recovering", compact_state_set_at: "2026-09-02T00:00:00Z
 write_batch_queue "$TC_DIR"
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
 if [ -z "$OUTPUT" ] \
-  && ! echo "$OUTPUT" | grep -q "Auto-compact recovery" \
-  && ! echo "$OUTPUT" | grep -q "Batch: run-queue active"; then
+  && ! grep -q "Auto-compact recovery" <<< "$OUTPUT" \
+  && ! grep -q "Batch: run-queue active" <<< "$OUTPUT"; then
   pass "T-08 auto: no recovery/Batch on PostCompact stdout"
 else
   fail "T-08 auto: unexpected stdout: $OUTPUT"
@@ -1199,8 +1199,8 @@ jq -n '{compact_state: "recovering", compact_state_set_at: "2026-09-02T00:00:00Z
 write_batch_queue "$TC_DIR"
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "manual"}' | bash "$HOOK" 2>/dev/null) || true
 if [ -z "$OUTPUT" ] \
-  && ! echo "$OUTPUT" | grep -q "Compact recovery" \
-  && ! echo "$OUTPUT" | grep -q "Batch: run-queue active"; then
+  && ! grep -q "Compact recovery" <<< "$OUTPUT" \
+  && ! grep -q "Batch: run-queue active" <<< "$OUTPUT"; then
   pass "T-08 manual: no recovery/Batch on PostCompact stdout"
 else
   fail "T-08 manual: unexpected stdout: $OUTPUT"
@@ -1213,7 +1213,7 @@ write_per_session_state "$TC_DIR" \
 jq -n '{compact_state: "normal"}' > "$(compact_state_path "$TC_DIR")"
 write_batch_queue "$TC_DIR"
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
-if echo "$OUTPUT" | grep -q "Batch: run-queue active"; then
+if grep -q "Batch: run-queue active" <<< "$OUTPUT"; then
   fail "T-08b: Batch line leaked on compact_state=normal: $OUTPUT"
 else
   pass "T-08b: no Batch line when not recovering"
@@ -1250,8 +1250,8 @@ printf 'not-json{{' > "$TC_DIR/.rite/state/run-queue-${sid11}.json"
 T11_ERR=$(mktemp "$TEST_DIR/stderr.XXXXXX")
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>"$T11_ERR") || true
 if [ -z "$OUTPUT" ] \
-  && ! echo "$OUTPUT" | grep -q "Auto-compact recovery" \
-  && ! echo "$OUTPUT" | grep -q "Batch:"; then
+  && ! grep -q "Auto-compact recovery" <<< "$OUTPUT" \
+  && ! grep -q "Batch:" <<< "$OUTPUT"; then
   pass "T-11 corrupt: PostCompact stdout empty (Batch moved to SessionStart)"
 else
   fail "T-11 corrupt: stdout=$OUTPUT stderr=$(cat "$T11_ERR")"

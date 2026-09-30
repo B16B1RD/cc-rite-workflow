@@ -2,7 +2,8 @@
 
 > **Charter**: Subject to [Simplification Charter](../skills/rite-workflow/references/simplification-charter.md). Runtime に効かない経緯記述は書かない。
 
-採用 site は `skills/fix/SKILL.md` / `skills/pr-review/SKILL.md` / `skills/open/SKILL.md` /
+採用 site は `scripts/fix-step.sh`（fix のステップ本体）/ `scripts/pr-review-step.sh` /
+`skills/pr-review/references/doc-heavy-reviewers.md` / `skills/open/SKILL.md` /
 `skills/merge/SKILL.md` / `skills/wiki-lint/SKILL.md` / `skills/wiki-ingest/SKILL.md` /
 `skills/cleanup/SKILL.md` ステップ 3。ステップ 5 の trap/cleanup 関数実体は
 `hooks/scripts/cleanup-branch-delete.sh` へ移設済みで、SKILL.md 側は helper を呼び出すだけ。
@@ -148,10 +149,10 @@ _rite_<scope>_<phase>_cleanup() {
 #### 採用 site (canonical 参照実装)
 
 - `plugins/rite/skills/wiki-lint/SKILL.md` ステップ 2.2 / 6.0 / 6.2 / 8.3
-  - うち **ステップ 6.0 / 6.2** の trap/cleanup 関数実体は `hooks/scripts/wiki-lint-skipped-refs.sh` /
-    `wiki-lint-source-refs.sh` へ移設済みで、lint.md 側の bash block は helper を呼び出すだけ (本ファイル
+  - うち **ステップ 6.0 / 6.2 / 8.3** の trap/cleanup 関数実体は `hooks/scripts/wiki-lint-skipped-refs.sh` /
+    `wiki-lint-source-refs.sh` / `wiki-lint-log-commit.sh` へ移設済みで、lint.md 側の bash block は helper を呼び出すだけ (本ファイル
     「Case Statement Indent Convention」節の「参照実装」サブ節の委譲注記と同一の実態)。lint.md 内に inline で残る trap/cleanup は
-    **ステップ 2.2 / 8.3** の 2 site (`_cleanup` 定義 + 4 行 trap が lint.md 本文に存在)。
+    **ステップ 2.2** の 1 site (`_cleanup` 定義 + 4 行 trap が lint.md 本文に存在)。
 - `plugins/rite/skills/wiki-ingest/SKILL.md` ステップ 2.2 / 2.3 / 5.2
 
 #### 命名規約
@@ -244,8 +245,8 @@ esac
 ### 参照実装
 
 canonical 確立先は `plugins/rite/skills/wiki-lint/SKILL.md` (ステップ 6.0 / 6.2 / 8.2 / 8.3 の dispatch
-構造 case 文。うち 6.0 / 6.2 の case 文実体は `hooks/scripts/wiki-lint-skipped-refs.sh` /
-`wiki-lint-source-refs.sh` へ移設済みで helper 内にある — lint.md 側の注記と同一の委譲実態)。**Scope**: dispatch 構造の case 文 (placeholder substitute validation gate /
+構造 case 文。うち 6.0 / 6.2 / 8.3 の case 文実体は `hooks/scripts/wiki-lint-skipped-refs.sh` /
+`wiki-lint-source-refs.sh` / `wiki-lint-log-commit.sh` へ移設済みで helper 内にある — lint.md 側の注記と同一の委譲実態)。**Scope**: dispatch 構造の case 文 (placeholder substitute validation gate /
 strategy dispatch / rc dispatch) を対象とし、他 case arm 内にネストした dispatch case も含む。
 while loop の inner case (per-iteration 状態判定) は scope 外。新規 case 追加時は本 pattern を
 採用すること。ステップ番号 + case label の semantic anchor 形式で参照する (line 番号参照は drift する

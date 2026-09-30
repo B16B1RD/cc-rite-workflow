@@ -4,9 +4,9 @@
 # `safety.max_review_cycles` の既定値 15 を pin する。
 #
 # 2 系統の検査を持つ:
-#   1. 挙動 (T-01〜T-03) — iterate/SKILL.md から fallback ブロックを literal 抽出し、
-#      sandbox の rite-config.yml に対して実行して解決値を確かめる。テストへコピーすると
-#      SKILL.md 側の変更が反映されず drift するため、base-update-classify.test.sh と同じ
+#   1. 挙動 (T-01〜T-03) — scripts/iterate-step.sh (iterate の各ステップ本体) から fallback
+#      ブロックを literal 抽出し、sandbox の rite-config.yml に対して実行して解決値を確かめる。
+#      テストへコピーすると iterate-step.sh 側の変更が反映されず drift するため、base-update-classify.test.sh と同じ
 #      抽出実行方式を取る。抽出アンカーが壊れたらテスト自体が FATAL で落ちる。
 #   2. 記述の一致 (T-04) / 契約の不変 (T-05) — 既定値は 8 ファイルに複製されており、
 #      1 箇所でも取り残されると読者が「その経路は別の値」と誤読する。cycle-scope-contract.test.sh
@@ -23,6 +23,7 @@ PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 
 ITERATE="$PLUGIN_ROOT/skills/iterate/SKILL.md"
+ITERATE_STEP="$PLUGIN_ROOT/scripts/iterate-step.sh"
 TEMPLATE_CFG="$PLUGIN_ROOT/templates/config/rite-config.yml"
 EXEC_METRICS="$PLUGIN_ROOT/references/execution-metrics.md"
 CONFIG_DOC="$REPO_ROOT/docs/CONFIGURATION.md"
@@ -36,11 +37,11 @@ BACKSTOP_CYCLE=$((DEFAULT_CYCLES + 1))
 TEST_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEST_DIR"' EXIT
 
-# --- SKILL.md から 2 つの fallback サイトを抽出 ---------------------------------
+# --- iterate-step.sh から 2 つの fallback サイトを抽出 --------------------------
 
 STEP06="$TEST_DIR/step06.sh"
 awk '/^# \(1\) max_review_cycles を rite-config\.yml から読取・検証/{f=1} f{print} f&&/^esac$/{exit}' \
-  "$ITERATE" > "$STEP06"
+  "$ITERATE_STEP" > "$STEP06"
 printf 'echo "max_cycles=$max_cycles"\n' >> "$STEP06"
 # 行数上限は over-extraction (終端アンカーを取り逃して後続ブロックを巻き込む) の検出を担う。
 # アンカー literal の存在検査だけでは、途中に別の `esac` が挿入されて範囲が伸びても通過してしまう。
@@ -51,25 +52,23 @@ if ! grep -qE '^case "\$raw_max" in' "$STEP06" || ! grep -qx 'esac' "$STEP06" \
   exit 1
 fi
 
-# ステップ 1 の silent 再読込は 1 行の case。直前の raw_max= 代入 (2 行) と組で意味を持つため、
-# 「最後に現れた raw_max= から silent fallback 行まで」を取る。ステップ 0.6 側の raw_max= で
-# 一度バッファが立つが、ステップ 1 の raw_max= で捨てて取り直すので混線しない。
+# ステップ 1 の再読込は config 解決 (--or-devnull の 1 行) + raw_max= 代入 + 1 行の case。
+# 「(2) の見出しコメントから silent fallback 行まで」を取る。
 STEP1="$TEST_DIR/step1.sh"
-awk '/^raw_max=\$\(awk/ { buf=$0; c=1; next }
-     c { buf = buf "\n" $0; if (/silent fallback/) { print buf; exit } }' \
-  "$ITERATE" > "$STEP1"
+awk '/^# \(2\) max_review_cycles の再読込/{f=1} f{print} f&&/silent fallback/{exit}' \
+  "$ITERATE_STEP" > "$STEP1"
 printf 'echo "max_cycles=$max_cycles"\n' >> "$STEP1"
-# ステップ 0.6 側と同じ理由で行数上限を課す。こちらは開始アンカーが「最後の raw_max=」という
-# 相対位置なので、SKILL.md 側の些細な整形 (`$(awk` の前後に空白が入る等) で開始点がステップ 0.6 側へ
-# 巻き戻ると 200 行超の markdown スラブを実行してしまう。存在検査 2 本はどちらもそれを通過させる。
+# 行数上限は、終端アンカーを取り逃して後続ブロックを巻き込む over-extraction の検出を担う。
 if ! grep -q 'silent fallback' "$STEP1" || ! grep -q '^raw_max=' "$STEP1" \
    || [ "$(wc -l < "$STEP1")" -gt 6 ]; then
-  echo "FATAL: ステップ 1 の silent fallback 抽出に失敗しました (アンカーが変更された可能性)" >&2
+  echo "FATAL: ステップ 1 の再読込ブロック抽出に失敗しました (アンカーが変更された可能性)" >&2
   echo "  抽出結果: $(wc -l < "$STEP1") 行 (期待: 6 行以下)" >&2
   exit 1
 fi
 
 STDERR_LOG="$TEST_DIR/stderr.log"
+# 抽出したブロックは config の場所を plugin 同梱の helper で解決する
+export plugin_root="$PLUGIN_ROOT"
 
 # run_snippet <snippet> <config-body> — sandbox に rite-config.yml を置いて解決値を返す
 run_snippet() {
@@ -124,6 +123,46 @@ assert "T-02f: ステップ 1 — 非数値は既定へフォールバック" \
 run_snippet "$STEP1" "$CFG_ZERO" >/dev/null
 assert "T-02g: ステップ 1 の無効値フォールバックは silent" "" "$(cat "$STDERR_LOG")"
 
+echo "=== T-06: config ファイル自体が無いときは両ステップが試したパス付きで WARNING ==="
+# run_snippet_no_config <snippet> — rite-config.yml を置かない sandbox (リポジトリ外 = cwd のみを探す)
+run_snippet_no_config() {
+  local sandbox="$TEST_DIR/sandbox"
+  rm -rf "$sandbox"; mkdir -p "$sandbox"
+  ( cd "$sandbox" && bash "$1" 2>"$STDERR_LOG" ) | sed -n 's/^max_cycles=//p'
+}
+assert "T-06a: ステップ 0.6 — config 不在は既定値" "$DEFAULT_CYCLES" "$(run_snippet_no_config "$STEP06")"
+assert_grep "T-06b: WARNING に試したパスが入る" "$STDERR_LOG" "WARNING: .*$TEST_DIR/sandbox/rite-config.yml"
+assert "T-06c: ステップ 1 — config 不在も既定値" "$DEFAULT_CYCLES" "$(run_snippet_no_config "$STEP1")"
+# ステップ 1 は ステップ 0.6 と別の Bash 呼び出しで毎 cycle 実行されるため、自分で告知する
+assert_grep "T-06d: ステップ 1 の WARNING にも試したパスが入る" "$STDERR_LOG" "WARNING: .*$TEST_DIR/sandbox/rite-config.yml"
+# 読めない config は既定値へ倒さず止める (root は権限を無視して読めるため検証できない)
+if [ "$(id -u)" != 0 ]; then
+  for step in "$STEP06" "$STEP1"; do
+    sandbox="$TEST_DIR/sandbox"; rm -rf "$sandbox"; mkdir -p "$sandbox"
+    printf '%s\n' "$CFG_EXPLICIT" > "$sandbox/rite-config.yml"; chmod 000 "$sandbox/rite-config.yml"
+    out=$( (cd "$sandbox" && bash "$step" 2>"$STDERR_LOG") ); rc=$?
+    chmod 644 "$sandbox/rite-config.yml"
+    assert "T-06g: $(basename "$step") — 読めない config は非ゼロで止まる" "1" "$rc"
+    assert "T-06h: $(basename "$step") — 読めない config で既定値を出さない" "" "$out"
+    assert_grep "T-06i: $(basename "$step") — ERROR に読めないパスが入る" "$STDERR_LOG" "ERROR: .*$TEST_DIR/sandbox/rite-config.yml"
+    # ERROR は helper が 1 回だけ出す。呼び出し側が再 echo すると 2 行・二重前置になる
+    assert "T-06j: $(basename "$step") — ERROR 行はちょうど 1 行" "1" "$(grep -c '^ERROR:' "$STDERR_LOG")"
+    assert_not_grep "T-06k: $(basename "$step") — ERROR が二重前置されない" "$STDERR_LOG" 'ERROR: ERROR:'
+  done
+else
+  echo "  SKIP: root では読み取り権限を外せないため T-06g〜k を検証しない"
+fi
+# 追跡外 config は main checkout にだけある。linked worktree から両ステップが main の値を読む
+WT_MAIN=$(make_sandbox --branch develop)
+WT_DIR="${WT_MAIN}-wt"
+trap 'rm -rf "$TEST_DIR" "$WT_MAIN" "$WT_DIR"' EXIT
+git -C "$WT_MAIN" worktree add -q -b feat/cfg "$WT_DIR" >/dev/null 2>&1
+printf '%s\n' "$CFG_EXPLICIT" > "$WT_MAIN/rite-config.yml"
+assert "T-06e: ステップ 0.6 — worktree から main の明示値 7" "7" \
+  "$( (cd "$WT_DIR" && bash "$STEP06" 2>/dev/null) | sed -n 's/^max_cycles=//p')"
+assert "T-06f: ステップ 1 — worktree から main の明示値 7" "7" \
+  "$( (cd "$WT_DIR" && bash "$STEP1" 2>/dev/null) | sed -n 's/^max_cycles=//p')"
+
 echo "=== T-03: 明示設定は既定値に上書きされない (AC-3) ==="
 assert "T-03a: ステップ 0.6 — 明示値 7 をそのまま使う" \
   "7" "$(run_snippet "$STEP06" "$CFG_EXPLICIT")"
@@ -137,17 +176,17 @@ assert "T-03d: ステップ 1 — 行末コメント付きの明示値も 7" \
 echo "=== T-04: 既定値の記述が全複製箇所で揃っている (AC-4) ==="
 # 実装 fallback は 3 サイト (ステップ 0.6 のキー欠落 / 無効値、ステップ 1 の silent)。
 # 数まで pin するのは、1 サイトだけ書き換えて残りが取り残される drift が本 Issue の主因のため。
-assert "T-04a: iterate/SKILL.md の fallback 3 サイトすべてが $DEFAULT_CYCLES" \
-  "3" "$(grep -c "max_cycles=$DEFAULT_CYCLES" "$ITERATE")"
-assert_not_grep "T-04b: iterate/SKILL.md に旧 fallback (max_cycles=5) が残っていない" "$ITERATE" \
+assert "T-04a: iterate-step.sh の fallback 3 サイトすべてが $DEFAULT_CYCLES" \
+  "3" "$(grep -c "max_cycles=$DEFAULT_CYCLES" "$ITERATE_STEP")"
+assert_not_grep "T-04b: iterate-step.sh に旧 fallback (max_cycles=5) が残っていない" "$ITERATE_STEP" \
   'max_cycles=5([^0-9]|$)'
-assert_grep "T-04c: 無効値 WARNING の文言も $DEFAULT_CYCLES" "$ITERATE" \
+assert_grep "T-04c: 無効値 WARNING の文言も $DEFAULT_CYCLES" "$ITERATE_STEP" \
   "既定値 $DEFAULT_CYCLES を使用します"
 
 # AC-4 が名指しする 3 ファイル + 既定値を書いている他 2 ファイル。
 # 「既定 N」「default: N」形式の断定的な記述だけを見る (「引き上げ前の 5」のような
 # 履歴の言及は誤検出しない)。
-for f in "$ITERATE" "$TEMPLATE_CFG" "$CONFIG_DOC" "$SPEC_DOC" "$EXEC_METRICS" "$FIX_RELAXATION" "$TREND_HELPER"; do
+for f in "$ITERATE" "$ITERATE_STEP" "$TEMPLATE_CFG" "$CONFIG_DOC" "$SPEC_DOC" "$EXEC_METRICS" "$FIX_RELAXATION" "$TREND_HELPER"; do
   base="$(basename "$f")"
   assert_file_exists_or_fail "T-04: $base が存在する" "$f" || continue
   # `既定(値)?` とグループ化する。`既定値?` は ERE の `?` が多バイト文字 `値` の最終バイトに
@@ -210,9 +249,9 @@ assert_grep "T-04s: trend helper header の既定値と導出 cycle が同期" "
 
 echo "=== T-05: backstop の発火条件と sentinel が不変 (AC-5) ==="
 # 既定値の引き上げは backstop を撤廃しない (D-01 / MUST NOT)。
-assert_grep "T-05a: ステップ 1 の backstop 判定 (cc >= max_cycles) が残っている" "$ITERATE" \
+assert_grep "T-05a: ステップ 1 の backstop 判定 (cc >= max_cycles) が残っている" "$ITERATE_STEP" \
   '^if \[ "\$cc" -ge "\$max_cycles" \] 2>/dev/null; then'
-assert_grep "T-05b: ステップ 0.6 の再発火述語 (cur_cc >= max_cycles) が残っている" "$ITERATE" \
+assert_grep "T-05b: ステップ 0.6 の再発火述語 (cur_cc >= max_cycles) が残っている" "$ITERATE_STEP" \
   '^if \[ "\$cur_cc" -ge "\$max_cycles" \] 2>/dev/null; then'
 assert_grep "T-05c: batch 側 sentinel が変わっていない" "$ITERATE" \
   '<!-- \[iterate:max-cycles-reached\] -->'

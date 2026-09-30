@@ -126,8 +126,33 @@ def same_observation(saved, data):
     return left == right and cycle.same_specification(saved.get("issue_body", ""), data.get("issue_body", ""))
 
 
+def attested(row, commit):
+    """A criterion the ready / merge helper attested for this HEAD, with its time."""
+    return (isinstance(row, dict) and row.get("status") == "human-verified"
+            and row.get("head") == commit and isinstance(row.get("at"), str))
+
+
+def without_attestation(receipt):
+    """Undo the ready / merge helper's human attestation of unverified criteria.
+
+    The helper rewrites exactly status, head and at on the rows it attests, and
+    only for the reviewed HEAD. Anything else still changes the digest.
+    """
+    table = receipt.get("acceptance_criteria")
+    if not isinstance(table, list):
+        return receipt
+    restored = copy.deepcopy(receipt)
+    for row in restored["acceptance_criteria"]:
+        if attested(row, receipt.get("commit_sha")):
+            row["status"] = "unverified"
+            row.pop("head", None)
+            row.pop("at", None)
+    return restored
+
+
 def unchanged_receipt(saved, receipt):
-    return digest(receipt) in (saved["review_hash"], saved.get("triaged_hash"))
+    known = (saved["review_hash"], saved.get("triaged_hash"))
+    return digest(receipt) in known or digest(without_attestation(receipt)) in known
 
 
 def gate(state, session, allow_replan=False, check_head=True):
@@ -280,8 +305,22 @@ def guard_set(old, new):
         # Releasing the session is not discharging the stop: the archived run
         # keeps its status, reason and spent retry, and close() still refuses it
         # because gate() itself is untouched.
-        if not stopped:
-            gate(old, old["session_id"], check_head=False)
+        # A closed run already passed gate() when close / defer recorded it, and
+        # restore() never resumes it, so leaving does not re-read its receipt:
+        # cleanup deletes that file once the review has ended.
+        if not (stopped or closed):
+            try:
+                gate(old, old["session_id"], check_head=False)
+            except FileNotFoundError as error:
+                # Cleanup deletes the receipt once the review has ended, so name the ways to end it.
+                require(False, "saved review receipt is missing: " + str(error.filename)
+                        + ". End this review before switching: restore that file unchanged (cleanup keeps "
+                        "a copy in .rite/review-results/archive/ only when it has non-blocking findings) and, "
+                        "at the reviewed commit, run `flow-state.sh review-close` if no blocking finding "
+                        "remains or `flow-state.sh review-defer` to keep the draft unresolved; if it cannot "
+                        "be restored, stop the run with `flow-state.sh set --phase " + str(old.get("phase"))
+                        + " --next retry-the-switch --active false"
+                        " --stop-reason circuit-breaker:receipt-missing`. Then retry the switch")
         # Ordinary setters merge counters; ownership completion, rather than an
         # optional caller flag, authorizes this new run's initial zero.
         new["cycle_count"] = 0
@@ -443,6 +482,83 @@ def restart(state, args, directory):
     return state
 
 
+def specifications(run):
+    """Issue bodies a new observation must match: the latest reconciled one and those observed after it."""
+    records = run.get("reconciliations", [])
+    after = records[-1]["after_cycle"] if records else None
+    bodies = [entry["input"]["issue_body"] for entry in run["observations"]
+              if after is None or entry["input"]["review_context"]["cycle_count"] > after]
+    return bodies + ([records[-1]["issue_body"]] if records else [])
+
+
+def reconcile(state, args, directory):
+    """Accept an agreed Issue revision inside the same run without rewriting what was observed.
+
+    Distinct from restart(): the run keeps its id, counter, observations, fixes and
+    replans, so revising the Issue buys no new cycle budget. Observations up to the
+    boundary stay under the old specification; only later ones are compared with
+    the revised one, so nothing judged against the old text carries over as a
+    finding the fix may act on.
+    """
+    # A replay stays a no-op after later work moved HEAD; a new record needs the reviewed HEAD.
+    run, context = current(state, args.session, completed=True, check_head=False)
+    approval, issue = read(args.approval), read(args.issue)
+    require(isinstance(approval, dict), "approval must be a JSON object")
+    require(isinstance(issue, dict) and text(issue.get("body")), "latest Issue JSON with a body required")
+    records = run.get("reconciliations", [])
+    for record in records:
+        if (record["review_context"] == approval.get("review_context")
+                and record["reason"] == approval.get("reason")
+                and record["requested_at"] == approval.get("requested_at")
+                and cycle.same_specification(record["issue_body"], issue["body"])):
+            return state
+    require(run["status"] == "active", "review run stopped: " + str(run.get("stop_reason")))
+    require(cycle.head() == context["commit_sha"], "HEAD differs from review context")
+    require(approval.get("kind") == "specification-change", "approval kind must be specification-change")
+    require(text(approval.get("reason")), "approval reason required")
+    require(text(approval.get("requested_at")), "approval requested_at required")
+    require(approval.get("run_id") == run["run_id"], "approval run id does not match the live run")
+    require(approval.get("review_context") == context, "approval review_context does not match the frozen context")
+    require(approval.get("issue_number") == issue.get("number") == state.get("issue_number"),
+            "approval issue does not match the run")
+    require(approval.get("pr_number") == state.get("pr_number"), "approval PR does not match the run")
+    previous = records[-1]["issue_body"] if records else (
+        run["observations"][-1]["input"]["issue_body"] if run["observations"] else None)
+    require(previous is not None, "no observed specification in this run; rebuild the observation input"
+            " from the latest Issue instead of reconciling")
+    require(not cycle.same_specification(previous, issue["body"]),
+            "Issue specification is unchanged in this run; nothing to reconcile")
+    # The same predicate review-start applies, so a revision found mid-fix stops here.
+    require(not subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=normal"]).strip(),
+            "reconciling requires a clean tree; restore edits made under the old plan to the reviewed HEAD"
+            " and remove files it created until `git status --porcelain` is empty (do not commit them),"
+            " then record the revision")
+    saved = observation(run, context)
+    carried = []
+    if saved is not None:
+        # The reviewed HEAD is re-reviewed under the revised text in a new cycle.
+        require(unchanged_receipt(saved, read(saved["result_path"])), "observed review receipt is missing or changed")
+        if run["current_decision"]["action"] == "replan":
+            # A replan planned on the old text cannot pass either specification
+            # check; its reasons move to the first observation under the new text.
+            carried = run["current_decision"]["reasons"]
+            run["current_decision"] = dict(action="continue", reasons=["reconciled"])
+        after, next_action = context["cycle_count"], "/rite:iterate " + str(state["pr_number"])
+        state["phase"] = "fix"
+    else:
+        # The observation of this cycle was refused for the revision itself; it
+        # is saved under the revised text once the revision is recorded.
+        require(cycle.matching_receipt(directory, state["review_cycle"]) is not None, "saved review receipt missing")
+        after, next_action = context["cycle_count"] - 1, "/rite:recover " + str(state["issue_number"])
+    # A fix verified under the old text is no basis for the revised one.
+    run.pop("pending_fix", None)
+    run["reconciliations"] = records + [dict(
+        review_context=context.copy(), after_cycle=after, issue_body=issue["body"], replan_reasons=carried,
+        reason=approval["reason"], requested_at=approval["requested_at"], at=cycle.now())]
+    state.update(next_action=next_action, updated_at=cycle.now())
+    return state
+
+
 def conclude_retry(run, receipt):
     """A grant buys one review. Blocking findings at its end restore the stop."""
     grant = run.get("retry")
@@ -453,8 +569,8 @@ def conclude_retry(run, receipt):
     return dict(action="stop", reasons=["retry-unresolved"]) if blocking else None
 
 
-def close(state, args, directory):
-    """Record the successful iterate boundary without resetting the owning run."""
+def closable(state, args, directory):
+    """Every condition of a successful close except its work memory record."""
     gate(state, args.session)
     run, context = current(state, args.session, completed=True)
     receipt = cycle.matching_receipt(directory, state["review_cycle"])
@@ -465,8 +581,14 @@ def close(state, args, directory):
     table = saved.get("acceptance_criteria")
     require((isinstance(table, dict) and table.get("skipped") in ("no_issue", "no_ac_section"))
             or (isinstance(table, list) and all(row.get("status") == "satisfied"
-                or (row.get("status") == "human-verified" and row.get("head") == context["commit_sha"])
-                for row in table)), "cannot close review with unmet or unverified acceptance criteria")
+                or attested(row, context["commit_sha"]) for row in table)),
+            "cannot close review with unmet or unverified acceptance criteria")
+    return run, context
+
+
+def close(state, args, directory):
+    """Record the successful iterate boundary without resetting the owning run."""
+    run, context = closable(state, args, directory)
     if run.get("completed_context") != context:
         run["completed_context"] = context.copy()
         state["updated_at"] = cycle.now()
@@ -483,6 +605,80 @@ def defer(state, args, directory):
         run["deferred_context"] = context.copy()
         run["deferred_reason"] = "replied-only"
         state["updated_at"] = cycle.now()
+    return state
+
+
+def deviations(state, context):
+    """Purpose deviations recorded against this review; the fix plan disposes each like a blocking finding."""
+    run = state.get("review_run")
+    records = run.get("deviations", []) if isinstance(run, dict) else []
+    return [entry for entry in records if entry["review_context"] == context]
+
+
+def pr_added(file, start, end):
+    """Whether file:start-end overlaps a line this PR added against origin/<branch.base>."""
+    base = importlib.import_module("review-fix-scope").base_branch()
+    remote = "refs/remotes/origin/" + base
+    require(subprocess.run(["git", "rev-parse", "-q", "--verify", remote], capture_output=True).returncode == 0,
+            "recording a deviation needs origin/" + base + "; run git fetch origin " + base)
+    script = ('source "$1"; diff_out=$(git diff -U0 "$2...HEAD") || exit 2; '
+              'diff_hunks_parse <<< "$diff_out"; range_overlaps "$plus_hunks" "$3" "$4" "$5"')
+    result = subprocess.run(["bash", "-c", script, "pr-added", str(Path(__file__).with_name("diff-hunks.sh")),
+                             remote, file, str(start), str(end)], capture_output=True, text=True)
+    require(result.returncode in (0, 1), "git diff against origin/" + base + " failed: " + result.stderr.strip())
+    return result.returncode == 0
+
+
+def deviate(state, args, directory):
+    """Reopen a mergeable review for a purpose deviation on a line the PR itself added.
+
+    The purpose check runs after mergeable, so what it finds is in no saved
+    finding, and the receipt cannot change. Recording it on the run makes it a
+    saved obligation the fix plan must dispose; the review of the fix commit is
+    an ordinary next cycle of the same run.
+    """
+    record = read(args.input)
+    require(isinstance(record, dict), "deviation must be a JSON object")
+    for name in ("requirement", "file", "description"):
+        require(text(record.get(name)), "deviation " + name + " required")
+    line = record.get("line")
+    end = record.get("end", line)
+    require(type(line) is int and line > 0 and type(end) is int and end >= line,
+            "deviation line must be a positive line or range")
+    run, context = current(state, args.session, completed=True)
+    gate(state, args.session)
+    receipt = cycle.matching_receipt(directory, state["review_cycle"])
+    require(receipt is not None, "saved review receipt missing")
+    require(not any(f.get("scope") in ("current-pr", "follow-up") for f in receipt[1]["findings"]),
+            "the review still has blocking findings; fix them through the ordinary fix path")
+    # The fix of this cycle could not be re-reviewed: the next review would trip max-cycles.
+    require(state["cycle_count"] < review_cycle_cap(),
+            "the review is at safety.max_review_cycles; its fix could not be re-reviewed")
+    require(pr_added(record["file"], line, end),
+            "deviation does not point at a line this PR added")
+    # A fix that disposed this review's deviations without a new commit returns to
+    # the same HEAD; handing it over again would loop without advancing a cycle.
+    checked = directory.parent / "state" / ("fix-plan-" + args.session + ".json")
+    if checked.is_file():
+        plan = read(checked)["plan"]
+        require(plan["review_context"] != context
+                or not any(i.startswith("D-") for group in plan["groups"] for i in group["finding_ids"]),
+                "a fix already disposed this review's deviations; the same commit is not handed over again")
+    entry = dict(requirement=record["requirement"], file=record["file"], line=line, end=end,
+                 description=record["description"])
+    mine = deviations(state, context)
+    if not any({key: known[key] for key in entry} == entry for known in mine):
+        run.setdefault("deviations", []).append(
+            dict(entry, id="D-" + str(len(mine) + 1).zfill(2), review_context=context.copy(), at=cycle.now()))
+    # A closed record would let the session switch away with the deviation unfixed.
+    if run.get("completed_context") == context:
+        run.pop("completed_context")
+    if run.get("deferred_context") == context:
+        run.pop("deferred_context")
+        run.pop("deferred_reason", None)
+    state.update(phase="fix", active=True, updated_at=cycle.now(),
+                 next_action="/rite:fix " + str(state["pr_number"]))
+    state.pop("handoff", None)
     return state
 
 
@@ -519,13 +715,29 @@ def work_seconds(run):
                for item in run["clock"] if item["kind"] == "work")
 
 
+def check_skipped_scope(skipped, body):
+    """A skipped acceptance table must agree with the Issue body it claims to describe."""
+    # An observation always belongs to an Issue, so "no Issue" cannot describe it.
+    require(skipped != "no_issue", "acceptance_criteria declares no_issue but the review belongs to an Issue")
+    script = Path(__file__).resolve().parents[3] / "scripts/acceptance-criteria-check.sh"
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".md") as stream:
+        stream.write(body)
+        stream.flush()
+        result = subprocess.run(["bash", str(script), "extract", "--body-file", stream.name],
+                                capture_output=True, text=True)
+    require(result.returncode == 0, "Issue acceptance criteria cannot be extracted; skipped declaration unverifiable: "
+            + result.stderr.strip())
+    require(not result.stdout.strip(), "acceptance_criteria declares no_ac_section but the Issue has acceptance criteria: "
+            + result.stdout.strip())
+
+
 def validate_input(state, args, data, receipt):
     require(data.get("review_context") == state["review_cycle"]["review_context"], "observation context mismatch")
     issue = read(args.issue)
     require(issue.get("number") == data.get("issue_number") == state.get("issue_number")
             and text(issue.get("body")) and text(data.get("issue_body"))
             and cycle.same_specification(data["issue_body"], issue["body"]),
-            "latest Issue specification differs from observation")
+            "latest Issue specification differs from observation" + cycle.spec_change_hint(state, issue.get("body") or ""))
     roots = data.get("roots")
     require(isinstance(roots, list), "root observations must be an array")
     findings = {f["id"]: f for f in receipt["findings"] + receipt.get("non_blocking_findings", [])}
@@ -562,10 +774,11 @@ def validate_input(state, args, data, receipt):
                     and row.get("status") in ("satisfied", "unmet", "unverified", "human-verified")
                     for row in table), "saved acceptance evidence is invalid")
         satisfied = {row["id"] for row in table if row["status"] == "satisfied"
-                     or (row["status"] == "human-verified" and row.get("head") == receipt["commit_sha"])}
+                     or attested(row, receipt["commit_sha"])}
     else:
         require(isinstance(table, dict) and table.get("skipped") in ("no_issue", "no_ac_section"),
                 "saved acceptance evidence is missing")
+        check_skipped_scope(table["skipped"], issue["body"])
         satisfied = set()
     require(set(acceptance["satisfied"]) == satisfied, "acceptance progress differs from saved receipt")
     return normalized
@@ -598,8 +811,9 @@ def observe(state, args, directory):
     require(receipt is not None, "saved review receipt missing")
     data = read(args.input)
     roots = validate_input(state, args, data, receipt[1])
-    require(all(cycle.same_specification(entry["input"]["issue_body"], data["issue_body"]) for entry in run["observations"]),
-            "Issue specification changed within run; retain history and reconcile before continuing")
+    require(all(cycle.same_specification(body, data["issue_body"]) for body in specifications(run)),
+            "Issue specification changed within run; retain history and reconcile before continuing"
+            + cycle.spec_change_hint(state, data["issue_body"]))
     previous = observation(run, context)
     if previous:
         require(same_observation(previous["input"], data) and unchanged_receipt(previous, receipt[1]),
@@ -637,6 +851,11 @@ def observe(state, args, directory):
     reasons = (["work-time"] if elapsed - run["diagnosed_work_seconds"] > 1800 else [])
     if renewed:
         reasons.append("root-recurrence")
+    for record in run.get("reconciliations", []):
+        # A replan dropped by reconcile() is owed by the first observation under the new text.
+        later = [obs for obs in run["observations"] if obs["input"]["review_context"]["cycle_count"] > record["after_cycle"]]
+        if later == [entry]:
+            reasons += [reason for reason in record["replan_reasons"] if reason not in reasons]
     action = "continue"
     for replan in run["replans"]:
         start = replan["review_context"]["cycle_count"]
@@ -678,8 +897,15 @@ def existing_breaker(state, run):
                     and unchanged_receipt(item, saved), "saved historical receipt is missing or changed")
             Path(temporary, str(state["pr_number"]) + "-" + str(index).zfill(8) + ".json").write_text(json.dumps(saved))
         helper = Path(__file__).resolve().parent.parent / "review-trend-divergence.sh"
+        # A retry that cleared every blocking finding moved the run past its stop;
+        # that divergence point is not fired on again. Positions count from first_cycle.
+        resolved = []
+        grant = run.get("retry")
+        if grant and grant["outcome"] == "resolved":
+            resolved = ["--resolved-through",
+                        str(grant["stop_context"]["cycle_count"] - run["first_cycle"] + 1)]
         result = subprocess.run(["bash", str(helper), "--pr", str(state["pr_number"]),
-                                 "--cycle-count", str(len(records)), "--results-dir", temporary],
+                                 "--cycle-count", str(len(records)), "--results-dir", temporary] + resolved,
                                 check=True, text=True, capture_output=True)
     marker = dict(re.findall(r"(?:^|; )([A-Za-z_]+)=([^;\n]*)", result.stdout.replace("[CONTEXT] ", "")))
     require(marker.get("TREND_DIVERGENCE") in ("ok", "fire")
@@ -690,19 +916,32 @@ def existing_breaker(state, run):
     # A completed mergeable review proceeds to the unchanged quality gates.
     if state["review_cycle"]["verdict"] == "mergeable":
         return None
+    if state["cycle_count"] >= review_cycle_cap():
+        return "max-cycles"
+    return "divergence" if marker["TREND_DIVERGENCE"] == "fire" else None
+
+
+def review_cycle_cap():
+    """safety.max_review_cycles, or 15 when unset or invalid.
+
+    The config is located like the loop's own breaker: the worktree's file, else
+    the main checkout's untracked one.
+    """
     maximum = 15
-    config = Path("rite-config.yml")
-    if config.exists():
-        section = re.search(r"^safety:\s*\n(.*?)(?=^[a-zA-Z]|\Z)", config.read_text(), re.M | re.S)
+    located = subprocess.run(["bash", str(Path(__file__).with_name("rite-config-path.sh"))],
+                             capture_output=True, text=True)
+    require(located.returncode in (0, 1), "cannot read rite-config.yml: " + located.stderr.strip())
+    if located.returncode == 0:
+        config = Path(located.stdout.strip())
+        # 節は空白と # 以外で始まる次の行で終える（数字や _ で始まるキーでも終え、列 0 のコメント行では終えない）
+        section = re.search(r"^safety:\s*\n(.*?)(?=^[^\s#]|\Z)", config.read_text(), re.M | re.S)
         if section:
             setting = re.search(r"^\s+max_review_cycles:\s*(.*)$", section[1], re.M)
             if setting:
                 value = re.sub(r"\s+#.*", "", setting[1]).strip().strip("\"'")
                 if value.isdecimal() and int(value) > 0:
                     maximum = int(value)
-    if state["cycle_count"] >= maximum:
-        return "max-cycles"
-    return "divergence" if marker["TREND_DIVERGENCE"] == "fire" else None
+    return maximum
 
 
 def amend_replan(state, args, directory, run, context, plan, issue, previous):
@@ -763,7 +1002,7 @@ def replan(state, args, directory):
         require(text(plan.get("issue_body")) and text(issue.get("body"))
                 and cycle.same_specification(plan["issue_body"], issue["body"])
                 and issue.get("number") == state.get("issue_number"),
-                "latest Issue specification differs from replan")
+                "latest Issue specification differs from replan" + cycle.spec_change_hint(state, issue.get("body") or ""))
         receipt = cycle.matching_receipt(directory, state["review_cycle"])
         require(receipt is not None, "saved receipt missing")
         require(unchanged_receipt(observation(run, context), receipt[1]), "observed review receipt is missing or changed")
@@ -834,7 +1073,7 @@ def plan_specification(state, plan, allow_replan=False):
     observed = observation(run, plan["review_context"])
     require(observed is not None and text(plan.get("issue_body"))
             and cycle.same_specification(plan["issue_body"], observed["input"]["issue_body"]),
-            "fix specification differs from diagnosed observation")
+            "fix specification differs from diagnosed observation" + cycle.spec_change_hint(state, plan.get("issue_body") or ""))
     if allow_replan:
         return
     for record in run["replans"]:
@@ -891,7 +1130,8 @@ def advance(state, session, current_head):
         return
     pending = run.get("pending_fix")
     require(isinstance(pending, dict) and pending.get("source_context") == context,
-            "changed HEAD requires completed full fix verification")
+            "changed HEAD requires completed full fix verification; taking in the base branch"
+            " goes through a base-intake fix plan before its commit (skills/fix/references/fix-plan.md, section: base 取り込み)")
     require(pending["tree_hash"] == tree_fingerprint(), "HEAD content differs from verified fix tree")
     scope = importlib.import_module("review-fix-scope")
     for test in pending["tests"]:

@@ -354,9 +354,68 @@ run_gate "$REPO/state.json"
 assert "multi changes none match false" "false" \
   "$(jq -r '.cycles[-1].findings_addressed[0].diff_verified' "$REPO/state.json")"
 
+# --- T-11: a content line rendered as "+++ b/..." mid-hunk must not be misread
+# as a new file header. Line 5 is replaced by literal text "++ b/evil-decoy",
+# which -U0 renders as "+++ b/evil-decoy" inside the first hunk. If the parser
+# reads it as a header (no in_hunk guard), current_file flips to "evil-decoy"
+# and the later, real hunk at line 25 gets attributed to the wrong path.
+new_repo
+seq 1 30 | sed 's/^/line /' > "$REPO/decoy-plus.txt"
+git_c add decoy-plus.txt
+git_c commit -q -m add-decoy-plus
+before=$(git -C "$REPO" rev-parse HEAD)
+awk_inplace "$REPO/decoy-plus.txt" 'NR==5{$0="++ b/evil-decoy"}1'
+awk_inplace "$REPO/decoy-plus.txt" 'NR==25{$0="CHANGED 25"}1'
+git_c add decoy-plus.txt
+git_c commit -q -m decoy-plus-and-real-change
+after=$(git -C "$REPO" rev-parse HEAD)
+
+write_state "$REPO/state.json" "$before" "$after" \
+  '[{"id":"F-DECOY-PLUS","action":"fix","changes":["decoy-plus.txt:25"]}]'
+run_gate "$REPO/state.json"
+assert "T-11 +++ b/ decoy does not steal later hunk's file attribution" "true" \
+  "$(jq -r '.cycles[-1].findings_addressed[0].diff_verified' "$REPO/state.json")"
+assert "T-11 passed" \
+  "[CONTEXT] FIX_REPORT_DIFF_GATE=passed; verified=1; unverified=0" \
+  "$(marker_line)"
+
+# --- T-12: a removed line rendered as "--- a/..." mid-hunk must not be misread
+# as a new file header, and the resulting current_src corruption must not
+# reach current_file via a later "+++ /dev/null"-shaped content line either.
+# Line 5 is deleted (was literal text "-- a/spoofed", rendered "--- a/spoofed"
+# on removal); original line 10 is replaced by literal text "++ /dev/null"
+# (rendered "+++ /dev/null" on addition). Without both guards, current_file
+# becomes "spoofed" and the real change (originally line 25, now HEAD line 24
+# because the line-5 deletion shifted everything up by one) is attributed to
+# the wrong path.
+new_repo
+seq 1 30 | sed 's/^/line /' > "$REPO/decoy-minus.txt"
+awk_inplace "$REPO/decoy-minus.txt" 'NR==5{$0="-- a/spoofed"}1'
+git_c add decoy-minus.txt
+git_c commit -q -m add-decoy-minus
+before=$(git -C "$REPO" rev-parse HEAD)
+awk_inplace "$REPO/decoy-minus.txt" 'NR==5{next}1'
+awk_inplace "$REPO/decoy-minus.txt" 'NR==9{$0="++ /dev/null"}1'
+awk_inplace "$REPO/decoy-minus.txt" 'NR==24{$0="CHANGED 25"}1'
+git_c add decoy-minus.txt
+git_c commit -q -m decoy-minus-and-real-change
+after=$(git -C "$REPO" rev-parse HEAD)
+
+write_state "$REPO/state.json" "$before" "$after" \
+  '[{"id":"F-DECOY-MINUS","action":"fix","changes":["decoy-minus.txt:24"]}]'
+run_gate "$REPO/state.json"
+assert "T-12 -- a/ decoy does not steal later hunk's file attribution" "true" \
+  "$(jq -r '.cycles[-1].findings_addressed[0].diff_verified' "$REPO/state.json")"
+assert "T-12 passed" \
+  "[CONTEXT] FIX_REPORT_DIFF_GATE=passed; verified=1; unverified=0" \
+  "$(marker_line)"
+
 # --- T-05 / T-06 / 4.6 static pins ---
 FIX_SKILL="$PLUGIN_ROOT/skills/fix/SKILL.md"
+# fix の state 書き込みのコード片は scripts/fix-step.sh にあり、散文は SKILL.md に残る
+FIX_STEP="$PLUGIN_ROOT/scripts/fix-step.sh"
 PR_SKILL="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
+PR_STEP="$PLUGIN_ROOT/scripts/pr-review-step.sh"
 VERIF="$PLUGIN_ROOT/skills/pr-review/references/reviewer-prompt-verification.md"
 
 assert_file_exists_or_fail "T-05 verification template" "$VERIF" || true
@@ -364,38 +423,38 @@ assert_file_exists_or_fail "T-05 pr-review SKILL" "$PR_SKILL" || true
 assert_file_exists_or_fail "T-06/4.6 fix SKILL" "$FIX_SKILL" || true
 
 # --- T-09 / T-10: atomic state-write lifecycle pins ---
-if [ -f "$FIX_SKILL" ]; then
-  fix_cleanup_line=$(grep -nF '_rite_fix_triage_state_cleanup() {' "$FIX_SKILL" | head -1 | cut -d: -f1)
-  fix_exit_trap_line=$(grep -nF "trap 'rc=\$?; _rite_fix_triage_state_cleanup; exit \$rc' EXIT" "$FIX_SKILL" | head -1 | cut -d: -f1)
-  fix_int_trap_line=$(grep -nF "trap '_rite_fix_triage_state_cleanup; exit 130' INT" "$FIX_SKILL" | head -1 | cut -d: -f1)
-  fix_term_trap_line=$(grep -nF "trap '_rite_fix_triage_state_cleanup; exit 143' TERM" "$FIX_SKILL" | head -1 | cut -d: -f1)
-  fix_hup_trap_line=$(grep -nF "trap '_rite_fix_triage_state_cleanup; exit 129' HUP" "$FIX_SKILL" | head -1 | cut -d: -f1)
-  fix_mktemp_line=$(grep -nF 'triage_state_tmp=$(mktemp "$triage_state_dir/.triage-XXXXXX")' "$FIX_SKILL" | head -1 | cut -d: -f1)
+if [ -f "$FIX_STEP" ]; then
+  fix_cleanup_line=$(grep -nF '_rite_fix_triage_state_cleanup() {' "$FIX_STEP" | head -1 | cut -d: -f1)
+  fix_exit_trap_line=$(grep -nF "trap 'rc=\$?; _rite_fix_triage_state_cleanup; exit \$rc' EXIT" "$FIX_STEP" | head -1 | cut -d: -f1)
+  fix_int_trap_line=$(grep -nF "trap '_rite_fix_triage_state_cleanup; exit 130' INT" "$FIX_STEP" | head -1 | cut -d: -f1)
+  fix_term_trap_line=$(grep -nF "trap '_rite_fix_triage_state_cleanup; exit 143' TERM" "$FIX_STEP" | head -1 | cut -d: -f1)
+  fix_hup_trap_line=$(grep -nF "trap '_rite_fix_triage_state_cleanup; exit 129' HUP" "$FIX_STEP" | head -1 | cut -d: -f1)
+  fix_mktemp_line=$(grep -nF 'triage_state_tmp=$(mktemp "$triage_state_dir/.triage-XXXXXX")' "$FIX_STEP" | head -1 | cut -d: -f1)
   if [ -n "$fix_cleanup_line" ] && [ -n "$fix_exit_trap_line" ] && [ -n "$fix_int_trap_line" ] && [ -n "$fix_term_trap_line" ] && [ -n "$fix_hup_trap_line" ] && [ -n "$fix_mktemp_line" ] && \
     [ "$fix_cleanup_line" -lt "$fix_exit_trap_line" ] && [ "$fix_exit_trap_line" -lt "$fix_int_trap_line" ] && [ "$fix_int_trap_line" -lt "$fix_term_trap_line" ] && [ "$fix_term_trap_line" -lt "$fix_hup_trap_line" ] && [ "$fix_hup_trap_line" -lt "$fix_mktemp_line" ]; then
     pass "T-09 fix triage cleanup and four traps precede mktemp"
   else
     fail "T-09 fix triage cleanup/trap ordering"
   fi
-  assert_grep "T-09 fix triage rejects empty jq output" "$FIX_SKILL" '\[ ! -s "\$triage_state_tmp" \]'
+  assert_grep "T-09 fix triage rejects empty jq output" "$FIX_STEP" '\[ ! -s "\$triage_state_tmp" \]'
 fi
 
-if [ -f "$PR_SKILL" ]; then
-  pr_cleanup_line=$(grep -nF '_rite_pr_review_attribution_cleanup() {' "$PR_SKILL" | head -1 | cut -d: -f1)
-  pr_exit_trap_line=$(grep -nF "trap 'rc=\$?; _rite_pr_review_attribution_cleanup; exit \$rc' EXIT" "$PR_SKILL" | head -1 | cut -d: -f1)
-  pr_int_trap_line=$(grep -nF "trap '_rite_pr_review_attribution_cleanup; exit 130' INT" "$PR_SKILL" | head -1 | cut -d: -f1)
-  pr_term_trap_line=$(grep -nF "trap '_rite_pr_review_attribution_cleanup; exit 143' TERM" "$PR_SKILL" | head -1 | cut -d: -f1)
-  pr_hup_trap_line=$(grep -nF "trap '_rite_pr_review_attribution_cleanup; exit 129' HUP" "$PR_SKILL" | head -1 | cut -d: -f1)
-  pr_mktemp_line=$(grep -nF 'attribution_state_tmp=$(mktemp "${state_file}.tmp.XXXXXX")' "$PR_SKILL" | head -1 | cut -d: -f1)
-  pr_marker_line=$(grep -nF "printf '[CONTEXT] ATTRIBUTION_WRITTEN total=%d fix_introduced=%d\\n'" "$PR_SKILL" | head -1 | cut -d: -f1)
+if [ -f "$PR_STEP" ]; then
+  pr_cleanup_line=$(grep -nF '_rite_pr_review_attribution_cleanup() {' "$PR_STEP" | head -1 | cut -d: -f1)
+  pr_exit_trap_line=$(grep -nF "trap 'rc=\$?; _rite_pr_review_attribution_cleanup; exit \$rc' EXIT" "$PR_STEP" | head -1 | cut -d: -f1)
+  pr_int_trap_line=$(grep -nF "trap '_rite_pr_review_attribution_cleanup; exit 130' INT" "$PR_STEP" | head -1 | cut -d: -f1)
+  pr_term_trap_line=$(grep -nF "trap '_rite_pr_review_attribution_cleanup; exit 143' TERM" "$PR_STEP" | head -1 | cut -d: -f1)
+  pr_hup_trap_line=$(grep -nF "trap '_rite_pr_review_attribution_cleanup; exit 129' HUP" "$PR_STEP" | head -1 | cut -d: -f1)
+  pr_mktemp_line=$(grep -nF 'attribution_state_tmp=$(mktemp "${state_file}.tmp.XXXXXX")' "$PR_STEP" | head -1 | cut -d: -f1)
+  pr_marker_line=$(grep -nF "printf '[CONTEXT] ATTRIBUTION_WRITTEN total=%d fix_introduced=%d\\n'" "$PR_STEP" | head -1 | cut -d: -f1)
   if [ -n "$pr_cleanup_line" ] && [ -n "$pr_exit_trap_line" ] && [ -n "$pr_int_trap_line" ] && [ -n "$pr_term_trap_line" ] && [ -n "$pr_hup_trap_line" ] && [ -n "$pr_mktemp_line" ] && [ -n "$pr_marker_line" ] && \
     [ "$pr_cleanup_line" -lt "$pr_exit_trap_line" ] && [ "$pr_exit_trap_line" -lt "$pr_int_trap_line" ] && [ "$pr_int_trap_line" -lt "$pr_term_trap_line" ] && [ "$pr_term_trap_line" -lt "$pr_hup_trap_line" ] && [ "$pr_hup_trap_line" -lt "$pr_mktemp_line" ] && [ "$pr_mktemp_line" -lt "$pr_marker_line" ]; then
     pass "T-10 attribution cleanup and four traps precede mktemp and marker"
   else
     fail "T-10 attribution cleanup/trap/marker ordering"
   fi
-  assert_grep "T-10 attribution rejects empty jq output" "$PR_SKILL" '\[ -s "\$attribution_state_tmp" \]'
-  assert_grep "T-10 attribution emits warning on failed write" "$PR_SKILL" 'WARNING: attribution state の書き込みに失敗しました'
+  assert_grep "T-10 attribution rejects empty jq output" "$PR_STEP" '\[ -s "\$attribution_state_tmp" \]'
+  assert_grep "T-10 attribution emits warning on failed write" "$PR_STEP" 'WARNING: attribution state の書き込みに失敗しました'
 fi
 
 if [ -f "$VERIF" ]; then

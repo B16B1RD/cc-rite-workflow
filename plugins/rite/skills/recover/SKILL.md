@@ -73,7 +73,9 @@ fi
 if [ -z "$issue_arg" ]; then
   # multi_session fallback: クラッシュ後の新セッションは repo root (branch=base) で
   # 開始されるため branch 抽出が失敗する。登録済みセッション worktree から候補を列挙する。
-  ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || ms_section=""
+  # config は worktree 自身のもの、無ければ main checkout のものを読む
+  rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+  ms_section=$(sed -n '/^multi_session:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null) || ms_section=""
   ms_base=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+worktree_base:/ {print; exit}' \
     | sed 's/[[:space:]]#.*//' | sed 's/.*worktree_base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
   [ -n "$ms_base" ] || ms_base=".rite/worktrees"
@@ -178,7 +180,7 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 | `disabled` | no-op（従来フロー）。Phase 3.2 へ |
 | `already_in` | 下記の state 確定・変更前検証を実行して Phase 3.2 へ（入場操作だけ不要） |
 | `reenter` / `reconstructed` | 共通作業先契約の native / 検証済み代替で `{path}` へ入場してから Phase 3.2 へ（`{path}` は marker の `path=` 値。`reconstructed` は helper が `git worktree add` 済み） |
-| `residue` | パスは存在するが worktree 未登録（prune 後も残存）→ AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止） |
+| `residue` | パスは存在するが worktree 未登録（prune 後も残存）→ [残骸の確認](../../references/git-worktree-patterns.md#5-残骸ディレクトリの削除確認)で中身を調べ、その結果を添えて AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止） |
 | `branch_other_worktree` | branch が**別の worktree** で checkout 中（並行セッションの可能性）→ **中止**。`other=` のパスを表示する（git が構造的に保証する二重着手ガード） |
 | `branch_absent` | branch がローカル・リモートどこにも無い → **矛盾サマリ + AskUserQuestion**（新規セッション扱い / 中止）。helper は再構築しない（silent に新規扱いもしない） |
 | `failed` | 再構築（`git fetch` / `git worktree add`）が失敗（helper rc=1, stderr に原因 + 復旧手順）→ **silent fallback せず明示停止**。develop 上で recover を続行しない |
@@ -276,7 +278,7 @@ rationale: references/rationale.md#conflict-priority
 
 続けて AskUserQuestion で以下を提示する（rite は**コンフリクトを自動解消・自動コミットしない** — 本 Issue の Non-goal）:
 
-- **解消してから継続（推奨）** — ユーザーがコンフリクトを手動解消（`git` の merge/rebase 続行 or `--abort`）した後、`/rite:recover {issue_arg}` を再実行する旨を案内していったん終了する。解消により上記 signal が消えれば、再実行時は本判定を通過して従来の cross-check に進む
+- **解消してから継続（推奨）** — ユーザーがコンフリクトを手動解消（`git` の merge/rebase 続行 or `--abort`）した後、`/rite:recover {issue_arg}` を再実行する旨を案内していったん終了する。レビューを始めた PR ブランチへの base 取り込み（`PR_MERGEABLE=CONFLICTING` の解消など）は merge を自動 commit させず、[fix-plan reference の base 取り込み](../fix/references/fix-plan.md#base-取り込み) の手順で確定する。解消により上記 signal が消えれば、再実行時は本判定を通過して従来の cross-check に進む
 - **中止** — 何もせず終了する
 
 非コンフリクト時（上記 4 条件すべて不成立）は本判定を skip し、Phase 3.5 の従来 4 指標クロスチェックへそのまま進む。
@@ -301,7 +303,7 @@ rationale: references/rationale.md#conflict-priority
   - 推定 phase: <推定値>
 ```
 
-AskUserQuestion で「推定 phase で再開 / 別 phase を選ぶ / 中止」を提示。
+記録された phase と実態（commit 数・PR の有無と状態）が食い違うときは実態を正とし、推定 phase とその根拠を表示して続行する（[question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) 規則 5）。実態どうしが食い違って推定できないときだけ、何が食い違っているかを規則 6 の 4 要素で示して AskUserQuestion で「推定 phase で再開 / 別 phase を選ぶ / 中止」を提示。
 
 判定結果を LLM が prose 推論で確定したら、`$resolved_phase` シェル変数を set してから以下を実行し、Phase 5.2 が読む `[CONTEXT] RESOLVED_PHASE` marker を emit する (Bash tool 境界でシェル状態は失われるため、後段 step は marker 経由でしか値を取れない):
 
@@ -454,7 +456,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 ### review-cycle の再開
 
-`review_run` がある場合は [停滞診断の回復規則](../../references/review-stagnation.md) を先に適用する。未閉の時計区間は同参照の共有ブロック `review-clock-close` を `clock_close_mode=recover` で実行して中断として閉じ、保存済み区間の再送では時刻を変更しない。観測・修正・見直し履歴と counter は保持する。`current_decision.action=stop` は同じ停止理由を返し、再設計・counter reset・`review-restart`・新 run 作成で迂回しない。明示承認の fresh entry は recover の仕事ではない。保存済み観測がない completed cycle は pr-review の停滞観測保存へ戻る。
+`review_run` がある場合は [停滞診断の回復規則](../../references/review-stagnation.md) を先に適用する。未閉の時計区間は同参照の共有ブロック `review-clock-close` を `clock_close_mode=recover` で実行して中断として閉じ、`ended_at` がある区間（保存済み区間の再送、API エラー終了時に hook が終了時刻を書いた区間）は時刻・種類を変更しない。観測・修正・見直し履歴と counter は保持する。`current_decision.action=stop` は同じ停止理由を返し、再設計・counter reset・`review-restart`・新 run 作成で迂回しない。明示承認の fresh entry は recover の仕事ではない。合意した Issue 改訂の記録（`review-reconcile`）は active な run を同じ run のまま継続する操作であり、この迂回には当たらない（停止した run は拒否される）。recover 自身はこれを呼ばない。保存済み観測がない completed cycle は pr-review の停滞観測保存へ戻る。
 
 `phase=review` では自セッションの `flow-state.sh get --jq-filter .` を読み、`review_cycle.review_context` の PR / HEAD を現在値と照合する。PR 不一致・破損は理由を出して停止し、別 session の結果を流用しない。HEAD 不一致は下表の状態列が行き先を決める（証跡ゼロなら放棄、証跡があれば回収）。
 
@@ -596,7 +598,7 @@ Phase 5.4 で resume した個別スキルの終端状態を、[`skills/batch-ru
 | Issue not found | エラー終了、`gh issue list -R {owner_repo}` で確認するよう案内 |
 | Branch 不在 | `gh issue develop -R {owner_repo}` で再生成するよう案内 |
 | flow-state 不在 + WM 不在 | 「新規セッション」として `/rite:open {issue_arg}` を提案 |
-| 矛盾検出 (phase vs commit/PR) | AskUserQuestion で「推定 phase で再開 / 別 phase を選ぶ / 中止」 |
+| 矛盾検出 (phase vs commit/PR) | 実態から推定した phase と根拠を表示して続行。推定できないときだけ AskUserQuestion で「推定 phase で再開 / 別 phase を選ぶ / 中止」（Phase 3.5 と同じ） |
 | migrate 失敗 | WARNING 表示後、cross-check で実態推定して続行 |
 
 ---

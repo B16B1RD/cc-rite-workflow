@@ -8,9 +8,9 @@ Issue に関連付いた通常 caller は `flow-state.sh review-start --stagnati
 2. 未完了 cycle は同じ cycle の回収・保存を再開する。完了済み cycle の欠損修復と既存の発散・回数 breaker を先に適用する。
 3. 未観測を示す `action:observe` のまま先へ進めず、保存済み全指摘を観測し、`review_run.current_decision` の `action: continue|replan|stop` と `reasons: []` に従う。`continue` は通常の品質ゲートへ戻す意味で、merge の許可ではない。
 
-観測時には元 receipt のハッシュと、既存 fatal triage helper がそのコピーから生成した派生 receipt のハッシュを保存する。以降はこの2種類だけを許可し、正規の分類後も観測・見直しの再送と履歴検証を継続できる。それ以外の証跡・指摘・受入条件の変更は拒否する。
+観測時には元 receipt のハッシュと、既存 fatal triage helper がそのコピーから生成した派生 receipt のハッシュを保存する。以降はこの2種類だけを許可し、正規の分類後も観測・見直しの再送と履歴検証を継続できる。ready / merge の attest が `unverified` 行を `human-verified` にした receipt も、その行の `status` / `head` / `at` だけを戻せばどちらかに一致する場合に限り、ハッシュの照合では同じ receipt とみなす（`head` が receipt の `commit_sha` と違う記録と、`at` が文字列でない記録は戻さない）。それ以外の証跡・指摘・受入条件の変更は拒否する。この同一視はハッシュの照合に限る。attest 後に観測を再送すると受入条件の進捗が保存時と変わるため、再送は拒否される。
 
-iterate の全品質ゲートと non-blocking sweep の成功後、`flow-state.sh review-close` が現在の観測・receipt・未解決指摘・受入条件を確認して `review_run.completed_context` を保存する。返信のみで draft を残す場合は `review-defer` が `deferred_context` と `deferred_reason:replied-only` を保存する。後者は品質上の完了を意味せず、未解決指摘と判定を変更しない。phase・counter・履歴は維持する。次 Issue への切替時だけ旧 run を `review_run_history` に移すため、default draft batch は cleanup を挟まず継続できる。同じ Issue の再開や次 cycle には終了記録を流用しない。両コマンドとも未回収・観測欠損・見直し未完了・停止済み run を拒否する。停止済み run の具体的な停止理由は通常の終了通知でも上書きしない。
+iterate の全品質ゲートと non-blocking sweep の成功後、`flow-state.sh review-close` が現在の観測・receipt・未解決指摘・受入条件を確認し、Issue 付きの run では関連 Issue の作業メモリにこのレビューの記録（`run_id`・cycle・`commit_sha` を持つ marker）があることを確かめて（無ければ `review-record` と同じ手順で追記・再取得して確認して）から `review_run.completed_context` を保存する。記録を確認できなければ保存しない。cleanup が指摘 0 件の receipt を削除した後も、レビューを実施した事実を作業メモリに残すためである。返信のみで draft を残す場合は `review-defer` が `deferred_context` と `deferred_reason:replied-only` を保存する。後者は品質上の完了を意味せず、未解決指摘と判定を変更しない。phase・counter・履歴は維持する。次 Issue への切替時だけ旧 run を `review_run_history` に移すため、default draft batch は cleanup を挟まず継続できる。切替時は終了記録が現在の context と一致すれば receipt を再読込しないため、cleanup が receipt を削除した後でも切り替えられる。同じ Issue の再開や次 cycle には終了記録を流用しない。両コマンドとも未回収・観測欠損・見直し未完了・停止済み run を拒否する。停止済み run の具体的な停止理由は通常の終了通知でも上書きしない。
 
 前回診断後の実作業が **1800 秒を超えた**場合は診断する。時間だけでは停止・merge・品質緩和を行わない。同じ根因が3観測に現れ、その間にその根因を対象とした検証済み修正と異なる HEAD が2回あれば見直す。同一 HEAD の再レビュー、未検証修正、別 run は再発回数を増やさない。
 
@@ -31,7 +31,11 @@ iterate の全品質ゲートと non-blocking sweep の成功後、`flow-state.s
 
 caller は以下の共有ブロックを工程境界で実行する。`review-clock-open` / `review-clock-close` は本節の共有 Bash ブロックの名前であり、`flow-state.sh` が受け付ける時計の CLI 動詞は `review-clock` だけである。参照元はブロック全体を本節から取り、`{plugin_root}` は解決済み配布 root、`{clock_kind}` は上記3値、`{clock_close_mode}` は通常の `normal` または復旧時の `recover` へリテラル置換する。作業開始時に open、終了時と context を進める前に close する。CI 等の外部待機は work close → external_wait open、待機終了後は close → work open とする。
 
-recover は保存済み open があれば先に `recover` で close する。`ended_at` が未保存の区間全体は `interruption` として閉じ、不明な中断時刻を推測しない。`ended_at` がある保存再試行では時刻・種類を変更しない。open が無い未確定 gap を補って実作業へ算入しない。
+ターンが API エラー（利用上限・過負荷など）で終わると、Claude Code の `StopFailure` hook（`hooks/stop-failure.sh`）が自セッションの未閉区間に、その時刻を `ended_at` として書き込む。`kind` は変えず、提出も削除もしない。同じ会話で再開して close へ進んでも、close は既存の `ended_at` を使うため、停止していた時間は実作業に入らない。再開から close までの作業は数えない。`StopFailure` を持たないホストでは区間は開いたまま残り、close の時刻まで数える。
+
+利用者の求めによる一時停止も同じ扱いにする。`flow-state.sh pause` は自セッションの未閉区間へ停止時刻を `ended_at` として書く（`kind` は変えず、既に `ended_at` があれば触らない）。`flow-state.sh resume` は凍結した区間を `review-clock` で保存し、同じ context・`kind` の新しい区間を再開時刻から開き直す。保存できないときは WARNING を出して凍結した区間を残し、再開後から次の close までの作業は数えない（`--session` で他セッションを再開した場合も、区間の保存が呼び出しセッションで行われるため同様）。
+
+recover は保存済み open があれば先に `recover` で close する。`ended_at` が未保存の区間全体は `interruption` として閉じ、不明な中断時刻を推測しない。`ended_at` がある区間は、保存再試行でも `StopFailure` hook が書いた場合でも時刻・種類を変更しない。open が無い未確定 gap を補って実作業へ算入しない。
 
 ```bash
 # review-clock-open
@@ -94,9 +98,9 @@ rm "$clock_file"
 
 保存済み全 blocking finding を根因へ漏れなく対応付ける。helper は対応する `verification.measured=true` の `repro` / `failing_test` を保存結果からコピーする。表示ラベルだけの根因や caller が作った未測定の再現証跡を代用しない。同一観測の同一入力は冪等とし、異なる入力で履歴を上書きしない。
 
-`acceptance.satisfied` は保存結果の `acceptance_criteria[]` のうち `status:satisfied`、または `status:human-verified` かつ `head` が保存結果の `commit_sha` と一致する行の `id` 集合に完全一致させる。各行の evidence は非空とする。受入条件表が `skipped:no_issue|no_ac_section` の場合は空配列、表の欠損は error とする。
+`acceptance.satisfied` は保存結果の `acceptance_criteria[]` のうち `status:satisfied`、または `status:human-verified` かつ `head` が保存結果の `commit_sha` と一致し `at` が文字列の行の `id` 集合に完全一致させる。各行の evidence は非空とする。受入条件表が `skipped:no_issue|no_ac_section` の場合は空配列、表の欠損は error とする。`skipped` は最新 Issue 本文を `acceptance-criteria-check.sh extract` にかけた結果と照合し、受入条件節があるのに `no_ac_section`、Issue に属するのに `no_issue`、抽出が失敗した場合は観測を保存しない。
 
-欠陥・再現条件・違反契約の組が同じものを同一根因とする。親は過去の根因記述と照合し、言い換えや指摘 ID の変化だけで別根因にしない。解消は全指摘・実測の再現結果から判断し、指摘数の減少だけで扱わない。受入条件の識別文は同じ意味なら維持し、保存済み充足集合と最新仕様を照合する。同一 run で Issue 本文が変わった場合は旧仕様の進展を流用せず error とする。本文の照合（観測・`check` / `verify`・見直し・修正計画の gate の全経路で共通）は、`## 9. Decision Log` 節内のトリアージ書式行（`- YYYY-MM-DD D-NN: … / Reason: … / Impact: …`）と、行全体が `<!-- rite:nbr:comment-id:… -->` の行（非実測記録 helper が自分の marker と認める形。CRLF 行末・値の空白を含む）を除いて行う。この 2 種は rite 自身が review 中に Issue へ追記する記録であり、誰が書いたかを問わず仕様変更とみなさない（追記と同様に、これらの行の削除・差し替えも検出しない）。節は見出し行の完全一致で始まり、次の `## ` 見出し・`---`・`</details>`・本文末のいずれかで終わる（トリアージの追記先と同じ境界）。除外行と空行だけになった節は見出しごと除外し、除去した行が残す空行と本文末尾の改行は照合しない（本文末尾の空白は照合する）。コードフェンス（行頭の空白 3 つまでに続く 3 つ以上の backtick（後続に backtick を含まない行）または `~` で開き、同じ文字が同数以上並ぶ行で閉じる。閉じなければ本文末まで続く）内の行は除外も見出しの計数もしない。フェンス外で見出しが 2 回以上現れる本文は境界を一意に決められないため、除外せず原文どおり比較し、その理由を stderr に出す。節外の同書式行・自由書式の Decision Log 行・それ以外の HTML コメント・Goal / 受入条件の変更は仕様変更として error になる。観測に保存する `issue_body` は原文のまま置く。書式変更やラベル追加を進展とせず、新たな充足の実測根拠を `acceptance.evidence` に保存する。
+欠陥・再現条件・違反契約の組が同じものを同一根因とする。親は過去の根因記述と照合し、言い換えや指摘 ID の変化だけで別根因にしない。解消は全指摘・実測の再現結果から判断し、指摘数の減少だけで扱わない。受入条件の識別文は同じ意味なら維持し、保存済み充足集合と最新仕様を照合する。同一 run で Issue 本文が変わった場合は旧仕様の進展を流用せず error とする（合意した改訂は下の「仕様改訂の記録」で受け入れる）。本文の照合（観測・`check` / `verify`・見直し・修正計画の gate の全経路で共通）は、`## 9. Decision Log` 節内のトリアージ書式行（`- YYYY-MM-DD D-NN: … / Reason: … / Impact: …`）と、行全体が `<!-- rite:nbr:comment-id:… -->` のコメント 1 つだけの行（非実測記録 helper が自分の marker と認める形。CRLF 行末・値の空白を含み、値に閉じ記号 `-->` / `--!>` を含まない）を除いて行う。`<!-- rite:nbr:comment-id: --> 本文 <!-- -->` や、同じ形を `--!>` で閉じる行のように、途中で閉じて見える本文を続ける行は marker ではなく、仕様として比べる。この 2 種は rite 自身が review 中に Issue へ追記する記録であり、誰が書いたかを問わず仕様変更とみなさない（追記と同様に、これらの行の削除・差し替えも検出しない）。節は見出し行の完全一致で始まり、次の `## ` 見出し・`---`・`</details>`・本文末のいずれかで終わる（トリアージの追記先と同じ境界）。除外行と空行だけになった節は見出しごと除外し、除去した行が残す空行と本文末尾の改行は照合しない（本文末尾の空白は照合する）。コードフェンス（行頭の空白 3 つまでに続く 3 つ以上の backtick（後続に backtick を含まない行）または `~` で開き、同じ文字が同数以上並ぶ行で閉じる。閉じなければ本文末まで続く）内の行は除外も見出しの計数もしない。フェンス外で見出しが 2 回以上現れる本文は境界を一意に決められないため、除外せず原文どおり比較し、その理由を stderr に出す。節外の同書式行・自由書式の Decision Log 行・それ以外の HTML コメント・Goal / 受入条件の変更は仕様変更として error になる。観測に保存する `issue_body` は原文のまま置く。書式変更やラベル追加を進展とせず、新たな充足の実測根拠を `acceptance.evidence` に保存する。
 
 ## 見直し・修正・再開
 
@@ -116,13 +120,54 @@ rm "$clock_file"
 
 停止は caller の既存失敗 sentinel へ返し、batch は cursor を当該 Issue に保ち `active=false` にする。PR・branch・作業差分・履歴・最後の検証済み状態を保持し、停止理由と復旧工程を報告する。同一 run の再開は保存済み判定と未完工程から続け、停止履歴を消して新しい見直し枠を作らない。
 
+## 仕様改訂の記録
+
+レビュー中にユーザーと合意して Issue 本文（受入条件など）を改訂した場合は、同じ run のまま `flow-state.sh review-reconcile --issue <最新 Issue JSON の絶対パス> --approval <承認 JSON の絶対パス>` で改訂を記録する。Issue JSON は `gh issue view --json number,body` で再取得する。記録しないまま fix / 観測 / 見直しへ進むと、観測・`check` / `verify`・見直し・修正計画の gate は従来どおり仕様不一致で停止する。active な run で記録できる状態なら、その停止メッセージがこの節を案内する。この cycle について同じ本文を記録済みなら、記録し直さず下表の次の操作へ進むよう案内する。
+
+run_id・cycle counter・観測・修正・見直し・再試行権はそのまま残る。仕様を改訂しても cycle の予算は取り直さない（新しい run を作るのは停止 run 向けの `review-restart` だけ）。境界までの観測は旧仕様の記録として残り、仕様の照合対象になるのは境界より後の観測と記録した本文だけである。旧仕様で観測した指摘を、改訂後の修正計画の根拠にはしない。旧仕様で検証済みの修正（`pending_fix`）は記録時に破棄する。見直し後の非収束判定の進展は、改訂をまたいでも受入条件の ID で見直し時の充足集合と比べ、本文の書き換えは区別しない。改訂をまたぐ非収束の停止は最善努力であり、確実な上限は `max_review_cycles` が担う（収束トレンドの発散判定はそれより早く止めうる）。
+
+| 現在の completed cycle | 境界 | 次の操作（`next_action` に書かれる） |
+|---|---|---|
+| 旧仕様で観測済み | この cycle | `/rite:iterate {pr_number}`。phase を fix へ移すので、レビュー済みの HEAD を新しい cycle で改訂後の仕様により再レビューしてから fix へ進む。この cycle の修正計画は旧仕様にも最新 Issue にも一致しないため拒否される。見直し（`action=replan`）が未完了だった場合、その理由は改訂後の最初の観測へ持ち越され、そこで通常の規則により見直しを求める |
+| 改訂が原因で観測が拒否され、未観測 | 直前の cycle | `/rite:recover {issue_number}` で、pr-review の停滞観測保存へ戻る。観測入力は最新 Issue 本文から作り直し、この cycle を改訂後の仕様で観測する |
+
+拒否される状態:
+
+- 停止した run
+- 未完了（collecting）の cycle
+- HEAD がレビュー対象から動いている
+- 作業ツリーに変更がある（修正の途中で改訂したときは、旧計画で加えた編集をレビュー済み HEAD の内容へ戻し、新しく作ったファイルも消して `git status --porcelain` が空になってから記録する。commit すると HEAD が動き、検証済み修正が無いため再レビューを開始できない）
+- 保存 receipt が欠けている、または変更されている
+- run にまだ観測が無い（比べる旧仕様が無い。観測入力を最新 Issue 本文から作り直す）
+- 最新本文が run の現行仕様（直近の記録本文。記録が無ければ直近の観測本文）と同じ
+
+承認・理由・要求時刻・対象 context・境界・持ち越した見直し理由は `review_run.reconciliations` に追記される。同じ承認と同じ本文での再実行は、completed の cycle で行う限り、context が進んだ後であっても何も変えない。さらに改訂したときは新しい承認で再び記録する。照合に使うのは最新の記録だけである。
+
+改訂後の同一 HEAD 再レビューは差分スコープが空になり full scope で回る。iterate の完了前確認（目的整合）の復帰節にある同一 HEAD 再 invoke の禁止は、目的逸脱の停止から戻る場合だけに適用され、この再レビューには適用しない。
+
+承認 JSON の必須フィールド:
+
+| フィールド | 内容 |
+|---|---|
+| `kind` | 必ず `specification-change` |
+| `run_id` | live run の ID |
+| `review_context` | 現在の `review_cycle.review_context` の完全コピー |
+| `issue_number` | 最新 Issue JSON の番号と同じ Issue 番号 |
+| `pr_number` | run の PR 番号 |
+| `reason` | 非空。改訂内容とユーザーの合意 |
+| `requested_at` | 今回の要求時刻（ISO 8601） |
+
+## 完了前確認の逸脱
+
+iterate の完了前確認が PR の追加行に逸脱を見つけたときは、停止ではなく `flow-state.sh review-deviate --input <逸脱 JSON の絶対パス>` で同じ run に記録し、通常の fix へ渡す。受理するのは、completed の cycle が停止しておらず、保存済み receipt が不変で blocking を持たず、`cycle_count` が `safety.max_review_cycles` 未満で、逸脱の `file:line` が `origin/<branch.base>...HEAD` の追加行と重なり、この context の `D-NN` を処置した fix の計画検査記録が無いときだけで、それ以外は state を変えずに拒否する。記録は `review_run.deviations[]` に `D-NN` と記録時の review context を残し、`phase=fix` にして handoff と、この context の完了・保留記録を外す。fix の計画はこの context の `D-NN` を blocking と同じく処置し、修正後の再レビューは同じ run の次の cycle として数える。
+
 ## 停止後の退路と再開
 
 停止は「この run でのレビュー継続を止める」ことであり、「この run に触れる操作をすべて止める」ことではない。停止した run でレビューを進める操作は次の 3 つで、どれも停止理由を消さない。通常の iterate / recover / 自動再試行はここに含まれない。
 
 **抜ける（全停止理由で可）**: 別 Issue 番号の `set` をそのまま実行する。旧 run は `review_run_history` へ退避される。切替先に復元対象があればその counter を戻し、無ければ live state の `cycle_count` は 0 から始まる。停止は「この run はもう cycle を積まない」判断が下りた状態なので、完了・保留と同格に扱ってセッションを手放す。ownership cleanup を前置きしても同じ結果になる。
 
-停止していない run は、上記の有効な放棄記録を持つ cycle 不在の run を除き、従来どおり完了・保留・ownership cleanup のいずれかを要求される。
+停止していない run は、上記の有効な放棄記録を持つ cycle 不在の run を除き、従来どおり完了・保留・ownership cleanup のいずれかを要求される。終了していない run の receipt が cleanup で消えている場合は、そのパスと次の操作（receipt を無変更で復元してレビュー対象 commit のまま `review-close` / `review-defer` で終了する、復元できなければ `--stop-reason circuit-breaker:receipt-missing` で停止する）を示して切替を拒否する。
 
 退避はセッションを手放すだけで停止を帳消しにしない。退避された記録は run（`status`・`stop_reason`・観測・修正履歴・使用済みの再試行権）に加えて、退避時点の `cycle_count` と、凍結 `review_cycle` があればそれも保持する。**同じ Issue 番号・同じ PR 番号へ戻る `set` は、その PR の退避記録を新しい順に検査し、停止済み、または退避した completed cycle と一致する完了・保留の記録が無い run を復元する**（停止済みなら過去の完了・保留記録が残っていても復元対象） — 新しい run を作り直さないので、停止した run の `review-start` は復元された停止理由で拒否され続け、counter もゼロから積み直されない。往復はどの停止理由でも解除にならない。復元された記録は履歴から取り除かれる。
 
@@ -152,14 +197,16 @@ rm "$clock_file"
 
 **再試行権で再開する（`circuit-breaker:divergence` のみ）**: `flow-state.sh review-retry --plan <一括修正計画の絶対パス> --issue <最新 Issue JSON の絶対パス>` が、次の条件をすべて満たすときに限り再試行権を 1 つ発行する。
 
-1. `stop_reason` が `circuit-breaker:divergence` である。`circuit-breaker:max-cycles` と `stagnation:*` は再開できない
+1. `stop_reason` が `circuit-breaker:divergence` である。`circuit-breaker:max-cycles`・`circuit-breaker:receipt-missing`・`stagnation:*` は再開できない
 2. 停止時の context・HEAD・receipt・観測が一致し、変更されていない
-3. 全 blocking 指摘に、通常の fix 経路と同じ計画内容の検証（状態遷移の許可判定を除く）を通る修正計画と検証項目が対応している。`review-fix-scope-check.sh check` そのものを前段として実行する必要はない — 同コマンドは停止した run では状態遷移の許可判定で拒否される
+3. 全 blocking 指摘に、通常の fix 経路と同じ計画内容の検証（状態遷移の許可判定を除く）を通る修正計画と検証項目が対応している。発行の条件として `review-fix-scope-check.sh check` そのものを前段として実行する必要はない — 同コマンドは停止した run では状態遷移の許可判定で拒否される
 4. その run で再試行権が未使用である。権利は run に付いて回り、退避と復元を往復しても使用済みのまま戻る（停止しておらず、退避した completed cycle と完了・保留の記録が一致する run は復元対象外。過去に保留していても、その後停止した run の再試行権は復元される）
 
 発行は条件をすべて検証したあとに一度だけ書き込む。1 つでも崩れていれば権利を発行せず、run は `stopped` のまま残る。人間の承認は条件に含めない。
 
-発行すると `stop_reason` は run 直下から `review_run.retry.stop_reason` へ移り、`status` が `active` に戻る。権利が買えるのは fix → 検証 → review の 1 巡だけで、その review に blocking 指摘が残っていれば `retry.outcome=unresolved` を記録して元の停止理由で再停止する。残っていなければ `retry.outcome=resolved` として通常の run に戻る。いずれの場合も権利は再発行されない。決着は観測が行うため、観測を経ずに閉じた run や別経路で再停止した run では `outcome` は未確定のまま残る。
+発行すると `stop_reason` は run 直下から `review_run.retry.stop_reason` へ移り、`status` が `active` に戻る。権利が買えるのは fix → 検証 → review の 1 巡だけで、その review に blocking 指摘が残っていれば `retry.outcome=unresolved` を記録して元の停止理由で再停止する。残っていなければ `retry.outcome=resolved` として通常の run に戻る。resolved の run では、再試行で越えた停止 cycle までを以後の発散判定（iterate の cycle-gate と観測の両方）の発火点から外し、再試行のあとに新たに発散した場合だけ発火する。いずれの場合も権利は再発行されない。決着は観測が行うため、観測を経ずに閉じた run や別経路で再停止した run では `outcome` は未確定のまま残る。
+
+再試行権が未決着の間は、権利を発行した cycle（次の `review-start` が counter を進める前）に限り、iterate の cycle-gate が発散判定を保留して review へ進む。停止時と同じ推移のままでも再試行の review に届くようにするためで、cycle 上限（`max_review_cycles`）と lost 修復ゲートは保留しない。発行後は同じ計画と Issue JSON で `review-fix-scope-check.sh check` を実行してから計画どおりに修正し、`review-fix-scope-check.sh verify --kind all` が通ってから commit・push して `/rite:iterate {pr}` を再実行する。check / verify を経ない commit は検証済み修正として記録されず、`review-start` が拒否する。
 
 再試行権は退避された run にも復元された run にも等しく付いて回る。発行後の run は本当に `active` なので、`review-close` / `review-defer` も通常の run と同じ条件で通る。`close` は未解決 blocking と未充足受入条件を従来どおり拒否し、`defer` は返信のみの draft を残す既存の意味のままである。これは「停止した run を閉じられる」ことではなく、再試行権を発行した run がその 1 巡の間は通常の run として扱われるということで、権利の使用済み記録は `close` / `defer` / 退避のいずれを経ても残る。
 

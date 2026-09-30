@@ -994,7 +994,7 @@ else
       description:$desc, suggestion:"s", status:"open", scope:"current-pr"}')
   mk_json "$f" "$finding"
   run_gate "$f"
-  if printf '%s' "$desc" | grep -q '^Verification:'; then
+  if grep -q '^Verification:' <<< "$desc"; then
     pass "description が Verification: で始まる"
   else fail "description が Verification: で始まらない: $desc"; fi
   arrow_count=$(printf '%s' "$desc" | grep -o '=>' | wc -l | tr -d ' ')

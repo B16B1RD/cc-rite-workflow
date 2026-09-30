@@ -222,7 +222,7 @@ parent_number=$(echo "$issue_body" | grep -A2 '^## 親 Issue' | grep -oE '#[0-9]
 ISSUE_NUMBER=$(printf '%s\n' "$ISSUE_URL" | grep -oE '[0-9]+$' || true)
 ```
 
-**Failure mode**: `pipefail` 有効時、`head -N` / `grep -m 1` / `grep -q` が早期終了すると downstream の reader が閉じる。upstream の `echo` / `printf` がまだ書き込み中の場合（変数の内容が pipe buffer 64KB を超えるとき）、SIGPIPE (rc=141) が upstream に届き、pipeline 全体の exit code が 141 になる。`|| true` で吸収しても SIGPIPE と「マッチなし」が区別できない。
+**Failure mode**: `pipefail` 有効時、`head -N` / `grep -m 1` / `grep -q` が早期終了すると downstream の reader が閉じる。upstream の `echo` / `printf` がまだ書き込み中の場合（変数の内容が pipe buffer 64KB を超えるときに限らず、数行の `echo "$output" | grep -q` でも CI で観測されている）、SIGPIPE (rc=141) が upstream に届き、pipeline 全体の exit code が 141 になる。`|| true` で吸収しても SIGPIPE と「マッチなし」が区別できない。
 
 ### Defensive Pattern
 
@@ -242,6 +242,7 @@ ISSUE_NUMBER=$(grep -oE '[0-9]+$' <<< "$ISSUE_URL" || true)
 1. `echo "$var" | cmd` → `cmd <<< "$var"` — echo subprocess を排除し SIGPIPE 経路を断つ
 2. 複合 pipeline (`sed | grep | head`) は段階分割: まず `sed <<< "$var"` で範囲抽出、次に `grep <<< "$section"` でフィルタ
 3. `grep -q` / `grep -m 1` のような早期終了 flag と組み合わせる場合は特に重要
+4. 前段が `jq` / `git` / `sed` などのコマンドで、pipeline の終了コードで producer の失敗も判定していた場合は、`out=$(cmd) && grep -q x <<< "$out"` のように結果を変数に受けてから渡し、producer の失敗を偽として残す。否定形は `if ! { out=$(cmd) && grep -q x <<< "$out"; }; then` のように全体をブレースでまとめてから否定する（否定演算子を代入の直前に置くと、否定は代入だけにかかる）。出力を変数に受けず stream のまま読むときは、後述の「Buffered Writer + Early-Exit `awk`」節に従い、`grep -q` の代わりに入力を読み切る `cmd | awk '/x/ { found=1 } END { exit !found }'` を使う
 
 ### When NOT to Convert
 
@@ -251,12 +252,13 @@ ISSUE_NUMBER=$(grep -oE '[0-9]+$' <<< "$ISSUE_URL" || true)
 |---------|------|
 | `echo "$var" \| grep -c` | `grep -c` は全入力を消費（早期終了しない） |
 | `echo "$var" \| sort -u \| grep -v` | `sort` が全入力をバッファリング |
-| `echo "$small_var" \| grep` (`$small_var` < 64KB 確定) | pipe buffer 内で echo が完了 |
-| テストコード内の `echo "$output" \| grep -q` | テスト出力は通常小さい |
+| `echo "$var" \| grep`（`-q` / `-m` なし） | `grep` は全入力を消費（早期終了しない） |
+
+`grep -q` / `grep -m` と組み合わせる場合は、変数の中身が小さく見えても、テストコードでも here-string に変換する。`printf '%s' "$var"` も `echo "$var"` と同じ builtin の書き込みで、変数の大きさに上限がないため対象に含む。lint（`pipefail-grep-q-check.sh`）は、producer 段（前置きの代入やリダイレクトを含む）に `$`・バッククォート・glob（`*` `?` `[`）・ブレース展開（`{`）の文字を含まない `echo` / `printf` を、出力の上限が呼び出し箇所で決まる bounded proxy として免除する。これは SIGPIPE が起きないことの証明ではない。書式に数値の幅や精度（`%300000s` / `%.5000f`）を持つ `printf` は、リテラルの長さを超えて出力を膨らませるため免除しない。lint はほかに brace group・`docker ps`・`enable -p` も免除する。
 
 ### Buffered Writer + Early-Exit `awk`
 
-here-string にできない upstream（関数・`awk` / `sed` などコマンドの出力）でも同じ SIGPIPE が起きる。バッファ付きの writer は出力を数 KB ずつ複数回 write するため、合計が 64KB 未満でも、downstream の `awk '... { exit }'` が、writer の write がまだ残っているうちに終端行で終了すると、残りの write が SIGPIPE を受ける（終端行が何番目の chunk にあっても起きる）。発生はタイミング依存で、並列負荷下ほど再現しやすい。
+変数に受けず stream のまま読む upstream（関数・`awk` / `sed` などコマンドの出力）でも同じ SIGPIPE が起きる。出力を変数に受けられるなら Key changes 4 の here-string へ、stream のまま読むなら本節の awk へ寄せる。バッファ付きの writer は出力を数 KB ずつ複数回 write するため、合計が 64KB 未満でも、downstream の `awk '... { exit }'` が、writer の write がまだ残っているうちに終端行で終了すると、残りの write が SIGPIPE を受ける（終端行が何番目の chunk にあっても起きる）。発生はタイミング依存で、並列負荷下ほど再現しやすい。
 
 ```bash
 # Vulnerable: section は複数 chunk で書かれ、awk は終端行で exit する
@@ -286,4 +288,5 @@ Before adding Bash code to a command template, verify:
 - [ ] All file writes are preceded by `mkdir -p` for the target directory
 - [ ] All variables in `[ ]` or `[[ ]]` are double-quoted
 - [ ] Pipelines with early-termination (`head`, `grep -m`, `grep -q`) use here-string `<<<` instead of `echo`/`printf` pipe
+- [ ] A command producer (`jq` / `git` / `sed` …) feeding `grep -q` is captured first (`out=$(cmd) && grep -q x <<< "$out"`), so its failure still makes the condition false
 - [ ] `awk` readers fed by a pipe drain their input instead of `exit` at the end marker

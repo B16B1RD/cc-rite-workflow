@@ -105,11 +105,11 @@ increment 失敗時に marker の counter を前進させないのは、永続 c
 **最後の** review/fix cycle が残した残骸を sweep する後続 review が存在しない。終端で明示発火
 させ、回収の到達性を担保する。
 
-`rite-review-mutation-*` / `rite-revert-test-*` detached worktree は cross-session in-flight
-保護のため mtime 24h 未満は保護される。よって本ループが直前に作った若い worktree はこの発火では
-消えず、次回 cleanup（24h 経過後）で確実に回収される。即時 0 残骸ではなく **確実な最終回収**
-を担保する設計。即時回収には reviewer 側の session-scoped 記録が必要だが reviewer
-（`agents/_reviewer-base.md`）は当時の Non-Target。
+`rite-review-mutation-*` / `rite-revert-test-*` detached worktree は、reviewer が名前に所有
+セッション ID を記録して作る（`agents/_reviewer-base.md`）。この発火は自セッションの残骸と
+所有者の記録が無いものを作成直後でも回収し、別の live セッションが所有するものは残す。age で
+守らないのは、本ループが直前に作った残骸をこの発火で回収するため。並行する別セッションの
+作業中の worktree は所有者の記録で守る。
 
 ## run-close-reset
 
@@ -270,20 +270,48 @@ consume を `/rite:fix --nb-sweep` に閉じ、collect helper の issued/recorde
 コードを修正しないため `[fix:sweep-done]` で完了し、フルレビューへ戻らない。
 取得・起票・台帳保存の失敗を停止させ、未消化のまま正常出口へ進む経路を閉じる。
 6.1.d 本文へ `### 却下台帳` を足すのは新チャネル禁止（既存コメントの拡張）。次 cycle の
-`{rejected_ledger}` 注入は 6.1.d rewrite が台帳を消すと無意味になるため、merge-into helper
-が count 行直前へ機械 splice する。
+`{rejected_ledger}` 注入は記録コメントの書き換えが台帳を消すと無意味になるため、書き換える
+3 経路（pr-review 6.1.d、fix の非実測指摘の記録、NB sweep）とも merge-into helper で count 行直前へ機械
+splice する。引き継ぐ台帳は記録 helper の `--print-record-body` が返す 1 件（helper が PATCH する
+記録コメント）から取る。前方一致で全件を連結すると、重複した記録コメントの古い台帳を引き継ぐ。
 
-再入の権威を会話 marker に置かないのは、`[fix:pushed]` でステップ 1 に戻ったあとに marker が
-見えなくなり 5.S が再走する実測があるため。会話 marker 既出を skip 条件に残すと、0.6 が
-ファイルを消した同一会話の再 iterate で再 sweep が死ぬ。`.rite/state/nb-sweep-done-{pr}.txt` の存在が
-skip（中身 1 行は完了通知の noop/done 出し分け）。書込直前に既存 `_ensure_dir_gitignore` を
+sweep の後にフルレビューへ戻って 2 回目の sweep が走る経路は、再入ガードのファイルでは閉じない
+（フルレビューは新しい review JSON を作り、新しい JSON は再 sweep の対象になる）。この経路を閉じるのは
+「sweep はコードの修正も git 操作もしない」と「`--nb-sweep` の戻りはステップ 1 に戻らない」の 2 規則である。
+ファイルが防ぐのは、同じ review JSON への 5.S の再入だけ。その権威を会話 marker に置かないのは、
+会話 marker 既出を skip 条件に残すと、0.6 がファイルを消した同一会話の再 iterate で再 sweep が
+死ぬため。`.rite/state/nb-sweep-done-{pr}.txt` の
+1 行目は `noop` または `done` と、sweep した review JSON の basename。skip はその第 2 フィールドが
+最新 JSON（`LC_ALL=C` sort の末尾）と一致するときだけ。フィールド欠落は skip しない。review_run の
+再開は counter を残すため 0.6 がファイルを消さず、存在だけで skip すると後続 JSON の非実測指摘が
+残る。書込直前に既存 `_ensure_dir_gitignore` を
 呼ぶのは、setup の dir_entry が `.rite/state/` を含まない消費者が `git add -A` で skip 権威
 ファイルを stage する穴を、setup 再実行に依存せず塞ぐため。新 helper は増やさない。失敗は
 WARNING で続行し、偽 skip はしない。寿命は本 run — 0.6 の
-`fresh || cur_cc == 0`（pin 書換と同条件）で消し、cleanup でも回収する。cleanup まで残すと
-再 iterate の 5.S が skip され未消化 0 の再保証が死ぬ。write 失敗時は `rm -f`
-してファイル非存在として本体へ（偽 skip 禁止）。`--nb-sweep` 戻りはステップ 4 汎用表を使わず、
+`fresh || cur_cc == 0`（pin 書換と同条件）で消し、`review-restart` と cleanup でも消す（止まった sweep の戻り先の寿命は
+[nb-sweep-resume](#nb-sweep-resume) を参照。0.6 では消さない）。同一 run の新しい JSON は
+ファイルを消さなくても再 sweep する。basename が取れない書込は `rm -f` して範囲なしの行を残さない
+（偽 skip 禁止）。`--nb-sweep` 戻りはステップ 4 汎用表を使わず、
 `[fix:pushed]` / `[fix:pushed-wm-stale]` / `[fix:replied-only]` でもステップ 1 に戻らない。
+
+## nb-sweep-resume
+
+起票の後、台帳 persist で止まった sweep を `/rite:iterate` の再実行で戻すには、再レビューを回してはならない。
+同じ HEAD の再レビューは新しい review JSON を作り、振り直された id の指摘は台帳と照合できないため、collect が
+同じ指摘を再び起票する。recover も batch-run も phase=fix を `/rite:iterate` へ送るので、入口のステップ 0.7 で
+吸収すれば振り分け側を変えずに済む。
+
+戻るのに要る値は、以前は会話にしか無かった。入口の sentinel（`{sweep_origin}`）は完了通知と run-close を
+決めるが、review JSON からは復元できない（`[fix:non-fatal-only]` と `[review:mergeable]` は JSON 上で区別できない）。
+そこで 5.S の `pending` で `.rite/state/nb-sweep-origin-{pr}.txt` に `<review JSON basename> <sentinel>` を書く。
+書けなければ起票に進まない（記録なしで止まると戻り先が無い）。起票済みの Issue は fix 側の entries が持ち、
+entries も同じ `.rite/state/` に置く（一時ディレクトリは再起動や別環境で消える）。
+
+入口記録を戻り先に使うのは、basename が最新 review JSON と一致し、その JSON の `commit_sha` が現在の HEAD と
+一致するときだけ。後からレビューが保存された、または HEAD が動いたときは、その変更をまだ誰もレビューしていないので
+記録を消してステップ 1 へ進む。nb-sweep-done の 1 行目に新しい kind を足す形にしないのは、collect が未知の kind を
+`done` に倒して skip するため（台帳を書かないまま sweep 済みになる）。記録は sweep が済んだ時点（collect の
+`noop` / `skipped`、`nb-sweep-record`）で消し、cleanup と `review-restart` でも消す。
 
 ## resume-routes-no-state-read
 
@@ -299,3 +327,51 @@ marker 不在を `legacy` へ倒さないのは、`legacy` の行が counter リ
 再試行権の使用済み判定を案内側で行わないのは、そのための marker を増やさずに済むから。
 提示した経路が `review-retry` の拒否で終わるのは fail-loud であって、案内が state を
 追いかける理由にはならない。
+
+## pr-recommendation-fix
+
+reviewer の推奨事項は finding ではないので、mergeable の review JSON には fix が処置できる ID が無い。
+その状態で PR 自身が追加した行の欠陥を手で直して commit すると、fix の検証記録（`pending_fix`）の無い
+HEAD になり、次のレビューは「変更された HEAD には完了した fix 検証が要る」で開始できない。戻す手段は
+レビュー済み commit への巻き戻ししか残らない。そこで pr-review のステップ 7.2 が、採否の出口が ADOPT・
+`origin=pr`（PR が持ち込んだ根因）の候補を PR 内推奨（`R-NN`）として state（`.rite/state/pr-recommendations-{pr}.json`、
+commit_sha キー）に登録し、fix の計画はその ID を blocking と同じく処置必須として受け付ける。登録を位置
+（追加行かどうか）ではなく採否の出口で決めるのは、PR 起因かどうかは分類役が差分の因果と契約で認定する
+もので、位置だけでは決まらないから。保存済みの結果 JSON は停滞判定の受領記録と照合されるため書き換えず、
+登録は state に置く。修正は通常の fix を通るので、検証記録と
+再レビューの経路は既存のまま使える。
+
+`non_blocking_findings[]` に入れないのは、そこが「降格された finding」の出口（非実測記録・NB sweep・
+follow-up 転記・完了通知の残件）だから。推奨事項を混ぜると、その出口が同じ PR で直すものまで起票・記録する。
+登録に回数の上限を置かない。採用した PR 起因の根因を回数で先送りすると、同じ PR で直すべき欠陥が
+Decision Log や別 Issue へ流れ、品質を予算で縛ることになる。空転を止めるのは採否の判定そのもの（V=C=T が
+false の候補は REJECT で終端し、登録されない）と `safety.max_review_cycles` である。PR 内推奨は blocking に
+数えないので、発散判定はこの空転を止めない。
+登録するのは本スキル経由（pr-review を `--from-iterate` 付きで呼ぶ）の mergeable の review だけで、受入条件未検証の停止と pr-review の単独実行では
+登録せず採否保留にする（登録を読むのは 5.S 後の check だけで、この 2 つの経路ではそこへ進まない）。`safety.max_review_cycles` に達した cycle でも登録しない。その修正は次のレビューが max-cycles で止まるため、
+未レビューの HEAD を残すことになる。このときの根因は採否保留で止まる（先送りしない）。
+
+5.S の後に置くのは、修正後の差分再レビューが前の JSON の non-blocking を引き継がないため。先に sweep
+しておけば、落ちるものは無い。同じレビュー済み commit を fix へ二度渡さない記録
+（`.rite/state/pr-recommendations-done-{pr}.txt`、1 行目は basename と commit_sha）を fix の invoke 前に
+書くのは、再入（Stop hook / recover）で同じ修正を繰り返さないため。ファイル名ではなく commit で比べるのは、
+fix が同じレビューの複写を別名で保存することがあるから。寿命は nb-sweep-done と同じで、0.6 の
+`fresh || cur_cc == 0`（pin 書換と同条件）で消し、`review-restart` と cleanup でも消す。
+
+## purpose-deviation-reopen
+
+完了前確認は mergeable の後に走るので、そこで見つかった逸脱はどの保存済み finding にも無く、保存済みの
+結果 JSON（receipt）は書き換えられない。手で直して commit すると PR 内推奨と同じ理由で次の
+レビューを開始できず、`review-restart` は停止した run しか受けない（完了した run は新しい run にする理由が
+無い）。そこで逸脱を同じ run の `deviations[]`（`D-NN`、記録時の review context 付き）に保存し、fix の計画は
+それを blocking と同じく処置必須にする。修正は通常の fix と検証記録を通り、再レビューは同じ run の次の
+cycle になるので、counter と発散判定はそのまま続く。
+
+origin=pr の判定は、逸脱の `file:line` が `origin/{branch.base}...HEAD` の追加行と重なることで機械的に行う
+（`lib/diff-hunks.sh`）。重ならない逸脱（base 由来や PR 外の欠陥）と、
+blocking が残っている review、`safety.max_review_cycles` に達した cycle（修正を再レビューできない）は
+拒否し、従来の `purpose_unaligned` 停止に落とす。この review context の `D-NN` を fix の計画が処置した後の記録も
+拒否する。fix が commit せずに戻ると HEAD は変わらず、同じ commit を再び fix へ渡すと cycle を進めないまま
+空転する（PR 内推奨を同じレビュー済み commit につき一度だけ渡すのと同じ終端）。記録は完了記録（`completed_context` / `deferred_context`）
+を外す。残すと、逸脱が未処置のまま別の Issue へ切り替えられる。`D-NN` は記録した review context の
+計画だけが処置する。次の cycle の計画には要求しない（その cycle の完了前確認がまだ逸脱を見るなら、改めて記録する）。

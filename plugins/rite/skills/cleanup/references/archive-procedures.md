@@ -21,7 +21,7 @@ github:
 
 > **Source of truth**: This phase delegates to `plugins/rite/scripts/projects-status-update.sh` — the same shared script used by `skills/open/SKILL.md` ステップ 2.4 / `skills/ready/SKILL.md` Phase 4 / `skills/issue-close/SKILL.md`。
 
-Skip Phase 3.2 if `github.projects.enabled: false` in `rite-config.yml` or if no related Issue was identified in `cleanup.md` ステップ 2, and proceed to Phase 3.5 (work memory update). Otherwise, invoke the shared script to transition the Issue Status to **Done**:
+Skip Phase 3.2 if `github.projects.enabled: false` in `rite-config.yml`, if no related Issue was identified in `cleanup.md` ステップ 2, or if `{pr_merged}=false` (the Status is left as it is; `cleanup.md` ステップ 8 emits `PROJECTS_STATUS_UPDATED=skipped_unmerged`), and proceed to Phase 3.5 (work memory update). Otherwise, invoke the shared script to transition the Issue Status to **Done**:
 
 ```bash
 status_json_args=$(jq -n \
@@ -109,6 +109,19 @@ If a work memory comment exists on the Issue, automatically append a completion 
 `### 完了情報` は WM 初期テンプレに存在しない**新規セクション**のため、既存セクション専用の `append-section`（不在時 no-op）ではなく EOF へ raw 追記する `append-eof` を用いる（原 inline 実装の heredoc 追記挙動を再現。末尾改行は `\n\n` セパレータに正規化する意図的差異があるが、レンダリング結果は同一）。
 
 ```bash
+# cleanup-wm-final-completion
+pr_merged="{pr_merged}"
+case "$pr_merged" in
+  true) ;;
+  false)
+    echo "マージ済みの PR が無いため作業メモリに完了を書きません"
+    echo "[CONTEXT] WM_FINAL_UPDATE=completion; issue={issue_number}; status=skipped; reason=pr_not_merged"
+    exit 0 ;;
+  *)
+    echo "警告: {pr_merged} が true / false のどちらでもないため作業メモリを更新しません。" >&2
+    echo "[CONTEXT] WM_FINAL_UPDATE=completion; issue={issue_number}; status=error; reason=pr_merged_unset"
+    exit 0 ;;
+esac
 # 完了情報セクションを content-file に生成し append-eof transform で委譲追記する。
 # {merged_at} 等は cleanup.md コンテキストの実値で置換する（heredoc malform 回避のため printf を使用）。
 completion_tmp=$(mktemp)
@@ -139,6 +152,8 @@ case "$wm_status" in
   *)                   echo "警告: 作業メモリ更新が完了しませんでした (${wm_status:-no-status})。cleanup は続行します。" >&2
                        [ -n "$wm_sync_err" ] && [ -s "$wm_sync_err" ] && { echo "  helper stderr (root-cause、先頭 5 行):" >&2; head -5 "$wm_sync_err" | sed 's/^/    /' >&2; } ;;
 esac
+# ステップ 12 の {wm_final_update_check} 判定用。helper が status 行を出さなかったときは status=missing
+echo "[CONTEXT] WM_FINAL_UPDATE=completion; issue={issue_number}; ${wm_status:-status=missing}"
 rm -f "${wm_sync_err:-}"
 ```
 
@@ -176,9 +191,22 @@ The progress section update in Phase 3.5.2 follows this logic（`merge-checklist
 
 **Bash implementation (helper 委譲):**
 
-進捗チェックリストの完了項目を `merge-checklist` transform で委譲追記する。全文・完全行 dedup（既出項目スキップ＝冪等）・`### 進捗サマリー` セクション末尾への挿入・backup・空body/ヘッダー/safety check・PATCH はすべて helper 内部で完結する（§3.5.1 と同じ canonical caller パターン）。`--section` は必須（欠けると Python が usage error → `status=error; reason=transform_failed`）。
+進捗チェックリストの完了項目を `merge-checklist` transform で委譲追記する。全文・完全行 dedup（既出項目スキップ＝冪等）・`### 進捗サマリー` セクション末尾への挿入・backup・空body/ヘッダー/safety check・PATCH はすべて helper 内部で完結する（§3.5.1 と同じ canonical caller パターン）。`--section` は必須（欠けると helper がコメント取得前に `status=error; reason=invalid_args` で止まる）。
 
 ```bash
+# cleanup-wm-final-progress
+pr_merged="{pr_merged}"
+case "$pr_merged" in
+  true) ;;
+  false)
+    echo "マージ済みの PR が無いため作業メモリに完了を書きません"
+    echo "[CONTEXT] WM_FINAL_UPDATE=progress; issue={issue_number}; status=skipped; reason=pr_not_merged"
+    exit 0 ;;
+  *)
+    echo "警告: {pr_merged} が true / false のどちらでもないため作業メモリを更新しません。" >&2
+    echo "[CONTEXT] WM_FINAL_UPDATE=progress; issue={issue_number}; status=error; reason=pr_merged_unset"
+    exit 0 ;;
+esac
 # 進捗セクションの完了項目を content-file に生成し merge-checklist transform で委譲追記する。
 # {issue_number} は cleanup.md コンテキストの実値で置換する（heredoc malform 回避のため printf を使用）。
 progress_tmp=$(mktemp)
@@ -206,6 +234,8 @@ case "$wm_progress_status" in
   *)                           echo "警告: 作業メモリ進捗更新が完了しませんでした (${wm_progress_status:-no-status})。cleanup は続行します。" >&2
                                [ -n "$wm_sync_err" ] && [ -s "$wm_sync_err" ] && { echo "  helper stderr (root-cause、先頭 5 行):" >&2; head -5 "$wm_sync_err" | sed 's/^/    /' >&2; } ;;
 esac
+# ステップ 12 の {wm_final_update_check} 判定用。helper が status 行を出さなかったときは status=missing
+echo "[CONTEXT] WM_FINAL_UPDATE=progress; issue={issue_number}; ${wm_progress_status:-status=missing}"
 rm -f "${wm_sync_err:-}"
 ```
 
@@ -240,7 +270,7 @@ rm -f "${wm_sync_err:-}"
 
 #### 3.5.3 Completion Mark on Work Memory
 
-When performing the final update, update the work memory title to indicate closure:
+When performing the final update with `{pr_merged}=true`, update the work memory title to indicate closure (not when `{pr_merged}=false`):
 
 ```markdown
 ## 📜 rite 作業メモリ ✅ 完了
@@ -254,35 +284,71 @@ Close the related Issue identified in `cleanup.md` ステップ 2.
 
 > 以下の実行スニペットの `-R {owner_repo}` は、[Owner/Repo Resolution](../../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe)（cleanup.md ステップ 1.4 と同一の canonical 手順）で解決した owner/repo（slash 形式）をリテラル置換する（SSH host alias 環境対応）。
 
-#### 3.6.1 Check Issue State
+#### 3.6.1 Close and Verify
 
-If a related Issue has been identified, check its current state:
-
-```bash
-gh issue view {issue_number} -R {owner_repo} --json state --jq '.state'
-```
-
-#### 3.6.2 Close the Issue
-
-If the Issue is OPEN, execute the close:
+Before closing, confirm that the Issue is one the PR itself references: a closing keyword (`Closes` / `Fixes` / `Resolves` and their forms) in the PR body, or `issue-N` in the head branch name. A number carried over from another Issue fails this check and is not closed. Close the Issue only while it is OPEN, then read the same Issue's state again. A successful `gh issue close` alone does not count as closed: the re-read catches a close that never took effect. `{issue_number}` is the Issue identified in `cleanup.md` ステップ 2; when none was identified, substitute an empty string. When ステップ 1.3 continued without a PR, substitute an empty string for `{pr_number}`; there is then no merged PR to close the Issue for, so the Issue is left open and reported as outstanding.
 
 ```bash
-gh issue close {issue_number} -R {owner_repo} --comment "PR #{pr_number} のマージに伴いクローズしました。"
+# cleanup-issue-close
+issue="{issue_number}"
+pr="{pr_number}"
+pr_merged="{pr_merged}"
+result="" reason=""
+if [ -z "$issue" ]; then
+  echo "警告: 関連 Issue が見つかりません" >&2
+  result=not_identified
+elif [ -z "$pr" ]; then
+  result=failed reason=no_pr
+elif [ "$pr_merged" != true ] && [ "$pr_merged" != false ]; then
+  result=failed reason=pr_merged_unset
+elif [ "$pr_merged" = false ]; then
+  result=skipped reason=pr_not_merged
+elif ! pr_refs=$(gh pr view "$pr" -R {owner_repo} --json body,headRefName --jq '.body + "\n" + .headRefName'); then
+  result=failed reason=pr_view_failed
+elif ! grep -qiE "((close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]*:?[[:space:]]*#${issue}([^0-9]|$))|(issue-${issue}([^0-9]|$))" <<< "$pr_refs"; then
+  result=failed reason=target_mismatch
+elif [ "$(gh issue view "$issue" -R {owner_repo} --json state --jq '.state')" = "CLOSED" ]; then
+  result=already_closed
+elif ! gh issue close "$issue" -R {owner_repo} --comment "PR #{pr_number} のマージに伴いクローズしました。"; then
+  result=failed reason=close_failed
+else
+  after=$(gh issue view "$issue" -R {owner_repo} --json state --jq '.state') || after=""
+  case "$after" in
+    CLOSED) result=closed ;;
+    "")     result=failed reason=verify_failed ;;
+    *)      result=failed reason="state_$after" ;;
+  esac
+fi
+case "$result" in
+  closed) echo "Issue #$issue をクローズしました" ;;
+  skipped) echo "Issue #$issue は PR が未マージのためクローズせず、開いたまま残します。作業を中止する場合は /rite:issue-cancel $issue を実行してください" ;;
+  failed) echo "警告: Issue #$issue をクローズできませんでした（$reason）。cleanup は続行し、未完了事項に数えます" >&2 ;;
+esac
+# ステップ 12 の {issue_close_check} 判定用
+echo "[CONTEXT] ISSUE_CLOSE=$result; issue=$issue${reason:+; reason=$reason}"
 ```
 
-**Note**: `gh issue close` does not error when executed on an already-closed Issue (idempotent).
+#### 3.6.2 Result Values
 
-#### 3.6.3 Processing Branch by Condition
+| `ISSUE_CLOSE` | Meaning |
+|---------------|---------|
+| `closed` | Closed in this run, and the re-read returned `CLOSED` |
+| `already_closed` | The Issue was already CLOSED; no close was run |
+| `not_identified` | No related Issue was identified; nothing to close |
+| `skipped; reason=pr_not_merged` | The PR is not merged (`{pr_merged}=false`, a forced cleanup); no comment was written and the Issue was left as it is, without any `gh` call |
+| `failed; reason=no_pr` | There is no PR (ステップ 1.3 continued without one); the Issue was not closed |
+| `failed; reason=pr_merged_unset` | `{pr_merged}` was neither `true` nor `false` (unsubstituted or empty); no close was run |
+| `failed; reason=pr_view_failed` | The PR body and branch name could not be read, so the target could not be confirmed; no close was run |
+| `failed; reason=target_mismatch` | The PR does not reference the Issue; no close was run |
+| `failed; reason=close_failed` | `gh issue close` failed (API error, missing permission, etc.) |
+| `failed; reason=verify_failed` | The re-read after close failed, so the state is unknown |
+| `failed; reason=state_<STATE>` | The re-read after close did not return `CLOSED` |
 
-| Condition | Processing | Message |
-|-----------|-----------|---------|
-| Issue is OPEN | Execute close | `Issue #{issue_number} をクローズしました` |
-| Issue is already CLOSED | Skip | (No message, no warning needed) |
-| Related Issue was not identified | Skip | `警告: 関連 Issue が見つかりません` |
+Every value is non-blocking: cleanup continues to ステップ 11. ステップ 12 counts `failed` and a missing marker as outstanding. `skipped` is not outstanding: ステップ 12 reports it as checked, with a note pointing to `/rite:issue-cancel`.
 
 ### 3.6.4 Update Parent Issue Tasklist Checkbox
 
-**Execution condition**: Only executed when a parent Issue was detected in `cleanup.md` ステップ 2.
+**Execution condition**: Only executed when a parent Issue was detected in `cleanup.md` ステップ 2 and `{pr_merged}=true`. With `{pr_merged}=false` the child Issue stays open, so the checkbox is left as it is.
 
 When a child Issue's PR is merged and cleanup runs, update the parent Issue's Tasklist checkbox for this child Issue from `- [ ]` to `- [x]`.
 
@@ -338,7 +404,7 @@ Replace `{tmpfile_read}`, `{tmpfile_write}`, `{original_length}` with the values
 
 ### 3.7 Auto-Close Parent Issue
 
-**Execution condition**: Only executed when a parent Issue was detected in `cleanup.md` ステップ 2.
+**Execution condition**: Only executed when a parent Issue was detected in `cleanup.md` ステップ 2 and `{pr_merged}=true`. With `{pr_merged}=false`, skip 3.7 and report `ℹ️ PR 未マージのため親 Issue は更新していません`.
 
 If assessment in 3.7.1 routes here (all children CLOSED, none `NOT_PLANNED`, no unavailable `stateReason`), automatically close the parent Issue.
 
@@ -655,7 +721,7 @@ Resolve `{plugin_root}` per [Plugin Path Resolution](../../../references/plugin-
 
 After the Fail-Closed Gate, run the cleanup-work-memory script. This script performs all cleanup steps in a single deterministic invocation:
 
-1. Resets flow state to `active: false` (prevents `post-tool-wm-sync.sh` from recreating files)
+1. Resets flow state to `active: false` (prevents `post-tool-wm-sync.sh` from recreating files). Other PRs' parked review runs (`review_run_history`) and the abandonment records of those runs (`review_cycle_abandoned`) are kept, so returning to such a PR can restore its run under the rules in [review-stagnation.md](../../../references/review-stagnation.md)
 2. Deletes the per-session compact-state (`.rite/sessions/{session_id}.compact-state`) and its lockdir, plus the legacy shared `.rite-compact-state` and lockdir (retained for migration)
 3. Deletes ALL `.rite/work-memory/issue-*.md` files and their lockdirs (both current Issue and stale leftovers)
 4. Reports deletion results (deleted/failed/remaining counts)

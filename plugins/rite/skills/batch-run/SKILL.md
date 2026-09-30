@@ -3,6 +3,7 @@ name: batch-run
 description: |
   rite workflow のバッチ実行スキル: 複数 Issue に対し /rite:open → /rite:iterate を
   順次・自律実行して draft PR を残す（--merge 指定時のみ ready→merge→cleanup まで完走）。
+  完了時に /rite:issue-audit を 1 回実行し、完了報告に監査レポートへの参照を載せる。
   ユーザーが明示的に /rite:batch-run で起動する meta-orchestrator。auto-activate しない。
   起動: /rite:batch-run [--merge] <issue_number>...
 argument-hint: "[--merge] <issue_number>..."
@@ -21,7 +22,7 @@ rationale: references/rationale.md#default-draft
 rationale: references/rationale.md#breaker-stop
 rationale: references/rationale.md#no-handoff
 
-途中停止: 処理中 Issue は `/rite:recover {issue}`、残りキューは引数省略 `/rite:batch-run` で再開（モードも永続化）。キューが `active=true` で中断が直近（`updated_at` から 2 時間以内）かつ cursor 一致なら recover 単体でも残りキューへ自動継続（[recover Phase 5.5](../recover/SKILL.md)）。再開は**同一セッション内**前提。
+途中停止: 処理中 Issue は `/rite:recover {issue}`、残りキューは引数省略 `/rite:batch-run` で再開（モードも永続化）。キューが `active=true` で中断が直近（`updated_at` から 2 時間以内）かつ cursor 一致なら recover 単体でも残りキューへ自動継続（[recover Phase 5.5](../recover/SKILL.md)）。再開は**同一セッション内**前提。利用者の求めで一時停止するときは `flow-state.sh pause`、続けるときは `flow-state.sh resume`（記録があるあいだ Stop hook は差し戻さず、SessionStart が起動のたびにその旨と再開方法を表示する。位置は run-queue と flow-state が保つ）。
 rationale: references/rationale.md#session-scoped-queue
 
 `{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version)。run-queue は **`run-queue-{session_id}.json`**（`flow-state.sh path` の basename、`state-path-resolve.sh` の state root）。sandbox で worktree cwd からの書込が拒否された当該 bash のみ `dangerouslyDisableSandbox: true` で再実行してよい（確認不要。[git-worktree-patterns.md](../../references/git-worktree-patterns.md#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる)）。
@@ -29,7 +30,7 @@ rationale: references/rationale.md#session-scoped-queue
 ## Contract
 
 **Input**: `[--merge]` + Issue number(s) — 1 個以上、空白区切り（省略時は自セッションの run-queue からモードごと再開）
-**Output**: 全 Issue 処理完了の完了通知（ステップ 7。デフォルトは draft PR 群、`--merge` は merge/cleanup 完走）、または最初の失敗での停止報告（残り Issue 含む、ステップ 8）
+**Output**: 全 Issue 処理完了の完了通知（ステップ 7。デフォルトは draft PR 群、`--merge` は merge/cleanup 完走。どちらも監査レポートへの参照を含む）、または最初の失敗での停止報告（残り Issue 含む、ステップ 8）
 **自律度**: 完全自律（無確認）。デフォルトは draft PR まで、`--merge` 時は merge を含め確認を挟まない。失敗時のみ停止。
 
 ## E2E Output Minimization
@@ -59,6 +60,7 @@ rationale: references/rationale.md#session-scoped-queue
 | `{failed_issues}` | ステップ 7 bash の `failed=`（サーキットブレーカー `[iterate:max-cycles-reached]` で非収束となった Issue 一覧。空 `[]` のとき完了通知の該当行を省略） |
 | `{outstanding_n}` | ステップ 6 で cleanup 完了報告から読む `[cleanup:outstanding:N]` sentinel の `N` に実際に埋め込まれた数値 |
 | `{action_items}` | 本 run の bash 出力に残った、ユーザーの操作が必要な WARNING / ERROR。ステップ 7 完了通知 / ステップ 8 停止報告の `要対応:` 欄へ転記する（0 件なら欄ごと省略） |
+| `{audit_report}` | ステップ 7 の `/rite:issue-audit` 完了報告の `監査レポート:` 行の path |
 | `{outstanding_issues}` | ステップ 7 bash の `outstanding=`（未完了事項が残った Issue 一覧。空 `[]` のとき完了通知の該当行を省略） |
 | `{done_issues}` / `{remaining_issues}` | ステップ 8 bash の `done=` / `remaining=`（停止時の処理済み / 未処理 Issue） |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
@@ -310,7 +312,7 @@ args: "{current_issue}"
 
 ## ステップ 3: /rite:iterate を invoke
 
-> 本コマンドは iterate invoke の **前後で `flow-state.sh set` を呼ばない**（iterate 内部の handoff / FINALIZE 機構を壊さないため）。iterate は内部で review⇄fix を mergeable まで回し、完了通知を出して制御を戻す。`--merge` モードの正常終了では、続くステップ 4 ready の `flow-state.sh set` が残存 FINALIZE handoff を default-clear する。デフォルトモードは ready を経由しないが、残存 FINALIZE handoff は次 Issue の open（ステップ 1.6 の `flow-state.sh set`）が default-clear し、最後の Issue 分はステップ 7 完了通知前の `consume-handoff` が消費する（失敗終了時に残る handoff はステップ 8 で消費する）。
+> 本コマンドは iterate invoke の **前後で `flow-state.sh set` を呼ばない**（iterate 内部の handoff / FINALIZE 機構を壊さないため）。唯一の例外はステップ 5「競合の解消」の `--phase fix` で、ready が handoff を消費した後の merge 段から戻るときにだけ行う。iterate は内部で review⇄fix を mergeable まで回し、完了通知を出して制御を戻す。`--merge` モードの正常終了では、続くステップ 4 ready の `flow-state.sh set` が残存 FINALIZE handoff を default-clear する。デフォルトモードは ready を経由しないが、残存 FINALIZE handoff は次 Issue の open（ステップ 1.6 の `flow-state.sh set`）が default-clear し、最後の Issue 分はステップ 7 完了通知前の `consume-handoff` が消費する（失敗終了時に残る handoff はステップ 8 で消費する）。
 
 ```text
 skill: rite:iterate
@@ -324,6 +326,7 @@ iterate の終了 sentinel を `{run_mode}`（ステップ 1 の `mode=` marker�
 | Sentinel + `{run_mode}` | アクション |
 |---------|-----------|
 | `[review:error]` + `REVIEW_STOP=purpose_unaligned`（両モード） | **失敗** → ステップ 8（段階=iterate）。内側の `[review:mergeable]` は iterate 終端ではない |
+| `[review:error]` + `REVIEW_STOP=adoption_held`（両モード） | **失敗** → ステップ 8（段階=iterate）。採否の出口待ちで外部へ何も書かずに止まっているか、スコープ外処分の外部への書き込み（Issue・Decision Log・申し送り・台帳）が途中で失敗して止まっている（後者は一部が書き込み済み）。停止報告に `hold_file` とその resume（再開方法）を載せる。hold に書けなかったときは stderr の WARNING の `再開方法:` を載せる |
 | `[review:mergeable]` + `merge` | iterate 収束 → ステップ 4（ready）へ |
 | `[review:mergeable]` + `default` | iterate 収束。**ready/merge/cleanup はスキップ**し、draft PR を残したまま **ステップ 6 の cursor 前進 bash へ直行**（cleanup invoke はしない） |
 | `[fix:replied-only]` + `merge` | **非収束として失敗扱い** → ステップ 8（段階=iterate）。reply のみで mergeable 未到達のまま merge すると未解決指摘を握り潰すため。停止報告に続行コマンド `/rite:ready {pr_number} && /rite:merge {pr_number}` を案内 |
@@ -332,7 +335,7 @@ iterate の終了 sentinel を `{run_mode}`（ステップ 1 の `mode=` marker�
 | `[fix:cancelled-by-user]`（両モード） | ユーザー中断 → ステップ 8（段階=iterate） |
 | `[iterate:nb-sweep-error]` / `[fix:error]` / sentinel 不在（両モード） | **失敗** → ステップ 8（段階=iterate） |
 
-<!-- run orchestration: after iterate returns a terminal sentinel, do NOT stop. [review:error] + REVIEW_STOP=purpose_unaligned (both modes) -> ステップ 8; 内側の [review:mergeable] は iterate 終端ではない. merge mode + [review:mergeable] (purpose_unaligned なし) -> ステップ 4. default mode + [review:mergeable] or [fix:replied-only] -> ステップ 6 cursor advance (skip ready/merge/cleanup). [iterate:max-cycles-reached] (both modes) -> ステップ 8 (record failure and stop; do NOT advance cursor). -->
+<!-- run orchestration: after iterate returns a terminal sentinel, do NOT stop. [review:error] + REVIEW_STOP=purpose_unaligned (both modes) -> ステップ 8; 内側の [review:mergeable] は iterate 終端ではない. [review:error] + REVIEW_STOP=adoption_held (both modes) -> ステップ 8 (held, or the out-of-scope writes stopped part way; see hold_file resume, or the stderr WARNING 再開方法: when the hold could not be written). merge mode + [review:mergeable] (purpose_unaligned なし) -> ステップ 4. default mode + [review:mergeable] or [fix:replied-only] -> ステップ 6 cursor advance (skip ready/merge/cleanup). [iterate:max-cycles-reached] (both modes) -> ステップ 8 (record failure and stop; do NOT advance cursor). -->
 
 ---
 
@@ -368,9 +371,18 @@ args: "{pr_number}"
 | Sentinel | アクション |
 |---------|-----------|
 | `[merge:returned-to-caller]` | ステップ 6 へ |
-| `[merge:not-ready]` / `[merge:error]` / sentinel 不在 | **失敗** → ステップ 8（段階=merge） |
+| `[merge:not-ready]` + `[CONTEXT] MERGE_NOT_READY=conflicting` | base と競合。停止せず下記「競合の解消」を行い、ステップ 3 へ戻る |
+| `MERGE_NOT_READY=conflicting` を伴わない `[merge:not-ready]` / `[merge:error]` / sentinel 不在 | **失敗** → ステップ 8（段階=merge） |
 
-<!-- run orchestration: after merge returns, do NOT stop — proceed to ステップ 6 -->
+**競合の解消**（上表の競合行のときだけ）:
+
+1. `gh pr ready {pr_number} -R {owner_repo} --undo` で PR を draft に戻し、`bash {plugin_root}/hooks/flow-state.sh set --phase fix --issue {current_issue} --branch {branch_name} --pr {pr_number} --next "base 取り込み後に /rite:iterate {pr_number}"` を実行する（途中で止まっても再開がステップ 1.5 の `fix` → iterate に振られる）。どちらかが失敗したら **失敗** → ステップ 8（段階=merge）
+2. [fix-plan の base 取り込み](../fix/references/fix-plan.md#base-取り込み) の手順 1〜4（取り込み・検証・commit・push）を、flow-state の `worktree`（セッション worktree）で行う。`{fix_plan_file}` / `{fix_issue_file}` は同 reference の JSON 契約に従い、mergeable を判定した保存済みレビュー結果の `review_context` と最新 Issue 本文から作る（`base-intake` の 1 グループと全体検証だけを持つ）。検証は `bash {plugin_root}/hooks/scripts/review-fix-scope-check.sh check` / `verify --kind all`（いずれも `--plan "{fix_plan_file}" --issue "{fix_issue_file}"`）で行う。同節の停止条件（push 済み commit の巻き戻しが要る等）に当たったとき、および helper・git の非ゼロ終了は、その状況を失敗理由として **失敗** → ステップ 8（段階=merge）
+3. ステップ 3（iterate）へ戻る。以降は既存の表どおり iterate → ready → merge と進み、reviewed HEAD と受入条件の照合は ready / merge が行う。再レビューがサーキットブレーカーで止まればステップ 3 の表でステップ 8 に合流する。競合の差し戻し回数に上限は設けない（再突入のたびにレビュー cycle が進み、ブレーカーの判定に入る）
+
+rationale: references/rationale.md#merge-conflict-route
+
+<!-- run orchestration: after merge returns, do NOT stop. [merge:not-ready] + MERGE_NOT_READY=conflicting -> revert to draft, base intake, then ステップ 3. Any other not-ready / error / missing sentinel -> ステップ 8. [merge:returned-to-caller] -> ステップ 6 -->
 
 ---
 
@@ -454,6 +466,20 @@ rm -f "$queue_file"
 echo "[CONTEXT] RUN_DONE; processed=$processed; failed=$failed; outstanding=$outstanding; mode=$mode"
 ```
 
+続けて Issue 監査を 1 回実行する:
+
+```text
+skill: rite:issue-audit
+```
+
+| Sentinel | 次のアクション |
+|---------|--------------|
+| `[issue-audit:returned-to-caller]` | `監査レポート:` 行の path を `{audit_report}` として retain し、完了通知へ |
+| `[issue-audit:failed]` | `監査レポート:` 行があれば `{audit_report}` に retain する（無ければ `なし`）。失敗理由を `{action_items}` に 1 行載せて完了通知へ（再 invoke しない） |
+| sentinel 不在 | `{audit_report}` を `なし` とし、`issue-audit が完了報告を返しませんでした — /rite:issue-audit を手動で実行してください` を `{action_items}` に載せて完了通知へ |
+
+<!-- run orchestration: after issue-audit returns, do NOT stop — retain {audit_report} and emit the ステップ 7 完了通知 below. -->
+
 `mode=`（`{run_mode}`）に応じて、`processed=` の Issue 一覧を `{processed_issues}`、`failed=` の非収束 Issue 一覧を `{failed_issues}` として完了通知を出し分ける。`failed=` が空配列 `[]` でない場合は、完了通知にサーキットブレーカーで failed 扱いとなった Issue を明示する（`[]` のときは該当行を省略する）。`outstanding=` の Issue 一覧を `{outstanding_issues}` として使う（cleanup 完了報告の「未完了事項」をロールアップする。`mode=merge` のときのみ意味を持つ — デフォルトモードは cleanup を invoke しないため `outstanding` は常に空）。
 
 `{action_items}`（ステップ 7 の 2 テンプレとステップ 8 停止報告に共通）: 本 run の bash 出力に残った WARNING / ERROR のうち、ユーザーが操作しない限り残り続ける行を 1 行ずつ列挙する。最終試行と重複の判定は [Autonomous Execution](../rite-workflow/references/autonomous-execution.md) に従う。成功した迂回・リトライは載せない。**0 件なら `要対応:` 行ごと省略する**。cleanup 由来の非ブロッキング失敗をロールアップする `未完了事項:` 行とは別欄で、0 件時の扱いも異なる（`未完了事項:` は常に出す）。
@@ -469,6 +495,7 @@ echo "[CONTEXT] RUN_DONE; processed=$processed; failed=$failed; outstanding=$out
 または最初からまとめて完走させるなら `/rite:batch-run --merge {processed_issues}` を実行してください。
 （未解決指摘ありで通過した draft PR があれば、上記処理中にその旨を明示しています。）
 （旧キューの `failed=` が非空のときのみ）サーキットブレーカーで非収束（failed）となった Issue: {failed_issues} — draft/open PR をレビュー待ちで残しています。
+監査レポート: {audit_report}
 
 （転記すべき行があるときのみ、以下 2 行）
 要対応:
@@ -486,6 +513,7 @@ echo "[CONTEXT] RUN_DONE; processed=$processed; failed=$failed; outstanding=$out
 全 Issue を処理しました（open→iterate→ready→merge→cleanup を完走）。
 （旧キューの `failed=` が非空のときのみ）サーキットブレーカーで非収束（failed）となり merge/cleanup をスキップした Issue: {failed_issues} — draft/open PR をレビュー待ちで残しています。`/rite:iterate <pr>` で再開できます。
 未完了事項: （`outstanding=` が空のとき）なし（全 Issue） / （非空のとき）{outstanding_issues} の cleanup で非ブロッキング失敗が残っています — 各 Issue の cleanup 完了報告（本セッションのログ）を参照するか、`/rite:recover <issue>` で確認してください。
+監査レポート: {audit_report}
 
 （転記すべき行があるときのみ、以下 2 行）
 要対応:
@@ -555,7 +583,7 @@ echo "[CONTEXT] RUN_STOP; cursor=$cursor; done=$done_issues; remaining=$remainin
 
 ## エラー時の方針
 
-- **失敗は即停止**。失敗 Issue は `/rite:recover {issue}` で個別復帰
+- **失敗は即停止**。失敗 Issue は `/rite:recover {issue}` で個別復帰。merge 時の base との競合（`MERGE_NOT_READY=conflicting`）は失敗ではなく、ステップ 5 の「競合の解消」でステップ 3 へ戻る
 - **サーキットブレーカーも即停止**。`[iterate:max-cycles-reached]` はステップ 8 で `failed[]` に記録し、cursor を保持する。再開後に当該 Issue がステップ 6 まで到達したら、その failed 記録を除去して前進する
 - **session_id 解決不可は fail-loud**: `run-queue-{session_id}.json` を組む前に解決。不可なら global 名へフォールバックせず `exit 1`
 - run-queue は停止時に残す。引数省略 `/rite:batch-run` で cursor から再開（同一セッション）

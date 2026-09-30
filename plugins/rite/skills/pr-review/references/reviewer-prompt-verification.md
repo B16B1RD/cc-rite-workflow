@@ -38,7 +38,7 @@ PR #{number}: {title} の検証レビューを {reviewer_type} として実行�
 **重要（Part 2 スコープのみに適用）**: 前回の Fix サイクルで変更されていないコードに対して新規の MEDIUM/LOW-MEDIUM/LOW 指摘を生成しないこと。未変更コードの CRITICAL/HIGH 指摘のみ「見落とし」として報告可。この制約は Part 2（リグレッションチェック）にのみ適用されます。フルレビュー（ステップ 4.5 の通常テンプレート）では、すべてのコードを対象にレビューを行ってください。
 
 ## 共通レビュー原則
-<!-- `_reviewer-base.md` から抽出される全 reviewer 共通の原則。READ-ONLY Enforcement / Mindset / Cross-File Impact Check / Confidence Scoring が含まれる。reviewer 固有の identity は named subagent の system prompt (agents/{reviewer_type}-reviewer.md) として自動注入される -->
+<!-- 全 reviewer 共通の原則 (`_reviewer-base.md`) の絶対パスと着手前の全文読取義務・読取完了申告 (ステップ 4.5 の placeholder 表)。本文は inline しない。reviewer 固有の identity は named subagent の system prompt (agents/{reviewer_type}-reviewer.md) として届く -->
 {shared_reviewer_principles}
 
 ## 出力フォーマット
@@ -71,5 +71,5 @@ PR #{number}: {title} の検証レビューを {reviewer_type} として実行�
 失敗 job が本 PR の変更ファイルに対応する場合は詳細 URL のログを確認し、変更に起因する failing test を `Verification: failing_test <path> => <失敗出力>` と call site の根拠付きで指摘する。job 名・赤い check だけでは実測アンカーにしない。無関係な flaky や allowed failure を一律 blocking にせず、既存の採否基準に従う。pending は待たず、CI の rerun は実行しない。Part 2 の新規指摘も Critic 5.2.2 の証拠↔主張対応を通る。観測（不在・件数・掲載順）だけを動作不良の証明にしない。
 
 ## 制約
-[READ-ONLY RULE] このレビューは読み取り専用。`Edit`/`Write` 禁止、問題は指摘事項として報告し修正は `/rite:fix` に委譲する。許可/禁止コマンドの完全一覧は上記「共通レビュー原則」に注入済みの `_reviewer-base.md` `## READ-ONLY Enforcement` を SoT として参照。
+[READ-ONLY RULE] このレビューは読み取り専用。`Edit`/`Write` 禁止、問題は指摘事項として報告し修正は `/rite:fix` に委譲する。許可/禁止コマンドの完全一覧は上記「共通レビュー原則」で読取義務を課した `_reviewer-base.md`（絶対パス）の `## READ-ONLY Enforcement` を SoT として参照。
 ```

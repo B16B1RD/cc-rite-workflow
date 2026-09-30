@@ -31,10 +31,13 @@ opt-out default で「Wiki 無効」と報告するのは、この Issue が潰�
 
 ## session-lock-mkdir
 
-`flock` は複数 Bash 呼び出しに跨る ingest を守れない。持続的 mkdir lock の stale 判定は保持
-セッションの flow-state liveness（`active=true` ∧ `updated_at` 2h 以内）を流用する
-（multi-session design §9）。`concurrent_ingest` 時に新しい回収機構を作らないのは、pending raw
-が wiki branch に残り次回 ingest が冪等に回収するため。
+`flock` は複数 Bash 呼び出しに跨る ingest を守れない。持続的 mkdir lock の stale 判定は、lock 自身に
+記録した取得時刻（`acquired_at`、2h 以内なら生存）で行い、保持セッションの flow-state は見ない。
+ingest は flow-state を active にしないまま実行されることがあり（単独の `/rite:wiki-ingest`、ingest
+の最中に cleanup が自セッションを非 active にする経路）、flow-state で判定すると取得直後の lock が
+stale になって別セッションに奪われる。取得時刻の無い・読めない lock は stale とし、保持者が落ちた
+lock を 2h 後に回収できる性質は保つ。`concurrent_ingest` 時に新しい
+回収機構を作らないのは、pending raw が wiki branch に残り次回 ingest が冪等に回収するため。
 
 ## informational-counters
 
@@ -193,11 +196,28 @@ skip 済み raw を警告に数えると、skip 運用が膨らむほど `n_warn
 lock を保持し続けると他セッションの ingest が `concurrent_ingest` で skip され続ける。万一
 解放を逃しても次回 ingest が stale 判定で回収する fail-safe はあるが、正常系では明示解放する。
 
+解放の前に `check` で lock がまだ自分のものかを確かめる。奪われた・消えたことを ingest の中で
+知る手段はここしかない（奪った側が解放すると lock 自体が消え、自分の `release` は `released`
+を返す）。`own` 以外でも WARNING と `WIKI_INGEST_LOCK_LOST` marker を出すだけで ingest は完了扱いにする。ページと log は既に commit
+済みで巻き戻せず、止めても利用者が取れる行動は変わらないため。確認に失敗した場合も `own` 以外として
+WARNING を出し、解放は必ず実行する。確認に失敗した原因（session を解決できない等）によっては解放も
+同じ理由で失敗し、lock は取得時刻による stale 判定（2h）まで残るので、確認失敗の WARNING にはその
+可能性を添える。block の終了コードに解放の失敗をそのまま返すのは、解放できなかった事実を消さないため。
+`own` のあとの解放失敗も同じ理由で WARNING を出す。終了コードだけでは完了レポートのロック系統の行に
+載らず、lock が残っているのに「なし」と報告されるため。
+対処文を branch_strategy ごとに出し分けるのは、戦略ごとに wiki の commit を見る場所が違い、利用者に
+自分の戦略のコマンドを読み分けさせないため。
+
 ## outstanding-no-new-store
 
 Wiki push の未完了は `{wiki_push_line}` と同じ marker を再評価するだけで、新しい記録先は持た
 ない。local commit 自体が durable な記録であり、次回 ingest のステップ 8.6 が自動で flush を
-試みる。marker なしを「失敗なし」と断定しないのは、未確認と成功を混同しないため。
+試みる。marker なしを「失敗なし」と断定しないのは、未確認と成功を混同しないため。ロックの
+未完了もステップ 9.0 が stderr に出した WARNING の文面を再評価するだけで、新しい記録先は持た
+ない。WARNING は会話の途中に流れて見落とされやすく、完了レポートが最後に目に入る表示のため、
+そこへ行を載せる。ステップ 9.0 は `own` 以外のとき stdout にも `WIKI_INGEST_LOCK_LOST` marker を
+出す。これは呼び出し元の `/rite:cleanup` が最終報告へ数えるための信号で、`{ingest_outstanding_line}`
+のロック行は従来どおり stderr の WARNING から組み立てる（marker は記録先ではない）。
 
 ## returned-to-caller
 

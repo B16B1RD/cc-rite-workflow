@@ -95,7 +95,11 @@ make_result() {
 
 # トラジェクトリを 1 ディレクトリに展開し、判定結果を $OUT へ書く。
 run_trend() {
-  # $1 = pr, $2.. = counts
+  # 先頭の `--opt value` の組は helper へそのまま渡す。続く $1 = pr, $2.. = counts
+  local opts=()
+  while [ "${1#--}" != "$1" ]; do
+    opts+=("$1" "$2"); shift 2
+  done
   local pr="$1"; shift
   local dir="$SANDBOX/pr-$pr"
   rm -rf "$dir"; mkdir -p "$dir"
@@ -105,7 +109,7 @@ run_trend() {
     make_result "$dir" "$pr" "$(printf '%02d' "$i")" "$n"
   done
   # pin を渡さない = 単一 run のディレクトリ (全件を 1 本の列として読む)
-  bash "$SCRIPT" --pr "$pr" --cycle-count "$#" --results-dir "$dir" > "$OUT" 2>/dev/null
+  bash "$SCRIPT" --pr "$pr" --cycle-count "$#" ${opts[@]+"${opts[@]}"} --results-dir "$dir" > "$OUT" 2>/dev/null
 }
 
 # fix の記録が各 review の後ろに並ぶ通常の Priority 1 保存列。
@@ -245,6 +249,42 @@ assert_grep "T-03f: 残り僅かで足踏み後に 1 件戻った 12,5,3,2,2,3 �
 # 書き換え等の off-by-one を一意に判別する。
 run_trend 306 9 1 5 5
 assert_grep "T-03g: 最良水準到達後に上で平坦化した 9,1,5,5 は cycle 4 で発火する (prefix_min 窓の上端の pin)" "$OUT" "fire_at=4"
+
+# ---------------------------------------------------------------------------
+# T-07: 解決済みの再試行で越えた発散点は発火点にしない
+# ---------------------------------------------------------------------------
+echo "--- T-07: 解決済み再試行の停止 cycle (--resolved-through) ---"
+
+run_trend 400 2 3 3 0
+assert_grep "T-07a: オプションなしの 2,3,3,0 は越えた発散点 cycle 3 で発火する (現行)" "$OUT" \
+  "TREND_DIVERGENCE=fire; trend=2,3,3,0; cycles=4; lost=0; fire_at=3; reason=no_new_minimum_and_not_descending"
+run_trend --resolved-through 3 401 2 3 3 0
+assert_grep "T-07b: 停止 cycle 3 を越えて 0 に達した 2,3,3,0 は発火しない" "$OUT" \
+  "TREND_DIVERGENCE=ok; trend=2,3,3,0; cycles=4; lost=0; reason=converging_or_descending"
+run_trend --resolved-through 3 402 2 3 3 0 2 3
+assert_grep "T-07c: 解決後に新たに発散した 2,3,3,0,2,3 は cycle 6 で発火する" "$OUT" \
+  "TREND_DIVERGENCE=fire; trend=2,3,3,0,2,3; cycles=6; lost=0; fire_at=6; reason=no_new_minimum_and_not_descending"
+for through in 0 2; do
+  run_trend --resolved-through "$through" 403 2 3 3
+  assert_grep "T-07d: 走査開始 3 以下の N=$through はオプションなしと同じく cycle 3 で発火する" "$OUT" \
+    "TREND_DIVERGENCE=fire; trend=2,3,3; cycles=3; lost=0; fire_at=3; reason=no_new_minimum_and_not_descending"
+done
+run_trend --resolved-through 3 404 2 3 3
+assert_grep "T-07e: N が列長以上なら発火点が無い" "$OUT" \
+  "TREND_DIVERGENCE=ok; trend=2,3,3; cycles=3; lost=0; reason=converging_or_descending"
+# 1,4,4 の発散点を越えても、最良水準 1 は N 以下の位置にある。min を N より後ろだけで取ると
+# 2,3 は最良水準 2 を超えず発火しない。
+run_trend --resolved-through 3 405 1 4 4 2 3
+assert_grep "T-07f: N 以下の位置も最良水準に入り 1,4,4,2,3 は cycle 5 で発火する" "$OUT" \
+  "TREND_DIVERGENCE=fire; trend=1,4,4,2,3; cycles=5; lost=0; fire_at=5; reason=no_new_minimum_and_not_descending"
+
+rt_dir="$SANDBOX/pr-406"; mkdir -p "$rt_dir"
+make_result "$rt_dir" 406 01 1
+for bad in '' '-1' '3a'; do
+  bash "$SCRIPT" --pr 406 --cycle-count 1 --resolved-through "$bad" --results-dir "$rt_dir" > "$OUT" 2>"$SANDBOX/rt-err"; rc=$?
+  assert "T-07g: --resolved-through '$bad' は呼び出しエラー" "2" "$rc"
+  assert_grep "T-07g: --resolved-through '$bad' の ERROR が引数を名指しする" "$SANDBOX/rt-err" "^ERROR: --resolved-through は非負整数"
+done
 
 # ---------------------------------------------------------------------------
 # T-05: 決定論性 (AC-5)
@@ -570,7 +610,7 @@ make_result "$coll_dir" 901 02 4 "" ""
 make_result "$coll_dir" 901 03 1 "" ""
 make_result "$coll_dir" 901 03 3 "" "~ab12"
 make_result "$coll_dir" 901 04 7 "" ""
-if locale -a 2>/dev/null | grep -qiE '^en_US\.utf-?8$'; then
+if _gq_out=$(locale -a 2>/dev/null) && grep -qiE '^en_US\.utf-?8$' <<< "$_gq_out"; then
   LC_ALL=en_US.UTF-8 bash "$SCRIPT" --pr 901 --cycle-count 5 --results-dir "$coll_dir" > "$OUT" 2>/dev/null
   assert_grep "collision 名: 同 ts の ~ 版が直後に並ぶ (要素順の pin)" "$OUT" "trend=5,4,1,3,7;"
 
@@ -879,18 +919,22 @@ fi
 # iterate 消費側: lost 修復ゲート (注記からゲートへの昇格)
 # helper の lost= 算出は上で pin 済み。ここでは消費側が lost>0 を次 cycle 開始の遮断に
 # 使うこと・counter 不前進・分岐 marker を static-contract で pin する。
+# ゲートのシェル本体（marker_emit・lost 判定の bash）は scripts/iterate-step.sh の cycle-gate /
+# lost-repair にあり、分岐表・ルーティング散文は iterate/SKILL.md にある。assert はその置き場で振り分ける。
 # ---------------------------------------------------------------------------
 echo "--- iterate lost 修復ゲート (消費側契約) ---"
 
 ITERATE_SKILL="$SCRIPT_DIR/../../skills/iterate/SKILL.md"
+ITERATE_STEP="$SCRIPT_DIR/../../scripts/iterate-step.sh"
 assert_file_exists_or_fail "iterate/SKILL.md が存在する" "$ITERATE_SKILL"
-assert_grep "消費側: lost>0 でゲートを fire する" "$ITERATE_SKILL" \
+assert_file_exists_or_fail "iterate-step.sh が存在する" "$ITERATE_STEP"
+assert_grep "消費側: lost>0 でゲートを fire する" "$ITERATE_STEP" \
   'if \[ "\$trend_lost" -gt 0 \]'
-assert_grep "消費側: ゲート fire 時は INC=held（counter 不前進）" "$ITERATE_SKILL" \
+assert_grep "消費側: ゲート fire 時は INC=held（counter 不前進）" "$ITERATE_STEP" \
   'INC=held'
-assert_grep "消費側: ITERATE_LOST_GATE fire を marker_emit する" "$ITERATE_SKILL" \
+assert_grep "消費側: ITERATE_LOST_GATE fire を marker_emit する" "$ITERATE_STEP" \
   'marker_emit ITERATE_LOST_GATE fire'
-assert_grep "消費側: 分岐結果を ITERATE_LOST_REPAIR に記録する" "$ITERATE_SKILL" \
+assert_grep "消費側: 分岐結果を ITERATE_LOST_REPAIR に記録する" "$ITERATE_STEP" \
   'marker_emit ITERATE_LOST_REPAIR'
 assert_grep "消費側: (a) は固定名簿と保存を検証する review-finish 経由" "$ITERATE_SKILL" \
   'pr-review ステップ 6.1.a の `review-finish` で保存・検証'
@@ -934,59 +978,60 @@ assert_grep "消費側: (a) 成功条件は JSON_SAVED=true" "$ITERATE_SKILL" \
   'JSON_SAVED=true'
 assert_not_grep "消費側: helper 値域と不一致の JSON_SAVED=1 を成功条件にしない" "$ITERATE_SKILL" \
   'JSON_SAVED=1'
-assert_grep "消費側: fire 分岐で handoff を default-clear する" "$ITERATE_SKILL" \
+assert_grep "消費側: fire 分岐で handoff を default-clear する" "$ITERATE_STEP" \
   'lost 修復ゲート発火'
-assert_grep "消費側: _undecidable の lost 欠落をデータ不在 reason で fire する" "$ITERATE_SKILL" \
+assert_grep "消費側: _undecidable の lost 欠落をデータ不在 reason で fire する" "$ITERATE_STEP" \
   'no_results_file\|results_dir_missing\|no_file_after_pin) lost_gate=fire'
-assert_grep "消費側: ゲートは coerce 前の raw lost を見る" "$ITERATE_SKILL" \
+assert_grep "消費側: ゲートは coerce 前の raw lost を見る" "$ITERATE_STEP" \
   'trend_lost_raw='
 assert_grep "消費側: (b) 不成立は ITERATE_LOST_REPAIR=failed" "$ITERATE_SKILL" \
   'ITERATE_LOST_REPAIR=failed'
 assert_grep "非退行: LOST 注記（推移行併記）が残っている" "$ITERATE_SKILL" \
   '`LOST` が `0` 以外のときは推移行に欠落を併記する'
-assert_not_grep "非退行: helper の lost= 算出を iterate 側で上書きしない" "$ITERATE_SKILL" \
+assert_not_grep "非退行: helper の lost= 算出を iterate 側で上書きしない" "$ITERATE_STEP" \
   'trend_lost=\$\(\('
 
 # ---------------------------------------------------------------------------
 # iterate 消費側: run 開始点 pin の pr_number guard
 # pin の state パスは PR 番号から組むため、未置換（`{pr_number}` のまま / 空 / 非数値）なら
-# ファイルに触れる前に止まる。guard と pin 読み書き部を SKILL.md から literal 抽出して実行する。
+# ファイルに触れる前に止まる。止めるのは iterate-step.sh の引数検査で、sandbox へ複製した
+# 実入口に不正値を渡して検査する。pin 読み書き部はステップ 0.6 (step_init_cycle) /
+# ステップ 1 (step_cycle_gate) 関数本体から literal 抽出して実行する。
+# 抽出本文が参照する pr_number / plugin_root 等は runner 冒頭で定義する。
 # ---------------------------------------------------------------------------
 echo "--- iterate run 開始点 pin の pr_number guard (消費側契約) ---"
 
 PG="$SANDBOX/pin-guard"
-mkdir -p "$PG/plugin/hooks"
+mkdir -p "$PG/plugin/hooks/scripts/lib" "$PG/plugin/scripts"
 printf '#!/bin/bash\nprintf "%%s\\n" "$PIN_STATE_ROOT"\n' > "$PG/plugin/hooks/state-path-resolve.sh"
+# step 本体が最初に呼ぶ外部コマンドは flow-state.sh で、呼ばれたら calls に記録するスタブを置く。
+# cycle-gate はその前に context-marker.sh を source し、無ければ exit 1 するため実物を置く。
+# control-char-neutralize.sh は欠けても WARNING で縮退するだけだが、実入口と同じ構成にそろえる
+printf '#!/bin/bash\nprintf "%%s\\n" "$*" >> "$(dirname "$0")/calls"\nexit 0\n' > "$PG/plugin/hooks/flow-state.sh"
+cp "$SCRIPT_DIR/../control-char-neutralize.sh" "$PG/plugin/hooks/"
+cp "$SCRIPT_DIR/../scripts/lib/context-marker.sh" "$PG/plugin/hooks/scripts/lib/"
+cp "$ITERATE_STEP" "$PG/plugin/scripts/iterate-step.sh"
 
-# fence_of <start> <end>: 見出し start〜end の間にある最初の ```bash fence の中身
+# fence_of <function>: iterate-step.sh の step 関数本体（`<function>() {` 行と閉じ `}` を除く）
 fence_of() {
-  awk -v s="$1" -v e="$2" '
-    $0 ~ s { sec = 1; next }
-    sec && $0 ~ e { exit }
-    sec && !fence && $0 == "```bash" { fence = 1; next }
-    fence && $0 == "```" { exit }
-    fence { print }' "$ITERATE_SKILL"
+  awk -v fn="$1() {" '
+    $0 == fn { body = 1; next }
+    body && $0 == "}" { exit }
+    body { print }' "$ITERATE_STEP"
 }
-fence_of '^## ステップ 0\.6:' '^## ステップ 1:' > "$PG/fence06.sh"
-fence_of '^## ステップ 1:' '^## ステップ 2:' > "$PG/fence1.sh"
-guard_of() { awk '$0 == "pr_number=\"{pr_number}\"" { f = 1 } f { print } f && $0 == "esac" { exit }' "$1"; }
-guard_of "$PG/fence06.sh" > "$PG/guard06.sh"
-guard_of "$PG/fence1.sh" > "$PG/guard1.sh"
+fence_of step_init_cycle > "$PG/fence06.sh"
+fence_of step_cycle_gate > "$PG/fence1.sh"
 awk '$0 == "run_since_status=none" { f = 1 } /^marker_emit ITERATE_CYCLE_MAX/ { exit } f { print }' \
   "$PG/fence06.sh" > "$PG/write06.sh"
-awk '$0 == "pin_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || pin_root=\"\"" { f = 1 } f { print } f && $0 == "fi" { exit }' \
+awk '$0 == "pin_root=$(bash \"$plugin_root\"/hooks/state-path-resolve.sh) || pin_root=\"\"" { f = 1 } f { print } f && $0 == "fi" { exit }' \
   "$PG/fence1.sh" > "$PG/read1.sh"
 # 行数の上限は終端アンカーを取り逃した over-extraction を検出する
-if [ "$(wc -l < "$PG/guard06.sh")" -ne 4 ] || [ "$(wc -l < "$PG/guard1.sh")" -ne 4 ] \
-   || ! grep -q 'review-run-since-' "$PG/write06.sh" || [ "$(wc -l < "$PG/write06.sh")" -gt 50 ] \
+if ! grep -q 'review-run-since-' "$PG/write06.sh" || [ "$(wc -l < "$PG/write06.sh")" -gt 50 ] \
    || ! grep -q 'review-run-since-' "$PG/read1.sh" || [ "$(wc -l < "$PG/read1.sh")" -gt 20 ]; then
-  echo "FATAL: iterate の pin guard / pin 読み書き部の抽出に失敗しました (アンカーが変更された可能性)" >&2
+  echo "FATAL: iterate の pin 読み書き部の抽出に失敗しました (アンカーが変更された可能性)" >&2
   exit 1
 fi
 
-first_code() { awk '!/^[[:space:]]*(#|$)/ { print; exit }' "$1"; }
-assert "静的: ステップ 0.6 の fence は guard から始まる" 'pr_number="{pr_number}"' "$(first_code "$PG/fence06.sh")"
-assert "静的: ステップ 1 の fence は guard から始まる" 'pr_number="{pr_number}"' "$(first_code "$PG/fence1.sh")"
 for lit in 'nb-sweep-done-${pr_number}.txt' 'review-run-since-${pr_number}.txt' '-name "${pr_number}-*.json"'; do
   assert "静的: ステップ 0.6 は $lit でパスを組む" "1" "$(grep -cF -- "$lit" "$PG/fence06.sh")"
 done
@@ -994,10 +1039,10 @@ assert "静的: ステップ 1 は review-run-since-\${pr_number}.txt で pin �
   "$(grep -cF 'review-run-since-${pr_number}.txt' "$PG/fence1.sh")"
 assert "静的: pin パスに未置換 placeholder が残っていない" "0" \
   "$(cat "$PG/fence06.sh" "$PG/fence1.sh" | grep -cF -e 'nb-sweep-done-{pr_number}' -e 'review-run-since-{pr_number}' -e '"{pr_number}-*.json"')"
-assert "静的: helper への --pr {pr_number} 引数は変えていない" "1" \
-  "$(grep -cF -- '--pr {pr_number} --cycle-count' "$PG/fence1.sh")"
+assert "静的: helper への --pr \$pr_number 引数は変えていない" "1" \
+  "$(grep -cF -- '--pr $pr_number --cycle-count' "$PG/fence1.sh")"
 
-# pin_state_root <name>: 結果 JSON (PR 42 の 2 件 + 別 PR 1 件) と sweep 済み marker を置いた state root
+# pin_state_root <name>: 結果 JSON (PR 42 の 2 件 + 別 PR 1 件) と PR 42 の sweep 済み marker を置いた state root
 pin_state_root() {
   local r="$PG/$1"
   rm -rf "$r"; mkdir -p "$r/.rite/review-results" "$r/.rite/state"
@@ -1005,20 +1050,19 @@ pin_state_root() {
   : > "$r/.rite/review-results/42-20260101000002.json"
   : > "$r/.rite/review-results/43-20260101000009.json"
   : > "$r/.rite/state/nb-sweep-done-42.txt"
-  : > "$r/.rite/state/nb-sweep-done-{pr_number}.txt"
   printf '%s\n' "$r"
 }
 # run_write <root> <value> <cb_mode_init> <cur_cc> / run_read <root> <value>
 run_write() {
-  { sed -e "s|\"{pr_number}\"|\"$2\"|" "$PG/guard06.sh"
+  { printf 'pr_number=%q\nplugin_root=%q\n' "$2" "$PG/plugin"
     printf 'cb_mode_init=%s\ncur_cc=%s\n' "$3" "$4"
-    sed -e "s|{plugin_root}|$PG/plugin|g" "$PG/write06.sh"
+    cat "$PG/write06.sh"
     printf 'echo "RUN_SINCE=$run_since_status"\n'; } > "$PG/run-write.sh"
   PIN_STATE_ROOT="$1" bash "$PG/run-write.sh" >"$PG/out" 2>"$PG/err"
 }
 run_read() {
-  { sed -e "s|\"{pr_number}\"|\"$2\"|" "$PG/guard1.sh"
-    sed -e "s|{plugin_root}|$PG/plugin|g" "$PG/read1.sh"
+  { printf 'pr_number=%q\nplugin_root=%q\n' "$2" "$PG/plugin"
+    cat "$PG/read1.sh"
     printf 'printf "%%s\\n" "$run_since" > "$PIN_STATE_ROOT/helper-called"\necho "RUN_SINCE_USED=$run_since_used"\n'; } > "$PG/run-read.sh"
   PIN_STATE_ROOT="$1" bash "$PG/run-read.sh" >"$PG/out" 2>"$PG/err"
 }
@@ -1031,21 +1075,37 @@ assert "書込: pin は同じ PR の最新結果 basename" "42-20260101000002.js
 assert "書込: 新しい run では同じ PR の sweep 済み marker を消す" "absent" \
   "$([ -e "$r/.rite/state/nb-sweep-done-42.txt" ] && echo present || echo absent)"
 
-for bad in '{pr_number}' '' '12a' '#12' ' 12' '-1'; do
-  r=$(pin_state_root bad)
-  run_write "$r" "$bad" fresh 0; rc=$?
-  assert "書込 [$bad]: 非ゼロで止まる" "1" "$rc"
-  assert_grep "書込 [$bad]: 受けた値つきの ERROR を出す" "$PG/err" "^ERROR: .*pr_number が数値に置換されていません"
-  assert "書込 [$bad]: marker を消さず pin を作らない" "nb-sweep-done-42.txt nb-sweep-done-{pr_number}.txt" \
-    "$(ls "$r/.rite/state" | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
+# 陽性対照: 同じ sandbox に有効な PR 番号を渡すと step 本体まで届き、flow-state.sh を呼ぶ。
+# 下の「呼ばない」assert は、sandbox に必須の helper が欠けて本体が途中で落ちても通るため、
+# 届くことをここで固定する。rc は見ない（本体は後段の config 解決で止まるが、判定には無関係）
+for sub in init-cycle cycle-gate; do
+  r=$(pin_state_root "good-$sub")
+  rm -f "$PG/plugin/hooks/calls"
+  PIN_STATE_ROOT="$r" bash "$PG/plugin/scripts/iterate-step.sh" "$sub" --pr 42 --issue 1 --branch b \
+    >"$PG/out" 2>"$PG/err"
+  assert "$sub [42]: 有効な PR 番号では step 本体に入る (flow-state.sh を呼ぶ)" "present" \
+    "$([ -e "$PG/plugin/hooks/calls" ] && echo present || echo absent)"
+done
 
-  r=$(pin_state_root bad-read)
-  printf 'stale.json\n' > "$r/.rite/state/review-run-since-{pr_number}.txt"
-  run_read "$r" "$bad"; rc=$?
-  assert "読込 [$bad]: 非ゼロで止まる" "1" "$rc"
-  assert_grep "読込 [$bad]: 受けた値つきの ERROR を出す" "$PG/err" "^ERROR: .*pr_number が数値に置換されていません"
-  assert "読込 [$bad]: helper へ --since を渡す段に進まない" "absent" \
-    "$([ -e "$r/helper-called" ] && echo present || echo absent)"
+# 実入口は step 関数に入る前に止める。止めた検査を stderr の文言で見分ける（どれかが外れても
+# 別の検査が同じ rc=2 を返すため、rc だけでは検査の欠落を見逃す）。
+for bad in '{pr_number}' '' '12a' '#12' ' 12' '-1'; do
+  case "$bad" in
+    '{pr_number}') gate='--pr received an unsubstituted placeholder' ;;
+    '') gate='requires --pr' ;;
+    *) gate='--pr must be a number' ;;
+  esac
+  for sub in init-cycle cycle-gate; do
+    r=$(pin_state_root "bad-$sub")
+    rm -f "$PG/plugin/hooks/calls"
+    PIN_STATE_ROOT="$r" bash "$PG/plugin/scripts/iterate-step.sh" "$sub" --pr "$bad" --issue 1 --branch b \
+      >"$PG/out" 2>"$PG/err"; rc=$?
+    assert "$sub [$bad]: exit 2 で止まる" "2" "$rc"
+    assert_grep "$sub [$bad]: 止めた検査の ERROR を出す" "$PG/err" "^ERROR: iterate-step.sh: .*$gate"
+    # pin と marker に触れるのは step 本体だけなので、本体に入らなければファイルにも触れない
+    assert "$sub [$bad]: step 本体に入らない (flow-state.sh を呼ばない)" "absent" \
+      "$([ -e "$PG/plugin/hooks/calls" ] && echo present || echo absent)"
+  done
 done
 
 r=$(pin_state_root resume)

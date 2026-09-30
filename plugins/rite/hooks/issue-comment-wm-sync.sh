@@ -45,16 +45,19 @@
 #
 # Exit codes:
 #   0: Success or non-blocking skip (WARNING on stderr)
-#   1: Argument error
+#   1: Argument error (update mode の transform 必須引数欠落を含む。gh は一度も呼ばない)
 #
 # Status output (stdout, update mode) — caller shim 用の機械可読 1 行:
 #   status=success                          PATCH 成功
+#   status=error; reason=invalid_args       transform の必須引数欠落 (exit 1。コメント取得・backup・
+#                                           PATCH の前に停止し、欠けた引数を stderr に
+#                                           `ERROR: <transform>: <flag> is required` で出す)
 #   status=skipped; reason=no_comment       作業メモリ comment 不在 (初回 fix 等, legitimate no-op)
 #   status=skipped; reason=body_fetch_failed gh api での body 取得失敗 (auth/rate/network/404)
 #   status=skipped; reason=safety_check_failed body 空 / header 欠落 / <50% で PATCH 拒否
 #   status=skipped; reason=section_absent   merge-checklist: 対象 ### section 不在で新規 items を置けず
 #                                           (Python exit 10。items は破棄せず PATCH もしない)
-#   status=error; reason=transform_failed   Python transform が非ゼロ exit (exit 10 以外)
+#   status=error; reason=transform_failed   必須引数が揃った状態で Python transform が非ゼロ exit (exit 10 以外)
 #   status=error; reason=patch_failed       jq | gh api PATCH が失敗
 #   skills/fix/SKILL.md ステップ 4.5.2 はこの行を read し、no_comment 以外の skipped/error を
 #   `[CONTEXT] WM_UPDATE_FAILED=1` にマップする (`[fix:pushed-wm-stale]` routing 用)。
@@ -546,6 +549,33 @@ while [[ $# -gt 0 ]]; do
 done
 
 # --- Validation ---
+# transform ごとの必須引数。issue-comment-wm-update.py の usage 判定と同じ組み合わせを保つ
+# (tests/issue-comment-wm-sync.test.sh が Python の ERROR 文と双方向に突き合わせる)。
+_required_args_for_transform() {
+  case "$1" in
+    update-phase)                                   echo "--phase --phase-detail" ;;
+    append-section|replace-section|merge-checklist) echo "--section --content-file" ;;
+    append-eof)                                     echo "--content-file" ;;
+    update-checkboxes)                              echo "--tasks" ;;
+  esac
+}
+
+# Python の parse_args と同じく引数を「フラグ 値」の組で先頭から読み、フラグの次の位置に引数が
+# あれば指定ありとみなす (値の中身は見ない。空文字も指定あり)。組で読むため `--section --content-file f`
+# の `--content-file` は --section の値になり、--content-file 自体は欠落として扱われる。
+_transform_arg_present() {
+  local i=0 n=${#TRANSFORM_ARGS[@]}
+  while [ "$i" -lt "$n" ]; do
+    if [ "$((i + 1))" -lt "$n" ]; then
+      [ "${TRANSFORM_ARGS[$i]}" = "$1" ] && return 0
+      i=$((i + 2))
+    else
+      i=$((i + 1))
+    fi
+  done
+  return 1
+}
+
 if [ -z "$ISSUE" ]; then
   echo "ERROR: --issue is required" >&2
   exit 1
@@ -557,6 +587,19 @@ case "$MODE" in
   update)
     if [ -z "$TRANSFORM" ]; then
       echo "ERROR: update mode requires --transform" >&2
+      exit 1
+    fi
+    # 必須引数の欠落はコメント取得・backup より前に止める。Python に委ねると usage error が
+    # transform_failed に写像され、本物の変換失敗と区別できなくなる。
+    _missing_args=0
+    for _req in $(_required_args_for_transform "$TRANSFORM"); do
+      if ! _transform_arg_present "$_req"; then
+        echo "ERROR: $TRANSFORM: $_req is required" >&2
+        _missing_args=1
+      fi
+    done
+    if [ "$_missing_args" -ne 0 ]; then
+      echo "status=error; reason=invalid_args"
       exit 1
     fi
     ;;

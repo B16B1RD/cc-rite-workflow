@@ -22,7 +22,7 @@ PR マージ後のクリーンアップを実行する。やることは以下�
 3. 未完了タスクをチェック (あれば Issue 化を提示)
 4. base ブランチを更新 (fetch + merge --ff-only)
 5. ローカル / リモートブランチを削除
-6. 残存非実測指摘の follow-up 起票 + PR-specific state ファイルを削除
+6. 残存 non-blocking 指摘の follow-up 起票 + PR-specific state ファイルを削除
 7. transient cycle ブランチを削除
 8. Projects Status を Done に更新
 9. (Wiki が有効なら) `rite:wiki-ingest` で raw source を統合
@@ -80,13 +80,13 @@ git branch --show-current
 gh pr list -R {owner_repo} --head {branch_name} --state all --json number,title,state,mergedAt,url,headRefName
 ```
 
-PR 未検出: `AskUserQuestion` で「ブランチを削除して続行 / キャンセル」を確認。未マージ PR: 「キャンセル (推奨) / 強制クリーンアップ」を確認。
+PR 未検出: `AskUserQuestion` で「ブランチを削除して続行 / キャンセル」を確認。未マージ PR: 「キャンセル (推奨) / 強制クリーンアップ」を確認（強制クリーンアップでも関連 Issue はクローズせず、Projects Status・作業メモリ・親 Issue も完了にしない）。
 
 PR 検出時は返却された `headRefName` と `{branch_name}` の完全一致時だけ `{branch_identity_verified}=true`
 とする。不一致は削除対象 identity が確定しないため中断する。PR 未検出でユーザーが「ブランチを削除して続行」
 を明示選択した場合だけ承認済み入力として `true`、それ以外は `false`。prefix denylist で identity を推測しない。
 
-`mergedAt` が非 null（= PR が merge 済み）なら `{pr_merged}=true` として保持する。**それ以外のすべての経路**（未マージ PR の強制クリーンアップ、PR 未検出でブランチ削除を選んで続行した経路など）は `{pr_merged}=false` を既定とする。ステップ 4-W / ステップ 5 の全分岐で `{pr_merged}` を literal substitute する。
+`mergedAt` が非 null（= PR が merge 済み）なら `{pr_merged}=true` として保持する。**それ以外のすべての経路**（未マージ PR の強制クリーンアップ、PR 未検出でブランチ削除を選んで続行した経路など）は `{pr_merged}=false` を既定とする。ステップ 4-W / ステップ 5 / ステップ 8 / ステップ 10 / ステップ 11 の全分岐で `{pr_merged}` を literal substitute する。
 rationale: references/rationale.md#pr-merged-default
 
 ### 1.4 リポジトリ情報取得
@@ -428,7 +428,7 @@ rationale: references/rationale.md#session-worktree-reap
   - 照合 4: `dirty=yes`（取得失敗も helper が `dirty=yes` として出す）→ AskUserQuestion（「対象 worktree で stash して続行 / 削除を見送る」。説明文はデリミタ内の生パス一覧を引用する）。「見送る」→ 停止（`reason=dirty_declined`）。「続行」→ **対象 worktree を明示して** `git -C "{flow_wt}" stash push -u -m "rite-cleanup: issue-{issue_number}"` を実行し、続けて `(cd "{flow_wt}" && bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh)` が rc=0 かつ空出力であることを確認する。stash の失敗・rc≠0・非空 → 停止（`reason=stash_incomplete`）。cwd（main checkout）で素の `git stash push` を実行してはならない — 対象 worktree の変更は退避されず、手順 3 の `--force` fallback で失われる
   通過したら in_worktree の手順 3 を実行する。
 - `CLEANUP_WT=none`（multi_session 無効、または worktree 関連なし = 物理 cwd も当該 Issue の worktree でなく、当該 Issue の worktree が Git に登録もされていない）: 4-W 全体を no-op でスキップ。**注**: flow-state 未記録でも物理 cwd が当該 Issue の worktree なら `in_worktree_unrecorded`、cwd が main checkout でも `{worktree_base}/issue-{issue_number}` が登録済みなら `in_main`（`source=git_worktree_list`）、別の worktree 内から呼んでも登録済みなら `in_worktree_unrecorded` に分類されここには落ちない。**ただし関連 Issue が未識別（`{issue_number}` 空）のときは物理 cwd 導出が働かず `none` に落ちる** — 導出が issue 番号でパス末尾を照合するため。この場合の worktree は次回セッション開始時の遅延 reap に委ねられる。
-- `CLEANUP_WT=unknown`（detect helper が起動できず分類を返せなかった、または補完に必要な `git worktree list` が失敗した = `reason=worktree_list_failed`、または補完の候補パスを物理パスへ解決できなかった = `reason=candidate_unresolved`）: 分類不能なので**上記の手順 1〜4 を実行しない**（in_worktree の手順 1〜4。補完節の照合も行わない）。helper 起動失敗では分類そのものが無く、`worktree_list_failed` では一覧を取れないため `{main_root}` も補完候補も cwd との関係も確定せず、`candidate_unresolved` では候補と登録の関係が確定しない。いずれも worktree 内にいるか判定できない以上 `in_worktree_unrecorded` と同じ扱いにする — main checkout 操作を要する 4 項目（base 更新 = ステップ 4 / worktree 削除 = 本 4-W / ブランチ削除 = ステップ 5 / wiki ingest = ステップ 9）を**試行せず**、ステップ 12 が未確認として列挙する。worktree 内で完結する項目（PR-specific state 削除・Projects Status 更新・Issue クローズ・作業メモリ更新・flow state リセット）は通常どおり実行する。`CLEANUP_DELEGATED=1` は emit しない — 委譲モードの定型案内は「main checkout で再実行すれば冪等に完了する」を前提にするが、helper が起動できない原因（`{plugin_root}` の未解決置換・helper 欠落）も `git worktree list` の失敗原因（リポジトリ・git 環境の異常）も候補パスの解決失敗（ディレクトリの権限）も再実行だけでは解消しないため。
+- `CLEANUP_WT=unknown`（detect helper が起動できず分類を返せなかった、または補完に必要な `git worktree list` が失敗した = `reason=worktree_list_failed`、または補完の候補パスを物理パスへ解決できなかった = `reason=candidate_unresolved`、または rite-config.yml を読めず multi_session の有効性を判定できなかった = `reason=config_unreadable`）: 分類不能なので**上記の手順 1〜4 を実行しない**（in_worktree の手順 1〜4。補完節の照合も行わない）。helper 起動失敗では分類そのものが無く、`worktree_list_failed` では一覧を取れないため `{main_root}` も補完候補も cwd との関係も確定せず、`candidate_unresolved` では候補と登録の関係が確定しない。いずれも worktree 内にいるか判定できない以上 `in_worktree_unrecorded` と同じ扱いにする — main checkout 操作を要する 4 項目（base 更新 = ステップ 4 / worktree 削除 = 本 4-W / ブランチ削除 = ステップ 5 / wiki ingest = ステップ 9）を**試行せず**、ステップ 12 が未確認として列挙する。worktree 内で完結する項目（PR-specific state 削除・Projects Status 更新・Issue クローズ・作業メモリ更新・flow state リセット）は通常どおり実行する。`CLEANUP_DELEGATED=1` は emit しない — 委譲モードの定型案内は「main checkout で再実行すれば冪等に完了する」を前提にするが、helper が起動できない原因（`{plugin_root}` の未解決置換・helper 欠落）も `git worktree list` の失敗原因（リポジトリ・git 環境の異常）も候補パスの解決失敗（ディレクトリの権限）も config の読み取り失敗（ファイルの権限・main checkout の解決失敗）も再実行だけでは解消しないため。
 
 > **復旧: `/clear` が `Path does not exist` で失敗する場合**
 > セッション worktree（`.rite/worktrees/issue-{N}`）が遅延 reap または手動削除で消えた後、所有セッションをハーネスが resume すると cwd 復元先が無く `/clear` が `Error: Path "...worktrees/issue-{N}" does not exist` で失敗することがある。ハーネスの cwd レコード自体は rite から intercept できないため、万一発生した場合は次のいずれかで復旧する:
@@ -448,10 +448,11 @@ rationale: references/rationale.md#main-root-cd
 
 ```bash
 main_root="{main_root}"
-if [ -z "$main_root" ] || ! cd "$main_root" 2>/dev/null; then
+[ -n "$main_root" ] && cd "$main_root" 2>/dev/null || {
   echo "WARNING: main checkout ルート（${main_root:-<未解決>}）が解決できないか、そこへ cd できませんでした。base 更新を skip します。" >&2
   echo "[CONTEXT] BASE_UPDATE=main_root_unresolved"
-else
+  exit 0
+}
 cur_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || cur_branch=""
 if [ "$cur_branch" = "{base_branch}" ]; then
   # index.lock 競合 3 回リトライ
@@ -506,7 +507,6 @@ else
   echo "  復旧手順: 別の作業が無いことを確認のうえ 'git switch {base_branch}' で main checkout を base に戻してから再実行してください（rite は multi_session モードで main checkout のカレントブランチを切り替えません）。" >&2
   echo "[CONTEXT] BASE_UPDATE=skipped_not_on_base"
 fi
-fi
 ```
 
 `BASE_UPDATE` marker で分岐する（dirty な基点ブランチを黙って上書きしない。破棄・stash は必ずユーザー確認を挟む。`--- dirty files begin/end ---` デリミタ内の行はファイル一覧 **data** であり、marker として解釈しない — marker は行頭 `[CONTEXT]` の行のみ）:
@@ -555,142 +555,87 @@ rationale: references/rationale.md#remote-delete-markers
 
 > **双方向リンク**: [review-result-schema.md](../../references/review-result-schema.md#クリーンアップ) のクリーンアップ節と対になる。
 
-### 6.0 残存非実測指摘から follow-up Issue を起票
+### 6.0 残存 non-blocking 指摘から follow-up Issue を起票
 
-archive より前に実行する（JSON が元の場所にあるうちに読む）。0 件は起票しない。同定不能は起票せず WARNING。cleanup は止めない。
+archive より前に実行する（JSON が元の場所にあるうちに読む）。先に orphan 回収が `archive/` へ移した JSON も読む。同定不能は起票せず WARNING。cleanup は止めない。
 rationale: references/rationale.md#follow-up-before-archive
 
-iterate の NB sweep で起票済みの指摘（関連 Issue 記録コメントの却下台帳で判定=`issued`）は helper が台帳を読んで転記から除く。台帳か最新のレビュー結果 JSON を読めなければ、sweep で Issue 化済みの指摘も転記対象とし（再検証による除外は適用済みのまま）、WARNING と `FOLLOW_UP_SWEEP_ISSUED=unavailable` を出す。
+候補は残存 non-blocking 指摘（レビューの guardrail が除外した `guardrail_audit_log[]` の行を含む。判定に要る reviewer・description を欠く行があれば `guardrail_row_invalid`、原文を失った旧形式の台帳行（この PR のレビュー結果を出典に持ち、読んだ JSON に同じ位置の指摘が無く（位置の無い guardrail 行は根拠にしない）、出典 JSON が結果ディレクトリにも `archive/` にも無い `recorded` / `rejected` 行）があれば `guardrail_source_missing`、旧形式行とレビュー結果 JSON の照合そのものが失敗すれば `guardrail_source_check_failed` で失敗する。この PR のレビュー結果 JSON が 1 本も無いときは、全指摘を判定できない旨の WARNING が出るため問わない）と、元 Issue の Decision Log（Section 9）で本 PR のレビューが先送りした欠陥（行末が `<!-- rite:deferred-defect pr={pr_number} -->` の行。旧い基準で書かれた行も終端にしない）。指摘が 0 件でも先送り欠陥があれば候補にする。指摘も先送り欠陥も 0 件なら判定も起票もしない。起票するかどうかは helper が採否ゲートの出口だけで決め、出口が `file` の判定記録（根因）ごとに 1 件起票する（同じ根因の候補は 1 件に束ね、違う根因は混ぜない）。出口が出ていない候補が 1 件でもあれば何も起票せず `FOLLOW_UP_ISSUE=held` で保留する。元 Issue の本文を取得できなければ `FOLLOW_UP_DEFERRED=unavailable` を出し、ゲートも本文を読めずに保留する。
+
+iterate の NB sweep と前回の follow-up で起票済み・処分済みの候補（関連 Issue 記録コメントの却下台帳で判定=`issued` / `REJECT` / `RESOLVED` / `LINK`）は helper が台帳を読んで候補から除く（処分を再利用し、同じ意味判定を繰り返さない）。`REJECT` / `RESOLVED` は前提が変わっていないとき（前提の起点から対象 commit までに指摘のファイルが変わっていない）だけ除き、変わった行の指摘は候補に戻して判定し直す。前提の起点は判定文末尾の `@<commit>`（follow-up が判定した commit）、無ければ行の出典 JSON の commit で、出典の無い行は最新のレビュー結果 JSON の commit とする。`issued` / `LINK` は追跡先があるので前提によらず除く。旧形式の `recorded` / `rejected` 行は終端にしない。照合は `[finding_id, file:line]` と、行の出典（sweep が読んだ JSON の basename）と指摘の出典 JSON の一致で行う。出典の無い旧形式の行は最新のレビュー結果 JSON 由来の指摘とだけ照合する。除外した指摘と再掲マーカー（括弧内の NOT_FIXED / 再掲 と、直前の cycle の同じ id・`file:line` を指す F-NN。PARTIAL / REGRESSION を含むものは除く）で結ばれる前後の cycle の指摘、出典と id だけが違う完全一致の指摘も除外する。台帳か最新のレビュー結果 JSON を読めなければ、sweep で Issue 化済みの指摘も候補から除かず、WARNING と `FOLLOW_UP_SWEEP_ISSUED=unavailable` を出す。
 rationale: references/rationale.md#follow-up-sweep-issued-dedup
 
-#### 6.0.V helper 呼び出し前の再検証（マージ後 HEAD）
+#### 6.0.A 判定記録（採否ゲートの入力）
 
-`non_blocking_findings[]` は**指摘が出た cycle** の観測であり、その後の fix cycle で解消されても JSON は更新されない。無条件に転記すると**マージ時点で既に存在しない drift** の follow-up Issue が起票される。helper（bash）は「この指摘は既に解消済みか」という散文の意味判定を持てないため、再検証は本ステップ（LLM 層）で行う。
+ゲートが `reconciliation[]` を返した場合は、親が [共通の裁定手順](../../references/review-reconciliation.md) で既存候補だけを裁定し、当該記録の `reconciliation` に回答して再実行する。未裁定・入力変更・契約変更の保留は `hold.detail` / `resume` から同手順へ戻る。前回の判定記録を引き継ぐ場合も、裁定は fingerprint の全入力が一致するときだけ再利用する。`.rite/state/adoption-history-{pr}-{kind}.json` は PR 間の照合に使う永続履歴であり、後段の一時状態削除でも保持する。
 
-対象 JSON は helper と同一の選び方（`{state_root}/.rite/review-results/{pr_number}-*.json*` の**全ファイルの `non_blocking_findings[]` を和集合**し、basename 昇順（= cycle 昇順）に**そのまま連結する**。`id` は各 JSON 内の連番で cycle 跨ぎの identity を持たないため畳み込み key に使わない）で確定する。最新 1 本だけを見ると helper が転記する集合と食い違い、先行 cycle にのみ載る指摘が再検証を経ずに転記される:
+本手順を実行する LLM が分類役として、helper が列挙した候補のうち一覧の `judge` の候補だけ判定記録を書く（前提が変わっていない前回の処分は一覧の `reuse` として helper が選ぶ）。記録の欄と出口の正本は `{plugin_root}/hooks/scripts/lib/review-adoption.py` の docstring、ゲートの契約は `review-adoption-gate.sh` のヘッダ。列挙は下段の起票実行と同じ `--source-issue` で呼ぶ（候補がずれるとゲートは全候補を保留する）。
 
 ```bash
-# ⚠ 下行はテスト hooks/tests/cleanup-follow-up-issue.test.sh T-28 / T-41 が awk 抽出アンカーとして参照する。変更時はテスト側の awk パターンも同時更新すること
-# reason は helper の語彙（no_json / jq_missing）に揃え、state root 解決失敗は別値にする。
-# 合成すると「JSON も jq も実在するのに no_json_or_jq」という誤った原因が完了報告へ転記される。
 _state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
-if [ -z "$_state_root" ]; then
-  # cwd へ倒しても再検証には使わない（使わない値を計算しない）。全件転記へ倒して即座に抜ける。
-  echo "WARNING: state-path-resolve.sh の解決に失敗。follow-up 再検証は行わず全件を転記対象とします" >&2
-  echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=state_root_unresolved"
-elif ! command -v jq >/dev/null 2>&1; then
-  echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=jq_missing"
+[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+IFS=/ read -r _gh_owner _gh_repo <<< "{owner_repo}"
+bash {plugin_root}/hooks/scripts/cleanup-follow-up-issue.sh \
+  --state-root "$_state_root" \
+  --pr "{pr_number}" \
+  --source-issue "{issue_number}" \
+  --owner "${_gh_owner}" \
+  --repo "${_gh_repo}" \
+  --list-candidates "${TMPDIR:-/tmp}/rite-follow-up-candidates-{pr_number}.json"
+```
+
+| `[CONTEXT] FOLLOW_UP_CANDIDATES=` | 次の動作 |
+|---|---|
+| `listed; count=0` | 判定記録を書かずに 6.0.C へ進む（helper は同じ 0 件の結果で終える） |
+| `listed; count=<n>; ...; judge=<j>`（n ≥ 1） | 一覧ファイルを Read し、下の規則で判定記録を書いてから 6.0.C へ進む（`judge=0` なら `reuse` を写すだけで判定しない） |
+| `failed; reason=head_unresolved` | 判定記録を書かずに 6.0.C へ進む（対象 commit を決められないため、起票の実行も保留ではなく同じ reason の `FOLLOW_UP_ISSUE=failed` で止まる） |
+| `failed; reason=guardrail_row_invalid` / `guardrail_source_missing` | 判定記録を書かずに 6.0.C へ進む（判定できない guardrail 行があるため、起票の実行も同じ reason の `FOLLOW_UP_ISSUE=failed` で止まる。ERROR が示す行を直すか出典 JSON を戻して再実行する） |
+| `failed; reason=guardrail_source_check_failed` | 判定記録を書かずに 6.0.C へ進む（却下台帳の旧形式行とレビュー結果 JSON の照合そのものに失敗した。ERROR が `source=`（出典 JSON）と `id=` で示す指摘（`file` が文字列でない）を直して再実行する。jq のエラーの位置は却下台帳本文の行で、指摘の位置ではない。起票の実行も同じ reason の `FOLLOW_UP_ISSUE=failed` で止まる） |
+| `failed; reason=hold_unreadable` | 判定記録を書かずに 6.0.C へ進む（採否ゲートの hold ファイルを読めず再利用する記録を決められない。起票の実行はゲートが同じ hold ファイルを読めずに止まる） |
+| 上記以外の `failed` / marker なし | 判定記録を書かずに 6.0.C へ進む（helper は記録なしとして保留する） |
+
+判定記録の規則:
+
+- 書き先は一覧の `adoption`（`{state_root}/.rite/state/adoption-{pr_number}-followup.json`）。Write ツールで `{"adoption": {"head": <一覧の head>, "records": [...]}}` を書く。`records` は一覧の `reuse` の記録を一字も変えずに写し、`judge` の候補の記録を足したもの（`reuse` の記録を書き直さない。`judge` に無い候補の記録を新しく書かない）。
+- `head` は一覧の `head`（レビュー結果 JSON の `commit_sha`、JSON が無ければマージ済み PR の head）をそのまま写す。マージ後もその commit と base は git に残っている前提で、根拠・引用はその commit で確かめる。head を決められないとき helper は一覧を書かず、上の表の `head_unresolved` で失敗する。
+- マージ後の候補を PR 起因（`origin=pr` / `unknown`）と判定したら、その判定のまま記録する（`pre_existing` や REJECT に書き換えて保留を解除しない）。同じ根因を追跡する OPEN の Issue があれば `tracker` に入れる。出口は LINK になり、追跡先への処分として決着する（起票も保留もしない）。追跡先の無い PR 起因の出口は、マージ済み PR では同じ PR で直せず、この出口の扱いは仕様で未定義のため、ゲートは保留のまま止め、人間に報告する（再実行しても同じ保留になる） — 意図した保留である。
+- record の出口（REJECT / RESOLVED / LINK）は helper が関連 Issue の却下台帳へ書く（`FOLLOW_UP_LEDGER=`）。再実行ではその行が候補を除くので、同じ候補を判定し直さない。プレビュー付きの実行は、起票せずに終わるとき（`all_recorded` / `already_exists`）だけ書く。6.0.C で「起票しない」を選んだ run は書かない（記録は残り、次の cleanup が再利用する）。
+- 全候補の `id` をちょうど 1 つの記録に入れる。1 記録 = 1 根因。候補がまだ HEAD に残っているかは記録の `present` で判定する（解消済みは `present: false` と解消の `evidence` で RESOLVED）。重要度（CRITICAL〜LOW）と class A/B では決めない。
+- 一覧の `ledger`（関連 Issue の台帳の `issued` / `LINK` / `REJECT` 行。`issued` と `LINK` の判定文に起票先・追跡先の `#N` がある）を読み、既存の Issue が候補と同じ根因を追跡していれば、文面・位置・id が変わっていても記録の `tracker` にその番号を入れる（閉じた Issue の番号は入れない）。`REJECT` 行が同じ根因・同じ前提の候補を処分していれば、その行を記録の `prior`（`{finding_id, file_line, disposition, premise}`。行の `id` を `finding_id`、`loc` を `file_line` に写し、`source` は写さない）に写す。helper が除外するのは id・位置・出典が一致する行だけなので、id・文面・位置が変わった候補はここで紐づける。
+- 起票になる記録（ADOPT・`origin=pre_existing`、調査として引き受けた DIAGNOSE）には `acceptance`（起票する Issue の受入条件の文）を必ず書く。調査は `proposition` の 4 項目と `investigate: true` も書く。
+- `reuse` は、前回の実行の記録のうち `head` が一覧と同じで、`ids` がすべて今回の候補にあり、採否ゲートが保留した候補を含まないもの。起票済みかどうかは記録の ids と起票済み Issue の marker の ids の重なりで決まるので、写した記録から同じ根因を二度起票しない。保留した候補（未処分）と、前回の記録から候補が欠けた記録の残りは `judge` に並ぶ。
+rationale: references/rationale.md#follow-up-adoption-records
+
+#### 6.0.C 起票前の確認（単独実行のとき）
+
+follow-up Issue の起票は外部公開なので、手動の `/rite:cleanup` では起票前に確認する。`/rite:batch-run --merge` から呼ばれたとき（自セッションの run-queue が `active: true` かつ `mode: merge` で、cursor の Issue が今回の `{issue_number}` と一致する）は、利用者が完全自律に同意済みなので確認しない。中断した batch のキューは `active: true` のまま残るため、cursor の照合を省かない（照合で確認に倒せるのは別 Issue を cleanup するときで、中断した Issue 自体の cleanup は `--merge` の同意の範囲として確認しない。この非確認は cursor が中断時点でまだ当該 Issue を指している run に限る — `/rite:batch-run` がステップ 6 のカーソル前進を終えてから停止し `/rite:recover` へ案内する経路では cursor は既に次の Issue に進んでいるため、同じ Issue を後から手動 cleanup すれば確認に倒れる。これは cursor 照合の設計どおりの挙動である）。判定できないときは確認する側に倒す:
+
+```bash
+_state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
+_fu_flow=$(bash {plugin_root}/hooks/flow-state.sh path 2>/dev/null) || _fu_flow=""
+_fu_queue="${_state_root}/.rite/state/run-queue-$(basename "$_fu_flow" .flow-state).json"
+if [ -z "$_state_root" ] || [ -z "$_fu_flow" ]; then
+  echo "[CONTEXT] FOLLOW_UP_CONFIRM=ask; reason=state_unresolved"
+elif [ ! -f "$_fu_queue" ]; then
+  echo "[CONTEXT] FOLLOW_UP_CONFIRM=ask; reason=no_queue"
 else
-  # helper と同じく basename 昇順（= cycle 昇順）で全 JSON を走査し、そのまま連結する。
-  # `id` は各 JSON 内の連番で cycle を跨いだ identity を持たないため、畳み込み key に使わない
-  # （同じ `F-07` が cycle ごとに別の指摘を指す。畳むと別々の指摘が黙って 1 件に潰れる）。
-  # bash の glob 展開は昇順で確定するため for がそのまま順序保証になる。
-  _rv_srcs=(); _rv_bad=0
-  for f in "$_state_root/.rite/review-results/{pr_number}"-*.json*; do
-    { [ -e "$f" ] || [ -L "$f" ]; } || continue
-    _rv_srcs+=("$f")
-  done
-  if [ "${#_rv_srcs[@]}" -eq 0 ]; then
-    echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=no_json"
-  else
-    # 1 finding = 1 行の JSON で出す。TSV だと description / suggestion の改行で行が割れ、
-    # 後続行が key を失って key と本文の対応が崩れる（誤対応が resolved 側に振れると指摘の無言 drop）。
-    # `key` は出典 JSON の basename と `id` を `#` で連結した除外指定の単位（`id` は cycle 内の連番で、
-    # 出典と組にして初めて 1 件を指せる）。basename が `{pr_number}-{14 桁}.json`
-    # （同秒衝突時は `{pr_number}-{14 桁}~{4 桁小文字 hex}.json`）の形でない出典（corrupt 退避ファイル等）と書式外 id は `key` を null にする。
-    # `.id` は**落とさず null へ写す**。save 側は書式外 id の保存を hard fail で止めるが、
-    # 本 gate を通さずに `.rite/review-results/` 直下へ保存された JSON には書式外 id が残る
-    # （gate 導入前の JSON、および gate を経由しない `/rite:fix` の write 経路 — P1/P3 の直接 write と
-    #  P0 ファイルの copy。移行しない方針）。その値をその
-    # まま提示すると、下段の `{resolved_ids_csv}` がリテラル置換される二重引用符内でコマンド置換
-    # として展開される。null 化なら書式外の値が LLM へ届かず、finding 自体は出力に残るので黙って
-    # 消えない（落とすと件数を数える第 2 の述語が要り、その述語が本体と乖離する drift 経路になる）。
-    _rv_errf=$(mktemp "${TMPDIR:-/tmp}/rite-fu-reverify-err-XXXXXX") || {
-      echo "WARNING: 一時ファイルを確保できません。jq の stderr 本文は出力されません" >&2
-      _rv_errf=""
-    }
-    # 全 JSON を昇順に流し込み、そのまま連結する（畳み込みなし。全件残す）。
-    # 一部の JSON が parse 不能でも健全な側で続行し、全滅時だけ parse_failed に倒す
-    # （helper 側の json_undecidable と同じ判定境界）。
-    _rv_union=$(mktemp "${TMPDIR:-/tmp}/rite-fu-reverify-union-XXXXXX") && printf '[]\n' > "$_rv_union" || {
-      echo "WARNING: 再検証用の一時ファイルを確保・初期化できません" >&2
-      if [ -n "$_rv_union" ]; then rm -f "$_rv_union"; fi
-      _rv_union=""
-    }
-    _rv_ok=0
-    if [ -n "$_rv_union" ]; then
-      for f in "${_rv_srcs[@]}"; do
-        # 2>"$_rv_errf" は毎周トランケートするため、除外 WARNING の**直後**に原因行を出す
-        # （ループ後へ回すと最後の失敗の原因しか残らない）。helper 側の union ループと同形。
-        if _part=$(jq -c --arg src "${f##*/}" 'if (.non_blocking_findings | type) == "array" then .non_blocking_findings | map(if type == "object" then . + {_src: $src} else . end) else error("not an array") end' "$f" 2>"${_rv_errf:-/dev/null}"); then
-          if _m=$(jq -c --argjson add "$_part" '. + $add' "$_rv_union" 2>"${_rv_errf:-/dev/null}"); then
-            printf '%s\n' "$_m" > "$_rv_union"; _rv_ok=$((_rv_ok + 1)); continue
-          fi
-        fi
-        echo "WARNING: 再検証用 JSON を解析できないため和集合から除外します: $f" >&2
-        if [ -n "$_rv_errf" ] && [ -s "$_rv_errf" ]; then head -5 "$_rv_errf" | sed 's/^/  /' >&2; fi
-        _rv_bad=$((_rv_bad + 1))
-      done
-    fi
-    if [ -n "$_rv_union" ] && [ "$_rv_ok" -gt 0 ]; then
-      # 最終射影の rc は必ず見る。落とすと jq 失敗（非文字列 id 等）が空出力と区別できず、
-      # 再検証を経ていない部分集合のまま `done` を出してしまう。
-      if _rv_out=$(jq -c '.[]
-        | ((.id // "") | (test("^F-[0-9]{2,}$") and (contains("\n") | not))) as $fid
-        | {key: (if $fid and ((._src // "") | test("^[0-9]+-[0-9]{14}(~[0-9a-f]{4})?\\.json$")) then ._src + "#" + .id else null end),
-           id: (if $fid then .id else null end),
-           file, line, description, suggestion}' "$_rv_union" 2>"${_rv_errf:-/dev/null}"); then
-        # 0 件のとき printf は空行を 1 行出す。空行が finding として読まれないよう非空時だけ出力する。
-        # 成功時は marker を出さない（判定後の `done` が唯一の成功 marker）
-        # rationale: references/rationale.md#reverify-no-extract-marker
-        if [ -n "$_rv_out" ]; then printf '%s\n' "$_rv_out"; fi
-        echo "[cleanup 6.0.V] union: json_total=${#_rv_srcs[@]}; json_parsed=${_rv_ok}; json_unparsed=${_rv_bad}" >&2
-      else
-        # reason は parse_failed と分ける。全 JSON の parse に成功して射影だけが落ちた事象に
-        # 「解析できなかった」と読める語を流用すると、完了報告へ誤った原因が転記される。
-        echo "WARNING: 再検証用 JSON の射影に失敗しました（和集合 ${_rv_ok} 本）" >&2
-        if [ -n "$_rv_errf" ] && [ -s "$_rv_errf" ]; then head -5 "$_rv_errf" | sed 's/^/  /' >&2; fi
-        echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=projection_failed"
-      fi
-    else
-      echo "WARNING: 再検証を実施できません（対象 ${#_rv_srcs[@]} 本）" >&2
-      if [ -n "$_rv_errf" ] && [ -s "$_rv_errf" ]; then head -5 "$_rv_errf" | sed 's/^/  /' >&2; fi
-      echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=parse_failed"
-    fi
-    if [ -n "$_rv_union" ]; then rm -f "$_rv_union"; fi
-    # 末尾を `&&` 単独文にすると mktemp 失敗時にブロック全体が rc=1 で終わり、抽出が成功していても
-    # 呼び出し側がステップ失敗と読む
-    if [ -n "$_rv_errf" ]; then rm -f "$_rv_errf"; fi
-  fi
+  jq -e --argjson i "{issue_number}" \
+      '.active == true and .mode == "merge" and (.issues[.cursor // 0] == $i)' "$_fu_queue" >/dev/null 2>&1
+  _fu_jq_rc=$?
+  case "$_fu_jq_rc" in
+    0) echo "[CONTEXT] FOLLOW_UP_CONFIRM=skip; reason=batch_merge" ;;
+    1) echo "[CONTEXT] FOLLOW_UP_CONFIRM=ask; reason=not_this_batch" ;;
+    *) echo "[CONTEXT] FOLLOW_UP_CONFIRM=ask; reason=queue_unreadable" ;;
+  esac
 fi
 ```
 
-出力の各 finding について、**マージ後 HEAD の実態**を Read / Grep で確認し 3 値で判定する:
-
-| 判定 | 条件 | 帰結 |
-|---|---|---|
-| `resolved` | 指摘された drift が HEAD に**現存しないことを確認できた**。機械的に確認できる手がかりを優先する: `file:line` 周辺を Read して指摘された記述・コードが既に修正後の形になっている / `suggestion` の提案文言が既にファイルに存在する / 指摘対象の行そのものが削除されている | `--exclude-ids` へ渡す（転記しない） |
-| `remains` | 指摘された drift が HEAD に現存する | 転記する |
-| `undecidable` | 断定できない。`file:line` が移動した / 指摘が散文の意図に関わる / 判定材料が足りない / ファイル自体が読めない | **転記する**（`--exclude-ids` へ渡さない）。false negative を避ける安全側 |
-
-`FOLLOW_UP_REVERIFY=unavailable` を観測した場合、および本節を実行できなかった場合は**全件を `undecidable` 扱い**とし、`--exclude-ids` は空文字列のまま helper を呼ぶ（= 除外なし＝従来挙動）。
-
-出力に**同じ id が複数行**現れることがある（`id` は cycle 内の連番で cycle 跨ぎの identity を持たない）。各行は別の finding として独立に判定し、`key` で区別する。ただし同じ `key` が複数行に現れる場合（同一 JSON 内の id 重複）は、`resolved` と判定しても helper 側が除外を拒否して全件転記するため、`{n_resolved}` は実際に除外された件数と一致しないことがある。
-rationale: references/rationale.md#follow-up-exclude-key
-
-`"key": null` の finding（書式外 id / id 欠落 / 出典ファイル名が `{pr_number}-{14 桁}.json` / `{pr_number}-{14 桁}~{4 桁小文字 hex}.json` のどちらの形でもない）は**必ず `undecidable`** とする。除外指定に載せられる key が無く、`{resolved_ids_csv}` へ入れられる値も無いため、判定の余地なく転記側へ倒れる。出力には現れるので `{n_undecidable}` には通常どおり数え上げられる。
-
-判定を終えたら、`resolved` の `key` を CSV（`"{pr_number}-20260101120000.json#F-01,{pr_number}-20260102120000~1a2b.json#F-05"`）に組み、内訳 marker を出す。**抽出が成功した経路では、抽出結果が 0 件でもこの marker を必ず出す**（`resolved=0; remains=0; undecidable=0; resolved_ids=`）— 出さないと成功 marker が 1 本も残らず、ステップ 12 が「marker が無いとき」の分岐に落ちる。**既に `unavailable` を出した経路では `done` を出さない**（出すと最後の出現が `done` になり `reason=` が完了報告から消える）:
-
-```bash
-# `{resolved_ids_csv}` / `{n_*}` は上記判定の結果をリテラル置換する（resolved が 0 件なら空文字列）。
-# `{resolved_ids_csv}` に置けるのは出力の `key` の値（`{pr_number}-{14 桁}.json#F-NN`、同秒衝突時は `{pr_number}-{14 桁}~{4 桁小文字 hex}.json#F-NN`）をカンマ連結したものだけ。
-echo "[CONTEXT] FOLLOW_UP_REVERIFY=done; resolved={n_resolved}; remains={n_remains}; undecidable={n_undecidable}; resolved_ids={resolved_ids_csv}"
-```
-
-内訳はステップ 12 の完了報告に含める。
-
-> **下段の helper 呼び出しは別 Bash 呼び出しである**。Bash tool 呼び出し間でシェル変数は保持されないため、`{resolved_ids_csv}` を実値へ**リテラル置換**してから実行する（`$_fu_exclude_ids` のようなシェル変数経由で渡さない。同型の規約: [recover Phase 5.2 (flow-state の active=true 復元)](../recover/SKILL.md)）。判定結果を運ぶ経路はリテラル置換のみで、marker の `resolved_ids=` は監査用の記録であって受け渡し経路ではない。
+- `skip` → 下の helper 呼び出しを `{preview_option}` を空にして実行する（従来どおり起票する）。
+- `ask` → `{preview_option}` を `--preview-body "${TMPDIR:-/tmp}/rite-follow-up-preview-{pr_number}.md"` にして実行する。helper は起票せず、`[CONTEXT] FOLLOW_UP_ISSUE=preview; count=<n>; deferred=<k>; issues=<m>; body=<path>; pr={pr_number}` を出す。0 件・既存あり・保留（`held`）・失敗は通常どおりの marker で終わるので、そのときは質問しない（保留を `declined` に変換しない）。
+- `preview` のとき AskUserQuestion で「起票する / 起票しない / 本文を確認してから決める」を確認する。説明には起票する Issue 数 `{fu_issues}`（preview marker の `issues=` の値。根因の数）、転記件数 `{fu_count}`（同 `count=` の値。指摘と先送り欠陥の合計）、うち先送り欠陥 `{fu_deferred}`（同 `deferred=` の値）を入れる。
+  - 「起票する」→ `{preview_option}` を空にして helper 呼び出しをもう一度実行する（入力が同じなのでプレビューと同じ本文で起票される）。
+  - 「起票しない」→ `echo "[CONTEXT] FOLLOW_UP_ISSUE=declined; count={fu_count}; pr={pr_number}" >&2`（`{fu_count}` は preview marker の `count=` の値をリテラル置換する） を実行し、Issue は作らずに下の state 削除（archive）へ進む。
+  - 「本文を確認してから決める」→ marker の `body=` のファイルを Read し、その本文を加工せず応答本文にそのまま出力する（Read の結果は利用者の画面に出ないことがある）。そのあと AskUserQuestion で「起票する / 起票しない」を確認して上と同じに進む。
 
 ```bash
 _state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
@@ -707,13 +652,17 @@ bash {plugin_root}/hooks/scripts/cleanup-follow-up-issue.sh \
   --project-number "{project_number}" \
   --project-owner "{owner}" \
   --projects-enabled "{projects_enabled}" \
-  --exclude-ids "{resolved_ids_csv}" || _fu_rc=$?
+  --base "origin/{base_branch}" \
+  --adoption "$_state_root/.rite/state/adoption-{pr_number}-followup.json" {preview_option} || _fu_rc=$?
 if [ "$_fu_rc" -ne 0 ]; then
   echo "WARNING: follow-up Issue 起票 helper が rc=${_fu_rc} で失敗しました。cleanup は続行します" >&2
-  echo "  手動起票: 当該 PR の review-results JSON の non_blocking_findings[] を元に follow-up ラベル付き Issue を作成してください" >&2
+  echo "  再実行: 原因を解消して /rite:cleanup {pr_number} を再実行してください（起票済みの根因は増えません）" >&2
   echo "[CONTEXT] FOLLOW_UP_ISSUE=failed; reason=helper_rc; pr={pr_number}; rc=${_fu_rc}" >&2
 fi
 ```
+
+下の state 削除（`cleanup-pr-state-purge.sh`）は常に呼ぶ。採否保留ファイル（follow-up に限らず sweep / triage の保留も）が残っていれば helper は何も削除・退避せず `[CONTEXT] PR_STATE_PURGE=held` を出す。このときはステップ 7 を実行せず、ステップ 8 以降は続け、ステップ 12 で未完了として報告する。保留の有無はこの marker だけで判定し、hold ファイルを別途調べない。例外は 6.0 が `FOLLOW_UP_ISSUE=held; ...; hold_file=none` を出したとき（ゲート自体が失敗し hold ファイルが無い）で、このときは state 削除もステップ 7 も実行しない。
+rationale: references/rationale.md#follow-up-held-no-purge
 
 ```bash
 # 削除対象はリポジトリ共通の state ルート基準（state-path-resolve.sh）。書込側
@@ -735,7 +684,7 @@ fi
 `review-run-since-{pr}.txt` は `/rite:iterate` の収束トレンド判定が現 run の境界に使う pin。直上で削除する `review-results/` と同じライフサイクルのため同列挙で掃除する。
 rationale: references/rationale.md#review-run-since-sweep
 
-`nb-sweep-done-{pr}.txt` は iterate 5.S の再入ガード。cleanup まで残すと再 `/rite:iterate` が skip し、未消化 0 の再保証が死ぬ。
+`nb-sweep-done-{pr}.txt` は iterate 5.S の再入ガード（形式は [review-result-schema.md](../../references/review-result-schema.md#nb-sweep-ledger)）、`pr-recommendations-done-{pr}.txt` は 5.S 後の PR 内推奨の修正の再入ガード、`pr-recommendations-{pr}.json` は triage が採否の出口 fix で登録した PR 内推奨（[review-result-schema.md](../../references/review-result-schema.md#pr_recommendations-配列)）。マージ済み PR の state として他の PR 単位ファイルと一緒に片付ける。
 rationale: references/rationale.md#nb-sweep-done-sweep
 
 `.rite/wiki-worktree/` は永続 worktree のため削除しない。手動削除が必要なら `git worktree remove .rite/wiki-worktree && git worktree prune`。
@@ -745,7 +694,7 @@ rationale: references/rationale.md#wiki-worktree-persist
 
 ## ステップ 7: transient cycle ブランチを削除
 
-Reviewer subagent が作る `pr-{N}-cycle{X}` 命名の transient ブランチを回収する (reviewer は READ-ONLY 制約で自己クリーン不可)。同じ helper が消費済みの `.rite/release-promotions/{N}.json`（対応 PR が MERGED/CLOSED）も回収する。`.gitignore` は削除しない。non-blocking:
+Reviewer subagent が作る `pr-{N}-cycle{X}` 命名の transient ブランチを回収する (reviewer は READ-ONLY 制約で自己クリーン不可)。同じ helper が消費済みの `.rite/release-promotions/{N}.json`（対応 PR が MERGED/CLOSED）も回収する。`.gitignore` は削除しない。non-blocking。ステップ 6 が `PR_STATE_PURGE=held` を出したとき、および 6.0 が `hold_file=none` の保留で state 削除を呼ばなかったときは実行しない（保留中は state を片付ける工程に進まない。保留中の PR のレビュー結果は orphan 回収自体も採否保留ファイルを見て残す）:
 
 ```bash
 bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
@@ -760,7 +709,22 @@ bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
 > **Source of truth**: `plugins/rite/scripts/projects-status-update.sh` に委譲する（`skills/open/SKILL.md` ステップ 2.4 / `skills/ready/SKILL.md` Phase 4 と共通）。参照のみに留めず本ステップに直接 inline する。
 rationale: references/rationale.md#projects-status-inline
 
+`{pr_merged}=false` では script を呼ばず `PROJECTS_STATUS_UPDATED=skipped_unmerged` を出す（Status は変えない）。
+
 ```bash
+# cleanup-projects-status
+pr_merged="{pr_merged}"
+case "$pr_merged" in
+  true) ;;
+  false)
+    echo "マージ済みの PR が無いため Projects Status を Done にしません"
+    echo "[CONTEXT] PROJECTS_STATUS_UPDATED=skipped_unmerged"
+    exit 0 ;;
+  *)
+    echo "警告: {pr_merged} が true / false のどちらでもないため Projects Status を更新しません。" >&2
+    echo "[CONTEXT] PROJECTS_STATUS_UPDATED=false"
+    exit 0 ;;
+esac
 status_json_args=$(jq -n \
   --argjson issue {issue_number} \
   --arg owner "{owner}" \
@@ -868,6 +832,7 @@ skill return 後、出力から以下のいずれかの sentinel を発火させ
 
 - 成功: `[CONTEXT] WIKI_INGEST_DONE=1; pr={pr_number}`
 - push 失敗併存 (ingest 出力に `push=failed`): 上記 + `[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; source=cleanup_step9`
+- ロック喪失 (ingest 出力に `WIKI_INGEST_LOCK_LOST=1`): 上記のいずれとも併存しうる形で `[CONTEXT] WIKI_INGEST_LOCK_LOST=1; source=cleanup_step9; pr={pr_number}` を追加で発火する（取り込みの成否は変えない）
 - 並行 ingest スキップ (ingest 出力に `WIKI_INGEST_SKIPPED reason=concurrent_ingest`): `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=concurrent_ingest`（別 live セッションが ingest 中。pending raw は wiki branch に残り次回 ingest が冪等回収する — multi-session §9）
 - 失敗: `[CONTEXT] WIKI_INGEST_FAILED=1; reason=ingest_error`
 rationale: references/rationale.md#wiki-push-batch
@@ -880,8 +845,8 @@ ingest の成否（skip 含む）に関わらずステップ 10 へ進む。
 
 詳細は [archive-procedures.md](./references/archive-procedures.md) (Issue close / Parent Issue handling セクション)。
 
-- 関連 Issue (`{issue_number}`) を close
-- 親 Issue (`{parent_issue_number}`) の Tasklist を更新
+- 関連 Issue (`{issue_number}`) が PR の closing reference（本文の closing keyword / ブランチ名の `issue-N`）に含まれることを確かめてから close し、同じ Issue の state を読み直して `[CONTEXT] ISSUE_CLOSE=` marker を出す（archive-procedures §3.6.1 の bash）。base が default branch でない PR では `Closes #N` による自動クローズが働かないため、クローズは本ステップだけが担う。`{pr_merged}` を literal substitute し、`{pr_merged}=false`（未マージ PR の強制クリーンアップ）ではコメントも書かず閉じずに `ISSUE_CLOSE=skipped; reason=pr_not_merged` を出す
+- 親 Issue (`{parent_issue_number}`) の Tasklist を更新。`{pr_merged}=false` では Tasklist 更新も親の auto-close 判定も実行せず、`{parent_close_result}` = `ℹ️ PR 未マージのため親 Issue は更新していません`
 - 親 Issue の全子が CLOSED かついずれも `stateReason != NOT_PLANNED`（= COMPLETED）なら parent も auto-close。Cancelled（NOT_PLANNED）の子が 1 件でも居る、または CLOSED 子の `stateReason` が判定不能なら親は未完了扱い（Done / auto-close しない）
 - 3.7.2.1 `.result=skipped_terminal_conflict`（親が既に終端 Status (Cancelled)）のとき、close 成否に関わらず `{parent_close_result}` = `⚠️ Cancelled のため Done 上書きをスキップ`。`✅ 自動クローズ完了` で Done 同期を主張しない。Cancelled **子**の未完了扱いとは別値
 
@@ -896,7 +861,7 @@ ingest の成否（skip 含む）に関わらずステップ 10 へ進む。
 - **Work Memory final update セクション** (= `### 3.5`): Issue comment への完了マーク追記 (gh API PATCH)
 - **State reset セクション** (= `## Phase 4: Reset State and Delete Local Work Memory`): `cleanup-work-memory.sh` 実行による local `.rite/work-memory/issue-*.md` ファイル削除 + flow state `active: false` リセット
 
-両方実行する（片方だけではローカル file が残り `post-tool-wm-sync.sh` が再生成する）。
+両方実行する（片方だけではローカル file が残り `post-tool-wm-sync.sh` が再生成する）。`{pr_merged}` を literal substitute し、`{pr_merged}=false` では §3.5 の bash が完了情報・完了項目を書かずに `status=skipped; reason=pr_not_merged` を出す（完了マークも付けない）。ローカルファイル削除と state リセットは実行する。
 rationale: references/rationale.md#wm-dual-finalize
 
 あわせて Issue claim を解放する（`multi_session.enabled` に依らず常時実行。claim 取得は /rite:open Step 1.6）。`issue-claim.sh release` は flow-state を変更しないため、ステップ 9 の `WIKICHAIN:` handoff 契約（ステップ 9〜12 間で `flow-state.sh set` を挟まない）に抵触しない:
@@ -927,20 +892,21 @@ Status: {projects_status_result}
 - [{base_update_check}] base ブランチを更新 (fetch + merge --ff-only)
 - [{session_worktree_check}] セッション worktree 退出・削除 (multi_session)
 - [{local_branch_check}] ローカル/リモートブランチ削除
-- [{review_cleanup_check}] PR-specific state ファイル削除{follow_up_reverify_note}{follow_up_ambiguous_note}{follow_up_sweep_note}
+- [{review_cleanup_check}] PR-specific state ファイル削除{follow_up_ledger_note}{follow_up_sweep_note}{follow_up_deferred_note}
 - [{projects_check}] Projects Status を Done に更新
 - [{wiki_ingest_check}] Wiki ingest (pending raw source のページ統合)
 - [x] flow state リセット
-- [x] 作業メモリを最終更新 + ローカルファイル削除
+- [{wm_final_update_check}] 作業メモリ（Issue コメント）を最終更新
+- [x] ローカル作業メモリファイル削除
 - [x] Issue claim 解放
-- [x] 関連 Issue をクローズ
+- [{issue_close_check}] 関連 Issue をクローズ
 - [x] 親 Issue の Tasklist 更新・自動クローズ (該当する場合)
 
 未完了事項:
 {outstanding_items_block}
 ```
 
-**委譲モード（4-W が `[CONTEXT] CLEANUP_DELEGATED=1` を emit した場合）**: **委譲した 4 項目に限り**下記の個別判定を行わず、`{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{wiki_ingest_check}` を ` `（未完了）に固定し、それぞれの check 直下の付記も出力しない（委譲は 1 回の明確な案内に収め、診断の羅列に戻さない）。**`CLEANUP_WT=unknown` は本定型ブロックの対象外**（再実行で冪等に完了しないため定型の案内が当たらない）。同じ 4 項目が未実行である点は共通だが、判定は下記の個別判定に任せ、案内は `{session_worktree_check}` の未確認付記が担う。**委譲モードでも実行される項目**（`{review_cleanup_check}` = ステップ 6 / `{projects_check}` = ステップ 8 / 冒頭の `Status: {projects_status_result}`）は**従来どおり個別判定する** — 実行した項目の実失敗を握り潰さないため。`{outstanding_items_block}` は下記の定型ブロックを先頭に置き、個別判定で空欄になった check があればその付記を定型ブロックの後ろに続ける。`{n}` は **`4` + 個別判定で空欄になった check の件数**:
+**委譲モード（4-W が `[CONTEXT] CLEANUP_DELEGATED=1` を emit した場合）**: **委譲した 4 項目に限り**下記の個別判定を行わず、`{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{wiki_ingest_check}` を ` `（未完了）に固定し、それぞれの check 直下の付記も出力しない（委譲は 1 回の明確な案内に収め、診断の羅列に戻さない）。**`CLEANUP_WT=unknown` は本定型ブロックの対象外**（再実行で冪等に完了しないため定型の案内が当たらない）。同じ 4 項目が未実行である点は共通だが、判定は下記の個別判定に任せ、案内は `{session_worktree_check}` の未確認付記が担う。**委譲モードでも実行される項目**（`{review_cleanup_check}` = ステップ 6 / `{projects_check}` = ステップ 8 / `{wm_final_update_check}` = ステップ 11 / `{issue_close_check}` = ステップ 10 / 冒頭の `Status: {projects_status_result}`）は**従来どおり個別判定する** — 実行した項目の実失敗を握り潰さないため。`{outstanding_items_block}` は下記の定型ブロックを先頭に置き、個別判定で空欄になった check があればその付記を定型ブロックの後ろに続ける。`{n}` は **`4` + 個別判定で空欄になった check の件数**:
 
 ```
 - base ブランチの更新（fetch + merge --ff-only）
@@ -1016,43 +982,53 @@ rationale: references/rationale.md#marker-data-delimiter
   - ステップ 2 で関連 Issue が識別できなかった（`{issue_number}` 空）とき: `{projects_status_result}` = `（関連 Issue 未識別のためスキップ）`、`{projects_check}` = `x`
   - 上記 2 条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=true` が見つかったとき: `{projects_status_result}` = `Done`、`{projects_check}` = `x`
   - 上記 2 条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=skipped_terminal` が見つかったとき: `{projects_status_result}` = `Cancelled のため Done 上書きをスキップ`、`{projects_check}` = `x`（legitimate skip。`false` の outstanding「Done へ手動変更」に倒さない）
+  - 上記条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=skipped_unmerged` が見つかったとき: `{projects_status_result}` = `（マージ済みの PR が無いため変更なし）`、`{projects_check}` = `x`（legitimate skip。Done にしていない）
   - 上記条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=false` または sentinel 自体が見つからない（= ステップ8 が実行されるべきだったのに失敗/skip された）とき: `{projects_status_result}` = `⚠️ 更新失敗（手動確認が必要）`、`{projects_check}` = ` ` + 「GitHub Projects 画面で Issue #{issue_number} の Status を Done に変更」を付記
-- `{review_cleanup_check}`: **follow-up 起票（ステップ 6.0 の `FOLLOW_UP_ISSUE`）と state 削除（`REVIEW_CLEANUP_PARTIAL_FAILURE`）を独立に評価し、両方が `x` 相当のときだけ `x`**（`{local_branch_check}` と同型。どちらか一方でも未完了なら ` ` にし、未完了だった側の付記を列挙する）。照合はいずれも `pr={pr_number}` まで含める（`invalid_pr_number` だけは `pr=` を持たないので marker 名のみ）。**`pr=` の値は直後が `;` または行末であることまで含めて一致させる**（`{local_branch_check}` の `branch=` と同文。`pr=9` が `pr=90` に prefix 一致してはならない）。follow-up 側で同一 marker family の複数行が一致したときは最後の出現（recency）を採る。この選択は**follow-up 側**の判定ルールを評価する前に行う。state 削除側は presence 検査で recency を使わない。helper は API 失敗でも exit 0 のため、起票失敗の一次信号は `FOLLOW_UP_ISSUE` だけである。
+- `{review_cleanup_check}`: **follow-up 起票（ステップ 6.0 の `FOLLOW_UP_ISSUE`）・先送り欠陥の読み取り（`FOLLOW_UP_DEFERRED`）・state 削除（`PR_STATE_PURGE` / `REVIEW_CLEANUP_PARTIAL_FAILURE`）の 3 側を独立に評価し、すべてが `x` 相当のときだけ `x`**（`{local_branch_check}` と同型。いずれか 1 側でも未完了なら ` ` にし、未完了だった側の付記を列挙する）。照合はいずれも `pr={pr_number}` まで含める（`invalid_pr_number` だけは `pr=` を持たないので marker 名のみ）。**`pr=` の値は直後が `;` または行末であることまで含めて一致させる**（`{local_branch_check}` の `branch=` と同文。`pr=9` が `pr=90` に prefix 一致してはならない）。follow-up 側で同一 marker family の複数行が一致したときは最後の出現（recency）を採る。この選択は**follow-up 側**の判定ルールを評価する前に行う。state 削除側は presence 検査で recency を使わない。helper は API 失敗でも exit 0 のため、起票失敗の一次信号は `FOLLOW_UP_ISSUE` だけである。
 
   **follow-up 側**（**2 段で判定する**: まず `[CONTEXT] ` 行頭一致 + marker family `FOLLOW_UP_ISSUE` + `pr={pr_number}`（直後が `;` または行末）に該当する行を集め、**その中の最後の出現 1 行だけを対象に選ぶ**。次にその 1 行に対して以下のルールを上から評価し最初に一致したものを採用する。段の順序を入れ替えてはならない）:
 
   | 検出 | 側の判定 | 付記 |
   |---|---|---|
-  | `FOLLOW_UP_ISSUE=failed`（reason 問わず。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` を含む） | 未完了 | `⚠️ follow-up Issue の起票に失敗しました。review-results JSON の non_blocking_findings[] を元に follow-up ラベル付き Issue を手動作成してください` |
+  | `FOLLOW_UP_ISSUE=held`（`hold_file=none`） | 未完了 | `⚠️ 採否ゲート自体が失敗したため follow-up を起票せず保留しました（{reason}）。候補は hold ファイルに保存されていません。直前の WARNING の原因を解消して /rite:cleanup {pr_number} を再実行してください（起票済みの根因は増えません）` |
+  | `FOLLOW_UP_ISSUE=held` | 未完了 | `⚠️ 採否の出口が出ていない候補があるため follow-up を起票せず保留しました（{reason}）。候補の全文は {hold_file} に保存済みです。{hold_file} の resume（ゲートの WARNING にも出る）に従って再開してください（起票済みの根因は増えません）` |
+  | `FOLLOW_UP_ISSUE=failed; reason=preview_write` | 未完了 | `⚠️ follow-up 起票の確認用の本文を書き出せず、起票を試みていません。書き出し先を確認して /rite:cleanup {pr_number} を再実行してください` |
+  | `FOLLOW_UP_ISSUE=failed`（reason 問わず。preview_write 以外。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` / `head_unresolved` / `guardrail_row_invalid` / `guardrail_source_missing` / `guardrail_source_check_failed` を含む） | 未完了 | `⚠️ follow-up Issue の起票に失敗しました（{reason}。`issue=` があればその番号は起票済み）。原因を解消して /rite:cleanup {pr_number} を再実行してください（起票済みの根因は増えず、残りだけを起票します）` |
   | `skipped; reason=no_json` | 未完了 | 同上（レビュー結果 JSON 不在） |
-  | `skipped; reason=jq_missing` | 未完了 | `⚠️ jq が見つからず follow-up 起票を skip しました。jq を導入したうえで、残存非実測指摘があれば follow-up Issue を手動作成してください` |
-  | `created` / `skipped; reason=no_findings` / `skipped; reason=already_exists` / `skipped; reason=all_issued` / `skipped; reason=all_resolved` | x 相当 | — |
-  | `[CONTEXT] FOLLOW_UP_ISSUE=` かつ `pr={pr_number}` の行が無い | 未完了 | `⚠️ follow-up 起票の実行結果が確認できませんでした。残存非実測指摘があれば follow-up ラベル付き Issue を手動作成してください` |
+  | `skipped; reason=jq_missing` | 未完了 | `⚠️ jq が見つからず follow-up 起票を skip しました。jq を導入したうえで /rite:cleanup {pr_number} を再実行してください` |
+  | `created` / `skipped; reason=no_findings` / `skipped; reason=already_exists` / `skipped; reason=all_issued` / `skipped; reason=already_processed` / `skipped; reason=all_recorded` | x 相当 | — |
+  | `declined`（ステップ 6.0.C で「起票しない」を選んだ） | x 相当 | `ℹ️ 確認のうえ follow-up Issue の起票を見送りました（{count} 件）。指摘の全文は review-results/archive/ の JSON に、先送り欠陥は元 Issue の Decision Log（Section 9）にあります` |
+  | `preview`（確認の回答前に止まった） | 未完了 | `⚠️ follow-up 起票の確認が完了していません。起票する場合は /rite:cleanup {pr_number} を再実行して確認に答えてください` |
+  | `[CONTEXT] FOLLOW_UP_ISSUE=` かつ `pr={pr_number}` の行が無い | 未完了 | `⚠️ follow-up 起票の実行結果が確認できませんでした。/rite:cleanup {pr_number} を再実行してください（起票済みの根因は増えません）` |
 
   **FOLLOW_UP_ISSUE marker 不在を成功と読んではならない。**
 
-  `skipped; reason=all_resolved` を x 相当に置くのは、ステップ 6.0.V の再検証で残存 0 件が確定した**正常完了**だから（起票すべきものが無い）。`no_findings` と同じ扱いであり「起票に失敗した」ではない。`skipped; reason=all_issued` も、残りが全件 sweep で起票済みの正常完了として同じ扱いにする。
+  `skipped; reason=all_recorded` は採否の出口がすべて record（REJECT / RESOLVED / LINK）で、起票するものが無い正常完了。`no_findings` と同じ扱いであり「起票に失敗した」ではない。`skipped; reason=all_issued` も、残りが全件 sweep で起票済みの正常完了として同じ扱いにする。`skipped; reason=already_processed` は前回の cleanup で follow-up の判定を終え、その後に JSON が片付けられた PR の再実行で、判定は前回に済んでいる。
+  rationale: references/rationale.md#review-cleanup-reasons
 
-  **state 削除側**（`REVIEW_CLEANUP_PARTIAL_FAILURE=1` を上から評価し最初の一致。各行は presence 検査。こちら側に marker が 1 本も無ければ x 相当）:
+  `held` の付記の `{reason}` / `{hold_file}` は held marker の同名の値。`declined` の付記の `{count}` は declined marker の `count=` の値。x 相当でもこの付記は `{review_cleanup_check}` の行に続けて出す。
+
+  **先送り欠陥側**（`[CONTEXT] FOLLOW_UP_DEFERRED=` + `pr={pr_number}`（直後が `;` または行末）に該当する行の最後の出現を採る）:
+
+  | 検出 | 側の判定 | 付記 |
+  |---|---|---|
+  | `FOLLOW_UP_DEFERRED=unavailable` | 未完了 | `{follow_up_deferred_note}` と同文 |
+  | 該当行なし | x 相当 | — |
+
+  **state 削除側**（`PR_STATE_PURGE=held` と `REVIEW_CLEANUP_PARTIAL_FAILURE=1` を上から評価し最初の一致。各行は presence 検査。こちら側に marker が 1 本も無ければ x 相当）:
 
   | 検出 | 側の判定 | 表示 |
   |---|---|---|
+  | `PR_STATE_PURGE=held` がある | 未完了 | `⚠️ 保留中の採否があるため、state とレビュー結果を削除・退避せずに残しました（{hold_files}）。各 hold ファイルの resume に従って再開してください`（`{hold_files}` は held marker の `hold_files=` の値） |
   | `reason=invalid_pr_number`、または `reason=` が `_rm_failure` / `_archive_mkdir_failure` / `_archive_mv_failure` / `_archive_name_collision` / `_gitignore_failure` / `_helper_failed` のいずれかで終わる marker がある | 未完了 | 警告付記 |
   | `reason=review_results_undecidable; cause=jq_missing` がある | 未完了 | `⚠️ jq が見つからず全レビュー結果 JSON を無判定で archive/ へ退避しました。jq を導入してください` |
   | `reason=review_results_undecidable` がある（`cause=jq_rc_<n>`） | x 相当 | `ℹ️ 一部のレビュー結果 JSON は中身を判定できず削除せず archive/ へ退避しました (本 cycle での対応は不要)` |
 
   行を presence 検査にしてあるので「上から評価し最初の一致」が実際に効く。`_gitignore_failure` は 1 行目の実失敗側に置く。`cause=jq_rc_<n>` を `x` に倒すのは helper が退避成功を `failed` に数えないため。`cause=jq_missing` は環境不備のため実失敗側に置く。
 rationale: references/rationale.md#review-cleanup-reasons
-- `{follow_up_reverify_note}`: ステップ 6.0.V の `[CONTEXT] FOLLOW_UP_REVERIFY=` marker で判定する（`pr={pr_number}` を持たない single-shot marker のため、複数行あれば最後の出現を採る）:
-  - `done` のとき: ` — follow-up 再検証: 解消済み {n_resolved} / 残存 {n_remains} / 判定不能 {n_undecidable}`（`{n_*}` は marker の同名フィールドをリテラル置換）
-  - `unavailable` のとき: ` — follow-up 再検証: 未実施（{reason}。全件を転記対象としました）`（`{reason}` は marker の `reason=` 値）
-  - marker が無いとき: ` — follow-up 再検証: 実施結果を確認できませんでした（全件を転記対象とした可能性があります）`。本分岐は「節ごと実行されなかった」場合と「抽出は成功したが判定 marker `done` に到達しなかった」場合の 2 つに落ちる（6.0.V は成功時に marker を出さないため後者が marker 皆無になる）。**marker 不在を成功と読んではならない** — 兄弟分岐と同じ規約
-- `{follow_up_ambiguous_note}`: 先に `{review_cleanup_check}` と同じ規則で最終 `FOLLOW_UP_ISSUE` を選ぶ。次に `[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason={r}; count={n}; pr={pr_number}` のうち、`pr=` の直後が `;` または行末まで一致する最後の出現を採る。`{count}` / `{reason}` はその marker の値を使う。marker が無ければ note は空文字列（除外拒否の通知なし。除外適用・起票の成功は推定しない）。
-  - `reason=ambiguous` のとき: ` — ⚠️ 曖昧 key {count} 件の指摘を除外せず転記対象としました（「follow-up 再検証」の「解消済み」は除外要求件数であり実除外数ではありません）`（`{count}` は除外を拒否した key の異なり数）
-  - それ以外の `reason` のとき: ` — ⚠️ 除外を適用できなかったため（{reason}）、除外要求分もすべて転記対象としました（「follow-up 再検証」の「解消済み」は実際には除外されていません）`
-  - 最終 `FOLLOW_UP_ISSUE=created` の場合だけ、上の note の「転記対象としました」を「転記しました」に置換する。失敗・未確認・`already_exists` を含むその他の結果では置換しない。
-  - 本 note は除外結果の付記であり、起票結果と state 削除結果から決めた `{review_cleanup_check}` を変更しない。
-- `{follow_up_sweep_note}`: `[CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason={r}; pr={pr_number}` のうち、`pr=` の直後が `;` または行末まで一致する最後の出現を採る。marker があれば ` — ⚠️ sweep 起票済みの除外を適用できなかったため（{reason}）、sweep で Issue 化済みの指摘も転記対象としました`（`{reason}` は marker の値）。marker が無ければ空文字列（除外の適用・起票の成功は推定しない）。`{review_cleanup_check}` を変更しない。
+- `{follow_up_ledger_note}`: `[CONTEXT] FOLLOW_UP_LEDGER=failed; pr={pr_number}`（`pr=` の直後が行末）があれば ` — ⚠️ record の出口（REJECT / RESOLVED / LINK）を却下台帳へ書けませんでした。/rite:cleanup {pr_number} の再実行は判定記録を再利用して書き直します`。無ければ空文字列。`{review_cleanup_check}` を変更しない。
+- `{follow_up_sweep_note}`: `[CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason={r}; pr={pr_number}` のうち、`pr=` の直後が `;` または行末まで一致する最後の出現を採る。marker があれば ` — ⚠️ sweep 起票済みの除外を適用できませんでした（{reason}）`（`{reason}` は marker の値）。`{reason}` が `no_source_issue` / `comments_api` / `ledger_invalid` のときは、続けて `。関連 Issue の却下台帳を読めず、既存 Issue への紐づけも行えていません` を付ける（`apply_failed` は台帳を読めているので付けない）。marker が無ければ空文字列（除外の適用・起票の成功は推定しない）。`{review_cleanup_check}` を変更しない。
+- `{follow_up_deferred_note}`: `[CONTEXT] FOLLOW_UP_DEFERRED=unavailable; reason={r}; pr={pr_number}` のうち、`pr=` の直後が `;` または行末まで一致する最後の出現を採る。marker があれば ` — ⚠️ 元 Issue の本文を取得できず（{reason}）、Decision Log で先送りした欠陥を候補にできていません。本文を読める状態で /rite:cleanup {pr_number} を再実行してください`（`{reason}` は marker の値）。このとき先送り欠陥側は未完了で、`{review_cleanup_check}` は ` ` になる（未完了事項として `{outstanding_items_block}` にも載る）。marker が無ければ空文字列。
 - `{wiki_ingest_check}`: 以下の sentinel を上から評価し最初の一致を採用 (`WIKI_INGEST_DONE` + `WIKI_INGEST_PUSH_FAILED` が併存しうるため順序重要):
 
   | Sentinel | check | 表示 |
@@ -1076,9 +1052,26 @@ rationale: references/rationale.md#review-cleanup-reasons
     手動回復: git -C .rite/wiki-worktree push origin {wiki_branch}
   ```
 
-`{outstanding_items_block}`（非ブロッキング失敗の集約欄）: 上記チェックリストの `{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{projects_check}` / `{wiki_ingest_check}` / `{review_cleanup_check}` のうち、**チェックボックスが `x` ではなく空欄（未チェック）として描画されたもの**があれば、そのチェックボックス直下の付記文をそのまま箇条書きで列挙する（各チェックボックス直下の付記と同じ文言をここにも重複表示する — チェックリストは一覧性、本節は見落とし防止のための集約であり、両立させる）。
+  ロック喪失は上の表と独立に評価する（DONE / PUSH_FAILED と併存しうるため、表の一致判定にも最終行（marker 不在）の判定にも数えない）。`[CONTEXT] ` 行頭一致 + `WIKI_INGEST_LOCK_LOST=1` + `source=cleanup_step9; pr={pr_number}`（値の直後が `;` または行末）に該当する行があれば、表の判定に関わらず check を ` ` にし、表の付記の**後ろに**ロック喪失の付記を続ける（`/rite:batch-run --merge` では先行 Issue の marker が文脈に残るため `pr=` で絞る。wiki-ingest 自身が出す `check=` 付きの行は判定に使わない）。LOCK_LOST しか無いとき（DONE 等の発火漏れ）は最終行を適用したうえでロック喪失の付記を続ける。
 
-判定基準を「⚠️/ℹ️ 等の絵文字 prefix 一致」ではなく「チェックボックスの空欄/`x`」に統一する: 6 check の判定ルールはいずれも「実失敗・残作業のときのみ空欄 ` ` を割り当て、成功時および legitimate な informational skip は `x` を割り当てる」。付記文の絵文字 prefix は飾りに過ぎず、チェックボックス自体の空欄/`x`こそが「未完了か否か」の一次情報である。
+  ロック喪失の付記:
+  ```
+  ⚠️ ingest 中に wiki ingest のロックを失っていました。直近の wiki の commit に重複や上書きが無いか確認してください
+  ```
+- `{wm_final_update_check}`: ステップ 11 の `[CONTEXT] WM_FINAL_UPDATE=` 行で判定する（archive-procedures §3.5.1 = `completion`、§3.5.2 = `progress`）。`{issue_number}` が空（関連 Issue 未識別）なら `x`。それ以外は **completion 側と progress 側を独立に評価し、両方が `x` 相当のときだけ `x`**（どちらか一方でも未完了なら ` ` にし、未完了だった側の付記をすべて列挙する。`{local_branch_check}` と同型）。各側は **2 段で判定する**: まず `[CONTEXT] ` 行頭一致 + `WM_FINAL_UPDATE={側}` + `issue={issue_number}`（値の直後が `;` または行末）に該当する行を集め、**その中の最後の出現 1 行だけを選ぶ**（recency。`{local_branch_check}` と同じ理由）。次にその 1 行を以下で評価する（`{対象}` は completion = 完了情報の追記、progress = 進捗チェックリストの更新）:
+  - `status=success` / `reason=no_comment` / `reason=section_absent` / `reason=pr_not_merged` のいずれか: `x`（後 3 つは legitimate skip。x とする値はこの 4 つに限る）
+  - 上記以外（`reason=invalid_args` / `reason=transform_failed` / `status=missing` 等）: ` ` + 「⚠️ 作業メモリの{対象}が完了しませんでした（{marker の status 以降}）。{helper stderr の先頭行} — Issue #{issue_number} の作業メモリコメントを確認し、必要なら手動で追記してください」を付記（helper stderr の先頭行は同じ bash が出した `helper stderr (root-cause、先頭 5 行):` の直後の 1 行。出ていなければ省く）
+  - 該当行が無いとき: ` ` + 「⚠️ 作業メモリの{対象}の実行結果を確認できませんでした — Issue #{issue_number} の作業メモリコメントを確認してください」を付記。**marker 不在を成功と読んではならない**
+- `{issue_close_check}`: ステップ 10 の `[CONTEXT] ISSUE_CLOSE=` 行で判定する（archive-procedures §3.6.1）。`{issue_number}` が空（関連 Issue 未識別）なら `x`。それ以外は `[CONTEXT] ` 行頭一致 + `ISSUE_CLOSE=` + `issue={issue_number}`（値の直後が `;` または行末）に該当する行を集め、**その中の最後の出現 1 行だけを選ぶ**（recency。`/rite:batch-run --merge` では先行 Issue の marker が文脈に残るため）。選んだ 1 行を以下で評価する:
+  - `ISSUE_CLOSE=skipped` かつ `reason=pr_not_merged`: `x` + 「ℹ️ PR がマージされていないため Issue #{issue_number} は開いたまま残しています。作業を中止する場合は `/rite:issue-cancel {issue_number}` を実行してください」を付記
+  - `ISSUE_CLOSE=closed` / `ISSUE_CLOSE=already_closed` / `ISSUE_CLOSE=not_identified` のいずれか: `x`（x とする値は上の skipped とこの 3 つに限る）
+  - `ISSUE_CLOSE=failed` かつ `reason=no_pr`: ` ` + 「⚠️ 関連 PR が無いため Issue #{issue_number} をクローズしていません。`gh issue view {issue_number} -R {owner_repo}` で状態を確認し、作業が完了していれば手動でクローズしてください」を付記
+  - 上記以外（`ISSUE_CLOSE=failed` かつ `reason=` が `close_failed` / `verify_failed` / `state_<STATE>` / `target_mismatch` / `pr_view_failed` のいずれか等）: ` ` + 「⚠️ Issue #{issue_number} のクローズを確認できませんでした（{marker の reason 値}）。`gh pr view {pr_number} -R {owner_repo} --json body,headRefName` で PR の関連 Issue を確かめ、その Issue が OPEN なら `gh issue close <番号> -R {owner_repo}` を手動実行してください」を付記
+  - 該当行が無いとき: ` ` + 「⚠️ Issue #{issue_number} のクローズの実行結果を確認できませんでした。`gh issue view {issue_number} -R {owner_repo}` で状態を確認してください」を付記。**marker 不在を成功と読んではならない**
+
+`{outstanding_items_block}`（非ブロッキング失敗の集約欄）: 上記チェックリストの `{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{projects_check}` / `{wiki_ingest_check}` / `{review_cleanup_check}` / `{wm_final_update_check}` / `{issue_close_check}` のうち、**チェックボックスが `x` ではなく空欄（未チェック）として描画されたもの**があれば、そのチェックボックス直下の付記文をそのまま箇条書きで列挙する（各チェックボックス直下の付記と同じ文言をここにも重複表示する — チェックリストは一覧性、本節は見落とし防止のための集約であり、両立させる）。
+
+判定基準を「⚠️/ℹ️ 等の絵文字 prefix 一致」ではなく「チェックボックスの空欄/`x`」に統一する: 8 check の判定ルールはいずれも「実失敗・残作業のときのみ空欄 ` ` を割り当て、成功時および legitimate な informational skip は `x` を割り当てる」。付記文の絵文字 prefix は飾りに過ぎず、チェックボックス自体の空欄/`x`こそが「未完了か否か」の一次情報である。
 rationale: references/rationale.md#outstanding-checkbox
 
 いずれの check も `x`（すべて成功、または legitimate skip）の場合は次の 1 行のみを出力する:
@@ -1087,7 +1080,7 @@ rationale: references/rationale.md#outstanding-checkbox
 - なし（非ブロッキングで継続した失敗はありませんでした）
 ```
 
-上記の判定は 6 個の check が steps 4/5/8/9 の別々の Bash 呼び出しで確定するため bash 側で合算できず、本コマンド (LLM) が完了報告を組み立てる時点で件数を数える。数えた件数を、他の numbered sentinel (`[pr:created:N]` 等) と同じ表記規約で、ステップ 12 末尾の return signal 行に隣接する HTML コメントとして出力する (grep 可能・rendered view では不可視):
+上記の判定は 8 個の check が steps 4/5/6/8/9/10/11 の別々の Bash 呼び出しで確定するため bash 側で合算できず、本コマンド (LLM) が完了報告を組み立てる時点で件数を数える。数えた件数を、他の numbered sentinel (`[pr:created:N]` 等) と同じ表記規約で、ステップ 12 末尾の return signal 行に隣接する HTML コメントとして出力する (grep 可能・rendered view では不可視):
 
 ```
 <!-- [cleanup:outstanding:{n}] -->
@@ -1102,13 +1095,14 @@ rationale: references/rationale.md#outstanding-checkbox
 - 結果: {parent_close_result}
 ```
 
-`{parent_close_result}` の値域 (ステップ 10 で決定された 7 種類のいずれか):
+`{parent_close_result}` の値域 (ステップ 10 で決定された 8 種類のいずれか):
 - `✅ 自動クローズ完了 (全 sub-issue clear)` — 親 Issue が全 sub-issue 完了で自動 close
 - `🟡 sub-issue 残あり (close 保留)` — 残 sub-issue があり親は open のまま
 - `⚠️ Cancelled の子を含むため親は未完了扱い` — Cancelled（NOT_PLANNED）の子が居る。Done / auto-close しない
 - `⚠️ Cancelled のため Done 上書きをスキップ` — 親が既に終端 Status (Cancelled) のため Done 同期を主張しない（3.7.2.1 `.result=skipped_terminal_conflict`。Cancelled **子**の未完了扱いとは別）
 - `⚠️ 子の stateReason 判定不能のため auto-close スキップ` — CLOSED 子の `stateReason` 取得失敗（fail-loud）
 - `⚠️ 手動確認推奨` — 親 Issue 状態が判定不能で manual triage 推奨
+- `ℹ️ PR 未マージのため親 Issue は更新していません` — `{pr_merged}=false`。Tasklist 更新も auto-close 判定も実行していない
 - `(該当なし)` — 親 Issue が識別されなかった (ステップ 2 で見つからず)
 
 未完了タスク Issue 化結果 (該当する場合のみ):
@@ -1153,5 +1147,5 @@ rationale: references/rationale.md#wikichain-terminal-clear
 | Branch Deletion Failure | `git branch` でブランチ一覧を確認; base ブランチに切替後再実行 |
 | Network Error | [共通パターン](../../references/common-error-handling.md) |
 | Issue Not Found | [共通パターン](../../references/common-error-handling.md) |
-| Issue Close Failure | `gh issue view {issue_number} -R {owner_repo}` で状態確認; 手動で `gh issue close {issue_number} -R {owner_repo}` |
+| Issue Close Failure | 非ブロッキングで続行し、`{issue_close_check}` を空欄にして未完了事項に数える。回復はステップ 12 の `{issue_close_check}` の付記に従う |
 | Incomplete Task Issue Creation Failure | クリーンアップは続行; タスクを手動で Issue 化 |
