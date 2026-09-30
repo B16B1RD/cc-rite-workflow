@@ -124,8 +124,9 @@ if [ "$branch_strategy" = "separate_branch" ]; then
   current_branch=$(git branch --show-current)
 
   # stash は submodule の変更を退避せず、git diff は submodule 内の未追跡ファイルを変更と見なさない。
-  # 何かを変更する前に両方を検出して止める (--ignore-submodules=none は .gitmodules の ignore 設定より優先される)
-  status_v2=$(git status --porcelain=v2 --ignore-submodules=none) || {
+  # 何かを変更する前に両方を検出して止める。利用者の設定で検出が外れないよう、submodule の ignore 設定と
+  # 未追跡ファイルの非表示設定をこの呼び出しに限って上書きする (-c は submodule 側の status にも届く)
+  status_v2=$(git -c status.showUntrackedFiles=normal status --porcelain=v2 --ignore-submodules=none) || {
     echo "ERROR: git status failed — submodule の変更を確認できないため停止します" >&2
     exit 1
   }
@@ -145,12 +146,17 @@ if [ "$branch_strategy" = "separate_branch" ]; then
   fi
   submodules_before=$(git submodule status) || {
     echo "ERROR: git submodule status failed — submodule の状態を記録できないため停止します" >&2
+    echo "  対処: 上の git の出力を確認してください。.gitmodules に登録の無い submodule が index にある場合は、登録するか index から外してから再実行してください" >&2
     exit 1
   }
 
-  # 元のブランチへ戻ったあと、submodule が実行前と同じ commit で展開されていることを確かめる
+  # 元のブランチへ戻ったあと、submodule が実行前と同じ commit で展開されていることを確かめる。
+  # signal trap の exit で EXIT trap も走るため、照合の前に verify_needed を下ろして 2 回目を防ぐ
+  verify_needed=true
   _rite_wiki_init_verify_submodules() {
     local after
+    [ "$verify_needed" = true ] || return 0
+    verify_needed=false
     if ! after=$(git submodule status) || [ "$after" != "$submodules_before" ]; then
       echo "ERROR: submodule の状態が実行前と一致しません" >&2
       echo "  復旧: git submodule status で確認し、git submodule update で記録済みの commit を展開し直してください" >&2
@@ -223,12 +229,9 @@ if [ "$branch_strategy" = "separate_branch" ]; then
     exit 1
   }
   # git rm は submodule の作業ツリーを中身ごと消し、元のブランチへ戻っても再展開されない。
-  # gitlink は index からだけ外し、作業ツリーには触れさせない
-  index_entries=$(git -c core.quotePath=false ls-files -s) || {
-    echo "ERROR: git ls-files failed — submodule を特定できないため停止します" >&2
-    exit 1
-  }
-  while IFS= read -r index_entry; do
+  # gitlink は index からだけ外し、作業ツリーには触れさせない。
+  # path は NUL 区切りで読む (行出力は " や \ を含む path を引用し、index の entry と一致しなくなる)
+  while IFS= read -r -d '' index_entry; do
     case "$index_entry" in
       160000\ *)
         git update-index --force-remove -- "${index_entry#*$'\t'}" || {
@@ -237,7 +240,19 @@ if [ "$branch_strategy" = "separate_branch" ]; then
         }
         ;;
     esac
-  done <<< "$index_entries"
+  done < <(git ls-files -s -z)
+  # update-index は対象の entry が無くても成功を返し、上の読み取りの失敗はループからは見えない。
+  # gitlink が残ったまま git rm へ進まないよう、index を読み直して確かめる
+  remaining_entries=$(git ls-files -s) || {
+    echo "ERROR: git ls-files failed — submodule を index から外せたか確認できないため停止します" >&2
+    exit 1
+  }
+  case $'\n'"$remaining_entries" in
+    *$'\n160000 '*)
+      echo "ERROR: submodule を index から外せませんでした。作業ツリーを消さずに停止します" >&2
+      exit 1
+      ;;
+  esac
   git rm -rf . 2>/dev/null || true
 
   # Wiki ファイルのみをステージング
