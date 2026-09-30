@@ -2,6 +2,8 @@
 
 ## 2026-10-01
 
+* **Lint incomplete** — 機械検査は stale=65, orphans=0, missing_concept=0, unregistered_raw=642, broken_refs=0, descriptive_refs=0。全ページの意味比較は出力の途中欠損により未完了であり、contradictions は未確定。今回の取り込みではページ本文の変更なし。Wiki 全体の品質検査成功とは扱わない。
+
 * **Update**: [Scope drift fix での overclaim substitution (置換後に新たな過剰主張を持ち込む)](pages/anti-patterns/scope-drift-fix-overclaim-substitution.md) — 変更履歴の項目の範囲を実装の分岐の単位で書く変種として、レビュー結果 5 件と fix 結果 6 件を統合
 
 * **Skip**: [20260930T145005Z-pr-3556.md](raw/reviews/20260930T145005Z-pr-3556.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
