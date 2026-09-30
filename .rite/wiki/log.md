@@ -10,6 +10,8 @@
 
 * **Skip**: [20260930T161641Z-pr-3559.md](raw/reviews/20260930T161641Z-pr-3559.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
 
+* **Lint incomplete** — 機械検査は contradictions=0, stale=64, orphans=0, missing_concept=0, unregistered_raw=638, broken_refs=0。今回はページ本文の変更なし。全ページの意味的な矛盾比較は未完了であり、Wiki 全体の品質検査成功とは扱わない。
+
 ## 2026-09-30
 
 * **Lint incomplete** — 機械検査は stale=64、orphans=0、missing_concept=0、unregistered_raw=621、broken_refs=0、descriptive_number_ref=0。更新ページは出典と関連ページを照合した。全658ページの意味的な矛盾比較は未完了であり、Wiki 全体の品質検査成功とは扱わない。
