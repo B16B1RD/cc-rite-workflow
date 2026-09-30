@@ -490,6 +490,41 @@ for d in "${tests_dirs[@]}"; do
 done
 rm -f "$SBX/plugins/rite/hooks/production-site.sh"
 
+printf '%s\n' \
+  'f_while() { echo "$while_x" | grep -q y; }' \
+  'f_until() { echo "$until_x" | grep -q y; }' \
+  'f_do() { echo "$do_x" | grep -q y; }' \
+  'f_elif() { echo "$elif_x" | grep -q y; }' \
+  'f_else() { echo "$else_x" | grep -q y; }' \
+  'f_bare() { echo "$bare_x" | grep -q y; }' \
+  'f_if() { echo "$ifcall_x" | grep -q y; }' \
+  'f_then() { echo "$then_x" | grep -q y; }' \
+  'f_nl() { echo "$nl_x" | grep -q y; }' \
+  'set -o pipefail' \
+  'while f_while; do :; done' \
+  'until f_until; do :; done' \
+  'for i in 1; do f_do; done' \
+  'if false; then :; elif f_elif; then :; fi' \
+  'if false; then :; else f_else; fi' \
+  'f_bare' \
+  'if f_if; then :; fi' \
+  'if true; then f_then; fi' \
+  'do' \
+  'f_nl' \
+  'done' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "compound keyword calls retain findings" "1" "$rc"
+assert "while call is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*while_x' || true)"
+assert "until call is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*until_x' || true)"
+assert "same-line do call is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*do_x' || true)"
+assert "elif call is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*elif_x' || true)"
+assert "else call is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*else_x' || true)"
+assert "bare call is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*bare_x' || true)"
+assert "if call is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*ifcall_x' || true)"
+assert "then call is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*then_x' || true)"
+assert "newline after do call is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*nl_x' || true)"
+assert "nine call forms yield nine findings" "9" "$(printf '%s\n' "$out" | grep -c '^\[pipefail-grep-q\]' || true)"
+
 REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 out=$(bash "$SCRIPT" --all --repo-root "$REPO_ROOT" --quiet 2>&1); rc=$?
 assert "full-tree scan is clean" "0" "$rc"
