@@ -797,6 +797,8 @@ Output using this format with evaluation (可/条件付き/要修正), findings 
 |--------|----------|------------|------|----------|
 ```
 
+`### 推奨事項` の節を書く場合、推奨事項が無いときは `なし` とだけ書く（補足を続けない）。
+
 `監査ログ` は常に出力する。該当なしの場合は表の代わりに `なし` と書く。Category #2 の行は省略禁止で、内容中の `Verification:` anchor は改変しない。
 
 ### Column Structure Rules

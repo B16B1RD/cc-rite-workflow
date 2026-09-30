@@ -75,7 +75,7 @@ Extraction rules:
 - キャンセル
 ```
 
-Use `AskUserQuestion` to confirm the Issue number.
+Before asking, try `bash {plugin_root}/hooks/flow-state.sh get --field issue_number --default ""` and use a non-empty value. Use `AskUserQuestion` to confirm the Issue number only when it is empty.
 
 ### 0.3 Verify Issue Exists
 

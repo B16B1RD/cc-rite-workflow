@@ -169,7 +169,7 @@ assert "gh absent explains the skip with a WARNING line" "1" \
 
 # --- /rite:lint が exit 0 の WARNING を 4.3 に表示する規則 -----------------------
 LINT_SKILL="$SCRIPT_DIR/../../skills/lint/SKILL.md"
-assert "lint 3.5 keeps a WARNING-only exit 0 row at success with its count and pattern" "1" \
+assert "lint 3.5 result substring about success, count and pattern appears on one line" "1" \
   "$(grep -c '`{prefix}_status` は `success` のまま、件数と結果パターンも変えない' "$LINT_SKILL")"
 assert "lint 3.8 lists branch.base and gh among the skips that carry a WARNING" "1" \
   "$(grep -c 'WARNING 付き（`branch.base` 未解決 / `gh` 不在 / `jq` 不在' "$LINT_SKILL")"

@@ -180,7 +180,7 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 | `disabled` | no-op（従来フロー）。Phase 3.2 へ |
 | `already_in` | 下記の state 確定・変更前検証を実行して Phase 3.2 へ（入場操作だけ不要） |
 | `reenter` / `reconstructed` | 共通作業先契約の native / 検証済み代替で `{path}` へ入場してから Phase 3.2 へ（`{path}` は marker の `path=` 値。`reconstructed` は helper が `git worktree add` 済み） |
-| `residue` | パスは存在するが worktree 未登録（prune 後も残存）→ AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止） |
+| `residue` | パスは存在するが worktree 未登録（prune 後も残存）→ [残骸の確認](../../references/git-worktree-patterns.md#5-残骸ディレクトリの削除確認)で中身を調べ、その結果を添えて AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止） |
 | `branch_other_worktree` | branch が**別の worktree** で checkout 中（並行セッションの可能性）→ **中止**。`other=` のパスを表示する（git が構造的に保証する二重着手ガード） |
 | `branch_absent` | branch がローカル・リモートどこにも無い → **矛盾サマリ + AskUserQuestion**（新規セッション扱い / 中止）。helper は再構築しない（silent に新規扱いもしない） |
 | `failed` | 再構築（`git fetch` / `git worktree add`）が失敗（helper rc=1, stderr に原因 + 復旧手順）→ **silent fallback せず明示停止**。develop 上で recover を続行しない |
@@ -303,7 +303,7 @@ rationale: references/rationale.md#conflict-priority
   - 推定 phase: <推定値>
 ```
 
-AskUserQuestion で「推定 phase で再開 / 別 phase を選ぶ / 中止」を提示。
+記録された phase と実態（commit 数・PR の有無と状態）が食い違うときは実態を正とし、推定 phase とその根拠を表示して続行する（[question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) 規則 5）。実態どうしが食い違って推定できないときだけ、何が食い違っているかを規則 6 の 4 要素で示して AskUserQuestion で「推定 phase で再開 / 別 phase を選ぶ / 中止」を提示。
 
 判定結果を LLM が prose 推論で確定したら、`$resolved_phase` シェル変数を set してから以下を実行し、Phase 5.2 が読む `[CONTEXT] RESOLVED_PHASE` marker を emit する (Bash tool 境界でシェル状態は失われるため、後段 step は marker 経由でしか値を取れない):
 
@@ -598,7 +598,7 @@ Phase 5.4 で resume した個別スキルの終端状態を、[`skills/batch-ru
 | Issue not found | エラー終了、`gh issue list -R {owner_repo}` で確認するよう案内 |
 | Branch 不在 | `gh issue develop -R {owner_repo}` で再生成するよう案内 |
 | flow-state 不在 + WM 不在 | 「新規セッション」として `/rite:open {issue_arg}` を提案 |
-| 矛盾検出 (phase vs commit/PR) | AskUserQuestion で「推定 phase で再開 / 別 phase を選ぶ / 中止」 |
+| 矛盾検出 (phase vs commit/PR) | 実態から推定した phase と根拠を表示して続行。推定できないときだけ AskUserQuestion で「推定 phase で再開 / 別 phase を選ぶ / 中止」（Phase 3.5 と同じ） |
 | migrate 失敗 | WARNING 表示後、cross-check で実態推定して続行 |
 
 ---

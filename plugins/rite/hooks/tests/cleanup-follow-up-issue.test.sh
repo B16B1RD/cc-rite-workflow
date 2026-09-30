@@ -433,6 +433,7 @@ assert_grep "T-02 source cleanup" "$STUB_DIR/args.json" '"source": "cleanup"'
 assert_grep "T-01 status todo role" "$STUB_DIR/args.json" '"status": "todo"'
 assert_grep "T-01 projects enabled true" "$STUB_DIR/args.json" '"enabled": true'
 assert_grep "T-01 follow-up ラベルを全ページで検索する" "$GH_LOG" '^gh api --paginate --slurp repos/acme/demo/issues\?labels=follow-up&state=all&per_page=100$'
+assert_grep "T-01 既存ラベルの説明も更新する" "$GH_LOG" '^gh label create follow-up -R acme/demo --description マージ時の残存指摘と先送りした欠陥 --color c5def5 --force$'
 assert_not_grep "T-01 gh は Search API を使わない" "$GH_LOG" 'rite-follow-up-from-pr'
 assert_not_grep "T-01 先送り欠陥の取得失敗 marker を出さない" "$ERR" 'FOLLOW_UP_DEFERRED'
 assert_not_grep "T-01 先送り節を出さない" "$STUB_DIR/body.md" '^## Decision Log で先送りした欠陥$'
@@ -2002,6 +2003,8 @@ for t77_variant in plain preview; do
   # --preview-body の有無は出力に差を生まないため、t77_args の組み立てから --preview-body が落ちる退行はここでしか捕まらない（run_target への受け渡しは確かめない）
   if [ "$t77_variant" = preview ]; then
     assert "T-77 $t77_variant: --preview-body を渡す" "--preview-body $TMP_ROOT/preview-t77.md" "${t77_args[*]}"
+  else
+    assert "T-77 $t77_variant: --preview-body を渡さない" "0" "${#t77_args[@]}"
   fi
   put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[]}'
   assert "T-77 $t77_variant: 前提: 判定済み記録が無い" "no" "$([ -e "$r/$JUDGED_RECORD_REL" ] && echo yes || echo no)"

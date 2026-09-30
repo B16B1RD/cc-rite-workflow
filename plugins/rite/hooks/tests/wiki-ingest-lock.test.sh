@@ -14,7 +14,9 @@
 #   release removes only the OWN lock; idempotent on absent lock
 #   wiki-ingest step 9.0 warns on stderr when the lock is no longer own, its state
 #   cannot be confirmed, or its release fails, names the remedy for the configured
-#   strategy, and the completion report has a row for each warning
+#   strategy, and the completion report has a row for each warning; when the lock is
+#   not own it also prints one `WIKI_INGEST_LOCK_LOST` marker line on stdout (before
+#   the release output) for the calling cleanup
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -252,6 +254,8 @@ run_step90() {
 }
 s_out=$(mktemp); s_err=$(mktemp); cleanup_dirs+=("$s_out" "$s_err")
 LOST='ロックを失っていました'
+MARK='[CONTEXT] WIKI_INGEST_LOCK_LOST=1; check='
+nl=$'\n'
 UNCONFIRMED='ロックの状態を確認できませんでした'
 NOT_RELEASED='^  同じ原因でロックが解放されていない可能性があります。.*最長 2 時間'
 RELEASE_FAILED='ロックを解放できませんでした'
@@ -264,7 +268,7 @@ assert "TC-13a held by other: WARNING on stderr" "1" "$(grep -c '^WARNING' "$s_e
 assert "TC-13a held by other: the WARNING says the lock was lost" "1" "$(grep -c "^WARNING: .*$LOST" "$s_err" || true)"
 assert "TC-13a held by other: no unconfirmed-state WARNING" "0" "$(grep -c "$UNCONFIRMED" "$s_err" || true)"
 assert "TC-13a held by other: no not-released line" "0" "$(grep -c "$NOT_RELEASED" "$s_err" || true)"
-assert "TC-13a held by other: release output skipped" "skipped" "$(cat "$s_out")"
+assert "TC-13a held by other: stdout is the lock-lost marker (check=held) then the release output" "${MARK}held${nl}skipped" "$(cat "$s_out")"
 assert "TC-13a held by other: B still holds" "$SID_B" "$(cat "$LOCKDIR/session_id")"
 # (b) the lock is gone
 reset_lock
@@ -274,13 +278,13 @@ assert "TC-13b lock absent: WARNING on stderr" "1" "$(grep -c '^WARNING' "$s_err
 assert "TC-13b lock absent: the WARNING says the lock was lost" "1" "$(grep -c "^WARNING: .*$LOST" "$s_err" || true)"
 assert "TC-13b lock absent: no unconfirmed-state WARNING" "0" "$(grep -c "$UNCONFIRMED" "$s_err" || true)"
 assert "TC-13b lock absent: no not-released line" "0" "$(grep -c "$NOT_RELEASED" "$s_err" || true)"
-assert "TC-13b lock absent: release output released" "released" "$(cat "$s_out")"
+assert "TC-13b lock absent: stdout is the lock-lost marker (check=free) then the release output" "${MARK}free${nl}released" "$(cat "$s_out")"
 # (c) this session still owns the lock
 bash "$WIL" acquire --session "$SID_A" >/dev/null
 rc=0; run_step90 "$s_out" "$s_err" || rc=$?
 assert "TC-13c own: rc 0" "0" "$rc"
 assert "TC-13c own: stderr empty" "0" "$([ -s "$s_err" ] && echo 1 || echo 0)"
-assert "TC-13c own: release output released" "released" "$(cat "$s_out")"
+assert "TC-13c own: stdout is only the release output (no lock-lost marker)" "released" "$(cat "$s_out")"
 assert "TC-13c own: lock released" "0" "$([ -e "$LOCKDIR" ] && echo 1 || echo 0)"
 # (d) the check fails because the clock cannot be read while another session holds the lock
 reset_lock
@@ -298,7 +302,7 @@ n_line=$(grep -n "$NOT_RELEASED" "$s_err" | head -1 | cut -d: -f1 || true)
 assert "TC-13d check failed: one not-released line" "1" "$(grep -c "$NOT_RELEASED" "$s_err" || true)"
 assert "TC-13d check failed: the not-released line follows the WARNING" "1" \
   "$([ -n "$w_line" ] && [ -n "$n_line" ] && [ "$n_line" -eq $(( w_line + 1 )) ] && echo 1 || echo 0)"
-assert "TC-13d check failed: release still runs (skipped)" "skipped" "$(cat "$s_out")"
+assert "TC-13d check failed: stdout is the lock-lost marker (check=unknown) then the release output" "${MARK}unknown${nl}skipped" "$(cat "$s_out")"
 assert "TC-13d check failed: rc 0" "0" "$rc"
 assert "TC-13d check failed: B still holds" "$SID_B" "$(cat "$LOCKDIR/session_id")"
 # (e) the session cannot be resolved: check and release both fail and the own lock stays
@@ -312,7 +316,7 @@ assert "TC-13e session unresolved: check and release both reject the session" "2
 assert "TC-13e session unresolved: unconfirmed-state WARNING" "1" "$(grep -c "^WARNING: .*$UNCONFIRMED" "$s_err" || true)"
 assert "TC-13e session unresolved: one not-released line" "1" "$(grep -c "$NOT_RELEASED" "$s_err" || true)"
 assert "TC-13e session unresolved: release-failure WARNING" "1" "$(grep -c "^WARNING: .*$RELEASE_FAILED" "$s_err" || true)"
-assert "TC-13e session unresolved: no release output" "" "$(cat "$s_out")"
+assert "TC-13e session unresolved: only the lock-lost marker (check=unknown), no release output" "${MARK}unknown" "$(cat "$s_out")"
 assert "TC-13e session unresolved: block rc is the failed release (1)" "1" "$rc"
 assert "TC-13e session unresolved: the lock stays" "$SID_A" "$(cat "$LOCKDIR/session_id" 2>/dev/null)"
 # (f) the remedy names only the command for the configured strategy; an unknown value names both
@@ -363,6 +367,7 @@ assert "TC-13h own but release fails: the removal is the cause" "1" "$(grep -c '
 assert "TC-13h own but release fails: release-failure WARNING" "1" "$(grep -c "^WARNING: .*$RELEASE_FAILED" "$s_err" || true)"
 assert "TC-13h own but release fails: no lost-lock or unconfirmed-state WARNING" "0" \
   "$(grep -cE "$LOST|$UNCONFIRMED" "$s_err" || true)"
+assert "TC-13h own but release fails: no lock-lost marker" "" "$(cat "$s_out")"
 assert "TC-13h own but release fails: block rc is the failed release (1)" "1" "$rc"
 assert "TC-13h own but release fails: the lock stays" "$SID_A" "$(cat "$LOCKDIR/session_id" 2>/dev/null)"
 
@@ -387,4 +392,4 @@ assert "TC-14 holder stays A" "$SID_A" "$(cat "$LOCKDIR/session_id")"
 assert "TC-14 acquired_at not rewritten" "$PLANTED" "$(cat "$LOCKDIR/acquired_at")"
 
 print_summary "$(basename "$0")" \
-  "Drift hint: wiki-ingest-lock.sh §9 — mkdir lock whose liveness is its own acquired_at (2h), held near the window's upper edge (~7100s), reclaim stale/missing/unparsable, concurrent_ingest rc 11, a failed stamp (clock / write, own re-acquire included) stops acquire; _resolve_sid env-first; no-flock PATH; wiki-ingest step 9.0 check → lost-lock / unconfirmed-state WARNING, not-released line, strategy-specific remedy, release-failure WARNING, block rc = release rc, report rows for all three warnings."
+  "Drift hint: wiki-ingest-lock.sh §9 — mkdir lock whose liveness is its own acquired_at (2h), held near the window's upper edge (~7100s), reclaim stale/missing/unparsable, concurrent_ingest rc 11, a failed stamp (clock / write, own re-acquire included) stops acquire; _resolve_sid env-first; no-flock PATH; wiki-ingest step 9.0 check → lost-lock / unconfirmed-state WARNING, not-released line, strategy-specific remedy, release-failure WARNING, lock-lost stdout marker for a non-own lock, block rc = release rc, report rows for all three warnings."

@@ -199,7 +199,7 @@ assert_grep "T-05 schema lists the file" "$SCHEMA" 'nb-sweep-done-\{pr_number\}\
 # --- T-06: fix 5.1 行 1.5/1.6。通常ループはファイル非参照 ---
 assert_grep_in_section "T-06 row 1.5 conjunction" "$FIX" \
   '### 5.1 Output Pattern' '### 5.2 Standalone Execution Behavior' \
-  'NB_SWEEP=1.*NB_SWEEP_RESULT=done'
+  '^\| 1\.5 \|.*NB_SWEEP=1.*NB_SWEEP_RESULT=done'
 assert_grep_in_section "T-06 row 1.5 file alternative" "$FIX" \
   '### 5.1 Output Pattern' '### 5.2 Standalone Execution Behavior' \
   'NB_SWEEP_DONE_FILE=1'

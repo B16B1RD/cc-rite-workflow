@@ -10,7 +10,7 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 pass=0 fail=0
-check() { if "$@"; then pass=$((pass+1)); else fail=$((fail+1)); fi; }
+check() { if "$@"; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: line ${BASH_LINENO[0]}" >&2; return 1; fi; }
 
 printf '%s\n' '### 指摘事項' '| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |' '|---|---|---|---|---|' '| HIGH | current-pr | a.sh:1 | defect. Likelihood-Evidence: existing_call_site a.sh:1 | fix |' > "$TMP/valid.md"
 printf '%s\n' '### 指摘事項' '| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |' '|---|---|---|---|---|' '| HIGH | current-pr | a.sh:1 | defect without anchor | fix |' > "$TMP/missing.md"
@@ -38,7 +38,77 @@ check bash -c '! "$1" --reviewer-type application --input "$2" >/dev/null 2>&1' 
 check "$HELPER" --reviewer-type application --input "$TMP/aligned-empty.md"
 check bash -c 'source "$1"; _timeout 1 "$2" --input >/dev/null 2>&1; [ "$?" -eq 2 ]' _ "$SCRIPT_DIR/_test-helpers.sh" "$HELPER"
 check bash -c 'source "$1"; _timeout 1 "$2" --reviewer-type >/dev/null 2>&1; [ "$?" -eq 2 ]' _ "$SCRIPT_DIR/_test-helpers.sh" "$HELPER"
-for reason in anchor_missing findings_heading_missing table_header_missing table_malformed; do
+FINDINGS_EMPTY=('### 指摘事項' '| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |' '|---|---|---|---|---|')
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '- 分類: actionable — a.sh:1 の説明を直す' '- 別 Issue で扱う改善' > "$TMP/rec-missing.md"
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '- 分類: follow-up — 別 Issue で直す' > "$TMP/rec-unknown.md"
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '- 分類: follow-up — x' '- 分類: 文書整合 — y' > "$TMP/rec-two.md"
+printf '%s\n' '### 指摘事項' '| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |' '|---|---|---|---|---|' '| HIGH | current-pr | a.sh:1 | defect without anchor | fix |' '### 推奨事項' '- 分類: follow-up — x' > "$TMP/rec-with-finding-violation.md"
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '- 分類: actionable — a' '  続きの行' '  分類の根拠は diff の 12 行目' '  分類: actionable とした根拠は次の行' '  - 分類の見直しは不要' '* `分類: design_confirmation` — b' '+ **分類**: boundary — c' '1. 分類: actionable — d' '### 監査ログ' 'なし' > "$TMP/rec-valid.md"
+printf '%s\n' '### Findings' '| Severity | Scope | File:Line | Description | Recommendation |' '|---|---|---|---|---|' '### Recommendations' '- 分類: boundary — e' > "$TMP/rec-valid-en.md"
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' 'なし' > "$TMP/rec-none.md"
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '| 分類 | 内容 |' '|---|---|' '| actionable | a |' > "$TMP/rec-table.md"
+
+gate_out() { "$HELPER" --reviewer-type application --input "$1" 2>&1; }
+check bash -c '! "$1" --reviewer-type application --input "$2" >/dev/null 2>&1' _ "$HELPER" "$TMP/rec-missing.md"
+check grep -q 'reason=recommendation_classification_invalid; reviewer=application; recommendations=2; invalid=1$' <<<"$(gate_out "$TMP/rec-missing.md")"
+check grep -qx '  line 6: 分類=(missing)' <<<"$(gate_out "$TMP/rec-missing.md")"
+check bash -c '! "$1" --reviewer-type application --input "$2" >/dev/null 2>&1' _ "$HELPER" "$TMP/rec-unknown.md"
+check grep -qx '  line 5: 分類=follow-up' <<<"$(gate_out "$TMP/rec-unknown.md")"
+check grep -q 'recommendations=2; invalid=2$' <<<"$(gate_out "$TMP/rec-two.md")"
+check [ "$(gate_out "$TMP/rec-two.md" | grep -c '^  line ')" -eq 2 ]
+check grep -qx '  line 6: 分類=文書整合' <<<"$(gate_out "$TMP/rec-two.md")"
+check grep -q 'reason=anchor_missing' <<<"$(gate_out "$TMP/rec-with-finding-violation.md")"
+check bash -c '! grep -q recommendation_classification_invalid <<<"$1"' _ "$(gate_out "$TMP/rec-with-finding-violation.md")"
+check grep -q 'findings=0; recommendations=4$' <<<"$(gate_out "$TMP/rec-valid.md")"
+check grep -q 'findings=0; recommendations=1$' <<<"$(gate_out "$TMP/rec-valid-en.md")"
+check grep -q 'findings=0; recommendations=0$' <<<"$(gate_out "$TMP/rec-none.md")"
+for none_line in 'なし。' '特になし' '該当なし' 'None' 'none.' 'N/A' 'n/a' '-' '**なし**' '- なし。'; do
+  printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '' "$none_line" > "$TMP/rec-none-variant.md"
+  check grep -q 'findings=0; recommendations=0$' <<<"$(gate_out "$TMP/rec-none-variant.md")" || echo "  none line: $none_line" >&2
+done
+for item_line in 'なし。ただし A を直すとよい' '無し' 'なし、' 'None of note' '--' '**' '。'; do
+  printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' "$item_line" > "$TMP/rec-not-none.md"
+  check grep -q 'recommendations=1; invalid=1$' <<<"$(gate_out "$TMP/rec-not-none.md")" || echo "  item line: $item_line" >&2
+done
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' 'なし。' '- 別 Issue で扱う改善' > "$TMP/rec-none-then-item.md"
+check grep -q 'recommendations=1; invalid=1$' <<<"$(gate_out "$TMP/rec-none-then-item.md")"
+check grep -qx '  line 6: 分類=(missing)' <<<"$(gate_out "$TMP/rec-none-then-item.md")"
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' 'なし。' '  ただし A を直すとよい' '  続きの行' > "$TMP/rec-none-then-indented.md"
+check grep -q 'recommendations=1; invalid=1$' <<<"$(gate_out "$TMP/rec-none-then-indented.md")"
+check grep -qx '  line 6: 分類=(missing)' <<<"$(gate_out "$TMP/rec-none-then-indented.md")"
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '-' '  A を直すとよい' > "$TMP/rec-dash-then-indented.md"
+check grep -q 'recommendations=1; invalid=1$' <<<"$(gate_out "$TMP/rec-dash-then-indented.md")"
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '- 分類: actionable — a' '  続きの行' 'なし。' > "$TMP/rec-item-and-none.md"
+check grep -q 'findings=0; recommendations=1$' <<<"$(gate_out "$TMP/rec-item-and-none.md")"
+printf '%s\n' '### 指摘事項' 'なし。' '### 推奨事項' 'なし。' > "$TMP/findings-none-line.md"
+check grep -q 'reason=table_header_missing' <<<"$(gate_out "$TMP/findings-none-line.md")"
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '| 該当なし |' > "$TMP/findings-none-row.md"
+check grep -q 'reason=table_malformed' <<<"$(gate_out "$TMP/findings-none-row.md")"
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '- 分類: actionable/boundary — x' '- 分類: actionable,design_confirmation — y' '- 分類: actionable / boundary — z' '- 分類: `actionable`/`boundary` — w' '- 分類: **boundary**/**actionable** — v' '- 分類: actionable、boundary — u' '- 分類: Actionable — t' '- 分類: design_confirmation2 — s' > "$TMP/rec-compound.md"
+check bash -c '"$1" --reviewer-type application --input "$2" >/dev/null 2>&1; [ "$?" -eq 1 ]' _ "$HELPER" "$TMP/rec-compound.md"
+check grep -q 'recommendations=8; invalid=8$' <<<"$(gate_out "$TMP/rec-compound.md")"
+check grep -qx '  line 5: 分類=actionable/boundary' <<<"$(gate_out "$TMP/rec-compound.md")"
+check grep -qx '  line 7: 分類=actionable / boundary' <<<"$(gate_out "$TMP/rec-compound.md")"
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '- 分類: boundary — （スコープ外）a' '- **分類: design_confirmation** — c' '- 分類：actionable — d' '- 分類: actionable — boundary と迷ったが対応する' '- 分類: `boundary` — (要確認) e' '- 分類: design_confirmation — Nothing actionable here' > "$TMP/rec-annotated.md"
+check grep -q 'findings=0; recommendations=6$' <<<"$(gate_out "$TMP/rec-annotated.md")"
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '- 分類: boundary（スコープ外） — a' '- 分類: boundary. スコープ外: b' '- 分類: design_confirmation. Nothing actionable here' '- 分類: actionable (boundary 値のテスト追加)' '- 分類: actionable、d' > "$TMP/rec-note-before-dash.md"
+check grep -q 'recommendations=5; invalid=5$' <<<"$(gate_out "$TMP/rec-note-before-dash.md")"
+check grep -qx '  line 5: 分類=boundary（スコープ外）' <<<"$(gate_out "$TMP/rec-note-before-dash.md")"
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '- 分類: actionable or boundary — x' '- 分類: actionable/Boundary — y' '- 分類: actionable・boundary — a' '- 分類: actionable かつ boundary — k' '- 分類: actionable (and boundary) — q' > "$TMP/rec-compound-words.md"
+check grep -q 'recommendations=5; invalid=5$' <<<"$(gate_out "$TMP/rec-compound-words.md")"
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項（任意）' '- 別 Issue で扱う改善' > "$TMP/rec-heading-variant.md"
+check grep -q 'recommendations=1; invalid=1$' <<<"$(gate_out "$TMP/rec-heading-variant.md")"
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '- 分類: actionable — a' '  続きの行' '  - 分類: follow-up — b' '  - **分類**: 文書整合 — d' '#### 本 PR 外' '- 分類: follow-up — c' > "$TMP/rec-nested.md"
+check grep -q 'recommendations=5; invalid=4$' <<<"$(gate_out "$TMP/rec-nested.md")"
+check grep -qx '  line 7: 分類=follow-up' <<<"$(gate_out "$TMP/rec-nested.md")"
+check grep -qx '  line 8: 分類=文書整合' <<<"$(gate_out "$TMP/rec-nested.md")"
+check grep -qx '  line 9: 分類=(missing)' <<<"$(gate_out "$TMP/rec-nested.md")"
+printf '%s\n' 'started_at: 2026-01-01T00:00:00Z' '### 評価: 可' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '- 分類: boundary — a' '### 付記' 'ended_at: 2026-01-01T00:01:00Z' > "$TMP/rec-notes-outside.md"
+check grep -q 'findings=0; recommendations=1$' <<<"$(gate_out "$TMP/rec-notes-outside.md")"
+check grep -q 'findings=0; recommendations=0$' <<<"$(gate_out "$TMP/empty.md")"
+check grep -q 'recommendations=2; invalid=2$' <<<"$(gate_out "$TMP/rec-table.md")"
+
+for reason in anchor_missing findings_heading_missing table_header_missing table_malformed recommendation_classification_invalid; do
   check grep -q "$reason" "$SKILL"
 done
 
@@ -50,6 +120,17 @@ check grep -q "$EMPTY_HEADER_RULE" "$BASE_FILE"
 check grep -q "$EMPTY_HEADER_BAN" "$BASE_FILE"
 check grep -q "$EMPTY_HEADER_RULE" "$PROMPT_GEN"
 check grep -q "$EMPTY_HEADER_BAN" "$PROMPT_GEN"
+NOTE_AFTER_DASH_RULE='注記は値の後ろに ` — ` を挟んで書く'
+check grep -q "$NOTE_AFTER_DASH_RULE" "$PROMPT_GEN"
+check grep -q "$NOTE_AFTER_DASH_RULE" "$SKILL"
+check grep -q 'この節の後ろには `###` 見出しで始まる節しか置かない' "$PROMPT_GEN"
+NO_RECOMMENDATION_RULE='推奨事項が無いときは `なし` とだけ書く'
+check grep -q "$NO_RECOMMENDATION_RULE" "$PROMPT_GEN"
+check grep -q "$NO_RECOMMENDATION_RULE" "$BASE_FILE"
+check grep -q "$NO_RECOMMENDATION_RULE" "$SKILL"
+for none_word in 'なし' '特になし' '該当なし' 'None' 'N/A' '-'; do
+  check grep -qF "\`$none_word\`" <<<"$(grep -F '推奨が無いことだけを書いた行' "$SKILL")"
+done
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

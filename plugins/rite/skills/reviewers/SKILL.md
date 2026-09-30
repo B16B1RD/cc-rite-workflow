@@ -47,7 +47,7 @@ rationale: references/rationale.md#code-quality-co-reviewer
 **Emoji usage policy**: Emojis are used only for the following visibility purposes. Individual reviewer Findings output must not use emojis:
 - Unified report header (`📜 rite レビュー結果`)
 - Work memory identifier (`📜 rite 作業メモリ`)
-- Important warning display (`⚠️ 矛盾する指摘を検出`)
+- Important warning display (`⚠️ 実行しても決まらない判断があります`)
 
 **Language policy**: Section headings use English; descriptions and notes use Japanese. Pattern descriptions in tables may use Japanese for brevity.
 
