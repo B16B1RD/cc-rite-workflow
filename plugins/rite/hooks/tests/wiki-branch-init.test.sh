@@ -638,7 +638,7 @@ if [ "$HELPER_RC" = "0" ] && git -C "$repo" rev-parse --verify -q wiki >/dev/nul
 else
   fail "rerun after remedy: rc=$HELPER_RC output=$HELPER_OUTPUT"
 fi
-# Every submodule-only state stops the helper, and once git status no longer shows the submodule
+# Each of these four submodule-only states stops the helper, and once git status no longer shows the submodule
 # (the exit condition the message names) the rerun proceeds
 (cd "$sub" && echo b > a && git commit -qam s2)
 for kind in content pointer staged-pointer staged-in-sub; do
