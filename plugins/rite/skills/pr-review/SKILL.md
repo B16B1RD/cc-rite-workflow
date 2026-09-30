@@ -2245,7 +2245,7 @@ loop 内では pattern だけ出す。続きは `/rite:iterate` ステップ 1-4
 
 候補は **2 source**:
 **Source A**: MEDIUM+ かつキーワード（`スコープ外` / `別 Issue` / `out of scope` / `separate issue` 等）。
-**Source B**: `recommendation_items` の `actionable` または `boundary`。`design_confirmation` は除外。PR が持ち込んだ根因（採否の出口 ADOPT・`origin=pr`）は、`/rite:iterate` 経由の mergeable の review では 7.2 の採否ゲートが `fix` にして PR 内推奨として登録し、同じ PR で直す（受入条件未検証の停止と単独実行では hold。scope-triage.md 手順 3 の `{fix_loop}`）。
+**Source B**: `recommendation_items` の `actionable` または `boundary`。`design_confirmation` は除外。PR が持ち込んだ根因（採否の出口 ADOPT・`origin=pr`）は、`/rite:iterate` 経由の mergeable の review では 7.2 の採否ゲートが `fix` にして PR 内推奨として登録し、同じ PR で直す（受入条件未検証の停止・単独実行・cycle が `safety.max_review_cycles` に達したときは hold。scope-triage.md 手順 3 の `{fix_loop}`）。
 
 **`candidate_count` assignment**:
 
