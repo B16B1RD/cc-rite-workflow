@@ -2002,6 +2002,8 @@ for t77_variant in plain preview; do
   # --preview-body の有無は出力に差を生まないため、t77_args の組み立てから --preview-body が落ちる退行はここでしか捕まらない（run_target への受け渡しは確かめない）
   if [ "$t77_variant" = preview ]; then
     assert "T-77 $t77_variant: --preview-body を渡す" "--preview-body $TMP_ROOT/preview-t77.md" "${t77_args[*]}"
+  else
+    assert "T-77 $t77_variant: --preview-body を渡さない" "0" "${#t77_args[@]}"
   fi
   put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[]}'
   assert "T-77 $t77_variant: 前提: 判定済み記録が無い" "no" "$([ -e "$r/$JUDGED_RECORD_REL" ] && echo yes || echo no)"
