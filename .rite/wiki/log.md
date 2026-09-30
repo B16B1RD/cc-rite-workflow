@@ -248,6 +248,8 @@
 
 * **Skip**: [20260930T125750Z-pr-3544.md](raw/reviews/20260930T125750Z-pr-3544.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
 
+* **lint:clean** — contradictions=0, stale=64, orphans=0, missing_concept=0, unregistered_raw=629, broken_refs=0
+
 ## 2026-09-29
 
 * **Update**: [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) — raw/reviews/20260929T104700Z-pr-3448.md で補強
