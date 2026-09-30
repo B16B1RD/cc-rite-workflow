@@ -33,7 +33,7 @@
 #   [CONTEXT] ACCEPTANCE_CHECK_FAILED=1; mode={mode}; reason={reason}[; detail]
 #
 # Reason SoT:
-#   extract: input_missing / input_parse_failed / unsupported_ac_section / no_ac_ids / malformed_ac_item / duplicate_ac_id
+#   extract: input_missing / input_parse_failed / unsupported_ac_section / ac_item_outside_section / no_ac_ids / malformed_ac_item / duplicate_ac_id
 #   table:   input_missing / expected_invalid / jq_missing / table_missing / table_malformed /
 #            table_empty / id_set_mismatch / status_invalid / evidence_missing /
 #            unmet_finding_missing / jq_transform_failed

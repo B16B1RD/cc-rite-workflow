@@ -3,7 +3,7 @@
 #
 # Coverage:
 #   extract — テンプレート形式の AC 集合 / fenced block と別節の見出しを数えない / CRLF /
-#             日本語/英語見出しとcheckbox / AC 節なしだけ skipped / 不正形式・0件・重複は失敗
+#             日本語/英語見出しとcheckbox / AC 節なしだけ skipped / 不正形式・0件・重複・節外の AC 項目は失敗
 #   table   — 正常 / AC-ID 欠落・余分・重複 / 0 行 / 見出し欠落 / 判定値不正 / 根拠空 /
 #             未充足行に対応する [AC-N] 指摘の欠落・severity 不一致・scope 不一致 / 推奨対応列の raw pipe /
 #             全角空白の trim (先頭・末尾・ASCII 空白との交互) / jq 変換失敗
