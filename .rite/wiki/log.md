@@ -159,6 +159,7 @@
 * **Create**: [人への質問を減らす規則を共通手順へ当てるときは、不可逆操作の承認が残っているかを先に確かめる](pages/heuristics/question-reduction-must-keep-irreversible-approval.md) — raw/reviews/20260930T075247Z-pr-3516.md を新規ページ化
 * **Create**: [持ち主を名前に入れて回収から守る一時 worktree は、作成側のテンプレートから名前を作って判定側のテストで照合する](pages/heuristics/owner-named-temp-worktree-naming-drift-pinned-by-template-extraction.md) — raw/reviews/20260930T074532Z-pr-3511.md を新規ページ化
 * **Skip**: [レビュー結果](raw/reviews/20260930T072921Z-pr-3515.md) — 確認のみで新しい経験則を含まない
+* **lint:clean** — contradictions=0, stale=62, orphans=0, missing_concept=0, unregistered_raw=607, broken_refs=0（矛盾の意味比較は今回追加したページ間・同名の確認に限る）
 
 ## 2026-09-29
 
