@@ -260,7 +260,7 @@ bash {plugin_root}/scripts/pr-review-step.sh ensure-worktree --head-ref {head_re
 
 - `already_in` → 共通作業先契約の所有権・branch・変更前検証を通し、同じ作業先で続行する。
 - `reenter` / `reconstructed` → recover Phase 3.1.5 と[共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) に従い、marker の `path=` へ native / 検証済み代替で入場し、所有権・branch・変更前検証を通してステップ 1.2 へ。後続の全 shell・編集・検証・委譲をこの作業先に固定する。
-- `residue` → [残骸の確認](../../references/git-worktree-patterns.md#5-残骸ディレクトリの削除確認)で決まらないときだけ AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止）。
+- `residue` → [残骸の確認](../../references/git-worktree-patterns.md#5-残骸ディレクトリの削除確認)で中身を調べ、その結果を添えて AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止）。
 - `branch_other_worktree` → 中止（並行セッションの可能性。`other=` のパスを表示）。
 - `branch_absent` → 対象ブランチがどこにも実在しない。誤再構築しない。**develop 上で review を続行せず**、`[review:error]` を emit して明示停止する。
 - `failed` → 再構築失敗（helper rc=1, stderr に原因 + 復旧手順）。**silent fallback せず `[review:error]` を emit して明示停止**する（review を mergeable / completed 扱いにしない）。

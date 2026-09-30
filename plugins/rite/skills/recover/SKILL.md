@@ -180,7 +180,7 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 | `disabled` | no-op（従来フロー）。Phase 3.2 へ |
 | `already_in` | 下記の state 確定・変更前検証を実行して Phase 3.2 へ（入場操作だけ不要） |
 | `reenter` / `reconstructed` | 共通作業先契約の native / 検証済み代替で `{path}` へ入場してから Phase 3.2 へ（`{path}` は marker の `path=` 値。`reconstructed` は helper が `git worktree add` 済み） |
-| `residue` | パスは存在するが worktree 未登録（prune 後も残存）→ [残骸の確認](../../references/git-worktree-patterns.md#5-残骸ディレクトリの削除確認)で決まらないときだけ AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止） |
+| `residue` | パスは存在するが worktree 未登録（prune 後も残存）→ [残骸の確認](../../references/git-worktree-patterns.md#5-残骸ディレクトリの削除確認)で中身を調べ、その結果を添えて AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止） |
 | `branch_other_worktree` | branch が**別の worktree** で checkout 中（並行セッションの可能性）→ **中止**。`other=` のパスを表示する（git が構造的に保証する二重着手ガード） |
 | `branch_absent` | branch がローカル・リモートどこにも無い → **矛盾サマリ + AskUserQuestion**（新規セッション扱い / 中止）。helper は再構築しない（silent に新規扱いもしない） |
 | `failed` | 再構築（`git fetch` / `git worktree add`）が失敗（helper rc=1, stderr に原因 + 復旧手順）→ **silent fallback せず明示停止**。develop 上で recover を続行しない |

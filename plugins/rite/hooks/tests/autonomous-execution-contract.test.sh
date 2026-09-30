@@ -205,6 +205,19 @@ assert_grep "HC-2 change_contract request carries the four elements" "$RECONCILE
 assert_grep "HC-6 CLAUDE.md states the human-confirmation premise" "$CLAUDE_MD" \
   'AI が書いたコードを人間がレビューすることは求めない（実行結果がすべて）。本当に人間にしか確認できないものかをよく考え'
 
+# Residue cleanup: deletion always goes to a person, and git status is trusted only when the
+# path itself is the top of a work tree.
+WT_PATTERNS="$SCRIPT_DIR/../../references/git-worktree-patterns.md"
+assert_grep "HC-5 residue cleanup always asks a person" "$WT_PATTERNS" \
+  '必ず人間に確認する（削除は不可逆操作で、中身を調べても承認は省かない）'
+assert_not_grep "HC-5 residue cleanup never deletes without asking" "$WT_PATTERNS" '確認せず'
+assert_grep "HC-5 residue status is read only at a work-tree top" "$WT_PATTERNS" \
+  'rev-parse --show-toplevel` が `\{path\}` と一致するときは `git -C \{path\} status --porcelain --ignored`'
+for residue_skill in open iterate fix pr-review recover; do
+  assert_not_grep "HC-5 $residue_skill residue row does not skip the question" \
+    "$SCRIPT_DIR/../../skills/$residue_skill/SKILL.md" '残骸の確認\]\([^)]*\)で決まらないときだけ'
+done
+
 if ! print_summary "$(basename "$0")"; then
   exit 1
 fi

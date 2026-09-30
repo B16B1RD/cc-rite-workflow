@@ -115,7 +115,7 @@ bash {plugin_root}/scripts/iterate-step.sh ensure-worktree --issue {issue_number
 
 - `already_in` → 共通作業先契約の所有権・branch・変更前検証を通し、同じ作業先で続行する。
 - `reenter` / `reconstructed` → recover Phase 3.1.5 と[共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) に従い、marker の `path=` へ native / 検証済み代替で入場し、所有権・branch・変更前検証を通してステップ 0.6 へ。後続の全 shell・編集・検証・委譲をこの作業先に固定する。
-- `residue` → [残骸の確認](../../references/git-worktree-patterns.md#5-残骸ディレクトリの削除確認)で決まらないときだけ AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止）。
+- `residue` → [残骸の確認](../../references/git-worktree-patterns.md#5-残骸ディレクトリの削除確認)で中身を調べ、その結果を添えて AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止）。
 - `branch_other_worktree` → 中止（並行セッションの可能性。`other=` を表示）。
 - `branch_absent` → 対象ブランチが実在しない。**develop 上で続行しない**。どの選択肢でも停止になるため質問せず停止し、PR の `headRefName` とリモートでのブランチの有無を示して、ブランチを確かめてから再実行するよう案内する（誤再構築しない）。
 - `failed` → 再構築失敗（helper rc=1, stderr に原因 + 復旧手順）。**silent fallback せず明示停止**。develop 上で review/fix を回さない。

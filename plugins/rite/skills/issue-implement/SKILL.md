@@ -239,7 +239,7 @@ git worktree list --porcelain
 ls -d {worktree_base}/*/* 2>/dev/null
 ```
 
-If stale worktrees are found, apply [残骸の確認](../../references/git-worktree-patterns.md#5-残骸ディレクトリの削除確認) first and offer cleanup via `AskUserQuestion` only for those it leaves (see [Safety Mechanisms](../../references/git-worktree-patterns.md#safety-mechanisms)).
+If stale worktrees are found, inspect each one per [残骸の確認](../../references/git-worktree-patterns.md#5-残骸ディレクトリの削除確認) and offer cleanup via `AskUserQuestion` with what was found (see [Safety Mechanisms](../../references/git-worktree-patterns.md#safety-mechanisms)).
 
 Verify `.worktrees/` is in `.gitignore`:
 
