@@ -1754,7 +1754,7 @@ trap 'rm -f "$nb_candidates"' EXIT
 printf '%s' "$collect_out" | jq '{candidates: .candidates}' > "$nb_candidates" \
   || { echo "[fix:error]"; exit 1; }
 gate_rc=0
-# 候補 0 件（already_rejected だけ）でもゲートを呼ぶ（前回の保留候補が今回の候補から消えていれば保留する）
+# 候補 0 件でもゲートを呼ぶ（前回の保留候補が今回の候補から消えていれば保留する）
 nb_issue=$(git branch --show-current 2>/dev/null | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+' | head -1)
 gate_out=$(bash "$plugin_root"/hooks/scripts/review-adoption-gate.sh --pr "${pr_number}" --kind sweep \
   --state-root "$sweep_root" --candidates "$nb_candidates" \
@@ -1824,7 +1824,7 @@ printf '%s\n' "$issue_result"
 
 # --- nb-sweep-persist -----------------------------------------------------------
 step_nb_sweep_persist() {
-# 全 target と already_rejected を却下台帳へ記録する
+# 全 target を却下台帳へ記録する
 sweep_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh) || sweep_root=""
 entries_file="$sweep_root/.rite/state/nb-sweep-entries-${pr_number}.md"
 if [ -z "$sweep_root" ] || [ ! -s "$entries_file" ]; then
