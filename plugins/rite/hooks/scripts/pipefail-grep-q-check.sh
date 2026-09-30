@@ -264,7 +264,7 @@ def infer_function_activity(logical):
                 if re.search(r'if\s+false\s*;\s*then\b[^;]*$',prefix): continue
                 line_events.append((m.start(),"toggle",m.group(1).startswith("-")))
             for name in names:
-                for cm in re.finditer(r'(?:^|[;|&]\s*|\b(?:if|then|command)\s+|!\s*|\$\(\s*)'+re.escape(name)+r'(?=\s|[;|&()]|$)',syntax):
+                for cm in re.finditer(r'(?:^|[;|&]\s*|\b(?:if|then|elif|else|do|while|until|command)\s+|!\s*|\$\(\s*)'+re.escape(name)+r'(?=\s|[;|&()]|$)',syntax):
                     line_events.append((cm.start(),"call",name))
             for _,kind,value in sorted(line_events):
                 if kind == "toggle": local_state[in_function]=value
@@ -274,7 +274,7 @@ def infer_function_activity(logical):
             if depth<=0: in_function=None
             continue
         for name in names:
-            if re.search(r'(?:^|[;|&]\s*|\b(?:if|then|command)\s+|!\s*|\$\(\s*)'+re.escape(name)+r'(?=\s|[;|&()]|$)',syntax):
+            if re.search(r'(?:^|[;|&]\s*|\b(?:if|then|elif|else|do|while|until|command)\s+|!\s*|\$\(\s*)'+re.escape(name)+r'(?=\s|[;|&()]|$)',syntax):
                 activity[name]=activity[name] or state
         _,state,_,_,_=scan_line_state(syntax,state,[],{},None,{},[])
     changed=True
