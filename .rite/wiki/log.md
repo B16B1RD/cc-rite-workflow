@@ -2,6 +2,8 @@
 
 ## 2026-09-30
 
+* **Lint incomplete** — 機械検査は stale=64、orphans=0、missing_concept=0、unregistered_raw=621、broken_refs=0、descriptive_number_ref=0。全ページの意味的な矛盾比較は未完了であり、Wiki 全体の品質検査成功とは扱わない。今回はページ本文の変更なし。
+
 * **Skip**: 指摘なしの検証記録であり、追加する独立した経験則はない — [レビュー結果](raw/reviews/20260930T113138Z-pr-3538.md)
 
 * **Lint incomplete** — 機械検査は stale=63、orphans=0、missing_concept=0、unregistered_raw=619、broken_refs=0、descriptive_number_ref=0。全658ページの意味的な矛盾比較は未完了であり、Wiki全体の品質検査成功とは扱わない。今回更新した4ページは出典と既存の詳細を照合した。
