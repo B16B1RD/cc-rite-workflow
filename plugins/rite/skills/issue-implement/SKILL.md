@@ -239,7 +239,7 @@ git worktree list --porcelain
 ls -d {worktree_base}/*/* 2>/dev/null
 ```
 
-If stale worktrees are found, offer cleanup via `AskUserQuestion` (see [Safety Mechanisms](../../references/git-worktree-patterns.md#safety-mechanisms)).
+If stale worktrees are found, apply [残骸の確認](../../references/git-worktree-patterns.md#5-残骸ディレクトリの削除確認) first and offer cleanup via `AskUserQuestion` only for those it leaves (see [Safety Mechanisms](../../references/git-worktree-patterns.md#safety-mechanisms)).
 
 Verify `.worktrees/` is in `.gitignore`:
 
@@ -436,7 +436,7 @@ skip 時の表示:
 
 Phase 5.1 へ戻る。commit しない。
 
-再実行上限は `safety.max_implementation_rounds`。到達時は `AskUserQuestion`: `テスト再実行の上限に達しました（{max_implementation_rounds}回）。続行しますか？ オプション: 継続する / 中断してユーザーに確認`
+再実行上限は `safety.max_implementation_rounds`。到達時は、先に直近のラウンド間で失敗したテストの数と内容が減っているかを比べる（[question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) 規則 5）。減っていれば続行し、変わらなければ失敗の内容を示して停止する。どちらとも判定できないときだけ `AskUserQuestion`: `テスト再実行の上限に達しました（{max_implementation_rounds}回）。続行しますか？ オプション: 継続する / 中断してユーザーに確認`
 
 E2E では結果を context に残す（`/rite:lint` Phase 3.4 が再利用できる）。
 
@@ -470,7 +470,7 @@ E2E では結果を context に残す（`/rite:lint` Phase 3.4 が再利用で�
 | Result | Action |
 |--------|--------|
 | All criteria satisfied | Proceed to 5.1.0.7 (documentation impact investigation) → 5.1.0.8 (XS/S production constraint) → 5.1.1 (commit) |
-| Some need attention | Display via `AskUserQuestion`: `受入条件の一部が未確認です。続行しますか？ オプション: コミットに進む / 実装に戻る` |
+| Some need attention | First check each such criterion by running its Given / When and observing the Then (tests, commands, `grep`). Go back to 5.1 when a check contradicts the Then. For criteria that no run here can check, display via `AskUserQuestion` with the four elements of [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) rule 6: `受入条件の一部が未確認です。続行しますか？ オプション: コミットに進む / 実装に戻る` |
 
 advisory。ユーザーが続行を選べば止めない。
 

@@ -37,6 +37,7 @@ Check the following before asking any question:
 2. Can it be obviously derived from the project's nature?
 3. Is it uniquely determined by general best practices?
 4. Do multiple options truly exist with real trade-offs?
+5. Can the AI verify it by running or observing something? If so, run it and decide from the result instead of asking. A request that remains goes to a person with the four-element explanation. Both rules are defined in `question_resolution` rules 5–7 ([coding-principles.md](./coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously)).
 
 **Prohibited Question Patterns**:
 - Yes/No questions that are obvious and immediately answerable
@@ -187,6 +188,7 @@ Defaults are determined in 2 tiers:
 Check the following before asking any question:
 
 - [ ] **question_self_check**: Is this question truly necessary? Is it not obvious?
+- [ ] **question_resolution 5–7**: Could the AI verify it by running it? If a person must check it, does the request carry the four elements?
 - [ ] **default_value_usage**: Is there a default value in `rite-config.yml`?
 - [ ] **context_inference**: Can it be inferred from conversation history, branch name, or Issue body?
 

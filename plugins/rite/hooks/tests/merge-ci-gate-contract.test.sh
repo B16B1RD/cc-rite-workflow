@@ -64,7 +64,7 @@ assert_grep "merge e2e detection compares cursor issue" "$MERGE" \
 assert_grep "merge batch/e2e unverified path does not ask" "$MERGE" \
   'true` なら AskUserQuestion を挟まず `\[merge:not-ready\]`'
 assert_grep "merge standalone path attests selected IDs" "$MERGE" \
-  'attest "\$reviewed_ac_ids"'
+  'attest "\$human_ac_ids"'
 assert_grep "merge final gate enforces acceptance" "$MERGE" \
   'plugin-root "\{plugin_root\}" --enforce-ac'
 assert_grep "force-ci cannot bypass acceptance gate" "$MERGE" \
@@ -103,7 +103,7 @@ assert_grep "ready Phase 1 override keeps acceptance enforcement" "$READY" \
 assert_grep "ready captures unverified IDs for attestation" "$READY" \
   'reviewed_ac_ids=.*ac='
 assert_grep "ready standalone path attests selected IDs" "$READY" \
-  'attest "\$reviewed_ac_ids"'
+  'attest "\$human_ac_ids"'
 assert_grep "ready e2e unverified path stops without a question" "$READY" \
   'in_e2e_flow=true.*質問せず.*\[ready:error\]'
 assert_grep "ready invalid AC states never reach attestation" "$READY" \

@@ -226,7 +226,7 @@ Extract the related Issue number from the branch name:
 例: feat/issue-{number}-pr-create → 対応する Issue
 ```
 
-If extraction fails, confirm with `AskUserQuestion`:
+If extraction fails, first try `bash {plugin_root}/hooks/flow-state.sh get --field issue_number --default ""`, and use a non-empty value. Confirm with `AskUserQuestion` only when it is also empty:
 
 ```
 ブランチ名から Issue 番号を特定できません
@@ -284,22 +284,9 @@ commands:
 
 自動検出: `package.json` の `scripts` → `Makefile` の target → 言語既定。
 
-### 2.2 Confirm Quality Check Execution
+### 2.2 Quality Check Execution
 
-`AskUserQuestion`:
-
-```
-PR 作成前に品質チェックを実行しますか？
-
-検出されたコマンド:
-- lint: {lint_command}
-- build: {build_command}
-
-オプション:
-- すべて実行（推奨）
-- lint のみ
-- スキップ
-```
+検出したコマンドは確認せずすべて実行する。実行して結果を見ることが確認そのものであり、人間に実行の可否を聞かない（[question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) 規則 5）。E2E で `/rite:lint` が同じコマンドを実行済みなら、その結果を使う。
 
 ### 2.3 Execute Checks
 

@@ -282,7 +282,7 @@ bash {plugin_root}/scripts/fix-step.sh ensure-worktree --head-ref '{head_ref}'
 
 - `already_in` → 共通作業先契約の所有権・branch・変更前検証を通し、同じ作業先で続行する。
 - `reenter` / `reconstructed` → recover Phase 3.1.5 と[共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) に従い、marker の `path=` へ native / 検証済み代替で入場し、所有権・branch・変更前検証を通してステップ 1.2 へ。後続の全 shell・編集・検証・委譲をこの作業先に固定する。
-- `residue` → AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止）。
+- `residue` → [残骸の確認](../../references/git-worktree-patterns.md#5-残骸ディレクトリの削除確認)で決まらないときだけ AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止）。
 - `branch_other_worktree` → 中止（並行セッションの可能性。`other=` のパスを表示）。
 - `branch_absent` → 誤再構築しない。**develop 上で続行せず** `[fix:error]`（Edit/Write へ進まない）。
 - `failed` → **silent fallback せず `[fix:error]`**。
@@ -1243,7 +1243,7 @@ bash {plugin_root}/scripts/fix-step.sh root-cause-gate --status {root_cause_gate
 
 | Option | Action |
 |--------|--------|
-| 不足段落を追記して再コミット（推奨） | Ask the user for a short paragraph for whichever Step 1 found missing: prepend a `Root cause: {paragraph}` / `根本原因: {paragraph}` paragraph, or (Escalation trigger 成立時) a `simplification-first: {paragraph}` paragraph, to the commit body when the convention allows a body; if the convention forbids a body, write the missing paragraphs via the canonical overflow procedure with those section names (`Root cause` and, when the trigger holds, `simplification-first`). Do not prepend to the commit. Do not use work-memory as the overflow store. 正本の失敗はコミットしない。re-invoke Step 1. The retry count is tracked in conversation context by the LLM — after one retry the LLM falls through to the second option to avoid an infinite prompt loop |
+| 不足段落を追記して再コミット（推奨） | Draft a short paragraph from the diff and the finding for whichever Step 1 found missing, and ask the user for it only when neither shows the cause ([question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) rule 5): prepend a `Root cause: {paragraph}` / `根本原因: {paragraph}` paragraph, or (Escalation trigger 成立時) a `simplification-first: {paragraph}` paragraph, to the commit body when the convention allows a body; if the convention forbids a body, write the missing paragraphs via the canonical overflow procedure with those section names (`Root cause` and, when the trigger holds, `simplification-first`). Do not prepend to the commit. Do not use work-memory as the overflow store. 正本の失敗はコミットしない。re-invoke Step 1. The retry count is tracked in conversation context by the LLM — after one retry the LLM falls through to the second option to avoid an infinite prompt loop |
 | 意図的な補足コミットとして通過 | Prepend a bypass paragraph for whichever Step 1 found missing — `Root cause (bypass): {理由}`, or (Escalation trigger 成立時) `simplification-first (bypass): {理由}` — to the commit body when the convention allows a body (the bypass rationale recorded alongside the commit for machine-traceability). If the convention forbids a body, write the same rationale via the canonical overflow procedure with the missing section names. AND append the same rationale to work memory `決定事項・メモ`. The bypass is still recorded. 正本の失敗はコミットしない |
 | Abort | Skip this fix cycle; emit `[fix:error]` and return control to the caller |
 

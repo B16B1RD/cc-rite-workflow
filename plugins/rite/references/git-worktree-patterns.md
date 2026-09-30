@@ -287,7 +287,7 @@ git worktree list --porcelain
 ls -d {worktree_base}/*/* 2>/dev/null
 ```
 
-If stale worktrees are found, display a warning and offer cleanup:
+If stale worktrees are found, first apply [§5](#5-残骸ディレクトリの削除確認) to each one, then display a warning and offer cleanup only for those that remain:
 
 ```
 ⚠️ 既存の worktree が検出されました:
@@ -319,6 +319,14 @@ if [ "$worktree_count" -gt 1 ]; then
   echo "WARNING: $((worktree_count - 1)) worktree(s) still exist" >&2
 fi
 ```
+
+### 5. 残骸ディレクトリの削除確認
+
+残骸（前のセッションの作業フォルダが、worktree の登録を外れて残ったもの）や古い worktree を消すかを人間に聞く前に、AI が中身を確かめる（[question_resolution](../skills/rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) 規則 5）:
+
+1. `ls -A {path}` で中身を見る。空なら失われるものが無いので、確認せず削除して続行する
+2. 中身があれば、`git -C {path} status --porcelain` が読めるときは未コミットの変更を、読めないときはファイル一覧（先頭 20 件）を集める。登録済みの worktree で変更が無ければ、確認せず `git worktree remove` して続行する（commit は branch に残る）
+3. それ以外は規則 6 の 4 要素で依頼する。何を確かめるか = `{path}` を消してよいか。なぜ AI では決められないか = 手順 2 で見つかった内容が必要かどうかは、作業した本人にしか分からない。どう確かめるか = 見つかった変更・ファイルの一覧を見て、残したいものがあれば別の場所へ移す。期待する結果 = 不要なら削除、必要なら退避してから削除するか中止する
 
 ---
 

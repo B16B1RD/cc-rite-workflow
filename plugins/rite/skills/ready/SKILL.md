@@ -46,6 +46,7 @@ PR を Ready for review にし、関連 Issue の Status を更新する。
 | `{owner_repo}` | Repo-context gh コマンドの `-R` に literal substitute する owner/repo（slash 形式） | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) |
 | `{reviewed_ac_state}` | reviewed-head helper の `REVIEWED_AC=` marker | Phase 1.0 の inspect 出力 |
 | `{reviewed_ac_ids}` | reviewed-head helper の `REVIEWED_AC=...; ac=` marker（カンマ区切り） | Phase 1.0 の inspect 出力 |
+| `{human_ac_ids}` | 未検証 AC のうち人間にしか確かめられず、人間が確認できたと答えた ID（カンマ区切り） | Phase 2 の unverified 手順 4 の回答 |
 | `{reviewed_head_override_arg}` | 通常は空。ユーザーが本ターンで未レビュー HEAD の強行を明示した場合だけ `--skip-head-check` | Phase 1.0 の明示 override 判定 |
 | `{reviewed_head_inspect_args}` | 通常は空。同じ明示 override 時だけ `--enforce-ac --skip-head-check` | Phase 1.0 の helper 呼び出し |
 
@@ -299,15 +300,21 @@ echo "in_e2e_flow=$in_e2e_flow"
 
 The LLM reads the bash stdout (`in_e2e_flow=...`): when `in_e2e_flow=true`, skip the AskUserQuestion in this sub-section and proceed directly to Phase 3; only when `in_e2e_flow=false`, confirm via `AskUserQuestion`:
 
-`reviewed_ac_state=unverified` の場合は経路で分岐する。`in_e2e_flow=true`（batch を含む）では質問せず `[ready:error]` で停止する。`in_e2e_flow=false` の standalone だけ、未検証 ID `{reviewed_ac_ids}` を列挙して「人間として確認済みに attest する / キャンセル」を AskUserQuestion で確認する。確認された ID だけを helper に渡す:
+`reviewed_ac_state=unverified` の場合は経路で分岐する。どちらの経路も、人間に依頼する前に未検証 ID `{reviewed_ac_ids}` の行ごとに [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) 規則 5〜7 を当てる（下の手順 1〜4）。`in_e2e_flow=true`（batch を含む）では質問せず `[ready:error]` で停止し、停止理由に手順 1 の分類と、人間のみの行の 4 要素（手順 4）を含める。`in_e2e_flow=false` の standalone は手順 1〜4 を順に実行する:
+
+1. **分類**: Phase 1.0 の `[CONTEXT] REVIEWED_AC=unverified; ac=...; file=` marker が示す review JSON（パスを組み立て直さない）から `status == "unverified"` の行の `evidence` を、Issue から当該 AC の Given / When / Then を読む。evidence が資格情報・外部サービス・人の操作・実環境を挙げる行は「人間のみ」、`Measurement-Blocked` や実行できるコマンドを挙げる行は「AI で確かめる」。どちらとも判定できない行は「人間のみ」とし、判定できなかった理由を手順 4 の説明に含める
+2. **実行**: 「AI で確かめる」行は Given を整えて When を実行し、Then を観測する。Then に反した行があれば質問せず `[ready:error]` で停止し、`実行したコマンド => 観測結果` を示して `/rite:iterate {pr_number}` の修正へ戻す
+3. **停止**: 「AI で確かめる」行が 1 行でもあれば、人間に質問せず `[ready:error]` で停止する。停止通知に行ごとの `実行したコマンド => 観測結果` を載せ（これが実行結果の記録）、review の記録を更新する `/rite:iterate {pr_number}` の再レビューを案内する。attest は人間の確認の記録なので、AI の実行結果では作らない
+4. **依頼**: 「人間のみ」の行だけが残ったときに限り、ID ごとに 4 要素を示して「確認できた ID を attest する / キャンセル」を AskUserQuestion で聞く。4 要素は、何を確かめるか = Then、なぜ AI では確かめられないか = evidence を内部用語なしで言い直したもの、どう確かめるか = Given / When を手順に書き直したもの、期待する結果 = Then の観測できる形、から作る。確認された ID だけを `{human_ac_ids}`（カンマ区切り）として helper に渡す:
 
 ```bash
+human_ac_ids="{human_ac_ids}"
 bash "$plugin_root/hooks/scripts/ready-reviewed-head-gate.sh" \
   --pr "$ready_pr_number" --repo {owner_repo} --plugin-root "$plugin_root" \
-  --attest "$reviewed_ac_ids" || { echo "[ready:error]"; exit 1; }
+  --attest "$human_ac_ids" || { echo "[ready:error]"; exit 1; }
 ```
 
-未検証 AC は列挙した全 ID を一括で確認する。個別に確認できない ID があればキャンセルし、attest を作らない。unmet / missing / malformed は standalone でも質問や attest に送らない。
+確認できなかった ID は attest に含めない（残った未検証は Phase 3 直前の `--enforce-ac` が止める）。unmet / missing / malformed は standalone でも質問や attest に送らない。
 
 ```
 PR #{number} を Ready for review に変更します。

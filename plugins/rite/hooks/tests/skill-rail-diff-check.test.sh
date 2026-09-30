@@ -351,6 +351,10 @@ if [ -n "$REPO_ROOT_REAL" ] && git -C "$PLUGIN_ROOT" rev-parse --verify -q origi
       # line, matched as a whole line. After the base advances this exclusion
       # matches nothing.
       base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv 'ms_section=$(sed -n '\''/^multi_session:/,/^[a-zA-Z]/p'\'' rite-config.yml 2>/dev/null) || ms_section=""' || true)
+      # The stale_residue row now checks the directory contents before asking.
+      # Drop only the superseded line, matched as a whole line. After the base
+      # advances this exclusion matches nothing.
+      base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv '| `stale_residue` | パス存在・worktree 未登録（prune 後も残存）→ AskUserQuestion（「削除して再作成」= `rm -rf {path}` 後に create / 「中止」） |' || true)
       printf '%s\n' "$base_rail" > "$TEST_DIR/base-rail"
       printf '%s\n' "$head_rail" > "$TEST_DIR/head-rail"
       if [ -z "$base_rail" ] || [ -z "$head_rail" ]; then

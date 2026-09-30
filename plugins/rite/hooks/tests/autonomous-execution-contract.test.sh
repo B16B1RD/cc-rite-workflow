@@ -153,6 +153,58 @@ skipped_shape=$(awk '
   END { print (ok + 0) ":" (bad + 0) }' "$LINT")
 assert "T-05 both skipped outputs carry reason then commands.lint guidance, no success" "2:0" "$skipped_shape"
 
+# Human confirmation: ask only what the AI cannot check by running it, and explain the request
+# with four elements. The four elements are pinned together on one line so they cannot drift
+# into separate sections.
+COMMON="$SCRIPT_DIR/../../skills/rite-workflow/references/common-principles.md"
+READY="$SCRIPT_DIR/../../skills/ready/SKILL.md"
+MERGE="$SCRIPT_DIR/../../skills/merge/SKILL.md"
+PR_REVIEW="$SCRIPT_DIR/../../skills/pr-review/SKILL.md"
+RECONCILE="$SCRIPT_DIR/../../references/review-reconciliation.md"
+CLAUDE_MD="$(_helpers_resolve_repo_root "$SCRIPT_DIR")/CLAUDE.md"
+assert_grep "HC-1 question_resolution checks AI verifiability before asking" "$PRINCIPLES" \
+  '^5\. 人間に確認・回答・承認を求める前に、AI が実行・観測して確かめられないかを判定する。確かめられるなら実行し'
+assert_grep "HC-1 code review by a person is never a confirmation item" "$PRINCIPLES" \
+  'AI が書いたコードを人間がレビューすることは確認項目にしない'
+assert_grep "HC-1 undecidable items stay with a person and carry the reason" "$PRINCIPLES" \
+  '確かめられるか判定できない項目は人間への依頼に残し、判定できなかった理由を説明に含める'
+assert_grep "HC-1 request carries the four elements on one rule" "$PRINCIPLES" \
+  '^6\. .*何を確かめるか・なぜ AI では確かめられないか・どう確かめるか・期待する結果'
+assert_grep "HC-1 non-responsive paths stop with the same explanation" "$PRINCIPLES" \
+  '^7\. batch など人間が応答しない経路では質問せずに停止し、停止理由に規則 6 の 4 要素を含める'
+assert_grep "HC-1 question_self_check points to question_resolution 5-7" "$COMMON" \
+  'Can the AI verify it by running or observing something\?.*`question_resolution` rules 5–7'
+
+# ready: the four steps appear in order, the four elements are built on one line,
+# attestation takes only the human-only IDs, and the old all-at-once rule is gone.
+hc_order=$(awk '
+  /^1\. \*\*分類\*\*/ { a = NR } /^2\. \*\*実行\*\*/ { b = NR }
+  /^3\. \*\*停止\*\*/ { c = NR } /^4\. \*\*依頼\*\*/ { d = NR }
+  END { print (a && a < b && b < c && c < d) ? "ordered" : a ":" b ":" c ":" d }' "$READY")
+assert "HC-3 ready classifies, runs, stops, then asks — in that order" "ordered" "$hc_order"
+assert_grep "HC-3 ready records the executed command and result in the stop notice" "$READY" \
+  '停止通知に行ごとの `実行したコマンド => 観測結果` を載せ（これが実行結果の記録）'
+assert_grep "HC-3 ready never attests from an AI run" "$READY" \
+  'attest は人間の確認の記録なので、AI の実行結果では作らない'
+assert_grep "HC-2 ready request builds all four elements on one line" "$READY" \
+  '何を確かめるか = Then、なぜ AI では確かめられないか = .*どう確かめるか = .*期待する結果 = '
+assert_grep "HC-3 ready attests only the human-only IDs" "$READY" '^human_ac_ids="\{human_ac_ids\}"$'
+assert_not_grep "HC-3 ready no longer confirms every unverified ID at once" "$READY" '列挙した全 ID を一括で確認する'
+assert_grep "HC-4 ready batch stop carries the classification and four elements" "$READY" \
+  '`in_e2e_flow=true`（batch を含む）では質問せず `\[ready:error\]` で停止し、停止理由に手順 1 の分類と、人間のみの行の 4 要素'
+assert_grep "HC-4 merge applies the ready steps and explains a batch stop" "$MERGE" \
+  '停止理由に手順 1 の分類と人間のみの行の 4 要素を含める.*\[ready の unverified 手順 1〜4\]'
+assert_grep "HC-4 iterate stop notice lists the four elements" "$ITERATE" \
+  '^  - なぜ AI では確かめられないか: '
+assert_not_grep "HC-4 iterate no longer asks for a bare real-environment check" "$ITERATE" \
+  '上記 AC を実環境で動作確認してください'
+assert_grep "HC-4 pr-review unverified guidance uses the iterate explanation" "$PR_REVIEW" \
+  '同じ分類と 4 要素で示し'
+assert_grep "HC-2 change_contract request carries the four elements" "$RECONCILE" \
+  'どの契約のどの要件を変えるか・なぜ AI では決められないか・どう判断するか.*・期待する回答'
+assert_grep "HC-6 CLAUDE.md states the human-confirmation premise" "$CLAUDE_MD" \
+  'AI が書いたコードを人間がレビューすることは求めない（実行結果がすべて）。本当に人間にしか確認できないものかをよく考え'
+
 if ! print_summary "$(basename "$0")"; then
   exit 1
 fi

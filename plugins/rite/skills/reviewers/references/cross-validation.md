@@ -95,6 +95,8 @@ Escalation occurs in two stages: a pre-debate guard and post-debate evaluation.
 |-----------|--------|
 | Either reviewer's finding is CRITICAL severity | Skip deliberation entirely, escalate to user immediately |
 
+**Before any escalation** (both stages): check both positions against the code at `file:line` and run the reproduction command or test each side cites. A contradiction the run settles is resolved by that result and recorded as agreed; it is not escalated. Escalate only what the run cannot settle — which behaviour the specification should have — and write the request with the four elements of [question_resolution](../../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) rule 6. Never ask a person to judge whether the code is correct.
+
 **Post-deliberation evaluation**:
 
 Escalate to user (via `AskUserQuestion`) when:
