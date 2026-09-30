@@ -55,8 +55,13 @@ parsed=$(awk -v exception_category="$exception_category" -v reviewer_type="$revi
       value = substr(text, RSTART, RLENGTH)
       sub(/^分類[*`]*[[:space:]]*[:：][*`]*[[:space:]]*/, "", value)
       sub(/^[`*]+/, "", value)
-      # Cut trailing prose such as "actionable、..." but keep a non-ASCII value whole for the report.
-      if (match(value, /[^A-Za-z_-]/) && RSTART > 1) value = substr(value, 1, RSTART - 1)
+      # Cut only prose punctuation or decoration ("actionable、...", "boundary`"); a value
+      # joined by any other character ("actionable/boundary") is reported whole.
+      if (match(value, /[^A-Za-z_-]/) && RSTART > 1) {
+        rest = substr(value, RSTART)
+        lead = substr(rest, 1, 1)
+        if (lead == "`" || lead == "*" || index(rest, "、") == 1 || index(rest, "。") == 1) value = substr(value, 1, RSTART - 1)
+      }
       if (value == "") value = "(missing)"
     }
     if (value != "actionable" && value != "design_confirmation" && value != "boundary") {

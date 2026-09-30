@@ -61,6 +61,12 @@ check bash -c '! grep -q recommendation_classification_invalid <<<"$1"' _ "$(gat
 check grep -q 'findings=0; recommendations=4$' <<<"$(gate_out "$TMP/rec-valid.md")"
 check grep -q 'findings=0; recommendations=1$' <<<"$(gate_out "$TMP/rec-valid-en.md")"
 check grep -q 'findings=0; recommendations=0$' <<<"$(gate_out "$TMP/rec-none.md")"
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '- 分類: actionable/boundary — x' '- 分類: actionable,design_confirmation — y' '- 分類: boundary（要確認） — z' > "$TMP/rec-compound.md"
+check bash -c '"$1" --reviewer-type application --input "$2" >/dev/null 2>&1; [ "$?" -eq 1 ]' _ "$HELPER" "$TMP/rec-compound.md"
+check grep -q 'recommendations=3; invalid=3$' <<<"$(gate_out "$TMP/rec-compound.md")"
+check grep -qx '  line 5: 分類=actionable/boundary' <<<"$(gate_out "$TMP/rec-compound.md")"
+printf '%s\n' 'started_at: 2026-01-01T00:00:00Z' '### 評価: 可' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '- 分類: boundary — a' '### 付記' 'ended_at: 2026-01-01T00:01:00Z' > "$TMP/rec-notes-outside.md"
+check grep -q 'findings=0; recommendations=1$' <<<"$(gate_out "$TMP/rec-notes-outside.md")"
 check grep -q 'findings=0; recommendations=0$' <<<"$(gate_out "$TMP/empty.md")"
 check grep -q 'recommendations=2; invalid=2$' <<<"$(gate_out "$TMP/rec-table.md")"
 
