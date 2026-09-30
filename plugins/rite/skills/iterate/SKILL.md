@@ -82,6 +82,7 @@ rationale: references/rationale.md#circuit-breaker-conditions
 | `{sweep_origin}` | ステップ 5.S へ入った通常ループの sentinel。ステップ 0.7 から入ったときは `ITERATE_NB_SWEEP_RESUME=resume` の `origin=`。sweep 内の sentinel で上書きしない。5.S を経由せずにステップ 5.0.1 へ来た終端（`[fix:cancelled-by-user]`）ではその終端 sentinel |
 | `{sweep_issued}` / `{sweep_recorded}` | ステップ 5.S の `NB_SWEEP_RESULT` / `ITERATE_NB_SWEEP=done` の `issued=` / `recorded=` |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
+| `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式） |
 | `{action_items}` | 本ループの最終試行に残った、ユーザーの操作が必要な WARNING / ERROR。ステップ 5 / 6 の `要対応:` 欄へ転記する（0 件なら欄ごと省略） |
 
 ---
@@ -95,7 +96,7 @@ rationale: references/rationale.md#step0-canonical-pattern
 bash {plugin_root}/scripts/iterate-step.sh restore
 ```
 
-LLM は `[CONTEXT] ITERATE_ISSUE` / `ITERATE_BRANCH` から値を読み、後続の flow-state.sh set 呼び出しで `--issue` / `--branch` に literal substitute する。値が空の場合は AskUserQuestion で「Issue 番号 / ブランチ名を入力 / 中止」を提示。
+LLM は `[CONTEXT] ITERATE_ISSUE` / `ITERATE_BRANCH` から値を読み、後続の flow-state.sh set 呼び出しで `--issue` / `--branch` に literal substitute する。値が空の場合は、先に `gh pr view {pr_number} -R {owner_repo} --json headRefName,closingIssuesReferences` から補う。それでも取れないときだけ AskUserQuestion で「Issue 番号 / ブランチ名を入力 / 中止」を提示。
 
 ### ステップ 0.5: セッション worktree 健全性の保証（multi_session 有効時）
 
@@ -115,9 +116,9 @@ bash {plugin_root}/scripts/iterate-step.sh ensure-worktree --issue {issue_number
 
 - `already_in` → 共通作業先契約の所有権・branch・変更前検証を通し、同じ作業先で続行する。
 - `reenter` / `reconstructed` → recover Phase 3.1.5 と[共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) に従い、marker の `path=` へ native / 検証済み代替で入場し、所有権・branch・変更前検証を通してステップ 0.6 へ。後続の全 shell・編集・検証・委譲をこの作業先に固定する。
-- `residue` → AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止）。
+- `residue` → [残骸の確認](../../references/git-worktree-patterns.md#5-残骸ディレクトリの削除確認)で中身を調べ、その結果を添えて AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止）。
 - `branch_other_worktree` → 中止（並行セッションの可能性。`other=` を表示）。
-- `branch_absent` → 対象ブランチが実在しない。**develop 上で続行しない**。AskUserQuestion で「Issue 番号 / ブランチを確認して再実行 / 中止」を提示（誤再構築しない）。
+- `branch_absent` → 対象ブランチが実在しない。**develop 上で続行しない**。どの選択肢でも停止になるため質問せず停止し、PR の `headRefName` とリモートでのブランチの有無を示して、ブランチを確かめてから再実行するよう案内する（誤再構築しない）。
 - `failed` → 再構築失敗（helper rc=1, stderr に原因 + 復旧手順）。**silent fallback せず明示停止**。develop 上で review/fix を回さない。
 
 > 各 review/fix cycle の入場でも `/rite:pr-review` / `/rite:fix` が同じ helper を通す。本ステップ 0.5 はループ全体の前段ゲート。
@@ -284,14 +285,18 @@ args: "{pr_number} --from-iterate"
 | `[review:error]` | 可逆な再試行を推奨として 1 回だけ自動実行し、work memory の既存決定事項へ理由を記録する。再失敗なら停止 |
 | sentinel 不在 | 可逆な再試行を推奨として 1 回だけ自動実行し、期待 sentinel と直近出力を既存 work memory へ記録する。再度不在なら停止 |
 
-`REVIEW_STOP` は行頭 `[CONTEXT] ` の marker だけを判定に使う（診断文や引用の中の文字列では分岐しない）。同じ HEAD を再レビューしても観測できない AC は変わらないため再試行しない。停止通知は `state-path-resolve.sh` 基準の `.rite/review-results/{pr_number}-*.json` のうち最新のファイルの `acceptance_criteria` から `status == "unverified"` の行を読んで作る:
+`REVIEW_STOP` は行頭 `[CONTEXT] ` の marker だけを判定に使う（診断文や引用の中の文字列では分岐しない）。同じ HEAD を再レビューしても観測できない AC は変わらないため再試行しない。停止通知は `state-path-resolve.sh` 基準の `.rite/review-results/{pr_number}-*.json` のうち最新のファイルの `acceptance_criteria` から `status == "unverified"` の行を読み、[ready の unverified 手順 1](../ready/SKILL.md) で分類して作る。人間のみの行は [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) 規則 6 の 4 要素で書く（人間が応答しない停止なので規則 7）:
 
 ```
 ## /rite:iterate 停止（受入条件未検証）
 
 - PR: #{pr_number}
-- 未検証の受入条件: {ac_id} — {evidence}（1 行ずつ）
-- 次の一手: 上記 AC を実環境で動作確認してください
+- AI で確かめる受入条件: {ac_id} — {evidence}（1 行ずつ。`/rite:ready {pr_number}` が実行して結果を示すが、受入条件の記録は再レビューで観測できたときにだけ更新される）
+- 人間の確認が必要な受入条件: {ac_id}（1 件ずつ、次の 4 行）
+  - 何を確かめるか: {Then}
+  - なぜ AI では確かめられないか: {evidence を内部用語なしで}
+  - どう確かめるか: {Given / When を手順に}
+  - 期待する結果: {Then の観測できる形}
 ```
 
 ---

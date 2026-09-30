@@ -260,7 +260,7 @@ bash {plugin_root}/scripts/pr-review-step.sh ensure-worktree --head-ref {head_re
 
 - `already_in` → 共通作業先契約の所有権・branch・変更前検証を通し、同じ作業先で続行する。
 - `reenter` / `reconstructed` → recover Phase 3.1.5 と[共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) に従い、marker の `path=` へ native / 検証済み代替で入場し、所有権・branch・変更前検証を通してステップ 1.2 へ。後続の全 shell・編集・検証・委譲をこの作業先に固定する。
-- `residue` → AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止）。
+- `residue` → [残骸の確認](../../references/git-worktree-patterns.md#5-残骸ディレクトリの削除確認)で中身を調べ、その結果を添えて AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止）。
 - `branch_other_worktree` → 中止（並行セッションの可能性。`other=` のパスを表示）。
 - `branch_absent` → 対象ブランチがどこにも実在しない。誤再構築しない。**develop 上で review を続行せず**、`[review:error]` を emit して明示停止する。
 - `failed` → 再構築失敗（helper rc=1, stderr に原因 + 復旧手順）。**silent fallback せず `[review:error]` を emit して明示停止**する（review を mergeable / completed 扱いにしない）。
@@ -517,7 +517,7 @@ rationale: references/design-rationale.md#complexity-lane-fallback-loud
 
 Retrieve lint/build commands from `rite-config.yml`.
 Retrieve `commands.lint` / `commands.build` from `rite-config.yml`. If `null`, auto-detect from project type (package.json -> Node.js, pyproject.toml -> Python, etc.).
-Confirm execution with `AskUserQuestion` (run all / skip). If errors are detected, confirm whether to continue or cancel.
+Run the detected commands without asking: running them is how the review checks the code. Report errors in the integrated report as observed results. Do not ask whether to continue ([question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) rule 5).
 
 ---
 
@@ -1153,7 +1153,7 @@ bash {plugin_root}/scripts/pr-review-step.sh post-review-verify --orig-br "{orig
 | `orig_wth_placeholder_residue` | ステップ 5.0.A の `{orig_wth}` placeholder が未 substitute (同上) |
 
 WARNING は stderr、JSON line は stdout。drift は **non-blocking** で ステップ 5.4 に載せる。JSON の `types` に並ぶ全軸を載せる（`type` は最初の 1 軸だけを表す）。
-**Branch drift で `recovered=false`**: 後続 `/rite:fix` が誤 branch に乗らないよう AskUserQuestion で確認する。
+**Branch drift で `recovered=false`**: 後続 `/rite:fix` が誤 branch に乗らないよう AskUserQuestion で確認する。確認の前に `git status` / `git branch --show-current` で回復できなかった原因を調べ、依頼は question_resolution 規則 6 の 4 要素で書く（今どの branch にいて本来どこにいるべきか・なぜ自動で戻せなかったか・どう戻すか・戻った後の期待状態）。
 
 ### 5.1 Result Collection
 
@@ -1410,7 +1410,7 @@ emit 形式 (Step 2 line で実装):
 **Quality Signal 3**: 同じ `file:line` の矛盾評価。5.2.1 の帰結で発火する:
 
 - 検討の結果、合意に至った矛盾 → Signal 3 は**発火しない**（consensus reached）
-- 決着せずエスカレーションする矛盾（`debate.enabled: false` で未解決のまま残る場合を含む）→ **Signal 3 発火** — `[CONTEXT] QUALITY_SIGNAL=3_cross_validation_disagreement; file={file}:{line}; reviewers={A,B}; severity_gap={N}` を stderr に出す。orchestrator が共有 escalation `AskUserQuestion` を出す（本 PR 内で再試行 / 別 Issue として切り出す / PR を取り下げる / 手動レビューへエスカレーション; [finding-cycling.md §3](./references/finding-cycling.md)）
+- 決着せずエスカレーションする矛盾（`debate.enabled: false` で未解決のまま残る場合を含む）→ **Signal 3 発火** — `[CONTEXT] QUALITY_SIGNAL=3_cross_validation_disagreement; file={file}:{line}; reviewers={A,B}; severity_gap={N}` を stderr に出す。orchestrator が共有 escalation `AskUserQuestion` を出す（本 PR 内で再試行 / 別 Issue として切り出す / PR を取り下げる; [finding-cycling.md §3](./references/finding-cycling.md)）
 
 **Emit site**: エスカレーションを決めた同じ turn の bash block で emit する（`{file_line}` / `{reviewer_a}` / `{reviewer_b}` / `{gap}` をリテラル置換する）:
 
@@ -1435,19 +1435,21 @@ Check `review.debate.enabled` in `rite-config.yml` (see [Configuration in cross-
 | **`false`** | Prompt user directly with `AskUserQuestion` (legacy behavior, see below) |
 
 **Direct user resolution (when debate is disabled):**
-Prompt the user with AskUserQuestion for confirmation (fallback: see ステップ 1.4 note):
+先に [cross-validation.md の Before any escalation](../../skills/reviewers/references/cross-validation.md#escalation-conditions) を当て、実行結果で決着する矛盾はユーザーに上げない。残った矛盾だけ AskUserQuestion で確認する（fallback: see ステップ 1.4 note）:
 
 ```
-⚠️ 矛盾する指摘を検出:
+⚠️ 実行しても決まらない判断があります
 ファイル: {file}:{line}
 
- {Reviewer A} の評価: {assessment_A}
- 理由: {reason_A}
+何を決めるか: {挙動の割れなら「この箇所の挙動として、どちらを仕様とするか」、scope の割れなら「この PR で直すか、別 Issue に回すか」}
+ 案 A（{Reviewer A}）: {assessment_A}
+ 根拠: {reason_A}
+ 案 B（{Reviewer B}）: {assessment_B}
+ 根拠: {reason_B}
 
- {Reviewer B} の評価: {assessment_B}
- 理由: {reason_B}
-
-どちらの評価を採用しますか？
+なぜ AI では決められないか: {挙動の割れなら「両案の再現コマンド・テストを実行した結果と、仕様に記載が無い点」、scope の割れなら「Issue の範囲の記載からは、どちらとも決まらない点」}
+どう判断するか: {案 A を採ったときの帰結} / {案 B を採ったときの帰結}
+期待する回答: 採る案
 ```
 
 ### 5.2.1 Debate Phase (Contradiction Deliberation)
@@ -1552,19 +1554,19 @@ Read `review.fact_check` from `rite-config.yml`:
 ```
 
 **When there are "Questions about the specification":**
-If reviewers have written items in the "仕様への疑問" section, prompt the user with `AskUserQuestion` for confirmation:
+If reviewers have written items in the "仕様への疑問" section, first settle what the Issue text and a run can answer. Prompt the user with `AskUserQuestion` only for what remains. `{spec_question}` does not pass the reviewer's text through as it is. It uses the four elements of [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) rule 6 to state the difference between the specification and the implementation as a user sees it, and asks which behaviour the user wants:
 
 ```
 仕様に関する確認事項があります
 
 レビュー中に、仕様自体への疑問が検出されました:
 
-{questions_from_reviewers}
+{spec_question}
 
 この疑問についてどう対応しますか？
 
 オプション:
-- 仕様どおりで問題ない（現在の実装を承認）
+- 仕様どおりで問題ない（この仕様の動きを維持する）
 - 仕様を修正する（Issue を更新してから再レビュー）
 - 実装を修正する（仕様に合わせて修正）
 - 詳細を説明する
@@ -2156,7 +2158,7 @@ bash {plugin_root}/scripts/pr-review-step.sh wm-record --issue "{issue_number}" 
 
 **Placeholder descriptions:**
 - `{next_step_file}`: `{next_step_content}` を Write tool で書いた絶対パス（自由文を引数に載せないため）
-- `{next_step_content}`: Next command based on assessment. 受入条件未検証（ステップ 8.1 の受入条件未検証行に一致）→ 未検証 AC の人間確認 | Merge OK → `/rite:ready` | Requires fixes → `/rite:fix`
+- `{next_step_content}`: Next command based on assessment. 受入条件未検証（ステップ 8.1 の受入条件未検証行に一致）→ `/rite:ready`（AI で確かめる AC は ready が実行し、人間の確認が必要な AC だけ確認を求める） | Merge OK → `/rite:ready` | Requires fixes → `/rite:fix`
 
 Steps 1-3 は 6.2 の local WM（SoT）と Issue comment（backup）を揃える。
 
@@ -2228,7 +2230,7 @@ loop 内では pattern だけ出す。続きは `/rite:iterate` ステップ 1-4
 
 **When `/rite:pr-review` is executed standalone:**
 次アクションは `AskUserQuestion`。形式は ステップ 1.4 の AskUserQuestion invocation format。上から順に評価する。
-**受入条件未検証**（ステップ 8.1 の受入条件未検証行に一致）: 未検証 AC `{acceptance_unverified}` を列挙し、Keep draft（推奨）| 動作確認後に Ready for review → `rite:ready`（未検証 AC の確認を求められる）→ 終了。Merge OK は提示しない
+**受入条件未検証**（ステップ 8.1 の受入条件未検証行に一致）: 未検証 AC `{acceptance_unverified}` を [iterate の受入条件未検証の停止通知](../iterate/SKILL.md) と同じ分類と 4 要素で示し、Keep draft（推奨）| Ready for review へ進む → `rite:ready`（AI で確かめる AC は ready が実行し、人間の確認が必要な AC だけ確認を求められる）→ 終了。Merge OK は提示しない
 **Merge OK**: Ready for review（推奨）→ `rite:ready` | Keep draft | Additional fixes → 終了
 **要修正**: Handle findings（推奨）→ `rite:fix` | Handle later → ステップ 7
 **⚠️ Important**: standalone は必ず `AskUserQuestion`。完了後に ステップ 7 へ。
@@ -2264,7 +2266,7 @@ Source A は `Likelihood-Evidence:` の有無を保持する。
 |--------|------|
 | PR not found | Check with `gh pr list -R {owner_repo}` and re-run with the correct number |
 | Skill file load failure | Fall back to the built-in pattern table (ステップ 2.2) for reviewer selection (WARNING を stderr に出力) |
-| Review execution error | Choose skip/retry/cancel (skip 時は WARNING を stderr に出力) |
+| Review execution error | 再試行の可否はステップ 4.4 の表に従う。再試行できる種別は質問せず 1 回だけ自動再試行し、再失敗は当該 reviewer を incomplete として `[review:error]` で停止する |
 | Comment post failure | Display review results as text (WARNING を stderr に出力) |
 | `pr-review-step.sh` が exit 2（`ERROR: pr-review-step.sh:`） | marker を待たずに停止する。未知のサブコマンド・オプションは skill 定義の不整合として `[review:error]` で停止する。それ以外は ERROR 行に従って引数を直し、当該ステップから 1 回だけ再実行する。再実行でも exit 2 になったときは、原因を問わず `[review:error]` で停止する。各ステップの rc 別の指示（表・散文・箇条書きを問わない）より先に本行を適用する（ステップ側の rc=2 / 非ゼロの指示は、この接頭辞の無い失敗だけを指す） |
 
@@ -2305,7 +2307,7 @@ rationale: references/design-rationale.md#defense-in-depth-handoff
 |--------|-------|-----------------------|-------------|
 | `[review:mergeable]` | `review` | `FINALIZE:review:mergeable:{pr_number}` | `rite:pr-review completed. Result: [review:mergeable]. Proceed to /rite:ready (caller の review-fix loop が ready 遷移を起動). Do NOT stop.` |
 | `[review:fix-needed:{n}]` | `review` | `/rite:fix {pr_number}` | `rite:pr-review completed. Result: [review:fix-needed:{n}]. Proceed to /rite:fix (caller の review-fix loop が fix 起動). Do NOT stop.` |
-| `[review:error]`（受入条件未検証: `total_findings == 0` かつ `{acceptance_unverified}` が非空） | `review` | （付けない） | `rite:pr-review stopped. Result: [review:error] with REVIEW_STOP=ac_unverified. Unverified acceptance criteria need a human check.` |
+| `[review:error]`（受入条件未検証: `total_findings == 0` かつ `{acceptance_unverified}` が非空） | `review` | （付けない） | `rite:pr-review stopped. Result: [review:error] with REVIEW_STOP=ac_unverified. /rite:ready runs the unverified acceptance criteria the AI can check and asks a person only for the rest.` |
 
 ```bash
 bash {plugin_root}/scripts/pr-review-step.sh state-update --result {result} --pr {pr_number} --next "{next_action_value}"

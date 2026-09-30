@@ -527,7 +527,7 @@ The following specialized reviewers are automatically selected based on the chan
 | `prompt-engineer-reviewer` | Claude Code skill, command, and agent definitions |
 | `tech-writer-reviewer` | Documentation clarity, accuracy, completeness |
 | `error-handling-reviewer` | Silent failures, error propagation, catch block quality |
-| `acceptance-reviewer` | Every acceptance criterion of the related Issue, observed on HEAD each cycle; unverified criteria stop the loop for a human check |
+| `acceptance-reviewer` | Every acceptance criterion of the related Issue, observed on HEAD each cycle; unverified criteria stop the loop; `/rite:ready` runs the criteria the AI can check and, while any such criterion remains, stops without asking and shows the result (the record changes only when a re-review observes it); in a standalone run, once only the criteria that need a person are left, it asks for a human check with an explanation of what to check and how |
 
 > **v0.x consolidation**: the former `api` / `frontend` / `performance` / `database` / `type-design` reviewers were consolidated into `application-reviewer`. Legacy type names appearing as input are substituted with `application` after a WARNING (see CHANGELOG for the migration table).
 

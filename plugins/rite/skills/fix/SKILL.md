@@ -59,7 +59,7 @@ rationale: references/design-rationale.md#e2e-output-minimization-scope
 E2E output format (ステップ 4):
 
 ```
-[fix:{result}] — {fixed_count} fixed, {skipped_count} skipped, {files_changed} files changed; non_fatal_moved={non_fatal_moved_count}; review_json={triage_review_path}
+[fix:{result}] — {fixed_count} fixed, {files_changed} files changed; non_fatal_moved={non_fatal_moved_count}; review_json={triage_review_path}
 ```
 
 Detection: ステップ 0.1 end-to-end flow determination を再利用。
@@ -282,7 +282,7 @@ bash {plugin_root}/scripts/fix-step.sh ensure-worktree --head-ref '{head_ref}'
 
 - `already_in` → 共通作業先契約の所有権・branch・変更前検証を通し、同じ作業先で続行する。
 - `reenter` / `reconstructed` → recover Phase 3.1.5 と[共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) に従い、marker の `path=` へ native / 検証済み代替で入場し、所有権・branch・変更前検証を通してステップ 1.2 へ。後続の全 shell・編集・検証・委譲をこの作業先に固定する。
-- `residue` → AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止）。
+- `residue` → [残骸の確認](../../references/git-worktree-patterns.md#5-残骸ディレクトリの削除確認)で中身を調べ、その結果を添えて AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止）。
 - `branch_other_worktree` → 中止（並行セッションの可能性。`other=` のパスを表示）。
 - `branch_absent` → 誤再構築しない。**develop 上で続行せず** `[fix:error]`（Edit/Write へ進まない）。
 - `failed` → **silent fallback せず `[fix:error]`**。
@@ -902,20 +902,7 @@ When "コードを修正する" is selected:
 
 **MUST**: `action` は `fix` / `reply` / `accept` / `nit-noted` の 4 値に閉じる（他の値は ステップ 4.6 の gate が `map_missing` で停止させる）。`action: fix` の finding は 1 件以上の変更箇所を `path:line` または `path:start-end` で記録し、ステップ 3.3.1 の `findings_addressed[]` に `{id, action, changes}` として載せる。行番号は **HEAD の行**。ただし**行を削除しただけの箇所は HEAD に対応行が無い**ため、`commit_sha_before` の行で記録する（gate は純削除 hunk だけを削除前の行番号で突合する。行を書き換えた箇所は HEAD の行でしか通らない）。reply / accept / nit-noted は `changes: []` とし `diff_verified` を付けない。
 
-Present the proposed fix and apply with Edit tool after confirmation:
-
-```
-修正案:
-（{lang} のコードブロックで表示）
-{suggested_fix}
-
-この修正を適用しますか？
-
-オプション:
-- 適用する
-- 修正案を変更
-- スキップ
-```
+修正案を chat に示し（これが修正案の提示）、確認を挟まずに Edit tool で適用する。修正が正しいかは、ステップ 3 の検証（`scope-verify`）の実行結果で判断する（AI が書いた修正を人間に確認させない — [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) 規則 5）。
 
 ### 2.3.1 Propagation Scan
 
@@ -1243,7 +1230,7 @@ bash {plugin_root}/scripts/fix-step.sh root-cause-gate --status {root_cause_gate
 
 | Option | Action |
 |--------|--------|
-| 不足段落を追記して再コミット（推奨） | Ask the user for a short paragraph for whichever Step 1 found missing: prepend a `Root cause: {paragraph}` / `根本原因: {paragraph}` paragraph, or (Escalation trigger 成立時) a `simplification-first: {paragraph}` paragraph, to the commit body when the convention allows a body; if the convention forbids a body, write the missing paragraphs via the canonical overflow procedure with those section names (`Root cause` and, when the trigger holds, `simplification-first`). Do not prepend to the commit. Do not use work-memory as the overflow store. 正本の失敗はコミットしない。re-invoke Step 1. The retry count is tracked in conversation context by the LLM — after one retry the LLM falls through to the second option to avoid an infinite prompt loop |
+| 不足段落を追記して再コミット（推奨） | Draft a short paragraph from the diff and the finding for whichever Step 1 found missing, and ask the user for it only when neither shows the cause ([question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) rule 5): prepend a `Root cause: {paragraph}` / `根本原因: {paragraph}` paragraph, or (Escalation trigger 成立時) a `simplification-first: {paragraph}` paragraph, to the commit body when the convention allows a body; if the convention forbids a body, write the missing paragraphs via the canonical overflow procedure with those section names (`Root cause` and, when the trigger holds, `simplification-first`). Do not prepend to the commit. Do not use work-memory as the overflow store. 正本の失敗はコミットしない。re-invoke Step 1. The retry count is tracked in conversation context by the LLM — after one retry the LLM falls through to the second option to avoid an infinite prompt loop |
 | 意図的な補足コミットとして通過 | Prepend a bypass paragraph for whichever Step 1 found missing — `Root cause (bypass): {理由}`, or (Escalation trigger 成立時) `simplification-first (bypass): {理由}` — to the commit body when the convention allows a body (the bypass rationale recorded alongside the commit for machine-traceability). If the convention forbids a body, write the same rationale via the canonical overflow procedure with the missing section names. AND append the same rationale to work memory `決定事項・メモ`. The bypass is still recorded. 正本の失敗はコミットしない |
 | Abort | Skip this fix cycle; emit `[fix:error]` and return control to the caller |
 
@@ -1413,7 +1400,6 @@ stdout の `FIX_WM_UPDATE` と `issue_number`、stderr の `WM_UPDATE_FAILED` / 
 **Response types:**
 - `修正` - Code was fixed
 - `返信` - Explanation/reply only
-- `スキップ` - Deferred for later
 
 **`{review_source}` / `{review_source_path_display}` の展開ルール** (schema.md `Priority 1 emit 義務の理由` に記載された provenance log 契約の履行):
 
@@ -1522,7 +1508,7 @@ BSD wc 空白は剥がす (2.1.A Step 7 と対称)。不在/空は `0`。state �
 | Field | Description | Calculation |
 |-------|-------------|-------------|
 | `全指摘: {total_count}件` | Total findings | reload 済み JSON の findings + non_blocking_findings（ID ごと、nit を含む）と未解決の外部レビューの件数。全経路共通 |
-| `対応した指摘: {count}件` | Number of findings addressed | `fix_count + reply_count + skip_count + acknowledged_nit_count + non_blocking_count`。**`fix_count` は `diff_verified: true` の action:fix のみ**。`diff_verified: false` は「未対応」に載せ、この件数から除外する (nit-noted 分類と non-blocking 分類も「対応」に含めることで、nit-only / non-blocking-only PR でも `全指摘 == 対応指摘` 条件を満たし有限 cycle で収束する — `non_blocking_count` を式に含めないと非実測 finding が「未対応」として残り finalize 分岐が発火せず max_review_cycles まで空転する)。**各項は排他**: `skip_count` は ステップ 2.1 でユーザーが「スキップ」を選んだ finding のみを数え、**non-blocking 分類による ステップ 2.1 skip は含めない** (そちらは `non_blocking_count` が受け持つ)。`acknowledged_nit_count` との排他も同様 (nit-noted は scope による分類で、non-blocking は永続 JSON の別集合) |
+| `対応した指摘: {count}件` | Number of findings addressed | `fix_count + reply_count + acknowledged_nit_count + non_blocking_count`。**`fix_count` は `diff_verified: true` の action:fix のみ**。`diff_verified: false` は「未対応」に載せ、この件数から除外する (nit-noted 分類と non-blocking 分類も「対応」に含めることで、nit-only / non-blocking-only PR でも `全指摘 == 対応指摘` 条件を満たし有限 cycle で収束する — `non_blocking_count` を式に含めないと非実測 finding が「未対応」として残り finalize 分岐が発火せず max_review_cycles まで空転する)。**各項は排他**: `acknowledged_nit_count` と `non_blocking_count` は重ならない (nit-noted は scope による分類で、non-blocking は永続 JSON の別集合) |
 | `non-blocking（fix 対象外）: {non_blocking_count}件` | Recorded findings | reload 済み non_blocking_findings の nit 以外。0 件でも表示。今回の移送件数は non_fatal_moved_count、永続参照先は triage_review_path |
 | `Confidence override (policy bypass): {N}件` | Number of findings imported via Confidence policy override | ステップ 1.2 best-effort parse で「Confidence 70 のままバイパス」を選択した finding 数 (Confidence 80+ ゲート invariant の policy override 追跡義務)。0 件でも常時表示 |
 | `レビューソース: {review_source} (...)` | Provenance of the review findings consumed by this fix run | ステップ 1.2.0 Priority chain で決定された `review_source` 値 (schema.md Priority 1 emit 義務の provenance 契約を ステップ 4.6 で履行)。展開ルールは ステップ 4.5.3 の `{review_source}` / `{review_source_path_display}` 表を参照 |
@@ -1563,7 +1549,7 @@ See [Common Error Handling](../../references/common-error-handling.md) for share
 |-------|----------|
 | When PR is Not Found | See [common patterns](../../references/common-error-handling.md) |
 | When Comment Retrieval Fails | ネットワーク接続を確認; `gh auth status` で認証状態を確認 |
-| Error During File Modification | この指摘をスキップして続行 / 手動で修正 (WARNING を stderr に出力) |
+| Error During File Modification | 原因（対象パス・一致しない置換元など）を直して 1 回再試行する。再失敗なら指摘を飛ばさず、失敗の内容を stderr に出して `[fix:error]` で停止する |
 | Commit Failure | `git status` で状態を確認; 問題を解決してから再度コミット (WARNING を stderr に出力) |
 | `fix-step.sh` が exit 2（`ERROR: fix-step.sh:`）で止まった | marker を待たずに停止し、未置換の placeholder・空値・数値でない引数を直して当該ステップから再実行する |
 
