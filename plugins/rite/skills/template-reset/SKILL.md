@@ -251,12 +251,17 @@ rite-config.yml も再生成しますか？
 
 **Steps for regeneration:**
 
-1. Back up the existing `{rite_config_path}`:
+1. Back up the existing `{rite_config_path}`. If this Bash block fails, stop configuration regeneration without changing the existing file; do not proceed to steps 2–3:
    ```bash
    # バックアップファイル名: rite-config.yml.backup.{timestamp}（元ファイルと同じディレクトリ）
    # 例: rite-config.yml.backup.2026-01-04T12-00-00
    ts=$(date +%Y-%m-%dT%H-%M-%S)
-   cp "{rite_config_path}" "{rite_config_path}.backup.$ts" && echo "{rite_config_path}.backup.$ts"
+   if cp "{rite_config_path}" "{rite_config_path}.backup.$ts"; then
+     echo "{rite_config_path}.backup.$ts"
+   else
+     echo "ERROR: 設定のバックアップに失敗しました。上記 cp の診断を確認してください。設定の再生成を中止します。" >&2
+     exit 1
+   fi
    ```
 
 2. Reference `templates/config/rite-config.yml` to generate the default configuration and write it to `{rite_config_path}`

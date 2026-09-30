@@ -26,7 +26,9 @@
 # branch -> not matched by the Step 1 branch sweep) are swept here: by path name
 # with the same 24h age guard (Step 4), and without an age guard from
 # `git worktree list --porcelain` (Step 4-P), which keeps a worktree whose name
-# records a different, still-live owner session.
+# records a different, still-live owner session. The Ready gate's PR-head worktree
+# (`rite-ready-pr-head-owner.<session_id>.XXXXXX`, from ready-pr-head-gate.sh)
+# carries the same owner record and gets the same protection.
 #
 # Strict regex `^pr-[0-9]+-(cycle[0-9]+|test|experiment|mutation|verify|check|sandbox)$`
 # protects unrelated branches (e.g. `pr-918-cycle4-feature`,
@@ -768,6 +770,8 @@ _rite_ttl_protects() {
 # `git -C` や短命のサブシェルで操作するため、foreign-cwd の検査ではこれを守れない。
 # そこで reviewer は所有セッション ID を名前に入れて作り（`_reviewer-base.md` の
 # Mutation experiments）、本ステップはその所有セッションが live な間は回収しない。
+# Ready 検査が PR head の走査に作る一時 worktree（ready-pr-head-gate.sh の
+# `rite-ready-pr-head-owner.<session_id>.XXXXXX`）も同じ判定で守る。
 # 所有者の記録が無い名前は従来どおり age ガード無しで回収する。
 #
 # dirty は見送り理由にしない: mutation worktree は tracked 書き換えと
@@ -801,7 +805,7 @@ _rite_mutation_owner_allows_reap() {
   local wt="$1" base rest sdir f sid owner="" row active updated
   base="${wt##*/}"
   case "$base" in
-    rite-review-mutation-owner.*|rite-revert-test-owner.*) ;;
+    rite-review-mutation-owner.*|rite-revert-test-owner.*|rite-ready-pr-head-owner.*) ;;
     *) return 0 ;;
   esac
   rest="${base#*-owner.}"

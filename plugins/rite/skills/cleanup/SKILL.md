@@ -80,13 +80,13 @@ git branch --show-current
 gh pr list -R {owner_repo} --head {branch_name} --state all --json number,title,state,mergedAt,url,headRefName
 ```
 
-PR 未検出: `AskUserQuestion` で「ブランチを削除して続行 / キャンセル」を確認。未マージ PR: 「キャンセル (推奨) / 強制クリーンアップ」を確認。
+PR 未検出: `AskUserQuestion` で「ブランチを削除して続行 / キャンセル」を確認。未マージ PR: 「キャンセル (推奨) / 強制クリーンアップ」を確認（強制クリーンアップでも関連 Issue はクローズせず、Projects Status・作業メモリ・親 Issue も完了にしない）。
 
 PR 検出時は返却された `headRefName` と `{branch_name}` の完全一致時だけ `{branch_identity_verified}=true`
 とする。不一致は削除対象 identity が確定しないため中断する。PR 未検出でユーザーが「ブランチを削除して続行」
 を明示選択した場合だけ承認済み入力として `true`、それ以外は `false`。prefix denylist で identity を推測しない。
 
-`mergedAt` が非 null（= PR が merge 済み）なら `{pr_merged}=true` として保持する。**それ以外のすべての経路**（未マージ PR の強制クリーンアップ、PR 未検出でブランチ削除を選んで続行した経路など）は `{pr_merged}=false` を既定とする。ステップ 4-W / ステップ 5 の全分岐で `{pr_merged}` を literal substitute する。
+`mergedAt` が非 null（= PR が merge 済み）なら `{pr_merged}=true` として保持する。**それ以外のすべての経路**（未マージ PR の強制クリーンアップ、PR 未検出でブランチ削除を選んで続行した経路など）は `{pr_merged}=false` を既定とする。ステップ 4-W / ステップ 5 / ステップ 8 / ステップ 10 / ステップ 11 の全分岐で `{pr_merged}` を literal substitute する。
 rationale: references/rationale.md#pr-merged-default
 
 ### 1.4 リポジトリ情報取得
@@ -448,10 +448,11 @@ rationale: references/rationale.md#main-root-cd
 
 ```bash
 main_root="{main_root}"
-if [ -z "$main_root" ] || ! cd "$main_root" 2>/dev/null; then
+[ -n "$main_root" ] && cd "$main_root" 2>/dev/null || {
   echo "WARNING: main checkout ルート（${main_root:-<未解決>}）が解決できないか、そこへ cd できませんでした。base 更新を skip します。" >&2
   echo "[CONTEXT] BASE_UPDATE=main_root_unresolved"
-else
+  exit 0
+}
 cur_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || cur_branch=""
 if [ "$cur_branch" = "{base_branch}" ]; then
   # index.lock 競合 3 回リトライ
@@ -505,7 +506,6 @@ else
   echo "WARNING: main checkout が '{base_branch}' ではなく '$cur_branch' 上にあるため base 更新を skip しました。" >&2
   echo "  復旧手順: 別の作業が無いことを確認のうえ 'git switch {base_branch}' で main checkout を base に戻してから再実行してください（rite は multi_session モードで main checkout のカレントブランチを切り替えません）。" >&2
   echo "[CONTEXT] BASE_UPDATE=skipped_not_on_base"
-fi
 fi
 ```
 
@@ -709,7 +709,22 @@ bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
 > **Source of truth**: `plugins/rite/scripts/projects-status-update.sh` に委譲する（`skills/open/SKILL.md` ステップ 2.4 / `skills/ready/SKILL.md` Phase 4 と共通）。参照のみに留めず本ステップに直接 inline する。
 rationale: references/rationale.md#projects-status-inline
 
+`{pr_merged}=false` では script を呼ばず `PROJECTS_STATUS_UPDATED=skipped_unmerged` を出す（Status は変えない）。
+
 ```bash
+# cleanup-projects-status
+pr_merged="{pr_merged}"
+case "$pr_merged" in
+  true) ;;
+  false)
+    echo "マージ済みの PR が無いため Projects Status を Done にしません"
+    echo "[CONTEXT] PROJECTS_STATUS_UPDATED=skipped_unmerged"
+    exit 0 ;;
+  *)
+    echo "警告: {pr_merged} が true / false のどちらでもないため Projects Status を更新しません。" >&2
+    echo "[CONTEXT] PROJECTS_STATUS_UPDATED=false"
+    exit 0 ;;
+esac
 status_json_args=$(jq -n \
   --argjson issue {issue_number} \
   --arg owner "{owner}" \
@@ -829,8 +844,8 @@ ingest の成否（skip 含む）に関わらずステップ 10 へ進む。
 
 詳細は [archive-procedures.md](./references/archive-procedures.md) (Issue close / Parent Issue handling セクション)。
 
-- 関連 Issue (`{issue_number}`) が PR の closing reference（本文の closing keyword / ブランチ名の `issue-N`）に含まれることを確かめてから close し、同じ Issue の state を読み直して `[CONTEXT] ISSUE_CLOSE=` marker を出す（archive-procedures §3.6.1 の bash）。base が default branch でない PR では `Closes #N` による自動クローズが働かないため、クローズは本ステップだけが担う
-- 親 Issue (`{parent_issue_number}`) の Tasklist を更新
+- 関連 Issue (`{issue_number}`) が PR の closing reference（本文の closing keyword / ブランチ名の `issue-N`）に含まれることを確かめてから close し、同じ Issue の state を読み直して `[CONTEXT] ISSUE_CLOSE=` marker を出す（archive-procedures §3.6.1 の bash）。base が default branch でない PR では `Closes #N` による自動クローズが働かないため、クローズは本ステップだけが担う。`{pr_merged}` を literal substitute し、`{pr_merged}=false`（未マージ PR の強制クリーンアップ）ではコメントも書かず閉じずに `ISSUE_CLOSE=skipped; reason=pr_not_merged` を出す
+- 親 Issue (`{parent_issue_number}`) の Tasklist を更新。`{pr_merged}=false` では Tasklist 更新も親の auto-close 判定も実行せず、`{parent_close_result}` = `ℹ️ PR 未マージのため親 Issue は更新していません`
 - 親 Issue の全子が CLOSED かついずれも `stateReason != NOT_PLANNED`（= COMPLETED）なら parent も auto-close。Cancelled（NOT_PLANNED）の子が 1 件でも居る、または CLOSED 子の `stateReason` が判定不能なら親は未完了扱い（Done / auto-close しない）
 - 3.7.2.1 `.result=skipped_terminal_conflict`（親が既に終端 Status (Cancelled)）のとき、close 成否に関わらず `{parent_close_result}` = `⚠️ Cancelled のため Done 上書きをスキップ`。`✅ 自動クローズ完了` で Done 同期を主張しない。Cancelled **子**の未完了扱いとは別値
 
@@ -845,7 +860,7 @@ ingest の成否（skip 含む）に関わらずステップ 10 へ進む。
 - **Work Memory final update セクション** (= `### 3.5`): Issue comment への完了マーク追記 (gh API PATCH)
 - **State reset セクション** (= `## Phase 4: Reset State and Delete Local Work Memory`): `cleanup-work-memory.sh` 実行による local `.rite/work-memory/issue-*.md` ファイル削除 + flow state `active: false` リセット
 
-両方実行する（片方だけではローカル file が残り `post-tool-wm-sync.sh` が再生成する）。
+両方実行する（片方だけではローカル file が残り `post-tool-wm-sync.sh` が再生成する）。`{pr_merged}` を literal substitute し、`{pr_merged}=false` では §3.5 の bash が完了情報・完了項目を書かずに `status=skipped; reason=pr_not_merged` を出す（完了マークも付けない）。ローカルファイル削除と state リセットは実行する。
 rationale: references/rationale.md#wm-dual-finalize
 
 あわせて Issue claim を解放する（`multi_session.enabled` に依らず常時実行。claim 取得は /rite:open Step 1.6）。`issue-claim.sh release` は flow-state を変更しないため、ステップ 9 の `WIKICHAIN:` handoff 契約（ステップ 9〜12 間で `flow-state.sh set` を挟まない）に抵触しない:
@@ -966,6 +981,7 @@ rationale: references/rationale.md#marker-data-delimiter
   - ステップ 2 で関連 Issue が識別できなかった（`{issue_number}` 空）とき: `{projects_status_result}` = `（関連 Issue 未識別のためスキップ）`、`{projects_check}` = `x`
   - 上記 2 条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=true` が見つかったとき: `{projects_status_result}` = `Done`、`{projects_check}` = `x`
   - 上記 2 条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=skipped_terminal` が見つかったとき: `{projects_status_result}` = `Cancelled のため Done 上書きをスキップ`、`{projects_check}` = `x`（legitimate skip。`false` の outstanding「Done へ手動変更」に倒さない）
+  - 上記条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=skipped_unmerged` が見つかったとき: `{projects_status_result}` = `（マージ済みの PR が無いため変更なし）`、`{projects_check}` = `x`（legitimate skip。Done にしていない）
   - 上記条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=false` または sentinel 自体が見つからない（= ステップ8 が実行されるべきだったのに失敗/skip された）とき: `{projects_status_result}` = `⚠️ 更新失敗（手動確認が必要）`、`{projects_check}` = ` ` + 「GitHub Projects 画面で Issue #{issue_number} の Status を Done に変更」を付記
 - `{review_cleanup_check}`: **follow-up 起票（ステップ 6.0 の `FOLLOW_UP_ISSUE`）・先送り欠陥の読み取り（`FOLLOW_UP_DEFERRED`）・state 削除（`PR_STATE_PURGE` / `REVIEW_CLEANUP_PARTIAL_FAILURE`）の 3 側を独立に評価し、すべてが `x` 相当のときだけ `x`**（`{local_branch_check}` と同型。いずれか 1 側でも未完了なら ` ` にし、未完了だった側の付記を列挙する）。照合はいずれも `pr={pr_number}` まで含める（`invalid_pr_number` だけは `pr=` を持たないので marker 名のみ）。**`pr=` の値は直後が `;` または行末であることまで含めて一致させる**（`{local_branch_check}` の `branch=` と同文。`pr=9` が `pr=90` に prefix 一致してはならない）。follow-up 側で同一 marker family の複数行が一致したときは最後の出現（recency）を採る。この選択は**follow-up 側**の判定ルールを評価する前に行う。state 削除側は presence 検査で recency を使わない。helper は API 失敗でも exit 0 のため、起票失敗の一次信号は `FOLLOW_UP_ISSUE` だけである。
 
@@ -1035,11 +1051,12 @@ rationale: references/rationale.md#review-cleanup-reasons
     手動回復: git -C .rite/wiki-worktree push origin {wiki_branch}
   ```
 - `{wm_final_update_check}`: ステップ 11 の `[CONTEXT] WM_FINAL_UPDATE=` 行で判定する（archive-procedures §3.5.1 = `completion`、§3.5.2 = `progress`）。`{issue_number}` が空（関連 Issue 未識別）なら `x`。それ以外は **completion 側と progress 側を独立に評価し、両方が `x` 相当のときだけ `x`**（どちらか一方でも未完了なら ` ` にし、未完了だった側の付記をすべて列挙する。`{local_branch_check}` と同型）。各側は **2 段で判定する**: まず `[CONTEXT] ` 行頭一致 + `WM_FINAL_UPDATE={側}` + `issue={issue_number}`（値の直後が `;` または行末）に該当する行を集め、**その中の最後の出現 1 行だけを選ぶ**（recency。`{local_branch_check}` と同じ理由）。次にその 1 行を以下で評価する（`{対象}` は completion = 完了情報の追記、progress = 進捗チェックリストの更新）:
-  - `status=success` / `reason=no_comment` / `reason=section_absent` のいずれか: `x`（後 2 つは legitimate skip。x とする値はこの 3 つに限る）
+  - `status=success` / `reason=no_comment` / `reason=section_absent` / `reason=pr_not_merged` のいずれか: `x`（後 3 つは legitimate skip。x とする値はこの 4 つに限る）
   - 上記以外（`reason=invalid_args` / `reason=transform_failed` / `status=missing` 等）: ` ` + 「⚠️ 作業メモリの{対象}が完了しませんでした（{marker の status 以降}）。{helper stderr の先頭行} — Issue #{issue_number} の作業メモリコメントを確認し、必要なら手動で追記してください」を付記（helper stderr の先頭行は同じ bash が出した `helper stderr (root-cause、先頭 5 行):` の直後の 1 行。出ていなければ省く）
   - 該当行が無いとき: ` ` + 「⚠️ 作業メモリの{対象}の実行結果を確認できませんでした — Issue #{issue_number} の作業メモリコメントを確認してください」を付記。**marker 不在を成功と読んではならない**
 - `{issue_close_check}`: ステップ 10 の `[CONTEXT] ISSUE_CLOSE=` 行で判定する（archive-procedures §3.6.1）。`{issue_number}` が空（関連 Issue 未識別）なら `x`。それ以外は `[CONTEXT] ` 行頭一致 + `ISSUE_CLOSE=` + `issue={issue_number}`（値の直後が `;` または行末）に該当する行を集め、**その中の最後の出現 1 行だけを選ぶ**（recency。`/rite:batch-run --merge` では先行 Issue の marker が文脈に残るため）。選んだ 1 行を以下で評価する:
-  - `ISSUE_CLOSE=closed` / `ISSUE_CLOSE=already_closed` / `ISSUE_CLOSE=not_identified` のいずれか: `x`（x とする値はこの 3 つに限る）
+  - `ISSUE_CLOSE=skipped` かつ `reason=pr_not_merged`: `x` + 「ℹ️ PR がマージされていないため Issue #{issue_number} は開いたまま残しています。作業を中止する場合は `/rite:issue-cancel {issue_number}` を実行してください」を付記
+  - `ISSUE_CLOSE=closed` / `ISSUE_CLOSE=already_closed` / `ISSUE_CLOSE=not_identified` のいずれか: `x`（x とする値は上の skipped とこの 3 つに限る）
   - `ISSUE_CLOSE=failed` かつ `reason=no_pr`: ` ` + 「⚠️ 関連 PR が無いため Issue #{issue_number} をクローズしていません。`gh issue view {issue_number} -R {owner_repo}` で状態を確認し、作業が完了していれば手動でクローズしてください」を付記
   - 上記以外（`ISSUE_CLOSE=failed` かつ `reason=` が `close_failed` / `verify_failed` / `state_<STATE>` / `target_mismatch` / `pr_view_failed` のいずれか等）: ` ` + 「⚠️ Issue #{issue_number} のクローズを確認できませんでした（{marker の reason 値}）。`gh pr view {pr_number} -R {owner_repo} --json body,headRefName` で PR の関連 Issue を確かめ、その Issue が OPEN なら `gh issue close <番号> -R {owner_repo}` を手動実行してください」を付記
   - 該当行が無いとき: ` ` + 「⚠️ Issue #{issue_number} のクローズの実行結果を確認できませんでした。`gh issue view {issue_number} -R {owner_repo}` で状態を確認してください」を付記。**marker 不在を成功と読んではならない**
@@ -1070,13 +1087,14 @@ rationale: references/rationale.md#outstanding-checkbox
 - 結果: {parent_close_result}
 ```
 
-`{parent_close_result}` の値域 (ステップ 10 で決定された 7 種類のいずれか):
+`{parent_close_result}` の値域 (ステップ 10 で決定された 8 種類のいずれか):
 - `✅ 自動クローズ完了 (全 sub-issue clear)` — 親 Issue が全 sub-issue 完了で自動 close
 - `🟡 sub-issue 残あり (close 保留)` — 残 sub-issue があり親は open のまま
 - `⚠️ Cancelled の子を含むため親は未完了扱い` — Cancelled（NOT_PLANNED）の子が居る。Done / auto-close しない
 - `⚠️ Cancelled のため Done 上書きをスキップ` — 親が既に終端 Status (Cancelled) のため Done 同期を主張しない（3.7.2.1 `.result=skipped_terminal_conflict`。Cancelled **子**の未完了扱いとは別）
 - `⚠️ 子の stateReason 判定不能のため auto-close スキップ` — CLOSED 子の `stateReason` 取得失敗（fail-loud）
 - `⚠️ 手動確認推奨` — 親 Issue 状態が判定不能で manual triage 推奨
+- `ℹ️ PR 未マージのため親 Issue は更新していません` — `{pr_merged}=false`。Tasklist 更新も auto-close 判定も実行していない
 - `(該当なし)` — 親 Issue が識別されなかった (ステップ 2 で見つからず)
 
 未完了タスク Issue 化結果 (該当する場合のみ):

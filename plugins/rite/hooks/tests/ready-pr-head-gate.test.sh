@@ -81,6 +81,29 @@ reset_case; export CURRENT_HEAD=base PR_HEAD=prhead SCAN_SIGNAL_PARENT=1
 rc=0; run_gate >/dev/null 2>"$SB/err" || rc=$?
 [ "$rc" -eq 143 ] && grep -q 'worktree remove --force' "$LOG" && ok || bad signal_cleanup
 
+# Owner-named PR-head worktree: the name records the running session so another
+# session's cleanup keeps it while this session is live. Runtime identity variables
+# are cleared first so the result does not depend on the caller's session.
+OWNER_SID=aaaaaaaa-1111-2222-3333-444444444444
+mkdir -p "$SB/tmpd"
+run_gate_as(){ env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID -u CODEX_THREAD_ID -u GROK_SESSION_ID -u RITE_HOST \
+  TMPDIR="$SB/tmpd" "$@" bash "$HELPER" --pr 42 --repo owner/repo --plugin-root "$SB/plugin"; }
+reset_case; export CURRENT_HEAD=base PR_HEAD=prhead
+rc=0; run_gate_as CLAUDE_CODE_SESSION_ID="$OWNER_SID" >/dev/null 2>"$SB/err" || rc=$?
+tmp=$(cat "$SB/tmp-path" 2>/dev/null || true)
+[ "$rc" -eq 0 ] && [ "$(dirname "$tmp")" = "$SB/tmpd" ] \
+  && [[ "$(basename "$tmp")" =~ ^rite-ready-pr-head-owner\.$OWNER_SID\.[A-Za-z0-9]{6}$ ]] \
+  && grep -qxF "git worktree remove --force $tmp" "$LOG" && ok || bad "owner-name: $tmp"
+# No runtime identity, or an ambiguous one: the unowned name, and the gate still runs.
+for ids in "" "CLAUDE_CODE_SESSION_ID=$OWNER_SID CODEX_THREAD_ID=x"; do
+  reset_case; export CURRENT_HEAD=base PR_HEAD=prhead
+  rc=0; run_gate_as $ids >/dev/null 2>"$SB/err" || rc=$?
+  tmp=$(cat "$SB/tmp-path" 2>/dev/null || true)
+  [ "$rc" -eq 0 ] && [[ "$(basename "$tmp")" =~ ^rite-ready-pr-head\.[A-Za-z0-9]{6}$ ]] \
+    && grep -q 'scanner ' "$LOG" && ok || bad "owner-name-fallback[$ids]: $tmp"
+done
+grep -q 'ambiguous runtime session identity' "$SB/err" && ok || bad "owner-name-fallback: ambiguous identity reason not shown"
+
 # T-06: work-memory overrides are sanitized and written under the helper lock.
 wm_repo="$SB/wm-repo"; mkdir -p "$wm_repo"; git -C "$wm_repo" init -q
 (
