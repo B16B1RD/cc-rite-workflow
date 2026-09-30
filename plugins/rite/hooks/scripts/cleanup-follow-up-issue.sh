@@ -1,14 +1,15 @@
 #!/bin/bash
 # cleanup-follow-up-issue.sh — /rite:cleanup ステップ 6.0
 #
-# マージ済み PR の残存 non-blocking 指摘 (review-results JSON の non_blocking_findings[]) と、元 Issue の
+# マージ済み PR の残存 non-blocking 指摘 (review-results JSON の non_blocking_findings[] と、guardrail が
+# 除外した guardrail_audit_log[] の行) と、元 Issue の
 # Decision Log (Section 9) で本 PR のレビューが先送りした欠陥 (行末が `<!-- rite:deferred-defect pr=<PR> -->`
 # の行。pr-review 7.4.3 が付ける。旧い基準で書かれた行も区別せず候補にし、終端として扱わない) を候補にする。
 # 起票するかどうかは採否ゲート (review-adoption-gate.sh --kind followup) の出口だけで決め、verdict=file の
 # 判定記録ごとに follow-up Issue を 1 件起票する (1 根因 = 1 Issue)。cleanup 全体は止めない (引数不正のみ exit 1)。
 # json_undecidable は先送り欠陥があっても failed のまま止める。
 #
-# 候補の集合は**同一 PR の全 JSON の `non_blocking_findings[]` の和集合**。各 JSON はその cycle の
+# 候補の集合は**同一 PR の全 JSON の `non_blocking_findings[]` と `guardrail_audit_log[]` の和集合**。各 JSON はその cycle の
 # 観測にすぎず、最新 1 本は残存集合ではない (先行 cycle にのみ載る指摘を取りこぼす)。解消済みかどうかは
 # 分類役が判定記録の present で判定する。処分済みの候補は判定し直さない: iterate の NB sweep と前回の
 # follow-up が採否の出口で処分した指摘 (関連 Issue 記録コメントの却下台帳で判定=issued / REJECT /
@@ -87,6 +88,7 @@
 #     (--list-candidates のとき。0 件で終えたときは count=0 の後に reason=<下記 skipped / failed の reason>)
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=list_write; pr=<n>   (一覧を --list-candidates のパスへ書けない)
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=head_unresolved; pr=<n>   (対象 commit を決められない。一覧を書かない)
+#   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_row_invalid; pr=<n>   (判定できない guardrail 行がある。一覧を書かない)
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=hold_unreadable; pr=<n>   (採否ゲートの hold ファイルがあるのに読めず、
 #     前回の判定記録を再利用する候補を決められない。一覧を書かない。起票実行ではゲートが同じ hold を読めず
 #     FOLLOW_UP_ISSUE=held; reason=gate_failed_rc1; hold_file=none で止まる)
@@ -121,8 +123,9 @@
 #   書けなくても結果は変えず WARNING を出す。影響は再実行の報告が no_json に戻ることだけ。
 #   [CONTEXT] FOLLOW_UP_DEFERRED=unavailable; reason=issue_body_api; pr=<n>
 #     元 Issue の本文を取得できず先送り欠陥を読めなかった (ゲートが本文を読み直し、読めなければ保留する)
-#   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable|head_unresolved|preview_write; pr=<n>
+#   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable|head_unresolved|guardrail_row_invalid|preview_write; pr=<n>
 #     head_unresolved: commit_sha を持つレビュー結果 JSON が無く、PR の head も取得できないか <state-root> の git で解決できない
+#     guardrail_row_invalid: guardrail_audit_log の行が reviewer・description・<path>:<location> 形の file_line を欠き、判定できない
 #   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=create_api; issue=<起票できた番号の CSV>; pr=<n>
 #     根因の一部だけ起票できた。再実行すると起票済みの根因は増やさず残りだけを起票する
 #   [CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=<r>; pr=<n>
@@ -352,10 +355,42 @@ while IFS= read -r f; do
   [ -n "$f" ] || continue
   matched=$((matched + 1))
   : > "$union_err"
+  # guardrail が除外した行 (guardrail_audit_log) も候補にする。除外理由は採否の出口ではない。
+  # 本文を判定できない行 (reviewer・description が空、file_line が <path>:<location> でない) は
+  # 黙って落とさず、対象 commit を決められないときと同じく一覧を書かずに失敗する。
+  if bad_guardrails=$(jq -c '[(.guardrail_audit_log // [])[]
+      | select(((.reviewer // "") | tostring) == "" or ((.description // "") | tostring) == ""
+          or (((.file_line // "") | tostring) | test("^.+:[^:]+$") | not))]' "$f" 2>/dev/null) \
+     && [ -n "$bad_guardrails" ] && [ "$bad_guardrails" != "[]" ]; then
+    echo "ERROR: guardrail_audit_log に、判定に要る reviewer・description・<path>:<location> 形の file_line を欠く行があります。follow-up を判定しません (PR #${PR_NUMBER}): $f" >&2
+    printf '%s' "$bad_guardrails" | jq -r '.[] | "  reviewer=\(.reviewer // "") file_line=\(.file_line // "")"' | neutralize_ctrl --keep-newline >&2
+    if [ -n "$LIST_OUT" ]; then
+      echo "[CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_row_invalid; pr=${PR_NUMBER}" >&2
+    else
+      emit_failed guardrail_row_invalid
+    fi
+    exit 0
+  fi
   # 各 finding に出典 JSON のパス (`_src`) を持たせる。候補の id (basename + id) と、
   # sweep 起票済みの除外 (台帳行の出典 basename との一致、出典の無い行は最新 JSON とのフルパス一致) の両方が使う。
   # 本文の生成は明示したフィールドだけを読むので転記には出ない。
-  if ! part=$(jq -c --arg src "$f" 'if (.non_blocking_findings | type) == "array" then .non_blocking_findings | map(if type == "object" then . + {_src: $src} else . end) else error("non_blocking_findings is not an array") end' "$f" 2>"$union_err"); then
+  # guardrail 行の id は nb-sweep-collect.sh の key (guardrail:<reviewer>:<file_line>) と同じにし、
+  # sweep が台帳に書いた行と [finding_id, file:line] で照合できるようにする。
+  if ! part=$(jq -c --arg src "$f" '
+      def guardrail:
+        ((.file_line | tostring) | capture("^(?<file>.+):(?<line>[^:]+)$")) as $at
+        | {id: ("guardrail:" + (.reviewer | tostring) + ":" + (.file_line | tostring)),
+           reviewer: (.reviewer | tostring),
+           severity: (.original_severity // "UNKNOWN"),
+           file: $at.file,
+           line: ($at.line | if test("^[0-9]+$") then tonumber else . end),
+           description: (.description | tostring),
+           verification: {measured: false},
+           filter_reason: (.filter_reason // "")};
+      if (.non_blocking_findings | type) == "array"
+      then (.non_blocking_findings | map(if type == "object" then . + {_src: $src} else . end))
+        + ((.guardrail_audit_log // []) | map(guardrail + {_src: $src}))
+      else error("non_blocking_findings is not an array") end' "$f" 2>"$union_err"); then
     # 部分的な parse 失敗で全滅させない。健全な側の和集合で続行し、全滅時だけ json_undecidable。
     echo "WARNING: レビュー結果 JSON を読めないため和集合から除外します (PR #${PR_NUMBER}): $f" >&2
     [ -s "$union_err" ] && head -3 "$union_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2

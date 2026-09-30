@@ -37,6 +37,7 @@
 #   T-22 id 欠落 / 書式外 id の finding を落とさない (MUST NOT)
 #   T-23 parse 不能な JSON を 1 本だけ除外し、jq の原因行と union 内訳を surface する
 #   T-23b 空 JSON の統合失敗でも健全側を転記する
+#   T-94 guardrail が除外した行も候補にし、sweep 起票済みの行は除き、本文を欠く行では一覧も起票も止める
 #
 # Coverage (sweep 起票済み除外):
 #   T-29 全件が sweep で issued なら all_issued で起票しない。出典付き 5 列の
@@ -2688,6 +2689,49 @@ ADOPT_HEAD=ffffffffffffffffffffffffffffffffffffffff write_adoption "$r" "$(rec "
 t93_list >/dev/null
 assert "T-93 head の違う前回の記録は写さない" "0" "$(jq '.reuse | length' "$TMP_ROOT/t93-cands.json")"
 assert "T-93 head が違えば全候補を judge に並べる" "$C_F01 $C_F05 D-01 D-04" "$(jq -r '.judge | join(" ")' "$TMP_ROOT/t93-cands.json")"
+
+echo "--- T-94: guardrail が除外した行も候補にする ---"
+T94_GUARD='{"reviewer":"test-reviewer","filter_category":"Category #2","original_severity":"LOW","file_line":"src/t.sh:98-101","description":"range","filter_reason":"no caller","verification":"なし"}'
+t94_json() { jq -nc --argjson g "$1" '{non_blocking_findings: [], guardrail_audit_log: [$g]}'; }
+reset_stubs
+r=$(new_root t94)
+put_json "$r" "9-20260101120000.json" "$(t94_json "$T94_GUARD")"
+ADOPT_MODE=manual
+run_target "$r" --list-candidates "$TMP_ROOT/t94-cands.json"
+assert "T-94 guardrail 行だけの JSON でも候補が 1 件" "1" "$(jq '.candidates | length' "$TMP_ROOT/t94-cands.json")"
+assert "T-94 guardrail 候補の id・位置は collect と同じ" "guardrail:test-reviewer:src/t.sh:98-101|src/t.sh:98-101|LOW|range" \
+  "$(jq -r '.candidates[0].finding | "\(.id)|\(.file):\(.line)|\(.severity)|\(.description)"' "$TMP_ROOT/t94-cands.json")"
+# 複数 cycle の JSON に同じ guardrail 行があっても 1 件にまとめる
+put_json "$r" "9-20260102120000.json" "$(t94_json "$T94_GUARD")"
+ADOPT_MODE=manual
+run_target "$r" --list-candidates "$TMP_ROOT/t94-cands2.json"
+assert "T-94 複数 cycle の同じ guardrail 行は 1 件" "1" "$(jq '.candidates | length' "$TMP_ROOT/t94-cands2.json")"
+# sweep が guardrail 行の key で書いた issued 行は候補から除く
+reset_stubs
+r=$(new_root t94-issued)
+put_json "$r" "9-20260101120000.json" "$(t94_json "$T94_GUARD")"
+jq -n --argjson c "$(comment_obj "$(record_body '| guardrail:test-reviewer:src/t.sh:98-101 | src/t.sh:98-101 | issued | #77 https://example.test/issues/77 | 9-20260101120000.json |')")" '[[$c]]' > "$GH_API_JSON"
+run_target "$r"
+assert_grep "T-94 sweep 起票済みの guardrail 行は起票しない" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all_issued; pr=9'
+assert "T-94 sweep 起票済みの guardrail 行で create 0 回" "0" "$(create_count)"
+# 判定に要る本文を欠く guardrail 行は落とさず、一覧も起票も止める
+for t94_bad in '{"reviewer":"","file_line":"src/x.ts:1","description":"d"}' \
+               '{"reviewer":"r","file_line":"src/x.ts:1","description":""}' \
+               '{"reviewer":"r","file_line":"src/x.ts","description":"d"}'; do
+  reset_stubs
+  r=$(new_root t94-bad)
+  put_json "$r" "9-20260101120000.json" "$(t94_json "$t94_bad")"
+  rm -f "$TMP_ROOT/t94-bad-cands.json"
+  ADOPT_MODE=manual
+  run_target "$r" --list-candidates "$TMP_ROOT/t94-bad-cands.json"
+  assert_grep "T-94 本文を欠く guardrail 行で一覧は失敗 ($t94_bad)" "$ERR" '^\[CONTEXT\] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_row_invalid; pr=9$'
+  assert "T-94 本文を欠く guardrail 行で一覧を書かない ($t94_bad)" "no" "$([ -e "$TMP_ROOT/t94-bad-cands.json" ] && echo yes || echo no)"
+  ADOPT_MODE=manual
+  run_target "$r"
+  assert_grep "T-94 本文を欠く guardrail 行で起票は失敗 ($t94_bad)" "$ERR" 'FOLLOW_UP_ISSUE=failed; reason=guardrail_row_invalid; pr=9'
+  assert "T-94 本文を欠く guardrail 行で create 0 回 ($t94_bad)" "0" "$(create_count)"
+  rm -rf "$r"
+done
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?

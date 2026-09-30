@@ -4,10 +4,16 @@
 # Targets:
 #   - all non_blocking_findings[]
 #   - findings[] with scope == "nit-noted" (blocking-out remainder)
-#   - guardrail_audit_log[] copied as already_rejected (record only, no re-judge)
+#   - guardrail_audit_log[] (rows the review's guardrail filtered out). The guardrail's
+#     reason is not an adoption exit, so these rows are judged by the gate like any target.
 # Collect never decides adoption: severity and measurement do not change what it returns.
 # Each target carries `key` (its id, or anon:<file>:<line> when the id is empty): the
 # candidate id the adoption gate reads and the finding_id the sweep writes to the ledger.
+# A guardrail row has no id: its id is the reviewer and its key is
+# guardrail:<reviewer>:<file_line>, so two rows of one reviewer stay two candidates.
+# Its file and line split file_line at the last `:` and join back to it. A row without
+# reviewer, description or a <path>:<location> file_line cannot be judged from its text:
+# collect stops (reason=guardrail_row_invalid) instead of dropping it.
 # --json is an offline transform; pass --pr as well to read the persisted ledger
 # (a row matches a target on [id or key, file:line]):
 #   - excluded: an `issued` row, or a REJECT / RESOLVED / LINK row whose 出典 is the
@@ -16,7 +22,6 @@
 #   - prior: the last REJECT / ADOPT row becomes
 #     {finding_id, file_line, disposition, premise (= 判定文)} for the classifier to copy
 #     into its adoption record.
-#   - already_rejected is excluded by an issued / recorded / rejected row as before.
 # candidates[] is what the sweep's adoption gate judges: every target as {id: key,
 # finding_id: id, record: <basename of the review JSON>} plus its fields. With --pr, the
 # candidates of the sweep hold file (STATE_ROOT/.rite/state/adoption-hold-PR-sweep.json)
@@ -30,10 +35,10 @@
 #   bash nb-sweep-collect.sh --json <path>
 #   bash nb-sweep-collect.sh --pr <n> --state-root <path>
 #
-# stdout: JSON {status, count, record, targets[], candidates[], already_rejected[], ledger[]}
+# stdout: JSON {status, count, record, targets[], candidates[], ledger[]}
 #         ledger[] is the ledger rows judged issued / LINK / REJECT ({id, loc, disposition, premise, source})
 #         as read, for the classifier to link a candidate whose id, wording or position changed.
-#         count is targets + carried hold candidates + already_rejected.
+#         count is targets + carried hold candidates.
 # stderr: [CONTEXT] NB_SWEEP_COLLECT=ok|empty|failed; count=N; record=PATH
 #
 # Exit:
@@ -84,6 +89,20 @@ fi
 if ! jq empty "$json" >/dev/null 2>&1; then
   echo "ERROR: review JSON invalid: $json" >&2
   echo "[CONTEXT] NB_SWEEP_COLLECT=failed; count=0; record=$json; reason=json_invalid" >&2
+  exit 1
+fi
+
+if ! invalid_guardrails=$(jq -c '[(.guardrail_audit_log // [])[]
+    | select(((.reviewer // "") | tostring) == "" or ((.description // "") | tostring) == ""
+        or (((.file_line // "") | tostring) | test("^.+:[^:]+$") | not))]' "$json"); then
+  echo "ERROR: review JSON guardrail_audit_log unreadable: $json" >&2
+  echo "[CONTEXT] NB_SWEEP_COLLECT=failed; count=0; record=$json; reason=guardrail_row_invalid" >&2
+  exit 1
+fi
+if [ -n "$invalid_guardrails" ] && [ "$invalid_guardrails" != "[]" ]; then
+  echo "ERROR: guardrail_audit_log rows lack the reviewer, description or <path>:<location> file_line needed to judge them: $json" >&2
+  printf '%s' "$invalid_guardrails" | jq -r '.[] | "  reviewer=\(.reviewer // "") file_line=\(.file_line // "")"' >&2
+  echo "[CONTEXT] NB_SWEEP_COLLECT=failed; count=0; record=$json; reason=guardrail_row_invalid" >&2
   exit 1
 fi
 
@@ -160,40 +179,42 @@ if ! out=$(jq -c --arg record "$json" --argjson ledger "$ledger_rows" --argjson 
     | if $p == null then .
       else . + {prior: {finding_id: $p.id, file_line: $p.loc, disposition: $p.disposition, premise: $p.premise}}
       end;
-  def transcribed($id; $location):
-    $ledger | any(.id == $id and .loc == $location
-      and (.disposition == "rejected" or .disposition == "recorded" or .disposition == "issued"));
+  def guardrail:
+    ((.file_line | tostring) | capture("^(?<file>.+):(?<line>[^:]+)$")) as $at
+    | {
+        id: (.reviewer | tostring),
+        key: ("guardrail:" + (.reviewer | tostring) + ":" + (.file_line | tostring)),
+        source: "guardrail_audit_log",
+        file: $at.file,
+        line: ($at.line | if test("^[0-9]+$") then tonumber else . end),
+        severity: (.original_severity // "UNKNOWN"),
+        scope: "",
+        description: (.description | tostring),
+        suggestion: "",
+        verification: {measured: false},
+        filter_reason: (.filter_reason // "")
+      };
   (.non_blocking_findings // []) as $nb
   | (.findings // []) as $findings
   | ($nb | map(. + {source: "non_blocking_findings"} | target)) as $from_nb
   | ($findings
       | map(select(.scope == "nit-noted") | . + {source: "findings_nit_noted"} | target)
     ) as $from_nit
-  | ($from_nb + $from_nit) as $all
+  | ((.guardrail_audit_log // []) | map(guardrail)) as $from_guardrail
+  | ($from_nb + $from_nit + $from_guardrail) as $all
   | ($all | map(select(pending) | with_prior)) as $pending
   | (reduce $pending[] as $t ({}; if has($t.key) then . else .[$t.key] = $t end) | [.[]]) as $targets
-  | ((.guardrail_audit_log // []) | map({
-        source: "guardrail_audit_log",
-        severity: (.original_severity // ""),
-        verification: {measured: false},
-        reviewer: (.reviewer // ""),
-        file_line: (.file_line // ""),
-        original_severity: (.original_severity // ""),
-        description: (.description // ""),
-        filter_reason: (.filter_reason // "")
-      }) | map(select(transcribed(.reviewer; .file_line) | not))) as $guardrails
   | [$targets[] | . + {finding_id: .id, id: .key, record: $record_base}] as $now
   | [$now[] | del(.id)] as $now_text
   | [($hold.candidates // [])[] | select(del(.id) as $x | any($now_text[]; . == $x) | not)
       | .id = .record + "#" + .key] as $carried
-  | (($targets | length) + ($carried | length) + ($guardrails | length)) as $count
+  | (($targets | length) + ($carried | length)) as $count
   | {
       status: (if $count == 0 then "empty" else "ok" end),
       count: $count,
       record: $record,
       targets: $targets,
       candidates: ($now + $carried),
-      already_rejected: $guardrails,
       ledger: [$ledger[] | select(.disposition == "issued" or .disposition == "LINK" or .disposition == "REJECT")]
     }
 ' "$json"); then
