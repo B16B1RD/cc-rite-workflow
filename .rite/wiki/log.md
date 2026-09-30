@@ -24,6 +24,9 @@
 * **Skip**: [レビュー結果](raw/reviews/20260930T230650Z-pr-3550.md) — 上流 writer 不在という既存の対処を文書・一次資料・実測で確認した記録であり、新しい欠陥や運用上の経験則はない。版依存の説明は配布文書へ反映済み。
 
 * **lint:clean** — contradictions=0, stale=65, orphans=0, missing_concept=0, unregistered_raw=640, broken_refs=0
+* **Skip**: [20260930T230039Z-pr-3545.md](raw/reviews/20260930T230039Z-pr-3545.md) — 独立レビューの成功記録であり、新しい経験則の記述がない
+* **Skip**: [20260930T231451Z-pr-3545.md](raw/reviews/20260930T231451Z-pr-3545.md) — 独立レビューの成功記録であり、新しい経験則の記述がない
+
 
 ## 2026-09-30
 
