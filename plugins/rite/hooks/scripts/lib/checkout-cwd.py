@@ -52,6 +52,8 @@ _OPAQUE_OPTIONS = {"env": {"-S", "--split-string"}}
 _ASSIGNMENT = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)=(.*)", re.S)
 _VARIABLE = re.compile(r"\$(?:([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)\})")
 _DURATION = re.compile(r"[0-9.]+[smhd]?")
+_FUNCTION = re.compile(r"(?:function[ \t]+[A-Za-z_][A-Za-z0-9_-]*(?=[\s({])"
+                       r"|[A-Za-z_][A-Za-z0-9_-]*[ \t]*\([ \t\n]*\))")
 
 
 def _dynamic(word):
@@ -134,8 +136,8 @@ def _command_position(command, index):
     return re.search(r"(^|[\s;&|(])(then|do|else|if|elif|while|until|!|\{)$", before) is not None
 
 
-def strip_heredocs(command):
-    """The command with each heredoc removed: operator, delimiter and body. Quotes,
+def prepare_command(command):
+    """Return (command without heredocs, has_function_definition). Quotes,
     parameter expansions, arithmetic and comments are followed so that a << inside
     them, or a <<<, starts no heredoc; command substitutions and backquotes are
     followed to their end, and a heredoc inside them is removed like any other. A
@@ -144,6 +146,7 @@ def strip_heredocs(command):
     a body with an unquoted delimiter runs a command substitution, a case command is
     inside $( ), or a quote or substitution does not end."""
     out, stack, pending, index, length = [], [["code", 0]], [], 0, len(command)
+    has_function = False
     escaped = -1  # the index of the last character a backslash escaped
     closed = -1  # the index of the last ) that closed a $( or $((
     while index < length:
@@ -211,6 +214,10 @@ def strip_heredocs(command):
               and command[index + 4:index + 5] in (" ", "\t", "\n") and _command_position(command, index)):
             raise ValueError("a case command inside $( ) is not read here: its pattern ) would end the"
                              " substitution; move the case out of $( ) and set the variable in its branches.")
+        elif ((index == 0 or command[index - 1] in " \t\n;&|({)")
+              and (char.isalpha() or char == "_") and _FUNCTION.match(command, index)
+              and (_command_position(command, index) or command[:index].rstrip().endswith(")"))):
+            has_function = True
         elif char == "(" and kind == "sub":
             context[1] += 1
         elif char == ")" and kind == "sub":
@@ -265,7 +272,7 @@ def strip_heredocs(command):
         raise ValueError("a heredoc does not end at its delimiter " + pending[0][0] + ".")
     if len(stack) > 1:
         raise ValueError("a quote or substitution does not end.")
-    return "".join(out)
+    return "".join(out), has_function
 
 
 def _move(directories, value):
@@ -383,6 +390,68 @@ def git_directories(words, index, directories, variables, changes):
     return directories, changes
 
 
+def reject_compound_changes(segments, cwd, path_dirs, function=False):
+    """Refuse conditional/repeated moves and deferred function calls, not their data.
+
+    The segment reader does not execute branches, iterate loops or call functions.
+    Inspect the whole command before yielding: even a call before a loop's cd may
+    execute after that cd on its next iteration. Functions can run after an outer
+    cd, regardless of where their definition appears.
+    """
+    openings = {"if": "fi", "for": "done", "while": "done", "until": "done",
+                "select": "done", "case": "esac"}
+    blocks = []
+    moved = compound_move = protected = False
+    base = {Path(cwd).resolve()}
+    substitutions = []
+    for original, nested, _before, after in segments:
+        if nested is True:
+            substitutions.append((original, False, _before, after))
+            continue
+        if substitutions:
+            # A substitution keeps its directory changes. Its calls still inherit
+            # outer changes, but a cd used only to resolve a path cannot move them.
+            protected |= reject_compound_changes(substitutions, cwd, path_dirs, function)
+            substitutions = []
+        words = scope._without_redirections(original)
+        if not words:
+            continue
+        start = 0
+        while start < len(words):
+            word = words[start]
+            if word == "function":
+                start += 2  # keyword and function name; the body may share this segment
+                continue
+            if word in openings:
+                blocks.append(openings[word])
+                if word in ("for", "select", "case"):
+                    start = len(words)  # header words and case patterns are data
+                    break
+            elif word in ("fi", "done", "esac"):
+                if blocks and blocks[-1] == word:
+                    blocks.pop()
+            elif word not in scope._KEYWORDS:
+                break
+            start += 1
+        words = words[start:]
+        index, directories, opaque = command_index(words, base, {})
+        if index is None:
+            continue
+        if words[index] in scope._DIRECTORY_MOVERS:
+            moved = True
+            compound_move |= bool(blocks)
+        elif opaque or kind_of(words[index], directories, path_dirs):
+            protected = True
+    if substitutions:
+        protected |= reject_compound_changes(substitutions, cwd, path_dirs, function)
+    if protected and (compound_move or (function and moved)):
+        raise ValueError("cannot determine the working directory when a directory change is inside"
+                         " if / case / a loop, or combined with a function definition; move the"
+                         " directory change out of the compound command and run git / gh / scripts"
+                         " in a separate Bash call from the checkout.")
+    return protected
+
+
 def each_call(command, cwd):
     """Yield (kind, directories, word) for each git / gh call and script run, in order.
     directories is the set it may run in, or None when that cannot be known.
@@ -407,7 +476,9 @@ def each_call(command, cwd):
                 return group_dirs[ids[:end]]
         return here
 
-    segments = scope.shell_segments(strip_heredocs(command), group_ids=True)
+    command, has_function = prepare_command(command)
+    segments = scope.shell_segments(command, group_ids=True, omit_case_patterns=True)
+    reject_compound_changes(segments, cwd, path_dirs, has_function)
     trusted = _assigned_once(segments)
     for position, (words, nested, before, after) in enumerate(segments):
         group = nested[1] if isinstance(nested, tuple) else None
