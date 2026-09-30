@@ -51,18 +51,22 @@ parsed=$(awk -v exception_category="$exception_category" -v reviewer_type="$revi
     if (text ~ /^(なし|None)$/) next
     recommendations++
     value = "(missing)"
-    if (match(text, /分類[*`]*[[:space:]]*[:：][*`]*[[:space:]]*[^[:space:]]*/)) {
-      value = substr(text, RSTART, RLENGTH)
-      sub(/^分類[*`]*[[:space:]]*[:：][*`]*[[:space:]]*/, "", value)
-      sub(/^[`*]+/, "", value)
-      # Cut only prose punctuation or decoration ("actionable、...", "boundary`"); a value
-      # joined by any other character ("actionable/boundary") is reported whole.
-      if (match(value, /[^A-Za-z_-]/) && RSTART > 1) {
-        rest = substr(value, RSTART)
-        lead = substr(rest, 1, 1)
-        if (lead == "`" || lead == "*" || index(rest, "、") == 1 || index(rest, "。") == 1) value = substr(value, 1, RSTART - 1)
+    if (match(text, /分類[*`]*[[:space:]]*(:|：)/)) {
+      clause = substr(text, RSTART + RLENGTH)
+      while (clause != "" && substr(clause, 1, 1) ~ /[*` \t]/) clause = substr(clause, 2)
+      cut = index(clause, "—")
+      if (cut) clause = substr(clause, 1, cut - 1)
+      clause = trim(clause)
+      # The value ends at the first character outside [A-Za-z0-9_-], so a note may follow
+      # it ("boundary（スコープ外）"). A second classification word before the dash means
+      # the reviewer did not pick one value; the whole clause is then reported.
+      if (match(clause, /[A-Za-z0-9_-]+/) && RSTART == 1) {
+        value = substr(clause, 1, RLENGTH)
+        if (substr(clause, RLENGTH + 1) ~ /(actionable|design_confirmation|boundary)/) value = clause
+      } else if (clause != "") {
+        value = clause
+        sub(/[[:space:]].*/, "", value)
       }
-      if (value == "") value = "(missing)"
     }
     if (value != "actionable" && value != "design_confirmation" && value != "boundary") {
       invalid++
