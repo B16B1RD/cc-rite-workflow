@@ -2051,7 +2051,7 @@ make_failing_mktemp() {
 }
 
 echo ""
-echo "=== PZ-08: a pause record that cannot be written fails loudly and leaves nothing behind ==="
+echo "=== PZ-08: failure to create the pause temporary file exits non-zero without a pause record ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 make_failing_mktemp "$d/stub" "pause-"
 rc_pz=0; (cd "$d" && PATH="$d/stub:$PATH" bash "$HOOK" pause) 2>/dev/null || rc_pz=$?
