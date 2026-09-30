@@ -2,6 +2,8 @@
 
 ## 2026-09-30
 
+* **Lint incomplete** — Markdown対象での機械検査は stale=61、orphans=0、missing_concept=0、unregistered_raw=605、broken_refs=0、descriptive_number_ref=0。既存helperのBroken pipe出力と全ページの意味比較未完了のため、Wiki全体の検査成功とは扱わない。
+
 * **Skip**: [行継続の奇偶判定のレビュー結果](raw/reviews/20260930T065252Z-pr-3514.md) — 機構と回帰テストへ反映済みで、追加のドメイン経験則はない
 
 * **Update**: [冪等化の key を前の run が残した状態から毎回作り直すと、2 回目の再実行で key がずれる](pages/anti-patterns/idempotency-key-rebuilt-from-previous-run-state-drifts.md) — raw/fixes/20260929T193322Z-pr-3459.md を統合
