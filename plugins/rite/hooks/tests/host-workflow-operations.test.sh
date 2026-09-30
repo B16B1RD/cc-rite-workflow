@@ -319,6 +319,17 @@ class WorkflowContracts(unittest.TestCase):
         likelihood_retry = next(line for line in pr_review.splitlines()
                                 if line.startswith("| rc=1 + `reason ∈ {anchor_missing,"))
         self.assertIn("読取完了申告の照合", likelihood_retry)
+        measured_reroll = next(line for line in pr_review.splitlines()
+                              if line.startswith("| `[CONTEXT] MEASURED_GATE_FAILED=1; reason=verification_preset_by_caller`"))
+        self.assertIn("update manifest", likelihood_retry)
+        self.assertIn("を更新し", measured_reroll)
+        for line, following in [(likelihood_retry, "and rerun this helper"),
+                                (measured_reroll, "step 1 の JSON を作り直し step 2")]:
+            with self.subTest(route=following):
+                for clause in ["manifest", "agent_id", "output_file", "読取完了申告の照合", "5.1 の回収完了ゲート"]:
+                    self.assertIn(clause, line)
+                self.assertLess(line.index("manifest"), line.index("5.1 の回収完了ゲート"))
+                self.assertLess(line.index("5.1 の回収完了ゲート"), line.index(following))
         for marker in ["| rc=1 + `reason ∈ {table_missing,", "retry の回収結果で manifest を更新し",
                        "| rc=1 + `reason=unmet_finding_not_blocking`"]:
             line = next(line for line in pr_review.splitlines() if line.startswith(marker))

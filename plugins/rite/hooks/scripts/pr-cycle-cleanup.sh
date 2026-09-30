@@ -1687,7 +1687,11 @@ if [ "$review_gc_safe" -eq 1 ] && [ -d "$review_dir" ]; then
     case "$review_pr" in ''|*[!0-9]*) continue ;; esac
     case "$active_prs" in *$'\n'"$review_pr"$'\n'*) continue ;; esac
 
-    if nb_count=$(jq -er '(.non_blocking_findings // []) as $items | if ($items|type)=="array" then ($items|length) else error("invalid non_blocking_findings") end' "$review_file" 2>/dev/null); then
+    # guardrail 行も /rite:cleanup の follow-up 候補なので、cleanup 本体の退避判定
+    # (review-results-archive-or-rm.sh) と同じく、どちらかが非空なら退避する
+    if nb_count=$(jq -er '[(.non_blocking_findings // []), (.guardrail_audit_log // [])] as $lists
+        | if all($lists[]; type == "array") then ($lists | map(length) | add)
+          else error("invalid non_blocking_findings or guardrail_audit_log") end' "$review_file" 2>/dev/null); then
       :
     else
       echo "WARNING: review JSON '$(printf '%s' "$review_file" | neutralize_ctrl)' を解析できないため保持します" >&2

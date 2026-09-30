@@ -20,6 +20,7 @@ The `knowledge_routing` principle additionally draws on t-wada's four quadrants 
 | `issue_accountability` | Accountability for Discovered Issues | All Phases |
 | `no_unnecessary_fallback` | No Unnecessary Fallback | Phase 5.1, PR Review |
 | `no_speculative_structure` | No Speculative Structure | Phase 5.1, PR Review |
+| `no_budget_quality_tradeoff` | No Budget-Driven Quality Trade-off | Phase 5.1, PR Review, Fix |
 | `reference_discovery` | Discover Reference Implementations | Phase 3 |
 | `question_self_check` | Self-Check Before Asking | All Phases |
 | `question_resolution` | Resolve Recommended Reversible Decisions Autonomously | All Phases |
@@ -77,6 +78,16 @@ The `knowledge_routing` principle additionally draws on t-wada's four quadrants 
 2. Applies to specification text as much as to code: reserved sentinels, placeholder branches, unused marker fields, and "for future use" notes in skill / reference / template files.
 3. The legitimate trigger is the current Issue's Acceptance Criteria, or a consumer that lands in the same PR. "It might be needed" / "it keeps the design symmetric" is not a trigger.
 4. When a plan or a review finding proposes speculative structure, drop it rather than adding a smaller version of it — see the "Simplification-First Response Principle" section in [`skills/fix/SKILL.md`](../../../skills/fix/SKILL.md).
+
+### no_budget_quality_tradeoff (No Budget-Driven Quality Trade-off)
+
+**Summary**: Do not lower quality because a count or budget was reached. What may be cut is waste — divergence and idling — never a cycle that is converging.
+
+**Rules**:
+1. Never accept, downgrade, or defer an unresolved finding because a count or budget was reached (cycle number, registration cap, token budget). Judge each finding on its merits (V/C/T).
+2. Waste is divergence and idling: work that does not converge. Stopping it — by the divergence verdict or the stagnation diagnosis — follows this principle and is not a violation.
+3. Stopping at a limit (`safety.max_review_cycles` as a backstop) is a fail-loud stop, not a quality trade-off. What is forbidden is disposing of unresolved findings on the ground that the limit was reached.
+4. The stop conditions themselves stay in [`skills/iterate/SKILL.md`](../../../skills/iterate/SKILL.md) ("設計判断" section) and [review-stagnation.md](../../../references/review-stagnation.md); do not restate them here.
 
 ### reference_discovery (Discover Reference Implementations)
 
@@ -242,9 +253,9 @@ OK patterns:
 |-------|---------------------------|
 | All Phases (Common) | `issue_accountability` / `question_self_check` |
 | Phase 3 (Implementation Plan) | `assumption_surfacing` / `confusion_management` / `inline_planning` / `reference_discovery` |
-| Phase 5.1 (Implementation) | `simplicity_enforcement` / `scope_discipline` / `dead_code_hygiene` / `no_unnecessary_fallback` / `no_speculative_structure` / `issue_accountability` / `documentation_consistency` / `knowledge_routing` / `prefer_partial_edit` |
-| PR Review | `push_back_when_warranted` / `simplicity_enforcement` / `scope_discipline` / `no_unnecessary_fallback` / `no_speculative_structure` / `issue_accountability` / `knowledge_routing` |
-| Fix | `prefer_partial_edit` |
+| Phase 5.1 (Implementation) | `simplicity_enforcement` / `scope_discipline` / `dead_code_hygiene` / `no_unnecessary_fallback` / `no_speculative_structure` / `no_budget_quality_tradeoff` / `issue_accountability` / `documentation_consistency` / `knowledge_routing` / `prefer_partial_edit` |
+| PR Review | `push_back_when_warranted` / `simplicity_enforcement` / `scope_discipline` / `no_unnecessary_fallback` / `no_speculative_structure` / `no_budget_quality_tradeoff` / `issue_accountability` / `knowledge_routing` |
+| Fix | `prefer_partial_edit` / `no_budget_quality_tradeoff` |
 | Before PR Creation | `issue_accountability`（未対応の問題・レビュー指摘がないか / スコープ外の問題が別 Issue として追跡されているか） |
 
 **Reference**: The `/rite:pr-create` Phase 2.5 ([create.md](../../../skills/pr-create/SKILL.md), "2.5 Unaddressed Issues Check" section) implements the unaddressed issues check.
