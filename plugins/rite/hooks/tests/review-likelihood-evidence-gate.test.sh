@@ -43,7 +43,7 @@ printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '- 分類: actionable �
 printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '- 分類: follow-up — 別 Issue で直す' > "$TMP/rec-unknown.md"
 printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '- 分類: follow-up — x' '- 分類: 文書整合 — y' > "$TMP/rec-two.md"
 printf '%s\n' '### 指摘事項' '| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |' '|---|---|---|---|---|' '| HIGH | current-pr | a.sh:1 | defect without anchor | fix |' '### 推奨事項' '- 分類: follow-up — x' > "$TMP/rec-with-finding-violation.md"
-printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '- 分類: actionable — a' '  続きの行' '  分類の根拠は diff の 12 行目' '  - 分類の見直しは不要' '* `分類: design_confirmation` — b' '+ **分類**: boundary — c' '1. 分類: actionable — d' '### 監査ログ' 'なし' > "$TMP/rec-valid.md"
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '- 分類: actionable — a' '  続きの行' '  分類の根拠は diff の 12 行目' '  分類: actionable とした根拠は次の行' '  - 分類の見直しは不要' '* `分類: design_confirmation` — b' '+ **分類**: boundary — c' '1. 分類: actionable — d' '### 監査ログ' 'なし' > "$TMP/rec-valid.md"
 printf '%s\n' '### Findings' '| Severity | Scope | File:Line | Description | Recommendation |' '|---|---|---|---|---|' '### Recommendations' '- 分類: boundary — e' > "$TMP/rec-valid-en.md"
 printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' 'なし' > "$TMP/rec-none.md"
 printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '| 分類 | 内容 |' '|---|---|' '| actionable | a |' > "$TMP/rec-table.md"
