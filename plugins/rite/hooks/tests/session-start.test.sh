@@ -2226,7 +2226,7 @@ else
 fi
 echo ""
 
-echo "RQ-14: an unmarked queue idle for 7 days is kept whatever the liveness TTL env says; the marked control queue proves the reap ran"
+echo "RQ-14: an unmarked queue idle for 7 days, and one without any updated_at, are kept whatever the liveness TTL env says; the marked control queue proves the reap ran"
 seven_days_ts=$(iso8601_now -604800)
 rq14_ok=1
 rq14_note=""
@@ -2239,6 +2239,7 @@ for ttl in 1 24h; do
     : > "$dir_rq14/.rite/state/run-queue-${sid}.watchdog"
   done
   write_ended_marker "$dir_rq14" "ctrl-sid"
+  write_queue_file "$dir_rq14" "nots-sid" '{"issues":[17],"cursor":0,"mode":"merge","failed":[],"outstanding":[],"active":true}'
   rc_rq14=0
   RITE_STATE_ROOT="$dir_rq14" RITE_SESSION_LIVENESS_TTL_HOURS="$ttl" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq14-$ttl-out" 2>"$TEST_DIR/rq14-$ttl-err" || rc_rq14=$?
   if [ "$rc_rq14" -ne 0 ] \
@@ -2249,13 +2250,15 @@ for ttl in 1 24h; do
     || [ -e "$dir_rq14/.rite/state/run-queue-ctrl-sid.ended" ] \
     || grep -q 'RITE_SESSION_LIVENESS_TTL_HOURS' "$TEST_DIR/rq14-$ttl-err" \
     || [ "$(grep -cxF "$(expected_kept_notice "$dir_rq14" week-sid 0/1)" "$TEST_DIR/rq14-$ttl-out")" -ne 1 ] \
-    || [ "$(wc -l < "$TEST_DIR/rq14-$ttl-out" | tr -d ' ')" -ne 1 ]; then
+    || [ ! -f "$dir_rq14/.rite/state/run-queue-nots-sid.json" ] \
+    || [ "$(grep -cxF "$(expected_kept_notice "$dir_rq14" nots-sid 0/1)" "$TEST_DIR/rq14-$ttl-out")" -ne 1 ] \
+    || [ "$(wc -l < "$TEST_DIR/rq14-$ttl-out" | tr -d ' ')" -ne 2 ]; then
     rq14_ok=0
     rq14_note="$rq14_note ttl=$ttl rc=$rc_rq14 files=$(ls "$dir_rq14/.rite/state" | tr '\n' ' ') out=$(cat "$TEST_DIR/rq14-$ttl-out") err=$(cat "$TEST_DIR/rq14-$ttl-err");"
   fi
 done
 if [ "$rq14_ok" -eq 1 ]; then
-  pass "RQ-14: 7-day-old unmarked queue and watchdog remain and are announced once under TTL=1 and TTL=24h; marked control queue reaped; no TTL warning"
+  pass "RQ-14: 7-day-old and updated_at-less unmarked queues remain and are announced once each under TTL=1 and TTL=24h (watchdog kept); marked control queue reaped; no TTL warning"
 else
   fail "RQ-14:$rq14_note"
 fi
@@ -2463,7 +2466,7 @@ dir_rq17="$TEST_DIR/rq-17"
 mkdir -p "$dir_rq17"
 create_state_file "$dir_rq17" '{"active":true,"issue_number":2502,"phase":"review","next_action":"iterate","loop_count":1,"pr_number":99,"branch":"fix/issue-2502-x","schema_version":3}' "own-sid"
 write_batch_queue "$dir_rq17" "own-sid" true 0
-write_queue_file "$dir_rq17" "other-sid" "$(jq -n --arg ts "$seven_days_ts" '{issues:[9],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+write_queue_file "$dir_rq17" "other-sid" "$(jq -n --arg ts "$(iso8601_now -604800)" '{issues:[9],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
 output=$(run_hook_with_session "$dir_rq17" "compact" "own-sid")
 rq17_line=$(grep -F '終了の印が無い他セッションの run-queue' <<<"$output" || true)
 if [ "$(grep -c . <<<"$rq17_line")" -eq 1 ] \

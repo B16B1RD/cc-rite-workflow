@@ -1,8 +1,9 @@
 #!/bin/bash
 # Reap other-session run-queue files whose owner session has gone away.
 #
-# Resume is same-session only. A queue is reaped when its updated_at is older
-# than 2h (or missing / unparsable) and its owner session is not live. The
+# Resume is same-session only. An ended-marked queue (see below) is reaped when
+# its updated_at is older than 2h (or missing / unparsable) and its owner session
+# is not live. The
 # queue's updated_at moves only at batch start and cursor advance, so a live
 # session routinely exceeds 2h on one Issue. Liveness is the owner's
 # flow-state updated_at, which moves on every phase transition, within the
