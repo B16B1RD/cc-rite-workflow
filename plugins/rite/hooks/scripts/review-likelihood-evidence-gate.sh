@@ -39,15 +39,18 @@ esac
 parsed=$(awk -v exception_category="$exception_category" -v reviewer_type="$reviewer_type" '
   BEGIN { in_findings=0; in_recommendations=0; saw_heading=0; saw_header=0; saw_separator=0; findings=0; missing=0; malformed=0; recommendations=0; invalid=0 }
   function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
-  /^###[[:space:]]*(推奨事項|Recommendations)[[:space:]]*$/ { in_recommendations=1; in_findings=0; next }
-  in_recommendations && /^#/ { in_recommendations=0 }
+  /^###[[:space:]]*(推奨事項|Recommendations)/ { in_recommendations=1; in_findings=0; next }
+  in_recommendations && /^#/ && $0 !~ /^####/ { in_recommendations=0 }
   in_recommendations {
-    # Every non-indented line is one recommendation; indented lines continue the
-    # previous one. An unclassified item must never fall out of adoption triage.
-    if (trim($0) == "" || substr($0, 1, 1) ~ /[ \t]/ || $0 ~ /^\|[[:space:]]*:?-+/) next
+    # Every non-indented line is one recommendation (a deeper heading included, so
+    # it cannot hide the items below it); an indented line continues the previous
+    # one unless it carries its own 分類. An unclassified item must never fall out
+    # of adoption triage.
+    if (trim($0) == "" || $0 ~ /^\|[[:space:]]*:?-+/) next
     text = $0
-    sub(/^([-*+]|[0-9]+\.)[[:space:]]+/, "", text)
+    sub(/^[[:space:]]*([-*+]|[0-9]+\.)[[:space:]]+/, "", text)
     text = trim(text)
+    if (substr($0, 1, 1) ~ /[ \t]/ && text !~ /^[*`]*分類/) next
     if (text ~ /^(なし|None)$/) next
     recommendations++
     value = "(missing)"
@@ -57,44 +60,14 @@ parsed=$(awk -v exception_category="$exception_category" -v reviewer_type="$revi
       cut = index(clause, "—")
       if (cut) clause = substr(clause, 1, cut - 1)
       clause = trim(clause)
-      # The value ends at the first character outside [A-Za-z0-9_-], so a note may follow
-      # it ("boundary（スコープ外）"). A second classification word reached across only
-      # separators, decoration and "or"/"and" means the reviewer did not pick one value;
-      # the whole clause is then reported. The same word inside a note is not a value.
+      # The value is exactly one word; any note goes after " — ". Anything else between
+      # the word and the dash (a second value, a bracketed note, punctuation) makes the
+      # whole clause invalid so the reviewer is asked to pick one value.
       if (match(clause, /[A-Za-z0-9_-]+/) && RSTART == 1) {
         value = substr(clause, 1, RLENGTH)
         rest = substr(clause, RLENGTH + 1)
-        while (rest != "") {
-          if (substr(rest, 1, 1) ~ /[ \t\/,;&+|`*]/) rest = substr(rest, 2)
-          else if (index(rest, "、") == 1) rest = substr(rest, length("、") + 1)
-          else if (index(rest, "・") == 1) rest = substr(rest, length("・") + 1)
-          else if (index(rest, "／") == 1) rest = substr(rest, length("／") + 1)
-          else if (index(rest, "，") == 1) rest = substr(rest, length("，") + 1)
-          else if (index(rest, "または") == 1) rest = substr(rest, length("または") + 1)
-          else if (index(rest, "もしくは") == 1) rest = substr(rest, length("もしくは") + 1)
-          else if (index(rest, "あるいは") == 1) rest = substr(rest, length("あるいは") + 1)
-          else if (index(rest, "および") == 1) rest = substr(rest, length("および") + 1)
-          else if (index(rest, "及び") == 1) rest = substr(rest, length("及び") + 1)
-          else if (index(rest, "又は") == 1) rest = substr(rest, length("又は") + 1)
-          else if (index(rest, "ないし") == 1) rest = substr(rest, length("ないし") + 1)
-          else if (index(rest, "かつ") == 1) rest = substr(rest, length("かつ") + 1)
-          else if (index(rest, "か") == 1) rest = substr(rest, length("か") + 1)
-          else if (index(rest, "と") == 1) rest = substr(rest, length("と") + 1)
-          else if (tolower(substr(rest, 1, 6)) == "and/or" || tolower(substr(rest, 1, 6)) == "or/and") rest = substr(rest, 7)
-          else if (substr(rest, 1, 1) == "(") {
-            # An opening paren joins values only when a connective follows it; otherwise
-            # it opens a note ("boundary (actionable ではない)").
-            peek = substr(rest, 2)
-            while (peek != "" && substr(peek, 1, 1) ~ /[ \t`*]/) peek = substr(peek, 2)
-            if ((tolower(substr(peek, 1, 2)) == "or" && substr(peek, 3, 1) !~ /[A-Za-z0-9_]/) || (tolower(substr(peek, 1, 3)) == "and" && substr(peek, 4, 1) !~ /[A-Za-z0-9_]/)) rest = substr(rest, 2)
-            else break
-          }
-          else if (tolower(substr(rest, 1, 2)) == "or" && substr(rest, 3, 1) !~ /[A-Za-z0-9_]/) rest = substr(rest, 3)
-          else if (tolower(substr(rest, 1, 3)) == "and" && substr(rest, 4, 1) !~ /[A-Za-z0-9_]/) rest = substr(rest, 4)
-          else break
-        }
-        rest = tolower(rest)
-        if (index(rest, "actionable") == 1 || index(rest, "design_confirmation") == 1 || index(rest, "boundary") == 1) value = clause
+        while (rest != "" && substr(rest, 1, 1) ~ /[*` \t]/) rest = substr(rest, 2)
+        if (rest != "") value = clause
       } else if (clause != "") {
         value = clause
         sub(/[[:space:]].*/, "", value)

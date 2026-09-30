@@ -224,6 +224,8 @@ named subagent の system prompt は各 agent ファイル本体だけで、別�
 
 3 分類のうち `design_confirmation` だけが採否ゲートの候補から外れる。欠落や規定外の値をそこへ寄せると、reviewer が「別 Issue で直す」と書いた推奨が、起票・記録・保留のどの出口も経ずに消える。どの値へ寄せても reviewer の判断を orchestrator が上書きすることになるため、再生成で reviewer 自身に分類させ、再発すれば `[review:error]` で止める。
 
+値は `分類:` の直後の 1 語とし、注記は ` — ` の後ろに置く文法に閉じる。値の後ろに注記を自由に続けてよいとすると、「2 つ目の値」と「注記の中の分類語」を字面で区別する判定が要り、接続語や括弧を足すたびに取りこぼしと誤拒否が入れ替わる。文法を producer の指示と gate で揃えれば、外れた書き方は再生成の診断で直せる。
+
 `recommendation_items` は全推奨の canonical。`candidate_count` は Source A + Source B（actionable/boundary）の dedup 後の合算に triage の hold の候補を加えた数で、7.7 / 8.0.2 の trigger になる。
 
 ## likelihood-evidence-before-demotion
