@@ -4,14 +4,20 @@ title: "テストで「同じ行」を固定するなら行単位で判定し、
 domain: "patterns"
 description: "bash の [[ \"$out\" == *A*B* ]] は glob の * が改行をまたぐため、A と B が同じ行にあることを固定しない。行単位の判定は awk の index で書く。失敗時だけ出す通知は、成功経路のテストで stdout を受け取り、肯定側と同じ述語の否定を条件にして「出ていない」ことを固定する。否定条件を文言リテラルで書くと、文言の変更で黙って空振りになる。"
 created: "2026-09-28T12:36:22Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T12:36:22Z" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-30T05:37:00Z" }
 sources:
   - type: "fixes"
     resource: "raw/fixes/20260928T115704Z-pr-3397.md"
   - type: "reviews"
     resource: "raw/reviews/20260928T121202Z-pr-3397.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T050041Z-pr-3510.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T051714Z-pr-3510.md"
 tags: []
 confidence: high
+verified:
+  - { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-30T05:37:00Z" }
 ---
 
 # テストで「同じ行」を固定するなら行単位で判定し、否定条件は肯定側と同じ述語の否定で書く
@@ -32,6 +38,12 @@ bash の `[[ "$out" == *A*B* ]]` は glob の `*` が改行をまたぐため、
 
 **効果は mutation で確かめる**: 強化した pin は、生き残っていた mutant が修正後に FAIL することを確かめてから commit する。
 
+### 規範文を pin するときは否定語まで固定する
+
+文書に「〜しない」という規範文を足し、その存在を契約テストで pin するとき、case パターンが文の前半（主題）までしか照合しないと、否定部分を反転した文でも assert が通る。観測例では、採否の理由に回数・予算を使わないという文を pin するパターンが「回数・予算」までで終わり、「の到達は採否の理由にしない」を照合していなかった。文を「理由にしてよい」へ反転した変異体でも全 assert が通り、2 名の reviewer が同じ根因を独立に確認した。
+
+修正は、パターンに否定の断片を 1 要素連結するだけだった。再レビューでは、文を「理由にする」へ反転した変異体でこの assert が FAIL に転じることを隔離した作業ツリーで実測して確認した。規範文の pin は、存在だけでなく極性（否定語）まで含めて固定し、反転変異で FAIL することを実測して閉じる。部分一致のため末尾への文字追加は通るが、契約が求める向きを無効化する反転が検出されれば足りる。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](./mutation-testing-test-fidelity.md)
@@ -40,3 +52,5 @@ bash の `[[ "$out" == *A*B* ]]` は glob の `*` が改行をまたぐため、
 
 - [fix 結果](../../raw/fixes/20260928T115704Z-pr-3397.md)
 - [レビュー結果](../../raw/reviews/20260928T121202Z-pr-3397.md)
+- [規範文の否定の向きが未 pin だったレビュー結果](../../raw/reviews/20260930T050041Z-pr-3510.md)
+- [反転変異で FAIL することを確かめた再レビュー結果](../../raw/reviews/20260930T051714Z-pr-3510.md)

@@ -4,7 +4,7 @@ title: "エラーメッセージが案内するコマンドは、テストで出
 domain: "patterns"
 description: "エラーメッセージが利用者に打たせるコマンドを文字列の部分一致だけで固定すると、案内先 CLI の必須引数が欠けていても検出できない。テストは出力から案内コマンドを抽出してそのまま実行し、文言と実行可能性を 1 つの assert で結ぶ。"
 created: "2026-09-26T14:50:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:05:00Z" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-30T05:36:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260926T150855Z-pr-3171.md"
@@ -26,6 +26,10 @@ sources:
     resource: "raw/fixes/20260927T094604Z-pr-3253.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T095651Z-pr-3253.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T052413Z-pr-3509.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260930T053150Z-pr-3509.md"
 tags: []
 confidence: high
 verified:
@@ -34,6 +38,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:40:29Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:05:00Z" }
+  - { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-30T05:36:00Z" }
 ---
 
 # エラーメッセージが案内するコマンドは、テストで出力から抽出して逐語実行する
@@ -88,6 +93,12 @@ verified:
 
 最終検証の入力にプラグイン全体を指定すると、テスト実行中に Python が書く `__pycache__` によって「入力が変わった」と判定されることがある。検証コマンドに `PYTHONDONTWRITEBYTECODE=1` を付けると入力が固定される。
 
+### 案内どおりの操作で復旧できるかを実測する（別の helper での再現）
+
+fail-loud の ERROR に添えた「対処」が、案内どおりに実行しても同じ ERROR へ戻ることがある。観測例では、git stash の「新しい entry が作られなかったら止める」ガードが submodule だけが変わった repo で止まり、案内は「submodule 内で commit する」だった。しかし submodule 内で commit しても親の gitlink 変更が残るため、stash は新 entry を作らず再び同じ ERROR になった。案内文は、書かれたとおりに実行して再実行が通るところまでを実測で確かめる。修正後は、案内どおりの操作をしたあとの再実行が通ることをテストで固定した。
+
+helper の確認・復旧案内行を写して載せる参照文書（手順例）も、helper 側の案内行が変わると追随が漏れやすい。helper を正とする参照文書は、案内行まで helper と同じにそろえる。
+
 ## 関連ページ
 
 - [エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する](../anti-patterns/locale-dependent-error-message-grep-assertion.md)
@@ -105,3 +116,5 @@ verified:
 - [2 経路目の固定を変異で確かめたレビュー結果](../../raw/reviews/20260927T095125Z-pr-3251.md)
 - [拒否文に受理される形を列挙した fix 結果](../../raw/fixes/20260927T094604Z-pr-3253.md)
 - [拒否文の案内の解消と pin 粒度の論点を記録したレビュー結果](../../raw/reviews/20260927T095651Z-pr-3253.md)
+- [案内どおりに実行しても同じ ERROR へ戻る対処を指摘したレビュー結果](../../raw/reviews/20260930T052413Z-pr-3509.md)
+- [案内後の再実行が通ることを固定した fix 結果](../../raw/fixes/20260930T053150Z-pr-3509.md)

@@ -20,11 +20,16 @@ sources:
     resource: "raw/reviews/20260906T134450Z-pr-2582.md"
   - type: "reviews"
     resource: "raw/reviews/20260929T052828Z-pr-3438.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T050112Z-pr-3509.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260930T050924Z-pr-3509.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T05:45:52Z" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-30T05:36:30Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T05:45:52Z" }
+  - { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-30T05:36:30Z" }
 ---
 
 # テンプレート流用の新規スクリプトは最新兄弟の防御を継承する
@@ -92,6 +97,12 @@ signal trap を 1 行に統合して個別の `exit` を持たせない形は、
 
 **継承するのは防御だけでなく失敗経路のテストも**: 兄弟機構と同じ処理を別の場所で再実装すると、兄弟側にある失敗経路のテスト（記録が object でない、書き込めない、別セッションを指す）は付いてこない。再実装した側にも同じ失敗経路のテストを揃える。兄弟が使う共通関数を流用するときは副産物も確かめる。原子書き込みの共通関数は `.lock` を残すので、存在だけを見る記録ファイルは mktemp と mv だけで書けば足りた。
 
+### 継承する前に、後続の操作が同じかを実行で確かめる
+
+兄弟の防御は、兄弟と同じ操作を前提に書かれている。防御をそのまま継承すると、操作が違う新規 helper では逆に害になることがある。観測例では、git stash の判定を兄弟にならって submodule を無視する形に狭める案が出た。しかしこの helper は後続で orphan checkout と `git rm -rf .` を実行するため、submodule 内の未コミット編集を消す。兄弟側は checkout だけだった。base と HEAD の helper を同条件で実行して比べ、継承すると編集が消えることを確かめ、採らなかった。判定を狭める代わりに、停止を維持して原因と対処を添えた。
+
+レビュアー間で「継承すべき」と「継承すると消える」が対立したときは、主張を比べず、同条件で実行して決着させる。兄弟の防御を継承する前に、その防御が守っている操作と、新規側の後続操作の違い（checkout のみか、orphan と削除を伴うか）を確認する。
+
 ## 関連ページ
 
 - [再発防止 guard スクリプトは docstring の宣言意図と実装 regex を実測で校正する](./guard-script-contract-calibration.md)
@@ -108,3 +119,5 @@ signal trap を 1 行に統合して個別の `exit` を持たせない形は、
 - [抽出述語を sibling helper と揃えず新規 checker だけが後退した](../../raw/fixes/20260812T133631Z-pr-2278.md)
 - [レビュー結果](../../raw/reviews/20260906T134450Z-pr-2582.md)
 - [停止許可の分岐を足したレビュー結果](../../raw/reviews/20260929T052828Z-pr-3438.md)
+- [兄弟の方式の継承をめぐってレビュアーが対立したレビュー結果](../../raw/reviews/20260930T050112Z-pr-3509.md)
+- [継承せず停止を維持した fix 結果](../../raw/fixes/20260930T050924Z-pr-3509.md)

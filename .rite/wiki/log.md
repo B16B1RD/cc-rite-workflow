@@ -98,6 +98,16 @@
 
 * **Lint incomplete** — 機械検査は stale=61, orphans=0, missing_concept=0, unregistered_raw=597, broken_refs=0, descriptive_number_ref=0。既存ページ全件の意味比較は未実施。今回の ingest は検証記録の処理済み化のみで、経験則本文は変更していない。
 
+* **Update**: [テンプレート流用の新規スクリプトは最新兄弟の防御を継承する](pages/heuristics/new-script-inherits-latest-sibling-defenses.md) — raw/reviews/20260930T050112Z-pr-3509.md を統合
+* **Update**: [テンプレート流用の新規スクリプトは最新兄弟の防御を継承する](pages/heuristics/new-script-inherits-latest-sibling-defenses.md) — raw/fixes/20260930T050924Z-pr-3509.md を統合
+* **Update**: [テストで「同じ行」を固定するなら行単位で判定し、否定条件は肯定側と同じ述語の否定で書く](pages/patterns/test-pin-same-line-and-negation-by-positive-predicate.md) — raw/reviews/20260930T050041Z-pr-3510.md を統合
+* **Update**: [テストで「同じ行」を固定するなら行単位で判定し、否定条件は肯定側と同じ述語の否定で書く](pages/patterns/test-pin-same-line-and-negation-by-positive-predicate.md) — raw/reviews/20260930T051714Z-pr-3510.md を統合
+* **Create**: [出力形式の gate を新設したら、producer 側にも同じ区切り規則を書く](pages/heuristics/output-format-gate-needs-producer-side-delimiter-rule.md) — raw/reviews/20260930T052103Z-pr-3521.md を新規ページ化
+* **Create**: [値の切り詰めは、許す区切り文字を列挙して限定し、rc の振り分けは完全一致で固定する](pages/patterns/value-truncation-allows-listed-delimiters-only.md) — raw/fixes/20260930T053339Z-pr-3521.md を新規ページ化
+* **Update**: [エラーメッセージが案内するコマンドは、テストで出力から抽出して逐語実行する](pages/patterns/guidance-command-test-by-verbatim-execution.md) — raw/reviews/20260930T052413Z-pr-3509.md を統合
+* **Update**: [エラーメッセージが案内するコマンドは、テストで出力から抽出して逐語実行する](pages/patterns/guidance-command-test-by-verbatim-execution.md) — raw/fixes/20260930T053150Z-pr-3509.md を統合
+* **Skip**: [20260930T053125Z-pr-3512.md](raw/reviews/20260930T053125Z-pr-3512.md) — cd 拒否の判定機構に固有の修正結果報告で、一般化できる経験則を抽出できないため
+
 ## 2026-09-29
 
 * **Update**: [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) — raw/reviews/20260929T104700Z-pr-3448.md で補強
