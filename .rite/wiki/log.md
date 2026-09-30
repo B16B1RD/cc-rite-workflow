@@ -2,6 +2,9 @@
 
 ## 2026-09-30
 
+* **Lint incomplete** — 機械検査は stale=63、orphans=0、missing_concept=0、unregistered_raw=619、broken_refs=0、descriptive_number_ref=0。全658ページの意味的な矛盾比較は未完了であり、Wiki全体の品質検査成功とは扱わない。今回更新した4ページは出典と既存の詳細を照合した。
+
+
 * **Update**: [検証範囲と手順の整合](pages/anti-patterns/assert-label-overclaims-predicate-scope.md) — [記録](raw/reviews/20260930T095402Z-pr-3525.md)を統合
 * **Update**: [検証範囲と手順の整合](pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md) — [記録](raw/reviews/20260930T095659Z-pr-3516.md)を統合
 * **Update**: [検証範囲と手順の整合](pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md) — [記録](raw/fixes/20260930T100756Z-pr-3516.md)を統合
