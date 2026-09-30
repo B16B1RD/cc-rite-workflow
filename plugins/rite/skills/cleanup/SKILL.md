@@ -1040,7 +1040,7 @@ rationale: references/rationale.md#review-cleanup-reasons
   - 該当行が無いとき: ` ` + 「⚠️ 作業メモリの{対象}の実行結果を確認できませんでした — Issue #{issue_number} の作業メモリコメントを確認してください」を付記。**marker 不在を成功と読んではならない**
 - `{issue_close_check}`: ステップ 10 の `[CONTEXT] ISSUE_CLOSE=` 行で判定する（archive-procedures §3.6.1）。`{issue_number}` が空（関連 Issue 未識別）なら `x`。それ以外は `[CONTEXT] ` 行頭一致 + `ISSUE_CLOSE=` + `issue={issue_number}`（値の直後が `;` または行末）に該当する行を集め、**その中の最後の出現 1 行だけを選ぶ**（recency。`/rite:batch-run --merge` では先行 Issue の marker が文脈に残るため）。選んだ 1 行を以下で評価する:
   - `ISSUE_CLOSE=skipped` かつ `reason=pr_not_merged`: `x` + 「ℹ️ PR がマージされていないため Issue #{issue_number} は開いたまま残しています。作業を中止する場合は `/rite:issue-cancel {issue_number}` を実行してください」を付記
-  - `ISSUE_CLOSE=closed` / `ISSUE_CLOSE=already_closed` / `ISSUE_CLOSE=not_identified` のいずれか: `x`（x とする値はこの 3 つに限る）
+  - `ISSUE_CLOSE=closed` / `ISSUE_CLOSE=already_closed` / `ISSUE_CLOSE=not_identified` のいずれか: `x`（x とする値は上の skipped とこの 3 つに限る）
   - `ISSUE_CLOSE=failed` かつ `reason=no_pr`: ` ` + 「⚠️ 関連 PR が無いため Issue #{issue_number} をクローズしていません。`gh issue view {issue_number} -R {owner_repo}` で状態を確認し、作業が完了していれば手動でクローズしてください」を付記
   - 上記以外（`ISSUE_CLOSE=failed` かつ `reason=` が `close_failed` / `verify_failed` / `state_<STATE>` / `target_mismatch` / `pr_view_failed` のいずれか等）: ` ` + 「⚠️ Issue #{issue_number} のクローズを確認できませんでした（{marker の reason 値}）。`gh pr view {pr_number} -R {owner_repo} --json body,headRefName` で PR の関連 Issue を確かめ、その Issue が OPEN なら `gh issue close <番号> -R {owner_repo}` を手動実行してください」を付記
   - 該当行が無いとき: ` ` + 「⚠️ Issue #{issue_number} のクローズの実行結果を確認できませんでした。`gh issue view {issue_number} -R {owner_repo}` で状態を確認してください」を付記。**marker 不在を成功と読んではならない**
