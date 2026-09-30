@@ -96,6 +96,8 @@
 
 * **Skip**: [設定バックアップ失敗時の停止のレビュー結果](raw/reviews/20260930T045754Z-pr-3507.md) — 指摘なしの作業固有の検証記録であり、新たなドメイン経験則はない
 
+* **Lint incomplete** — 機械検査は stale=61, orphans=0, missing_concept=0, unregistered_raw=597, broken_refs=0, descriptive_number_ref=0。既存ページ全件の意味比較は未実施。今回の ingest は検証記録の処理済み化のみで、経験則本文は変更していない。
+
 ## 2026-09-29
 
 * **Update**: [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) — raw/reviews/20260929T104700Z-pr-3448.md で補強
