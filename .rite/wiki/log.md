@@ -266,6 +266,8 @@
 
 * **Skip**: [20260930T135430Z-pr-3549.md](raw/reviews/20260930T135430Z-pr-3549.md) — 再レビューで指摘なし。括弧書きの例示の経験則は同じ変更の先行するレビュー結果と fix 結果から統合済み
 
+* **lint:clean** — contradictions=0, stale=64, orphans=0, missing_concept=0, unregistered_raw=635, broken_refs=0（矛盾の意味比較は今回更新したページとその関連ページに限った。全ページの比較は未完了）
+
 ## 2026-09-29
 
 * **Update**: [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) — raw/reviews/20260929T104700Z-pr-3448.md で補強
