@@ -164,7 +164,7 @@ if [ "$missing" -gt 0 ]; then
 fi
 
 if [ "$invalid" -gt 0 ]; then
-  echo "ERROR: reviewer output contains $invalid recommendation(s) whose 分類 is missing or not one of actionable / design_confirmation / boundary (分類 must open the item, right after the list marker)" >&2
+  echo "ERROR: reviewer output contains $invalid recommendation(s) whose 分類 is missing or not one of actionable / design_confirmation / boundary (分類 must open the item: at the start of the line or right after one of the list markers - / * / + / ・ / N.)" >&2
   printf '%s\n' "$parsed" | tail -n +2 | while IFS=$'\t' read -r line value; do
     echo "  line $line: 分類=$value" >&2
   done

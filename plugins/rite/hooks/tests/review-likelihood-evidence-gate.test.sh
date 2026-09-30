@@ -117,8 +117,13 @@ for line in 5 6 7 8; do
   check grep -qx "  line $line: 分類=(missing)" <<<"$(gate_out "$TMP/rec-mention.md")"
 done
 check grep -q '分類 must open the item' <<<"$(gate_out "$TMP/rec-mention.md")"
-printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '- 分類: actionable — a' '* `分類: design_confirmation` — b' '+ **分類**: boundary — c' '- 分類：actionable — d' '分類: actionable — e' '・分類: boundary — f' '- 分類: actionable — 本文で 分類: boundary に触れる' > "$TMP/rec-head.md"
-check grep -q 'findings=0; recommendations=7$' <<<"$(gate_out "$TMP/rec-head.md")"
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '- 分類: actionable — a' '* `分類: design_confirmation` — b' '+ **分類**: boundary — c' '- 分類：actionable — d' '分類: actionable — e' '・分類: boundary — f' '  ・分類: boundary — g' '- 分類: actionable — 本文で 分類: boundary に触れる' > "$TMP/rec-head.md"
+check grep -q 'findings=0; recommendations=8$' <<<"$(gate_out "$TMP/rec-head.md")"
+# A marker outside the accepted set does not open the item, and the diagnostic names the accepted ones.
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '• 分類: actionable — a' '1) 分類: actionable — b' > "$TMP/rec-marker.md"
+check grep -q 'recommendations=2; invalid=2$' <<<"$(gate_out "$TMP/rec-marker.md")"
+check [ "$(gate_out "$TMP/rec-marker.md" | grep -c ': 分類=(missing)$')" -eq 2 ]
+check grep -qF 'right after one of the list markers - / * / + / ・ / N.)' <<<"$(gate_out "$TMP/rec-marker.md")"
 printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '- 分類: follow-up — 分類: actionable に直すべき' > "$TMP/rec-head-value.md"
 check grep -q 'recommendations=1; invalid=1$' <<<"$(gate_out "$TMP/rec-head-value.md")"
 check grep -qx '  line 5: 分類=follow-up' <<<"$(gate_out "$TMP/rec-head-value.md")"
