@@ -3269,13 +3269,20 @@ p10_allow "a path-only substitution in a condition does not move the caller" "$p
 p10_allow "a case arm before an if is not a function definition" "$p10_wt" \
   "case x in y) :;; x) if true; then :; fi;; esac; cd $p10_wt; gh api x"
 # Patterns are data, even when their dequoted words spell control keywords.
-for p10_pattern in if "'if'" 'a|if' for "'esac'" 'a|esac' '(if' '\\if' '[(]' '[)]' '[[:alpha:](]'; do
-  p10_allow "case pattern $p10_pattern before an outer cd" "$p10_wt" \
-    "case x in y) :;; $p10_pattern) :;; esac; cd $p10_wt; gh api x"
+for p10_pattern in if "'if'" 'a|if' for "'esac'" 'a|esac' '(if' '\if' '[' '[abc' "'[()]'" '[\(]' '[\)]'; do
+  p10_allow_cmd="case x in y) :;; $p10_pattern) :;; esac; cd $p10_wt; gh api x"
+  p10_deny_cmd="case x in y) :;; $p10_pattern) cd $p10_wt;; esac; gh api x"
+  if bash -n <<<"$p10_allow_cmd" && bash -n <<<"$p10_deny_cmd"; then
+    pass "case pattern $p10_pattern fixtures are valid Bash"
+  else
+    fail "case pattern $p10_pattern fixtures are invalid Bash"
+  fi
+  p10_allow "case pattern $p10_pattern before an outer cd" "$p10_wt" "$p10_allow_cmd"
   p10_deny "case pattern $p10_pattern does not close the case before cd" outside-checkout-uninspectable \
-    "cannot determine the working directory" "$p10_wt" \
-    "case x in y) :;; $p10_pattern) cd $p10_wt;; esac; gh api x"
+    "cannot determine the working directory" "$p10_wt" "$p10_deny_cmd"
 done
+p10_deny "literal open bracket preserves an outside cd after the case" outside-checkout \
+  "runs 'gh' $p10_out" "$p10_wt" "case x in [) :;; esac; cd $p10_scratch; gh api x"
 p10_deny "nested cases retain the outer conditional cd" outside-checkout-uninspectable \
   "cannot determine the working directory" "$p10_wt" \
   "case x in x) case y in y) :;; esac; cd $p10_wt;; esac; gh api x"

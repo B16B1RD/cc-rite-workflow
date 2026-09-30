@@ -580,7 +580,6 @@ def shell_segments(command, level=0, group_ids=False, omit_case_patterns=False):
     # The cwd reader needs pattern boundaries before dequoting loses them. Other
     # users retain the existing segment representation unless they opt in.
     cases = []
-    pattern_class = ""
 
     def end_word():
         nonlocal word, quoted, redirection, signed
@@ -672,16 +671,6 @@ def shell_segments(command, level=0, group_ids=False, omit_case_patterns=False):
         elif ch == "#" and not word and not quoted:
             while index + 1 < length and command[index + 1] != "\n":
                 index += 1
-        elif cases and cases[-1][0] == "pattern" and (ch == "[" or pattern_class):
-            word.append(ch)
-            # Parentheses and alternatives inside a bracket expression are data.
-            # Keep POSIX class/equivalence/collating brackets inside the outer one.
-            inner = re.search(r"\[([.:=])[^\[\]]*\1$", pattern_class)
-            if ch == "]" and pattern_class not in ("[", "[!", "[^") and not (
-                    inner and inner.start() > 0):
-                pattern_class = ""
-            else:
-                pattern_class += ch
         elif ch in " \t\r":
             end_word()
         elif cases and cases[-1][0] == "pattern" and ch in "()|":
