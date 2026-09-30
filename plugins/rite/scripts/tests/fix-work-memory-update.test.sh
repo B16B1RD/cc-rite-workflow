@@ -137,7 +137,7 @@ check 'body first match overrides branch' lacks "$CASE_DIR/git.log" 'branch --sh
 legacy_base=$(
   set +e
   cd "$CASE_DIR"
-  base_branch=$(grep -E '^\s*base:' rite-config.yml 2>/dev/null | head -1 \
+  base_branch=$(grep -E '^[[:space:]]*base:' rite-config.yml 2>/dev/null | head -1 \
     | sed -E 's/.*base:[[:space:]]*"?([^"]*)"?.*/\1/')
   [ -z "$base_branch" ] && base_branch="develop"
   printf '%s' "$base_branch"
