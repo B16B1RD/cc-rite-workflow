@@ -136,10 +136,11 @@ STUB
   chmod +x "$IC_TMP/bin/gh"
   # $1=issue $2=before $3=close rc $4=after $5=PR 本文とブランチ名（省略時は Issue 41 を閉じる PR）
   # $6=PR 番号（省略時は 900。空文字は PR 無しで続行した cleanup）
+  # $7={pr_merged}（省略時は true。"{pr_merged}" を渡すと置換漏れ）
   # → ISSUE_CLOSE marker 行と、gh issue close / gh 全体の呼び出し回数
   run_issue_close() {
     local d; d=$(mktemp -d "$IC_TMP/case-XXXXXX")
-    sed -e "s|{issue_number}|$1|g" -e 's|{owner_repo}|owner/repo|g' -e "s|{pr_number}|${6-900}|g" "$IC_TMP/block.sh" > "$d/run.sh"
+    sed -e "s|{issue_number}|$1|g" -e 's|{owner_repo}|owner/repo|g' -e "s|{pr_number}|${6-900}|g" -e "s|{pr_merged}|${7-true}|g" "$IC_TMP/block.sh" > "$d/run.sh"
     GH_STUB_DIR="$d" GH_BEFORE="$2" GH_CLOSE_RC="$3" GH_AFTER="$4" GH_PR_REFS="${5-Closes #41${nl}fix/issue-41-x}" \
       PATH="$IC_TMP/bin:$PATH" bash "$d/run.sh" 2>/dev/null | grep '^\[CONTEXT\] ISSUE_CLOSE=' | tail -1
     printf 'closes=%s calls=%s\n' "$(cat "$d/closes" 2>/dev/null | wc -l | tr -d ' ')" "$(cat "$d/calls" 2>/dev/null | wc -l | tr -d ' ')"
@@ -158,7 +159,26 @@ STUB
   assert "branch name issue-N alone is a reference" "[CONTEXT] ISSUE_CLOSE=closed; issue=41${nl}closes=1 calls=4" "$(run_issue_close 41 OPEN 0 CLOSED "body without keyword${nl}fix/issue-41-x")"
   assert "cleanup without a PR is no_pr without calling gh" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=no_pr${nl}closes=0 calls=0" "$(run_issue_close 41 OPEN 0 CLOSED "Closes #41" "")"
   assert "PR read failure is pr_view_failed without closing" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=pr_view_failed${nl}closes=0 calls=1" "$(run_issue_close 41 OPEN 0 CLOSED ERR)"
+  # 未マージ PR の強制 cleanup: マージの記録も close も書かず、gh を一切呼ばない
+  assert "unmerged PR leaves an OPEN issue open without any gh call" "[CONTEXT] ISSUE_CLOSE=skipped; issue=41; reason=pr_not_merged${nl}closes=0 calls=0" "$(run_issue_close 41 OPEN 0 CLOSED "Closes #41" 900 false)"
+  assert "unmerged PR skips an already CLOSED issue the same way" "[CONTEXT] ISSUE_CLOSE=skipped; issue=41; reason=pr_not_merged${nl}closes=0 calls=0" "$(run_issue_close 41 CLOSED 0 CLOSED "Closes #41" 900 false)"
+  assert "unmerged cleanup without a PR stays no_pr" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=no_pr${nl}closes=0 calls=0" "$(run_issue_close 41 OPEN 0 CLOSED "Closes #41" "" false)"
+  assert "unidentified issue stays not_identified when the PR is unmerged" "[CONTEXT] ISSUE_CLOSE=not_identified; issue=${nl}closes=0 calls=0" "$(run_issue_close '' OPEN 0 CLOSED "Closes #41" 900 false)"
+  # {pr_merged} が true / false 以外（置換漏れ・空）のときは、閉じずにエラーとして出す
+  assert "unsubstituted {pr_merged} is pr_merged_unset without any gh call" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=pr_merged_unset${nl}closes=0 calls=0" "$(run_issue_close 41 OPEN 0 CLOSED "Closes #41" 900 '{pr_merged}')"
+  assert "empty {pr_merged} is pr_merged_unset without any gh call" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=pr_merged_unset${nl}closes=0 calls=0" "$(run_issue_close 41 OPEN 0 CLOSED "Closes #41" 900 '')"
 fi
+# ステップ 12 は skipped を「上記以外」の受け皿より前で x にする。順序が逆だと skipped がクローズ失敗の付記に落ちる。
+assert_grep "issue-close check treats skipped/pr_not_merged as x with the issue-cancel note" "$CLEANUP" \
+  '^  - `ISSUE_CLOSE=skipped` かつ `reason=pr_not_merged`: `x` \+ 「ℹ️ PR がマージされていないため Issue #\{issue_number\} は開いたまま残しています。.*`/rite:issue-cancel \{issue_number\}`'
+skipped_line=$(grep -n '^  - `ISSUE_CLOSE=skipped` かつ `reason=pr_not_merged`' "$CLEANUP" | head -1 | cut -d: -f1)
+catch_all_line=$(grep -n '^  - 上記以外（`ISSUE_CLOSE=failed`' "$CLEANUP" | head -1 | cut -d: -f1)
+if [ -n "$skipped_line" ] && [ -n "$catch_all_line" ] && [ "$skipped_line" -lt "$catch_all_line" ]; then
+  pass "issue-close check evaluates skipped before the catch-all failure branch"
+else
+  fail "issue-close check evaluates skipped before the catch-all failure branch (skipped=${skipped_line:-none} catch_all=${catch_all_line:-none})"
+fi
+assert_grep "cleanup substitutes {pr_merged} in step 10 as well" "$CLEANUP" 'ステップ 4-W / ステップ 5 / ステップ 10 の全分岐で `\{pr_merged\}` を literal substitute する'
 # 判定基準は絵文字 prefix ではなくチェックボックスの空欄/x であることを pin する。
 # 絵文字 prefix 一致方式は {local_branch_check} の BRANCH_DELETE_FAILED/UNMERGED（prefix 無しの
 # bare-text 付記）を取りこぼし、まさに T-02 が守るべきシナリオ（ブランチ削除失敗）で

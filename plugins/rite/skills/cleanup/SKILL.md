@@ -80,13 +80,13 @@ git branch --show-current
 gh pr list -R {owner_repo} --head {branch_name} --state all --json number,title,state,mergedAt,url,headRefName
 ```
 
-PR 未検出: `AskUserQuestion` で「ブランチを削除して続行 / キャンセル」を確認。未マージ PR: 「キャンセル (推奨) / 強制クリーンアップ」を確認。
+PR 未検出: `AskUserQuestion` で「ブランチを削除して続行 / キャンセル」を確認。未マージ PR: 「キャンセル (推奨) / 強制クリーンアップ」を確認（強制クリーンアップでも関連 Issue はクローズせず開いたまま残す）。
 
 PR 検出時は返却された `headRefName` と `{branch_name}` の完全一致時だけ `{branch_identity_verified}=true`
 とする。不一致は削除対象 identity が確定しないため中断する。PR 未検出でユーザーが「ブランチを削除して続行」
 を明示選択した場合だけ承認済み入力として `true`、それ以外は `false`。prefix denylist で identity を推測しない。
 
-`mergedAt` が非 null（= PR が merge 済み）なら `{pr_merged}=true` として保持する。**それ以外のすべての経路**（未マージ PR の強制クリーンアップ、PR 未検出でブランチ削除を選んで続行した経路など）は `{pr_merged}=false` を既定とする。ステップ 4-W / ステップ 5 の全分岐で `{pr_merged}` を literal substitute する。
+`mergedAt` が非 null（= PR が merge 済み）なら `{pr_merged}=true` として保持する。**それ以外のすべての経路**（未マージ PR の強制クリーンアップ、PR 未検出でブランチ削除を選んで続行した経路など）は `{pr_merged}=false` を既定とする。ステップ 4-W / ステップ 5 / ステップ 10 の全分岐で `{pr_merged}` を literal substitute する。
 rationale: references/rationale.md#pr-merged-default
 
 ### 1.4 リポジトリ情報取得
@@ -827,7 +827,7 @@ ingest の成否（skip 含む）に関わらずステップ 10 へ進む。
 
 詳細は [archive-procedures.md](./references/archive-procedures.md) (Issue close / Parent Issue handling セクション)。
 
-- 関連 Issue (`{issue_number}`) が PR の closing reference（本文の closing keyword / ブランチ名の `issue-N`）に含まれることを確かめてから close し、同じ Issue の state を読み直して `[CONTEXT] ISSUE_CLOSE=` marker を出す（archive-procedures §3.6.1 の bash）。base が default branch でない PR では `Closes #N` による自動クローズが働かないため、クローズは本ステップだけが担う
+- 関連 Issue (`{issue_number}`) が PR の closing reference（本文の closing keyword / ブランチ名の `issue-N`）に含まれることを確かめてから close し、同じ Issue の state を読み直して `[CONTEXT] ISSUE_CLOSE=` marker を出す（archive-procedures §3.6.1 の bash）。base が default branch でない PR では `Closes #N` による自動クローズが働かないため、クローズは本ステップだけが担う。`{pr_merged}` を literal substitute し、`{pr_merged}=false`（未マージ PR の強制クリーンアップ）ではコメントも書かず閉じずに `ISSUE_CLOSE=skipped; reason=pr_not_merged` を出す
 - 親 Issue (`{parent_issue_number}`) の Tasklist を更新
 - 親 Issue の全子が CLOSED かついずれも `stateReason != NOT_PLANNED`（= COMPLETED）なら parent も auto-close。Cancelled（NOT_PLANNED）の子が 1 件でも居る、または CLOSED 子の `stateReason` が判定不能なら親は未完了扱い（Done / auto-close しない）
 - 3.7.2.1 `.result=skipped_terminal_conflict`（親が既に終端 Status (Cancelled)）のとき、close 成否に関わらず `{parent_close_result}` = `⚠️ Cancelled のため Done 上書きをスキップ`。`✅ 自動クローズ完了` で Done 同期を主張しない。Cancelled **子**の未完了扱いとは別値
@@ -1037,6 +1037,7 @@ rationale: references/rationale.md#review-cleanup-reasons
   - 上記以外（`reason=invalid_args` / `reason=transform_failed` / `status=missing` 等）: ` ` + 「⚠️ 作業メモリの{対象}が完了しませんでした（{marker の status 以降}）。{helper stderr の先頭行} — Issue #{issue_number} の作業メモリコメントを確認し、必要なら手動で追記してください」を付記（helper stderr の先頭行は同じ bash が出した `helper stderr (root-cause、先頭 5 行):` の直後の 1 行。出ていなければ省く）
   - 該当行が無いとき: ` ` + 「⚠️ 作業メモリの{対象}の実行結果を確認できませんでした — Issue #{issue_number} の作業メモリコメントを確認してください」を付記。**marker 不在を成功と読んではならない**
 - `{issue_close_check}`: ステップ 10 の `[CONTEXT] ISSUE_CLOSE=` 行で判定する（archive-procedures §3.6.1）。`{issue_number}` が空（関連 Issue 未識別）なら `x`。それ以外は `[CONTEXT] ` 行頭一致 + `ISSUE_CLOSE=` + `issue={issue_number}`（値の直後が `;` または行末）に該当する行を集め、**その中の最後の出現 1 行だけを選ぶ**（recency。`/rite:batch-run --merge` では先行 Issue の marker が文脈に残るため）。選んだ 1 行を以下で評価する:
+  - `ISSUE_CLOSE=skipped` かつ `reason=pr_not_merged`: `x` + 「ℹ️ PR がマージされていないため Issue #{issue_number} は開いたまま残しています。作業を中止する場合は `/rite:issue-cancel {issue_number}` を実行してください」を付記
   - `ISSUE_CLOSE=closed` / `ISSUE_CLOSE=already_closed` / `ISSUE_CLOSE=not_identified` のいずれか: `x`（x とする値はこの 3 つに限る）
   - `ISSUE_CLOSE=failed` かつ `reason=no_pr`: ` ` + 「⚠️ 関連 PR が無いため Issue #{issue_number} をクローズしていません。`gh issue view {issue_number} -R {owner_repo}` で状態を確認し、作業が完了していれば手動でクローズしてください」を付記
   - 上記以外（`ISSUE_CLOSE=failed` かつ `reason=` が `close_failed` / `verify_failed` / `state_<STATE>` / `target_mismatch` / `pr_view_failed` のいずれか等）: ` ` + 「⚠️ Issue #{issue_number} のクローズを確認できませんでした（{marker の reason 値}）。`gh pr view {pr_number} -R {owner_repo} --json body,headRefName` で PR の関連 Issue を確かめ、その Issue が OPEN なら `gh issue close <番号> -R {owner_repo}` を手動実行してください」を付記

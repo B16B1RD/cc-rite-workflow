@@ -266,12 +266,17 @@ Before closing, confirm that the Issue is one the PR itself references: a closin
 # cleanup-issue-close
 issue="{issue_number}"
 pr="{pr_number}"
+pr_merged="{pr_merged}"
 result="" reason=""
 if [ -z "$issue" ]; then
   echo "警告: 関連 Issue が見つかりません" >&2
   result=not_identified
 elif [ -z "$pr" ]; then
   result=failed reason=no_pr
+elif [ "$pr_merged" != true ] && [ "$pr_merged" != false ]; then
+  result=failed reason=pr_merged_unset
+elif [ "$pr_merged" = false ]; then
+  result=skipped reason=pr_not_merged
 elif ! pr_refs=$(gh pr view "$pr" -R {owner_repo} --json body,headRefName --jq '.body + "\n" + .headRefName'); then
   result=failed reason=pr_view_failed
 elif ! grep -qiE "((close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]*:?[[:space:]]*#${issue}([^0-9]|$))|(issue-${issue}([^0-9]|$))" <<< "$pr_refs"; then
@@ -290,6 +295,7 @@ else
 fi
 case "$result" in
   closed) echo "Issue #$issue をクローズしました" ;;
+  skipped) echo "Issue #$issue は PR が未マージのためクローズせず、開いたまま残します。作業を中止する場合は /rite:issue-cancel $issue を実行してください" ;;
   failed) echo "警告: Issue #$issue をクローズできませんでした（$reason）。cleanup は続行し、未完了事項に数えます" >&2 ;;
 esac
 # ステップ 12 の {issue_close_check} 判定用
@@ -303,14 +309,16 @@ echo "[CONTEXT] ISSUE_CLOSE=$result; issue=$issue${reason:+; reason=$reason}"
 | `closed` | Closed in this run, and the re-read returned `CLOSED` |
 | `already_closed` | The Issue was already CLOSED; no close was run |
 | `not_identified` | No related Issue was identified; nothing to close |
+| `skipped; reason=pr_not_merged` | The PR is not merged (`{pr_merged}=false`, a forced cleanup); no comment was written and the Issue was left as it is, without any `gh` call |
 | `failed; reason=no_pr` | There is no PR (ステップ 1.3 continued without one); the Issue was not closed |
+| `failed; reason=pr_merged_unset` | `{pr_merged}` was neither `true` nor `false` (unsubstituted or empty); no close was run |
 | `failed; reason=pr_view_failed` | The PR body and branch name could not be read, so the target could not be confirmed; no close was run |
 | `failed; reason=target_mismatch` | The PR does not reference the Issue; no close was run |
 | `failed; reason=close_failed` | `gh issue close` failed (API error, missing permission, etc.) |
 | `failed; reason=verify_failed` | The re-read after close failed, so the state is unknown |
 | `failed; reason=state_<STATE>` | The re-read after close did not return `CLOSED` |
 
-Every value is non-blocking: cleanup continues to ステップ 11. ステップ 12 counts `failed` and a missing marker as outstanding.
+Every value is non-blocking: cleanup continues to ステップ 11. ステップ 12 counts `failed` and a missing marker as outstanding. `skipped` is not outstanding: ステップ 12 reports it as checked, with a note pointing to `/rite:issue-cancel`.
 
 ### 3.6.4 Update Parent Issue Tasklist Checkbox
 
