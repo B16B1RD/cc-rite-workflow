@@ -6,6 +6,8 @@
 # 旧 inline block を参照実装として verbatim 再現し、同一構成の sandbox git repo
 # (bare origin 付き) で実行して、正規化済み出力と end state (ブランチ構成 /
 # wiki tree / commit subject / stash / dirty 変更の復元) を比較する。
+# stash の扱い (自分の entry を SHA で特定して pop する) は参照実装と意図的に異なり、
+# 共有 stash を再現する TC-11〜TC-15 で pin する。
 #
 # Usage: bash plugins/rite/hooks/tests/wiki-branch-init.test.sh
 set -uo pipefail
@@ -214,8 +216,11 @@ render_reference() {
 
 # git 出力の commit hash と sandbox 固有 path (ref-* / new-* の origin 名差) を
 # 正規化して比較可能にする
+# helper は stash@{n} を名指しで pop するため、引数なし pop の "Dropped refs/stash@{0}" と
+# 表記だけが異なる。同じ entry の drop なので揃えて比較する
 normalize_output() {
   sed -E 's/[0-9a-f]{7,40}/HASH/g' \
+    | sed -E 's#Dropped refs/stash@#Dropped stash@#' \
     | sed -E 's#/(ref|new)-([A-Za-z-]+)-origin\.git#/SANDBOX-origin.git#g' \
     | sed -E 's#nonexistent-(ref|new)\.git#nonexistent-SANDBOX.git#g'
 }
@@ -521,6 +526,112 @@ if grep -qF 'why from file' <<<"$state"; then
   pass "--message-file body is in the commit"
 else
   fail "body missing: $state"
+fi
+
+# --------------------------------------------------------------------------
+# TC-11〜TC-14: stash は全 worktree で共有される。別の worktree（並行セッション）の
+# 退避が混ざっても、自分が積んだ entry だけを SHA で特定して戻す
+# --------------------------------------------------------------------------
+REAL_GIT=$(command -v git)
+
+# make_shared_stash_sandbox <name> — 自分の dirty 変更と、変更を持つ linked worktree を用意する
+make_shared_stash_sandbox() {
+  local repo other
+  repo=$(make_sandbox "$1")
+  other="$repo-other"
+  git -C "$repo" worktree add -q -b other "$other" main
+  echo "other" > "$other/base.txt"
+  echo "modified" > "$repo/base.txt"
+  # global の core.hooksPath があっても sandbox の hook が発火するよう local で固定する
+  git -C "$repo" config core.hooksPath "$repo/.git/hooks"
+  echo "$repo"
+}
+
+# install_pre_push <repo> <body> — push の直前（wiki ブランチ上、自分の退避は積まれた後）に body を実行する
+install_pre_push() {
+  printf '#!/bin/bash\nunset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE\n%s\n' "$2" > "$1/.git/hooks/pre-push"
+  chmod +x "$1/.git/hooks/pre-push"
+}
+
+stash_shas() { git -C "$1" stash list --format='%H'; }
+
+echo "TC-11: another session's stash on top — only our own entry is popped"
+repo=$(make_shared_stash_sandbox tc11)
+rec="$TEST_DIR/tc11-rec"
+install_pre_push "$repo" "git -C '$repo-other' stash push -q -m other-session && git -C '$repo-other' rev-parse refs/stash > '$rec'"
+run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+state=$(dump_state "$repo")
+if [ -s "$rec" ] && [ "$HELPER_RC" = "0" ] && grep -q "^base_content=modified$" <<<"$state" \
+   && [ "$(stash_shas "$repo")" = "$(cat "$rec")" ] && [ "$(cat "$repo-other/base.txt")" = "base" ]; then
+  pass "own change restored, other session's entry left intact"
+else
+  fail "rec=$(cat "$rec" 2>/dev/null) stash=$(stash_shas "$repo") other=$(cat "$repo-other/base.txt") rc=$HELPER_RC state=$state output=$HELPER_OUTPUT"
+fi
+
+echo "TC-12: cleanup trap pops only our own entry after a failed push"
+repo=$(make_shared_stash_sandbox tc12)
+rec="$TEST_DIR/tc12-rec"
+install_pre_push "$repo" "git -C '$repo-other' stash push -q -m other-session && git -C '$repo-other' rev-parse refs/stash > '$rec'; exit 1"
+run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+state=$(dump_state "$repo")
+if [ -s "$rec" ] && [ "$HELPER_RC" = "1" ] && grep -q "^current=main$" <<<"$state" \
+   && grep -q "^base_content=modified$" <<<"$state" && [ "$(stash_shas "$repo")" = "$(cat "$rec")" ]; then
+  pass "trap restores own change, other session's entry left intact"
+else
+  fail "rec=$(cat "$rec" 2>/dev/null) stash=$(stash_shas "$repo") rc=$HELPER_RC state=$state output=$HELPER_OUTPUT"
+fi
+
+echo "TC-13: own entry gone — ERROR and the other entries are untouched"
+repo=$(make_shared_stash_sandbox tc13)
+git -C "$repo-other" stash push -q -m other-session
+before=$(stash_shas "$repo")
+rec="$TEST_DIR/tc13-rec"
+install_pre_push "$repo" "ref=\$(git -C '$repo-other' stash list --format='%gd %gs' | awk '/rite-wiki-init-stash/ {print \$1; exit}') && git -C '$repo-other' stash drop -q \"\$ref\" && echo dropped > '$rec'"
+run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+if [ -s "$rec" ] && [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"ERROR: 退避した変更"*"見つかりません"* ]] \
+   && [ "$(stash_shas "$repo")" = "$before" ]; then
+  pass "missing own entry → ERROR + exit 1, stash unchanged"
+else
+  fail "rec=$(cat "$rec" 2>/dev/null) before=$before stash=$(stash_shas "$repo") rc=$HELPER_RC output=$HELPER_OUTPUT"
+fi
+
+echo "TC-14: stash push that creates no entry stops before touching branches"
+repo=$(make_shared_stash_sandbox tc14)
+git -C "$repo-other" stash push -q -m other-session
+before=$(stash_shas "$repo")
+fakebin="$TEST_DIR/tc14-bin"
+mkdir -p "$fakebin"
+printf '#!/bin/bash\n[ "$1 $2" = "stash push" ] && exit 0\nexec %q "$@"\n' "$REAL_GIT" > "$fakebin/git"
+chmod +x "$fakebin/git"
+PATH="$fakebin:$PATH" run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+state=$(dump_state "$repo")
+if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"新しい entry を作りませんでした"* ]] \
+   && grep -q "^current=main$" <<<"$state" && grep -q "^wiki_tree=<none>$" <<<"$state" \
+   && [ "$(stash_shas "$repo")" = "$before" ]; then
+  pass "no new stash entry → ERROR + exit 1 before orphan checkout, stash unchanged"
+else
+  fail "before=$before stash=$(stash_shas "$repo") rc=$HELPER_RC state=$state output=$HELPER_OUTPUT"
+fi
+
+echo "TC-15: no argument-less stash pop remains in the helper or its reference pattern"
+PATTERNS_DOC="$SCRIPT_DIR/../../references/wiki-patterns.md"
+for f in "$TARGET" "$PATTERNS_DOC"; do
+  if [ ! -f "$f" ]; then
+    fail "missing target: $f"
+    continue
+  fi
+  bare=$(grep -nE 'git stash pop( +[^" ]| *$| *2>|;|\|)' "$f")
+  if [ -z "$bare" ]; then
+    pass "$(basename "$f"): no argument-less stash pop"
+  else
+    fail "$(basename "$f"): argument-less stash pop: $bare"
+  fi
+done
+# 正の件数: 自 entry を指す pop の呼び出し箇所 (helper は関数 1 箇所、参照 doc は 2 ブロックに 1 箇所ずつ)
+if [ "$(grep -c 'git stash pop "\$ref"' "$TARGET")" = "1" ] && [ "$(grep -c 'git stash pop "\$ref"' "$PATTERNS_DOC")" = "2" ]; then
+  pass "SHA-resolved pop sites: helper 1, reference doc 2"
+else
+  fail "SHA-resolved pop sites: helper=$(grep -c 'git stash pop "\$ref"' "$TARGET") doc=$(grep -c 'git stash pop "\$ref"' "$PATTERNS_DOC")"
 fi
 
 run_differential "separate-clean" separate_branch wiki 0 0

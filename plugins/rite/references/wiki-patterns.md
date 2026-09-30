@@ -60,13 +60,29 @@ wiki_branch=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null \
   | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 wiki_branch="${wiki_branch:-wiki}"
 current_branch=$(git branch --show-current)
+stash_needed=false
+# stash は全 worktree で共有され、並行セッションが上に積みうる。自分の entry は push 時の SHA で特定する
+stash_sha=""
 
-# cleanup trap: 異常終了時に元のブランチに復帰を保証
+# SHA が一致する stash@{n} だけを pop する。見つからなければほかの entry に触れず失敗を返す
+_rite_pop_own_stash() {
+  local ref
+  ref=$(git stash list --format='%gd %H' | awk -v s="$stash_sha" '$2 == s {print $1; exit}')
+  if [ -z "$ref" ]; then
+    echo "ERROR: 退避した変更 (stash $stash_sha) が stash に見つかりません。ほかの stash entry には触れずに停止します" >&2
+    return 1
+  fi
+  git stash pop "$ref" || { echo "ERROR: 退避した変更 ($ref) を戻せませんでした — git stash list --format='%gd %H %gs' で確認して手動で復旧してください" >&2; return 1; }
+}
+
+# cleanup trap: 異常終了時に元のブランチに復帰を保証。pop は元のブランチへ戻れたときだけ行う
 # canonical signal-specific trap パターン (references/bash-trap-patterns.md 準拠)
 _rite_wiki_init_cleanup() {
-  git checkout "$current_branch" 2>/dev/null || true
-  if [ "${stash_needed:-false}" = true ]; then
-    git stash pop 2>/dev/null || echo "WARNING: git stash pop failed in cleanup — manual recovery needed: git stash list" >&2
+  if git checkout "$current_branch" 2>/dev/null; then
+    # signal trap の exit で EXIT trap も走るため、pop の前に stash_needed を下ろして 2 回目を防ぐ
+    [ "$stash_needed" = true ] && { stash_needed=false; _rite_pop_own_stash; }
+  elif [ "$stash_needed" = true ]; then
+    echo "WARNING: 元のブランチへ戻れなかったため、退避した変更 (stash $stash_sha) を戻していません" >&2
   fi
 }
 trap 'rc=$?; _rite_wiki_init_cleanup; exit $rc' EXIT
@@ -74,10 +90,12 @@ trap '_rite_wiki_init_cleanup; exit 130' INT
 trap '_rite_wiki_init_cleanup; exit 143' TERM
 trap '_rite_wiki_init_cleanup; exit 129' HUP
 
-# dirty tree チェック: stash が必要な場合のみ実行
-stash_needed=false
+# dirty tree チェック: stash が必要な場合のみ実行し、新しく積んだ entry の SHA を記録する
 if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/dev/null; then
-  git stash push -m "rite-wiki-init-stash"
+  stash_before=$(git rev-parse -q --verify refs/stash) || stash_before=""
+  git stash push -m "rite-wiki-init-stash" || { echo "ERROR: git stash push failed" >&2; exit 1; }
+  stash_sha=$(git rev-parse -q --verify refs/stash) || stash_sha=""
+  [ -n "$stash_sha" ] && [ "$stash_sha" != "$stash_before" ] || { echo "ERROR: git stash push が新しい entry を作りませんでした" >&2; exit 1; }
   stash_needed=true
 fi
 
@@ -96,10 +114,10 @@ git checkout "$current_branch" || {
   exit 1
 }
 
-# stash した場合のみ pop
+# stash した場合のみ、自分の entry を pop
 if [ "$stash_needed" = true ]; then
-  git stash pop
-  stash_needed=false  # EXIT trap での二重 pop を防止
+  stash_needed=false  # 成否によらず EXIT trap での二重 pop を防止
+  _rite_pop_own_stash || exit 1
 fi
 
 # cleanup trap を解除（正常完了時は不要）
@@ -116,13 +134,29 @@ wiki_branch=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null \
   | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 wiki_branch="${wiki_branch:-wiki}"
 current_branch=$(git branch --show-current)
+stash_needed=false
+# stash は全 worktree で共有され、並行セッションが上に積みうる。自分の entry は push 時の SHA で特定する
+stash_sha=""
 
-# cleanup trap: 異常終了時に元のブランチに復帰を保証
+# SHA が一致する stash@{n} だけを pop する。見つからなければほかの entry に触れず失敗を返す
+_rite_pop_own_stash() {
+  local ref
+  ref=$(git stash list --format='%gd %H' | awk -v s="$stash_sha" '$2 == s {print $1; exit}')
+  if [ -z "$ref" ]; then
+    echo "ERROR: 退避した変更 (stash $stash_sha) が stash に見つかりません。ほかの stash entry には触れずに停止します" >&2
+    return 1
+  fi
+  git stash pop "$ref" || { echo "ERROR: 退避した変更 ($ref) を戻せませんでした — git stash list --format='%gd %H %gs' で確認して手動で復旧してください" >&2; return 1; }
+}
+
+# cleanup trap: 異常終了時に元のブランチに復帰を保証。pop は元のブランチへ戻れたときだけ行う
 # canonical signal-specific trap パターン (references/bash-trap-patterns.md 準拠)
 _rite_wiki_ingest_cleanup() {
-  git checkout "$current_branch" 2>/dev/null || true
-  if [ "${stash_needed:-false}" = true ]; then
-    git stash pop 2>/dev/null || echo "WARNING: git stash pop failed in cleanup — manual recovery needed: git stash list" >&2
+  if git checkout "$current_branch" 2>/dev/null; then
+    # signal trap の exit で EXIT trap も走るため、pop の前に stash_needed を下ろして 2 回目を防ぐ
+    [ "$stash_needed" = true ] && { stash_needed=false; _rite_pop_own_stash; }
+  elif [ "$stash_needed" = true ]; then
+    echo "WARNING: 元のブランチへ戻れなかったため、退避した変更 (stash $stash_sha) を戻していません" >&2
   fi
 }
 trap 'rc=$?; _rite_wiki_ingest_cleanup; exit $rc' EXIT
@@ -130,10 +164,12 @@ trap '_rite_wiki_ingest_cleanup; exit 130' INT
 trap '_rite_wiki_ingest_cleanup; exit 143' TERM
 trap '_rite_wiki_ingest_cleanup; exit 129' HUP
 
-# dirty tree チェック: stash が必要な場合のみ実行
-stash_needed=false
+# dirty tree チェック: stash が必要な場合のみ実行し、新しく積んだ entry の SHA を記録する
 if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/dev/null; then
-  git stash push -m "rite-wiki-stash"
+  stash_before=$(git rev-parse -q --verify refs/stash) || stash_before=""
+  git stash push -m "rite-wiki-stash" || { echo "ERROR: git stash push failed" >&2; exit 1; }
+  stash_sha=$(git rev-parse -q --verify refs/stash) || stash_sha=""
+  [ -n "$stash_sha" ] && [ "$stash_sha" != "$stash_before" ] || { echo "ERROR: git stash push が新しい entry を作りませんでした" >&2; exit 1; }
   stash_needed=true
 fi
 
@@ -153,10 +189,10 @@ git checkout "$current_branch" || {
   exit 1
 }
 
-# stash した場合のみ pop
+# stash した場合のみ、自分の entry を pop
 if [ "$stash_needed" = true ]; then
-  git stash pop
-  stash_needed=false  # EXIT trap での二重 pop を防止
+  stash_needed=false  # 成否によらず EXIT trap での二重 pop を防止
+  _rite_pop_own_stash || exit 1
 fi
 
 # cleanup trap を解除（正常完了時は不要）
