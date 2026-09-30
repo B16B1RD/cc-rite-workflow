@@ -250,6 +250,22 @@
 
 * **lint:clean** — contradictions=0, stale=64, orphans=0, missing_concept=0, unregistered_raw=629, broken_refs=0
 
+* **Update**: [doc の例示語彙は定義元 (SoT) と突合してから書く](pages/heuristics/illustrative-example-vocabulary-sot-check.md) — [括弧書きが全量に読めるという推奨を含むレビュー結果](raw/reviews/20260930T133533Z-pr-3549.md) を統合
+
+* **Update**: [doc の例示語彙は定義元 (SoT) と突合してから書く](pages/heuristics/illustrative-example-vocabulary-sot-check.md) — [括弧書きに例示を示す語を足した fix 結果](raw/fixes/20260930T134925Z-pr-3549.md) を統合
+
+* **Skip**: [20260930T134348Z-pr-3551.md](raw/reviews/20260930T134348Z-pr-3551.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
+
+* **Skip**: [20260930T140547Z-pr-3547.md](raw/reviews/20260930T140547Z-pr-3547.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
+
+* **Skip**: [20260930T132005Z-pr-3545.md](raw/reviews/20260930T132005Z-pr-3545.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
+
+* **Skip**: [20260930T141604Z-pr-3552.md](raw/reviews/20260930T141604Z-pr-3552.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
+
+* **Skip**: [20260930T134301Z-pr-3550.md](raw/reviews/20260930T134301Z-pr-3550.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
+
+* **Skip**: [20260930T135430Z-pr-3549.md](raw/reviews/20260930T135430Z-pr-3549.md) — 再レビューで指摘なし。括弧書きの例示の経験則は同じ変更の先行するレビュー結果と fix 結果から統合済み
+
 ## 2026-09-29
 
 * **Update**: [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) — raw/reviews/20260929T104700Z-pr-3448.md で補強

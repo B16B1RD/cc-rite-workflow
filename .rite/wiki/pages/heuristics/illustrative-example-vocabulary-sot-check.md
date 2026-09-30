@@ -12,11 +12,16 @@ sources:
     resource: "raw/reviews/20260929T200946Z-pr-3446.md"
   - type: "fixes"
     resource: "raw/fixes/20260929T202027Z-pr-3446.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T133533Z-pr-3549.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260930T134925Z-pr-3549.md"
 tags: ["doc-accuracy", "sot-verification", "illustrative-example", "attribution"]
 confidence: medium
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T20:45:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-30T14:22:43Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T20:45:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-30T14:22:43Z" }
 ---
 
 # doc の例示語彙は定義元 (SoT) と突合してから書く
@@ -39,6 +44,10 @@ docstring / SPEC / コメントの「例示」(e.g. 〜等) に使う語彙が�
 
 語彙だけでなく、例示する挙動（「古い git など」がこの分岐に入る）も、実際にその分岐に入ることを確かめてから書く。確かめられない例示は外す。例示は読み手が自分の環境を当てはめる材料なので、入らない例は誤った予測を固定する。
 
+### 括弧書きで値を挙げるときは、全量か例示かを文面で示す
+
+実装が閉じた集合で受け付ける値を、CHANGELOG などの括弧書きで一部だけ挙げると、読み手はそれを全量と受け取る。挙げた値がどれも正しくても、集合の大きさが実装と合わなくなる。全値を並べないなら「such as」「など」を添えて例示であることを文面で示す。英日ペアの文書では両方に同じ意味の語を足す。
+
 ## 関連ページ
 
 - [Fix 修正コメント自身が canonical convention を破る self-drift](../anti-patterns/fix-comment-self-drift.md)
@@ -50,3 +59,5 @@ docstring / SPEC / コメントの「例示」(e.g. 〜等) に使う語彙が�
 - [F-05: 「決定事項・メモ」(replica 節) を local ## Detail の例として誤帰属。writer grep 0 件で demonstrable に確定](../../raw/reviews/20260712T174329Z-pr-1838.md)
 - [レビュー結果](../../raw/reviews/20260929T200946Z-pr-3446.md)
 - [fix 結果](../../raw/fixes/20260929T202027Z-pr-3446.md)
+- [括弧書きが閉じた集合の全量に読めるという推奨を含むレビュー結果](../../raw/reviews/20260930T133533Z-pr-3549.md)
+- [括弧書きに例示を示す語を足した fix 結果](../../raw/fixes/20260930T134925Z-pr-3549.md)
