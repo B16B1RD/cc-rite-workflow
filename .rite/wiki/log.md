@@ -115,6 +115,8 @@
 * **Skip**: [字句解析の修正結果](raw/fixes/20260930T060837Z-pr-3512.md) — 機構と回帰テストへ反映済みの検証記録で、追加のドメイン経験則はない
 * **Skip**: [字句解析のレビュー結果](raw/reviews/20260930T061659Z-pr-3512.md) — 機構と回帰テストへ反映済みの検証記録で、追加のドメイン経験則はない
 
+* **Lint incomplete** — 機械検査は stale=61、orphans=0、missing_concept=0、unregistered_raw=602、broken_refs=0、descriptive_number_ref=0。全ページの意味比較は未完了のため、Wiki 全体の検査成功とは扱わない。
+
 ## 2026-09-29
 
 * **Update**: [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) — raw/reviews/20260929T104700Z-pr-3448.md で補強
