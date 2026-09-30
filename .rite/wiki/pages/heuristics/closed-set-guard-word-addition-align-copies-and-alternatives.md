@@ -4,13 +4,14 @@ title: "語の閉集合で拒否する guard に語を足すときは、閉集�
 domain: "heuristics"
 description: "状態変更を拒否する閉集合へ 1 語を足す変更は、既存の判定経路にそのまま乗るので小さく収束する。収束の条件は、閉集合の写し（hook 本体・テスト・禁止表・仕様・設計理由）を同じ変更で揃えることと、拒否時に案内する代替手段が新しい用途でも実際に動くことである。サブコマンド名で判定する閉集合は CLI の alias をすり抜けるので、個別の alias を足さず欠陥クラスとして扱う。"
 created: "2026-09-28T14:28:35Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T19:21:37Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-30T07:27:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T14:28:35Z" }
   - by: "rite-wiki-ingest/claude-opus-5-5"
     at: "2026-09-28T15:38:14Z"
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T16:15:27Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T19:21:37Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-30T07:27:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260928T141040Z-pr-3404.md"
@@ -28,6 +29,14 @@ sources:
     resource: "raw/fixes/20260929T191840Z-pr-3446.md"
   - type: "reviews"
     resource: "raw/reviews/20260929T190643Z-pr-3446.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260930T070639Z-pr-3515.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260930T072545Z-pr-3515.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T065945Z-pr-3515.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T072310Z-pr-3515.md"
 tags: ["guard", "closed-set", "deny-list", "alternative-command", "cli-alias"]
 confidence: medium
 ---
@@ -67,9 +76,16 @@ confidence: medium
 
 直し方を変えたら、同じ直し方を書いた表・段落・参照文書・PR 本文をすべて同じ変更で揃える。1 か所でも古い直し方が残ると、表を引いた読み手は通らない手順へ導かれる。テストは拒否されることだけでなく、直し方どおりの形が通ることと、理由ごとの文言も固定する。条件を説明する文書は、照合の単位（語か部分文字列か）まで実装に合わせる。
 
+### 列挙に値を足したら、同じリストの限定句・それを固定する正規表現・assert のラベルを同じ commit で揃える
+
+判定リストに新しい値の行を足すと、同じリストにある「x とする値はこの N 個に限る」という限定句が偽になって残る。限定句は列挙の外の値を既定の側へ倒さないための柵なので、消さずに残し、列挙へ新しい値を含める最小の差分にする。限定句を一字一句固定するテストの正規表現も同じ commit で更新する。
+
+正規表現を直しても、同じ assert のラベル（テスト名）が古い個数のまま残ることがある。固定する文言を変えるときは、正規表現と assert のラベルを同じ commit で揃える。
+
 ## 関連ページ
 
 - [コマンドの語で拒否する guard は拒否の確定を 1 語だけ遅らせ、過去の実コマンドを新旧 guard に再生して差分を確かめる](./command-word-guard-defers-rejection-one-token.md)
+- [assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる](../anti-patterns/assert-label-overclaims-predicate-scope.md)
 
 ## ソース
 
@@ -81,3 +97,7 @@ confidence: medium
 - [直し方どおりの形が通ることまで確かめた fix 結果](../../raw/fixes/20260929T184229Z-pr-3446.md)
 - [拒否理由ごとに代替の直し方を書き分けた fix 結果](../../raw/fixes/20260929T191840Z-pr-3446.md)
 - [古い直し方が残る記載箇所と文言の未固定を指摘したレビュー結果](../../raw/reviews/20260929T190643Z-pr-3446.md)
+- [fix 結果](../../raw/fixes/20260930T070639Z-pr-3515.md)
+- [fix 結果](../../raw/fixes/20260930T072545Z-pr-3515.md)
+- [レビュー結果](../../raw/reviews/20260930T065945Z-pr-3515.md)
+- [レビュー結果](../../raw/reviews/20260930T072310Z-pr-3515.md)

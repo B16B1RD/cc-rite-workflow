@@ -126,6 +126,32 @@
 * **Skip**: [再レビューのレビュー結果](raw/reviews/20260930T062244Z-pr-3513.md) — 指摘 0 件の再レビューで、新しい経験則はない
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=604, broken_refs=0
 
+* **Create**: [ガードの復旧案内は状態ごとのコマンド列ではなく、ガードの解除条件で示す](pages/heuristics/guard-recovery-guidance-states-exit-condition.md) — raw/fixes/20260930T055100Z-pr-3509.md を新規ページ化
+* **Update**: [ガードの復旧案内は状態ごとのコマンド列ではなく、ガードの解除条件で示す](pages/heuristics/guard-recovery-guidance-states-exit-condition.md) — raw/fixes/20260930T060707Z-pr-3509.md を統合
+* **Update**: [ガードの復旧案内は状態ごとのコマンド列ではなく、ガードの解除条件で示す](pages/heuristics/guard-recovery-guidance-states-exit-condition.md) — raw/fixes/20260930T062706Z-pr-3509.md を統合
+* **Update**: [ガードの復旧案内は状態ごとのコマンド列ではなく、ガードの解除条件で示す](pages/heuristics/guard-recovery-guidance-states-exit-condition.md) — raw/fixes/20260930T064854Z-pr-3509.md を統合
+* **Update**: [ガードの復旧案内は状態ごとのコマンド列ではなく、ガードの解除条件で示す](pages/heuristics/guard-recovery-guidance-states-exit-condition.md) — raw/reviews/20260930T054253Z-pr-3509.md を統合
+* **Update**: [ガードの復旧案内は状態ごとのコマンド列ではなく、ガードの解除条件で示す](pages/heuristics/guard-recovery-guidance-states-exit-condition.md) — raw/reviews/20260930T060110Z-pr-3509.md を統合
+* **Update**: [ガードの復旧案内は状態ごとのコマンド列ではなく、ガードの解除条件で示す](pages/heuristics/guard-recovery-guidance-states-exit-condition.md) — raw/reviews/20260930T061744Z-pr-3509.md を統合
+* **Update**: [ガードの復旧案内は状態ごとのコマンド列ではなく、ガードの解除条件で示す](pages/heuristics/guard-recovery-guidance-states-exit-condition.md) — raw/reviews/20260930T063724Z-pr-3509.md を統合
+* **Update**: [ガードの復旧案内は状態ごとのコマンド列ではなく、ガードの解除条件で示す](pages/heuristics/guard-recovery-guidance-states-exit-condition.md) — raw/reviews/20260930T065437Z-pr-3509.md を統合
+* **Update**: [値の切り詰めは、許す区切り文字を列挙して限定し、rc の振り分けは完全一致で固定する](pages/patterns/value-truncation-allows-listed-delimiters-only.md) — raw/fixes/20260930T055151Z-pr-3521.md を統合
+* **Update**: [値の切り詰めは、許す区切り文字を列挙して限定し、rc の振り分けは完全一致で固定する](pages/patterns/value-truncation-allows-listed-delimiters-only.md) — raw/fixes/20260930T061004Z-pr-3521.md を統合
+* **Update**: [値の切り詰めは、許す区切り文字を列挙して限定し、rc の振り分けは完全一致で固定する](pages/patterns/value-truncation-allows-listed-delimiters-only.md) — raw/fixes/20260930T062805Z-pr-3521.md を統合
+* **Update**: [値の切り詰めは、許す区切り文字を列挙して限定し、rc の振り分けは完全一致で固定する](pages/patterns/value-truncation-allows-listed-delimiters-only.md) — raw/fixes/20260930T064651Z-pr-3521.md を統合
+* **Update**: [値の切り詰めは、許す区切り文字を列挙して限定し、rc の振り分けは完全一致で固定する](pages/patterns/value-truncation-allows-listed-delimiters-only.md) — raw/fixes/20260930T065947Z-pr-3521.md を統合
+* **Update**: [値の切り詰めは、許す区切り文字を列挙して限定し、rc の振り分けは完全一致で固定する](pages/patterns/value-truncation-allows-listed-delimiters-only.md) — raw/reviews/20260930T054443Z-pr-3521.md を統合
+* **Update**: [値の切り詰めは、許す区切り文字を列挙して限定し、rc の振り分けは完全一致で固定する](pages/patterns/value-truncation-allows-listed-delimiters-only.md) — raw/reviews/20260930T060318Z-pr-3521.md を統合
+* **Update**: [値の切り詰めは、許す区切り文字を列挙して限定し、rc の振り分けは完全一致で固定する](pages/patterns/value-truncation-allows-listed-delimiters-only.md) — raw/reviews/20260930T061908Z-pr-3521.md を統合
+* **Update**: [値の切り詰めは、許す区切り文字を列挙して限定し、rc の振り分けは完全一致で固定する](pages/patterns/value-truncation-allows-listed-delimiters-only.md) — raw/reviews/20260930T063459Z-pr-3521.md を統合
+* **Update**: [値の切り詰めは、許す区切り文字を列挙して限定し、rc の振り分けは完全一致で固定する](pages/patterns/value-truncation-allows-listed-delimiters-only.md) — raw/reviews/20260930T065401Z-pr-3521.md を統合
+* **Update**: [値の切り詰めは、許す区切り文字を列挙して限定し、rc の振り分けは完全一致で固定する](pages/patterns/value-truncation-allows-listed-delimiters-only.md) — raw/reviews/20260930T072356Z-pr-3521.md を統合
+* **Update**: [語の閉集合で拒否する guard に語を足すときは、閉集合の写しと代替手段の案内を同じ変更で揃える](pages/heuristics/closed-set-guard-word-addition-align-copies-and-alternatives.md) — raw/fixes/20260930T070639Z-pr-3515.md を統合
+* **Update**: [語の閉集合で拒否する guard に語を足すときは、閉集合の写しと代替手段の案内を同じ変更で揃える](pages/heuristics/closed-set-guard-word-addition-align-copies-and-alternatives.md) — raw/fixes/20260930T072545Z-pr-3515.md を統合
+* **Update**: [語の閉集合で拒否する guard に語を足すときは、閉集合の写しと代替手段の案内を同じ変更で揃える](pages/heuristics/closed-set-guard-word-addition-align-copies-and-alternatives.md) — raw/reviews/20260930T065945Z-pr-3515.md を統合
+* **Update**: [語の閉集合で拒否する guard に語を足すときは、閉集合の写しと代替手段の案内を同じ変更で揃える](pages/heuristics/closed-set-guard-word-addition-align-copies-and-alternatives.md) — raw/reviews/20260930T072310Z-pr-3515.md を統合
+* **Skip**: [再回収ゲートのレビュー結果](raw/reviews/20260930T072001Z-pr-3517.md) — 再回収経路の検証完了の記録のみで、新たなドメイン経験則はない
+
 ## 2026-09-29
 
 * **Update**: [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) — raw/reviews/20260929T104700Z-pr-3448.md で補強
