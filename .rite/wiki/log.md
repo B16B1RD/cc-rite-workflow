@@ -152,6 +152,8 @@
 * **Update**: [語の閉集合で拒否する guard に語を足すときは、閉集合の写しと代替手段の案内を同じ変更で揃える](pages/heuristics/closed-set-guard-word-addition-align-copies-and-alternatives.md) — raw/reviews/20260930T072310Z-pr-3515.md を統合
 * **Skip**: [再回収ゲートのレビュー結果](raw/reviews/20260930T072001Z-pr-3517.md) — 再回収経路の検証完了の記録のみで、新たなドメイン経験則はない
 
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=606, broken_refs=0
+
 ## 2026-09-29
 
 * **Update**: [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) — raw/reviews/20260929T104700Z-pr-3448.md で補強
