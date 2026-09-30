@@ -902,20 +902,7 @@ When "コードを修正する" is selected:
 
 **MUST**: `action` は `fix` / `reply` / `accept` / `nit-noted` の 4 値に閉じる（他の値は ステップ 4.6 の gate が `map_missing` で停止させる）。`action: fix` の finding は 1 件以上の変更箇所を `path:line` または `path:start-end` で記録し、ステップ 3.3.1 の `findings_addressed[]` に `{id, action, changes}` として載せる。行番号は **HEAD の行**。ただし**行を削除しただけの箇所は HEAD に対応行が無い**ため、`commit_sha_before` の行で記録する（gate は純削除 hunk だけを削除前の行番号で突合する。行を書き換えた箇所は HEAD の行でしか通らない）。reply / accept / nit-noted は `changes: []` とし `diff_verified` を付けない。
 
-Present the proposed fix and apply with Edit tool after confirmation:
-
-```
-修正案:
-（{lang} のコードブロックで表示）
-{suggested_fix}
-
-この修正を適用しますか？
-
-オプション:
-- 適用する
-- 修正案を変更
-- スキップ
-```
+修正案は確認を挟まずに Edit tool で適用する。修正が正しいかは、ステップ 3 の検証（`scope-verify`）の実行結果で判断する（AI が書いた修正を人間に確認させない — [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) 規則 5）。
 
 ### 2.3.1 Propagation Scan
 
