@@ -1877,7 +1877,7 @@ try:
 finally:
     f.close()
 
-# The previous result lacks the live run_id, so run_id filtering excludes it.
+# The previous result is at the pin boundary and lacks the live run_id.
 # The pin marker reports the configured boundary; it does not prove pin filtering.
 f = Fixture()
 try:
@@ -1894,7 +1894,7 @@ try:
     f.observe()
     recommendation_fix(f)
     output = gate(f)
-    passes_gate(output, '1,2,3,0', 'T-26: run_id filtering excludes the previous result after the retry')
+    passes_gate(output, '1,2,3,0', 'T-26: the previous result is excluded from the trend after the retry')
     check('RUN_SINCE_USED=pin' in marker(output, 'ITERATE_CB'), 'T-26: the gate reports the configured run start pin:\n' + output)
 finally:
     f.close()
