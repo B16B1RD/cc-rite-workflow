@@ -107,6 +107,7 @@ else
   fail "archive-procedures §3.6 re-reads the state after gh issue close (close=${close_line:-none} reread=${reread_line:-none})"
 fi
 
+nl=$'\n'
 # §3.6 の bash を抽出し、PATH 先頭の gh stub で実行して marker の値を観測する。
 IC_TMP=$(mktemp -d "${TMPDIR:-/tmp}/rite-issue-close-test-XXXXXX")
 trap 'rm -rf "$IC_TMP"' EXIT
@@ -145,7 +146,6 @@ STUB
       PATH="$IC_TMP/bin:$PATH" bash "$d/run.sh" 2>/dev/null | grep '^\[CONTEXT\] ISSUE_CLOSE=' | tail -1
     printf 'closes=%s calls=%s\n' "$(cat "$d/closes" 2>/dev/null | wc -l | tr -d ' ')" "$(cat "$d/calls" 2>/dev/null | wc -l | tr -d ' ')"
   }
-  nl=$'\n'
   assert "OPEN → close → re-read CLOSED is closed" "[CONTEXT] ISSUE_CLOSE=closed; issue=41${nl}closes=1 calls=4" "$(run_issue_close 41 OPEN 0 CLOSED)"
   assert "close command failure is failed/close_failed" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=close_failed${nl}closes=1 calls=3" "$(run_issue_close 41 OPEN 1 CLOSED)"
   assert "close succeeds but re-read stays OPEN is failed" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=state_OPEN${nl}closes=1 calls=4" "$(run_issue_close 41 OPEN 0 OPEN)"
