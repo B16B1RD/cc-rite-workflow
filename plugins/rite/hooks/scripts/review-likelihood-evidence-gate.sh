@@ -44,13 +44,13 @@ parsed=$(awk -v exception_category="$exception_category" -v reviewer_type="$revi
   in_recommendations {
     # Every non-indented line is one recommendation (a deeper heading included, so
     # it cannot hide the items below it); an indented line continues the previous
-    # one unless it carries its own 分類. An unclassified item must never fall out
-    # of adoption triage.
+    # one unless it is a list item opening with "分類:". An unclassified item must
+    # never fall out of adoption triage.
     if (trim($0) == "" || $0 ~ /^\|[[:space:]]*:?-+/) next
     text = $0
-    sub(/^[[:space:]]*([-*+]|[0-9]+\.)[[:space:]]+/, "", text)
+    marked = sub(/^[[:space:]]*([-*+]|[0-9]+\.)[[:space:]]+/, "", text)
     text = trim(text)
-    if (substr($0, 1, 1) ~ /[ \t]/ && text !~ /^[*`]*分類/) next
+    if (substr($0, 1, 1) ~ /[ \t]/ && !(marked && text ~ /^[*`]*分類[*`]*[[:space:]]*(:|：)/)) next
     if (text ~ /^(なし|None)$/) next
     recommendations++
     value = "(missing)"

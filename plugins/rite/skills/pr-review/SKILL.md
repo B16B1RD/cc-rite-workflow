@@ -1204,7 +1204,7 @@ bash {plugin_root}/hooks/scripts/review-likelihood-evidence-gate.sh \
 
 helper は `### 指摘事項` / `### Findings` の各行を検証する。通常指摘は canonical `Likelihood-Evidence:` 必須。security / devops / dependencies は `Likelihood: Hypothetical (例外カテゴリ: ...)` 可。application は `database migration` のみ。空表は pass。
 
-同じ helper が `### 推奨事項` / `### Recommendations` で始まる見出しの節の各項目（字下げのない行 1 行が 1 項目。節内の `####` 以下の見出し行と、字下げした `分類:` の行も項目として数える。`なし` / `None` は 0 件）も検証する。値は `分類:` の直後の 1 語で、注記は値の後ろに ` — ` を挟んで書く。`分類:` の欠落、`actionable` / `design_confirmation` / `boundary` 以外の値、値と ` — ` の間に別の文字が続く項目は `recommendation_classification_invalid` で、該当行と値を stderr に列挙する。節が無い出力は推奨 0 件として pass。
+同じ helper が `### 推奨事項` / `### Recommendations` で始まる見出しの節の各項目（字下げのない行 1 行が 1 項目。節内の `####` 以下の見出し行と、字下げした箇条書きで `分類:` から始まる行も項目として数える。`なし` / `None` は 0 件）も検証する。値は `分類:` の直後の 1 語で、注記は値の後ろに ` — ` を挟んで書く。`分類:` の欠落、`actionable` / `design_confirmation` / `boundary` 以外の値、値と ` — ` の間に別の文字が続く項目は `recommendation_classification_invalid` で、該当行と値を stderr に列挙する。節が無い出力は推奨 0 件として pass。
 
 Route the result mechanically per reviewer:
 
