@@ -75,7 +75,8 @@ changed_submodules=$(printf '%s\n' "$status_v2" | awk '
 if [ -n "$changed_submodules" ]; then
   echo "ERROR: submodule に変更または未追跡ファイルがあります。ブランチ・作業ツリー・stash を変更せずに停止します" >&2
   printf '%s\n' "$changed_submodules" | sed 's/^/  対象: /' >&2
-  echo "  対処: 変更を残すなら submodule の変更（未追跡ファイルは commit するか submodule の外へ移す）と親の新しい参照先を commit し、残さないなら submodule を記録済みの commit と中身に戻して、git status --ignore-submodules=none に submodule が表示されなくなってから再実行してください" >&2
+  echo "  対処: 変更を残すなら submodule の変更（未追跡ファイルは commit するか submodule の外へ移す）と親の新しい参照先を commit し、残さないなら submodule を記録済みの commit と中身に戻して、git status に submodule が表示されなくなってから再実行してください" >&2
+  echo "  確認: git -c status.showUntrackedFiles=normal status --ignore-submodules=none" >&2
   exit 1
 fi
 submodules_before=$(git submodule status) || { echo "ERROR: git submodule status failed" >&2; exit 1; }

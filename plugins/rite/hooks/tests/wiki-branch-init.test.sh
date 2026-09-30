@@ -770,12 +770,32 @@ repo=$(make_submodule_sandbox tc17b)
 git -C "$repo" config status.showUntrackedFiles no
 git -C "$repo/sub" config status.showUntrackedFiles no
 echo "new" > "$repo/sub/new.txt"
+if [ -z "$(git -C "$repo" status --porcelain)" ]; then
+  pass "TC-17b: precondition — the settings hide the submodule's untracked file from plain git status"
+else
+  fail "TC-17b: precondition not met: $(git -C "$repo" status --porcelain)"
+fi
 run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
 if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"対象: sub"* ]] && [ "$(cat "$repo/sub/new.txt" 2>/dev/null)" = "new" ] \
    && ! git -C "$repo" rev-parse --verify -q wiki >/dev/null; then
   pass "ignore=all and showUntrackedFiles=no → still stops, file kept, no wiki branch"
 else
   fail "rc=$HELPER_RC new.txt=$(cat "$repo/sub/new.txt" 2>/dev/null) output=$HELPER_OUTPUT"
+fi
+# ERROR に書かれた確認コマンドは、同じ設定のもとで検出と同じ結果を返す (解除前は submodule を表示し、解除後は表示しない)
+read -r -a remedy_check <<<"$(grep -oE 'git -c [^ ]+ status --ignore-submodules=none' <<<"$HELPER_OUTPUT" | head -n 1)"
+if [ "${#remedy_check[@]}" -gt 0 ] && [[ "$(cd "$repo" && "${remedy_check[@]}" 2>&1)" == *"sub"* ]]; then
+  pass "the printed check command shows the submodule while the untracked file is there"
+else
+  fail "printed check command missing or blind: [${remedy_check[*]:-}] output=$HELPER_OUTPUT"
+fi
+mv "$repo/sub/new.txt" "$TEST_DIR/tc17b-new.txt"
+remedy_after=$(cd "$repo" && "${remedy_check[@]}" 2>&1)
+run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+if [[ "$remedy_after" != *"sub"* ]] && [ "$HELPER_RC" = "0" ] && git -C "$repo" rev-parse --verify -q wiki >/dev/null; then
+  pass "after the remedy the check command no longer shows the submodule and the rerun succeeds"
+else
+  fail "after remedy: check=[$remedy_after] rc=$HELPER_RC output=$HELPER_OUTPUT"
 fi
 
 echo "TC-18: a parent change alongside a submodule change stops before the stash"
@@ -923,7 +943,7 @@ fi
 # gitlink を index から外せなければ、作業ツリーを消す前に止まる
 # <label> <偽 git の body> <期待する ERROR>
 for case_spec in \
-  'update-index fails|[ "$1" = "update-index" ] && exit 1|を index から外せませんでした' \
+  'update-index fails|[ "$1" = "update-index" ] && exit 1|ERROR: submodule '"'sub'"' を index から外せませんでした' \
   'update-index removes nothing|[ "$1" = "update-index" ] && exit 0|ERROR: submodule を index から外せませんでした。作業ツリーを消さずに停止します' \
   'ls-files fails|[ "$1" = "ls-files" ] && exit 1|ERROR: git ls-files failed'; do
   IFS='|' read -r case_label case_body case_error <<<"$case_spec"
@@ -1006,6 +1026,38 @@ if [ "$HELPER_RC" = "143" ] && [ "$(count_lines "ERROR: submodule の状態が�
   pass "doc block: SIGTERM during push + submodule state differs → exit 143, shown once"
 else
   fail "doc block (SIGTERM): rc=$HELPER_RC output=$HELPER_OUTPUT"
+fi
+# 参照手順ブロックも、設定で隠れる変更を検出し、開始時の記録失敗と index に残る gitlink で止まる
+repo=$(make_submodule_sandbox tc23f)
+(cd "$repo" && git config -f .gitmodules submodule.sub.ignore all && git commit -qam "ignore all" && git push -q origin main 2>/dev/null)
+git -C "$repo" config status.showUntrackedFiles no
+git -C "$repo/sub" config status.showUntrackedFiles no
+echo "new" > "$repo/sub/new.txt"
+run_doc_init "$repo"
+if [ -z "$(git -C "$repo" status --porcelain)" ] && [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"対象: sub"* ]] \
+   && [ "$(cat "$repo/sub/new.txt" 2>/dev/null)" = "new" ]; then
+  pass "doc block: ignore=all and showUntrackedFiles=no → still stops, file kept"
+else
+  fail "doc block (hidden change): status=[$(git -C "$repo" status --porcelain)] rc=$HELPER_RC output=$HELPER_OUTPUT"
+fi
+repo=$(make_submodule_sandbox tc23g)
+fakebin=$(make_fake_git tc23g '[ "$1 $2" = "submodule status" ] && exit 1')
+PATH="$fakebin:$PATH" run_doc_init "$repo"
+if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"ERROR: git submodule status failed"* ]] \
+   && ! git -C "$repo" rev-parse --verify -q wiki >/dev/null; then
+  pass "doc block: git submodule status failure → ERROR + exit 1, no wiki branch"
+else
+  fail "doc block (submodule status failure): rc=$HELPER_RC output=$HELPER_OUTPUT"
+fi
+repo=$(make_submodule_sandbox tc23h)
+add_ignored_file "$repo"
+snap_before=$(sub_snapshot "$repo")
+fakebin=$(make_fake_git tc23h '[ "$1" = "update-index" ] && exit 0')
+PATH="$fakebin:$PATH" run_doc_init "$repo"
+if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"作業ツリーを消さずに停止します"* ]] && [ "$(sub_snapshot "$repo")" = "$snap_before" ]; then
+  pass "doc block: gitlink left in the index → ERROR + exit 1, submodule tree identical"
+else
+  fail "doc block (gitlink left): rc=$HELPER_RC before=[$snap_before] after=[$(sub_snapshot "$repo")] output=$HELPER_OUTPUT"
 fi
 
 run_differential "separate-clean" separate_branch wiki 0 0

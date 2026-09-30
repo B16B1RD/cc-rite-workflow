@@ -23,7 +23,8 @@
 #   1  git 操作失敗 / 未知の branch_strategy / 引数異常 (leading-`-` の wiki_branch 拒否を
 #      含む; 旧 inline block と同じ blocking 契約) / stash push が新しい entry を作らない /
 #      自分の stash entry が見つからない・pop できない / submodule に変更または未追跡
-#      ファイルがある / 終了時の submodule の状態が実行前と一致しない (いずれも separate_branch)
+#      ファイルがある / submodule を index から外せない / 終了時の submodule の状態が
+#      実行前と一致しない (いずれも separate_branch)
 #
 # Notes:
 #   - 旧 inline block と同じく global `set -e` は使わない (各 git 操作の失敗を
@@ -141,7 +142,8 @@ if [ "$branch_strategy" = "separate_branch" ]; then
     echo "ERROR: submodule に変更または未追跡ファイルがあります。ブランチ・作業ツリー・stash を変更せずに停止します" >&2
     printf '%s\n' "$changed_submodules" | sed 's/^/  対象: /' >&2
     echo "  原因: submodule の変更は git stash で退避できず、ブランチの切り替えで失われうるため、変更がある状態では初期化しません" >&2
-    echo "  対処: 変更を残すなら submodule の変更（未追跡ファイルは commit するか submodule の外へ移す）と親の新しい参照先を commit し、残さないなら submodule を記録済みの commit と中身に戻して、git status --ignore-submodules=none に submodule が表示されなくなってから再実行してください" >&2
+    echo "  対処: 変更を残すなら submodule の変更（未追跡ファイルは commit するか submodule の外へ移す）と親の新しい参照先を commit し、残さないなら submodule を記録済みの commit と中身に戻して、git status に submodule が表示されなくなってから再実行してください" >&2
+    echo "  確認: git -c status.showUntrackedFiles=normal status --ignore-submodules=none" >&2
     exit 1
   fi
   submodules_before=$(git submodule status) || {
