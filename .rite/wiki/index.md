@@ -124,7 +124,7 @@ okf_version: "0.2"
 | [GFM 番号付きリスト分断: 連番途中に block 要素を挟むと新規リストとして render される](pages/anti-patterns/gfm-numbered-list-break-by-block-elements.md) | anti-patterns | GFM (GitHub Flavored Markdown) で `1. ... N.` の連番リストを書く際、items 間に table / paragraph / 注釈などの block 要素を挟むと、後続 item が新規リスト (`1. ` から再採番) として render される。 | 2026-05-13T06:43:41Z | high |
 | [同一手順が複数 site に分散する場合は片方を canonical source と宣言する](pages/patterns/canonical-source-declaration-for-multi-site-procedure.md) | patterns | 同一の placeholder 値生成手順 / 規約 / 設計判断が文書内の複数 site に書かれる場合、放置すると Asymmetric Fix Transcription を誘発する。 | 2026-09-28T01:02:34Z | high |
 | [Success-only Sentinel Design — sub-skill abort path sentinel 未定義](pages/anti-patterns/success-only-sentinel-design.md) | anti-patterns | sub-skill 切出し時に success path 用 HTML sentinel (`<!-- [skill:phase:completed] -->`) のみを定義し、abort path / error path 用 sentinel を未定義のまま残す anti-pattern。 | 2026-05-14T05:30:00+00:00 | medium |
-| [Scope drift fix での overclaim substitution (置換後に新たな過剰主張を持ち込む)](pages/anti-patterns/scope-drift-fix-overclaim-substitution.md) | anti-patterns | 虚偽の test 担保宣言・scope 範囲・契約宣言を「scope を限定する正確な表現」に置換する fix で、reviewer が指摘した overclaim (例: `... で test 担保`) を解消する際、置換後の言い換えに別種の overclaim 語彙 (`固有 (unique to)`、`専用 (specific to)`、`全て (all)`、`必ず (always)` 等) を持ち込むリスク。 | 2026-09-27T20:27:53Z | high |
+| [Scope drift fix での overclaim substitution (置換後に新たな過剰主張を持ち込む)](pages/anti-patterns/scope-drift-fix-overclaim-substitution.md) | anti-patterns | 虚偽の test 担保宣言・scope 範囲・契約宣言を「scope を限定する正確な表現」に置換する fix で、reviewer が指摘した overclaim (例: `... で test 担保`) を解消する際、置換後の言い換えに別種の overclaim 語彙 (`固有 (unique to)`、`専用 (specific to)`、`全て (all)`、`必ず (always)` 等) を持ち込むリスク。 | 2026-09-30T18:40:00Z | high |
 | [Pattern 統一 follow-up PR では Wiki 経験則違反でも統一を優先する](pages/heuristics/pattern-unification-over-wiki-rigor.md) | heuristics | 過去 PR で merge 済みのパターンとの統一を目的とする follow-up PR (cycle N 推奨事項として別 PR 化された scope cleanup) では、Wiki 経験則違反 (overclaim 語彙等) であってもパターン統一を優先し、改善は別 Issue で追跡する。 | 2026-05-15T15:05:00+09:00 | medium |
 | [Bash 配列の slash-deletion は要素を空文字列に置換するだけで削除しない](pages/anti-patterns/bash-array-slash-deletion-empty-replacement.md) | anti-patterns | `cleanup_dirs=("${cleanup_dirs[@]/$target}")` のような bash パラメータ展開 `${arr[@]/pattern}` は、各要素内の `pattern` 一致部分を空文字列に置換するだけで配列スロット自体を削除しない。 | 2026-05-16T13:30:00+09:00 | high |
 | [累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable](pages/heuristics/accumulated-pr-three-cycle-convergence.md) | heuristics | cycle 2 の LOW follow-up として起票された PR は、3 cycle で 0 findings に収束した実例。 | 2026-08-02T22:05:00+09:00 | high |
@@ -673,5 +673,5 @@ okf_version: "0.2"
 
 - 総ページ数: 659
 - ドメイン別: patterns=140, heuristics=328, anti-patterns=191
-- 最終更新: 2026-09-30T17:01:22Z
+- 最終更新: 2026-09-30T18:40:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
