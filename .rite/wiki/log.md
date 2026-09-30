@@ -236,6 +236,18 @@
 * **Skip**: [20260930T114425Z-pr-3537.md](raw/reviews/20260930T114425Z-pr-3537.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
 * **lint:clean** — contradictions=0, stale=64, orphans=0, missing_concept=0, unregistered_raw=625, broken_refs=0
 
+* **Create**: [照合を位置で狭めたら、診断に位置の基準になる受理集合も挙げる](pages/heuristics/narrowed-match-position-diagnostic-lists-accepted-set.md) — [fix 結果](raw/fixes/20260930T123615Z-pr-3542.md) と [レビュー結果](raw/reviews/20260930T122652Z-pr-3542.md) を新規ページ化
+
+* **Update**: [assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる](pages/anti-patterns/assert-label-overclaims-predicate-scope.md) — [終了処理の照合](raw/reviews/20260930T121225Z-pr-3541.md) と [表の入力セル](raw/reviews/20260930T125006Z-pr-3543.md) の検証記録を統合
+
+* **Skip**: [20260930T121156Z-pr-3526.md](raw/reviews/20260930T121156Z-pr-3526.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
+
+* **Skip**: [20260930T121251Z-pr-3540.md](raw/reviews/20260930T121251Z-pr-3540.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
+
+* **Skip**: [20260930T124128Z-pr-3542.md](raw/reviews/20260930T124128Z-pr-3542.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
+
+* **Skip**: [20260930T125750Z-pr-3544.md](raw/reviews/20260930T125750Z-pr-3544.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
+
 ## 2026-09-29
 
 * **Update**: [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) — raw/reviews/20260929T104700Z-pr-3448.md で補強

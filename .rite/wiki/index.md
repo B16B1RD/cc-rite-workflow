@@ -409,7 +409,7 @@ okf_version: "0.2"
 | [pin の説明文に pin 対象の literal を書くと、注記自身が出現数に数えられて count pin が落ちる](pages/anti-patterns/pin-note-containing-pinned-literal.md) | anti-patterns | 「特定の文字列がファイル内にちょうど N 個ある」という count pin を導入したあと、その pin の意図を説明する注記に**対象の literal をそのまま書く**と、注記自身が N+1 個目の出現になり pin が落ちる。 | 2026-08-07T18:40:00+09:00 | high |
 | [安全側へ倒れる fail-safe は、倒れた事実が観測されない限り機能の恒久的不作動を隠す](pages/anti-patterns/safe-side-degradation-hides-permanent-inoperability.md) | anti-patterns | 「情報が欠ければ従来のフル装備へ倒す」型の fail-safe は、倒れた向きが安全側であるがゆえに**壊れていることを誰にも伝えない**。 | 2026-08-08T14:00:41+09:00 | high |
 | [診断を 1 行足す修正は、外部入力・エラー経路・テスト網羅の 3 領域を同時に開く](pages/heuristics/added-diagnostic-opens-three-review-surfaces.md) | heuristics | 診断メッセージの追加は「1 行足すだけ」に見える。 | 2026-08-08T14:00:41+09:00 | high |
-| [assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる](pages/anti-patterns/assert-label-overclaims-predicate-scope.md) | anti-patterns | assert のラベル（テスト名・メッセージ）は、その assert が守る契約の宣言である。 | 2026-09-30T12:10:17Z | high |
+| [assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる](pages/anti-patterns/assert-label-overclaims-predicate-scope.md) | anti-patterns | assert のラベル（テスト名・メッセージ）は、その assert が守る契約の宣言である。 | 2026-09-30T22:06:00+09:00 | high |
 | [awk の exit は END 規則を実行する — 早期終了と END フォールバックの併用は二重出力になる](pages/anti-patterns/awk-exit-runs-end-rule-double-output.md) | anti-patterns | POSIX awk の `exit` は**プログラムを即座に終えるのではなく END 規則へ飛ぶ**。 | 2026-08-08T14:00:41+09:00 | high |
 | [awk のデフォルト FS は `\\r` を含まない — CRLF 入力で「空行」判定が壊れる](pages/anti-patterns/awk-default-fs-excludes-cr-breaks-empty-line-test.md) | anti-patterns | awk のデフォルト FS は space / tab / newline であり **`\\r` を含まない**。 | 2026-08-08T14:00:41+09:00 | high |
 | [機構を削除して解くと、pin 面積だけでなく失敗モードの重さ（blast radius）も縮む](pages/heuristics/simplification-shrinks-pin-surface-and-blast-radius.md) | heuristics | 「規律を作って pin で守る」より「規律が要らない構造にする」ほうが安い、という判断は pin の本数だけでは測れない。 | 2026-08-10T11:55:05Z | high |
@@ -668,9 +668,10 @@ okf_version: "0.2"
 | [git update-index --force-remove は対象が無くても成功を返す — 破壊的な次の手の前に index を読み直す](pages/anti-patterns/git-update-index-force-remove-succeeds-when-entry-absent.md) | anti-patterns | git update-index --force-remove は index に対象の entry が無くても終了コード 0 を返すため、終了コードだけでは entry を外せたことを確かめられない。次に取り消せない操作が続くなら、index を読み直して entry が消えたことを確認してから進む。 | 2026-09-30T09:18:44Z | high |
 | [エラー文に書く確認コマンドは検出に使ったコマンドと同じ形にし、テストは出力から取り出して実行する](pages/patterns/error-message-check-command-mirrors-detection-command.md) | patterns | 検出コマンドに設定の上書きなどを足すと、エラー文の「対処」に書いた確認コマンドが古い形のまま残り、利用者が実行しても検出と違う結果になる。確認コマンドは検出と同じ形を独立した行で示し、テストは出力からその行を取り出して実行して、解除前と解除後の両方の結果を検査する。 | 2026-09-30T09:18:44Z | high |
 | [受入条件が PR 本文を対象にするときは、本文の更新だけでは再レビューされない — 対応するファイルの修正と合わせて commit する](pages/heuristics/acceptance-on-pr-body-needs-a-commit-to-be-rereviewed.md) | heuristics | 受入条件が PR 本文の表を対象にしていると、本文だけを直しても HEAD が変わらず、差分スコープの再レビューでは確認されない。対応するファイルの修正と同じ commit で直し、本文の状態は検証コマンドで固定する。表の突き合わせは項目の名前の集合ではなく行単位で行う。 | 2026-09-30T09:18:44Z | medium |
+| [照合を位置で狭めたら、診断に位置の基準になる受理集合も挙げる](pages/heuristics/narrowed-match-position-diagnostic-lists-accepted-set.md) | heuristics | 照合を「項目の冒頭」のような位置で狭めると、受け付けない記号で始まる入力が受理から拒否へ変わる。診断が位置しか言わないと、書き手は診断だけでは直せない。 | 2026-09-30T22:06:00+09:00 | medium |
 ## 統計
 
-- 総ページ数: 658
-- ドメイン別: patterns=140, heuristics=327, anti-patterns=191
-- 最終更新: 2026-09-30T12:10:17Z
+- 総ページ数: 659
+- ドメイン別: patterns=140, heuristics=328, anti-patterns=191
+- 最終更新: 2026-09-30T22:06:00+09:00
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

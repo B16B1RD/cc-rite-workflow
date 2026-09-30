@@ -33,9 +33,13 @@ sources:
     resource: "raw/reviews/20260930T113222Z-pr-3537.md"
   - type: "fixes"
     resource: "raw/fixes/20260930T114011Z-pr-3537.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T121225Z-pr-3541.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T125006Z-pr-3543.md"
 tags: ["test", "mutation-testing", "assertion-strength", "contract", "review-fix-loop"]
 confidence: high
-generated: { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T12:10:17Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-30T22:06:00+09:00" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-30T12:50:00+09:00"
@@ -45,6 +49,8 @@ verified:
     at: "2026-09-30T08:55:00Z"
   - by: "rite-wiki-ingest/grok-4.7"
     at: "2026-09-30T12:10:17Z"
+  - by: "rite-wiki-ingest/claude-opus-5-5"
+    at: "2026-09-30T22:06:00+09:00"
 ---
 
 # assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる
@@ -109,6 +115,10 @@ assert 名に変数名のような実装詳細を入れると、内部名を変�
 
 コメントには、意図した効果ではなく、集めている条件を書く。条件より広いコメントは、そのテストが条件の外まで検査しているように読まれ、次の確認で指摘になる。
 
+### 静的検査のコメントは、読む範囲と検出できない変更を一緒に書く
+
+文字列の照合で成り立つ静的検査は、照合した箇所の字面だけを保証する。最後に登録された名前付きの終了処理の中身を照合する検査は、その処理が実際に最後に走ることまでは保証しない（後ろの登録が上書きしても検出しない）。表の入力セルを全文一致で固定する検査は、表の外の箇条で候補を絞る変更を検出しない。どちらも、名前とコメントを「どこの字面を照合するか」に限り、検出しない変更を明記したところ、述語を変えずに名乗りと検査範囲が一致した。
+
 ## 関連ページ
 
 - [アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](../heuristics/mutation-testing-measures-assertion-strength.md)
@@ -131,3 +141,5 @@ assert 名に変数名のような実装詳細を入れると、内部名を変�
 - [足した行ごとの変異と条件収集](../../raw/fixes/20260930T112444Z-pr-3537.md)
 - [コメントが収集条件より広い](../../raw/reviews/20260930T113222Z-pr-3537.md)
 - [コメントを収集条件へ直した修正](../../raw/fixes/20260930T114011Z-pr-3537.md)
+- [名乗りを照合範囲へ限定した検証（終了処理の照合）](../../raw/reviews/20260930T121225Z-pr-3541.md)
+- [名乗りを照合範囲へ限定した検証（表の入力セル）](../../raw/reviews/20260930T125006Z-pr-3543.md)
