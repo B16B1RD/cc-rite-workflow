@@ -36,6 +36,8 @@
 
 * **Skip**: [20260930T231815Z-pr-3562.md](raw/fixes/20260930T231815Z-pr-3562.md) — 既存ページの補強済み。sweep の保留と再開は rite workflow の挙動で plugin 側の責務
 
+* **Lint incomplete** — 機械検査は stale=65, orphans=0, missing_concept=0, unregistered_raw=644, broken_refs=0, descriptive_refs=0。矛盾検出は全ページの意味比較が必要なため今回も実施しておらず、contradictions は未評価（0 件とは限らない）。
+
 ## 2026-09-30
 
 * **Lint incomplete** — 機械検査は stale=64、orphans=0、missing_concept=0、unregistered_raw=621、broken_refs=0、descriptive_number_ref=0。更新ページは出典と関連ページを照合した。全658ページの意味的な矛盾比較は未完了であり、Wiki 全体の品質検査成功とは扱わない。
