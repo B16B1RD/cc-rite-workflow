@@ -362,7 +362,7 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
         # PR が close/merge/delete された legitimate な終了状態 (gh CLI の
         # `Could not resolve to a PullRequest` CamelCase 連結 stderr) と
         # auth/network/permission 失敗を区別して WARNING に出す。前者は false positive。
-        if grep -qiE 'could not resolve.*pull\s*request|no.*pull\s*request found' <<< "$pr_view_err_oneline"; then
+        if grep -qiE 'could not resolve.*pull[[:space:]]*request|no.*pull[[:space:]]*request found' <<< "$pr_view_err_oneline"; then
           pr_root_cause_hint="pr_deleted_or_inaccessible"
         else
           pr_root_cause_hint="post_compact_gh_pr_view_failed"
