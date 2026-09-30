@@ -4,10 +4,16 @@ title: "0x80-0x9F をバイト単位で潰す制御文字の中和は、UTF-8 �
 description: "C1 制御文字の範囲 0x80-0x9F は UTF-8 の継続バイトと重なるため、バイト単位で ? にすると日本語ロケールの git やシェルの原因行が文字化けする。整形式 UTF-8 列の継続バイトだけを残し、それ以外を潰す判定にすれば、制御文字の中和を保ったまま本文を読める。"
 domain: "anti-patterns"
 created: "2026-09-26T04:45:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T04:45:00Z" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-30T06:42:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-30T06:42:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260926T043640Z-pr-3108.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T055126Z-pr-3513.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260930T055813Z-pr-3513.md"
 tags: ["utf-8", "control-char", "awk", "portability", "diagnostics"]
 confidence: high
 ---
@@ -35,6 +41,8 @@ C1 制御文字の範囲 0x80-0x9F は UTF-8 の継続バイトと重なるた�
 - バイト単位の処理は `LC_ALL=C` に頼る。ところが onetrue-awk の一部の版（2023 年秋の短い期間）は、C ロケールでも UTF-8 単位で length / substr を処理した。gawk / mawk / BSD awk のそれぞれで、実際に動かして確かめる。
 - `RS` を入力に現れないバイト（前段の tr で必ず置換されるもの）にして全入力を 1 レコードで読み、`printf "%s"` で出す。こうすると末尾改行の有無を含めてバイトを落とさず、足しもしない。
 
+**同じ helper の用途は「警告」と「利用者が操作する案内」で分ける**: デバッグ用の 1 行の警告なら既定の整形（C1 も潰す）を許容できても、利用者が読んでそのまま操作する stdout の案内（削除や再開に使うファイルのパスなど）へ警告用に作った値を流用すると、非 ASCII のパスが実在しないバイト列になり、案内が使えなくなる。案内に埋め込む値だけを、C0 と DEL のみを除く整形（UTF-8 を保つ）で作り直し、警告側の整形は変えない。同じファイルに C0 のみのモードを使う前例があれば、それに揃える。検査は、非 ASCII のディレクトリ名を含む fixture で案内行のパスがバイト単位で一致することを固定し、旧整形へ戻す変異でそのテストだけが落ちることまで確かめる。ASCII のパスだけのテストでは、この破損は検出できない。
+
 **共有 helper の契約を変えるときの注意**: 中和 helper のモード 1 つを変えただけでも、そのモードを使う全 call site の出力が一斉に変わる。宣言した規模が小さくても、call site の数を数えて波及範囲を確かめる。
 
 ## 関連ページ
@@ -46,3 +54,5 @@ C1 制御文字の範囲 0x80-0x9F は UTF-8 の継続バイトと重なるた�
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260926T043640Z-pr-3108.md)
+- [案内行のパスが警告用の整形で壊れることを指摘したレビュー結果](../../raw/reviews/20260930T055126Z-pr-3513.md)
+- [案内行だけ C0 のみの整形に切り替えた fix 結果](../../raw/fixes/20260930T055813Z-pr-3513.md)

@@ -116,6 +116,10 @@
 * **Skip**: [字句解析のレビュー結果](raw/reviews/20260930T061659Z-pr-3512.md) — 機構と回帰テストへ反映済みの検証記録で、追加のドメイン経験則はない
 
 * **Lint incomplete** — 機械検査は stale=61、orphans=0、missing_concept=0、unregistered_raw=602、broken_refs=0、descriptive_number_ref=0。全ページの意味比較は未完了のため、Wiki 全体の検査成功とは扱わない。
+* **Update**: [0x80-0x9F をバイト単位で潰す制御文字の中和は、UTF-8 の日本語を壊して診断を読めなくする](pages/anti-patterns/bytewise-c1-neutralization-breaks-utf8-diagnostics.md) — raw/reviews/20260930T055126Z-pr-3513.md と raw/fixes/20260930T055813Z-pr-3513.md を統合
+* **Update**: [散文の主張を実装に合わせて絞るときは、限定の外側・指示語・同じ主張の別箇所まで突き合わせる](pages/heuristics/narrowed-prose-claim-check-outside-scope-and-same-claims.md) — raw/fixes/20260930T061718Z-pr-3513.md を統合
+* **Skip**: [再レビューのレビュー結果](raw/reviews/20260930T060534Z-pr-3513.md) — 指摘 0 件の再レビューで、新しい経験則はない
+* **Skip**: [再レビューのレビュー結果](raw/reviews/20260930T062244Z-pr-3513.md) — 指摘 0 件の再レビューで、新しい経験則はない
 
 ## 2026-09-29
 
