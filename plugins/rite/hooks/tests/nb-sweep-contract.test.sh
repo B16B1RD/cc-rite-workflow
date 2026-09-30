@@ -133,7 +133,7 @@ assert "T-04 status=empty" "empty" "$(printf '%s' "$t04_out" | jq -r '.status')"
 assert "T-04 count=0" "0" "$(printf '%s' "$t04_out" | jq -r '.count')"
 assert_grep "T-04 CONTEXT empty" "$sandbox/t04.err" 'NB_SWEEP_COLLECT=empty; count=0'
 
-# --- T-05 (AC-5): nit-noted は対象。class A は対象外。guardrail は already_rejected ---
+# --- T-05 (AC-5): nit-noted は対象。class A は対象外。guardrail 行も候補 ---
 mix_json="$sandbox/pr-mix.json"
 write_json "$mix_json" <<'JSON'
 {
@@ -153,15 +153,71 @@ write_json "$mix_json" <<'JSON'
 }
 JSON
 t05_out=$("$COLLECT" --json "$mix_json" 2>"$sandbox/t05.err")
-ids=$(printf '%s' "$t05_out" | jq -r '[.targets[].id] | sort | join(",")')
-assert "T-05 targets F-21,F-22 only" "F-21,F-22" "$ids"
+ids=$(printf '%s' "$t05_out" | jq -r '[.targets[].key] | sort | join(",")')
+assert "T-05 targets F-21,F-22 and the guardrail row" "F-21,F-22,guardrail:code-quality-reviewer:src/g.ts:7" "$ids"
 assert "T-05 class A excluded" "0" "$(printf '%s' "$t05_out" | jq '[.targets[] | select(.id=="F-20")] | length')"
-assert "T-05 already_rejected=1" "1" "$(printf '%s' "$t05_out" | jq '.already_rejected | length')"
-assert "T-03 already_rejected reviewer" "code-quality-reviewer" "$(printf '%s' "$t05_out" | jq -r '.already_rejected[0].reviewer')"
-assert "T-03 already_rejected file_line" "src/g.ts:7" "$(printf '%s' "$t05_out" | jq -r '.already_rejected[0].file_line')"
-assert "T-03 already_rejected original_severity" "MEDIUM" "$(printf '%s' "$t05_out" | jq -r '.already_rejected[0].original_severity')"
-assert "T-03 already_rejected description" "filtered" "$(printf '%s' "$t05_out" | jq -r '.already_rejected[0].description')"
-assert "T-03 already_rejected filter_reason" "hypothetical" "$(printf '%s' "$t05_out" | jq -r '.already_rejected[0].filter_reason')"
+assert "T-05 no already_rejected output" "false" "$(printf '%s' "$t05_out" | jq 'has("already_rejected")')"
+assert "T-05 count counts the guardrail row" "3" "$(printf '%s' "$t05_out" | jq '.count')"
+t05_g=$(printf '%s' "$t05_out" | jq -c '.candidates[] | select(.source == "guardrail_audit_log")')
+assert "T-05 guardrail candidate id is its key" "guardrail:code-quality-reviewer:src/g.ts:7" "$(printf '%s' "$t05_g" | jq -r '.id')"
+assert "T-05 guardrail finding_id is the reviewer" "code-quality-reviewer" "$(printf '%s' "$t05_g" | jq -r '.finding_id')"
+assert "T-05 guardrail record is the JSON basename" "pr-mix.json" "$(printf '%s' "$t05_g" | jq -r '.record')"
+assert "T-05 guardrail file and line join back to file_line" "src/g.ts:7" "$(printf '%s' "$t05_g" | jq -r '.file + ":" + (.line | tostring)')"
+assert "T-05 guardrail severity original" "MEDIUM" "$(printf '%s' "$t05_g" | jq -r '.severity')"
+assert "T-05 guardrail description" "filtered" "$(printf '%s' "$t05_g" | jq -r '.description')"
+assert "T-05 guardrail filter_reason" "hypothetical" "$(printf '%s' "$t05_g" | jq -r '.filter_reason')"
+assert "T-05 guardrail measured false" "false" "$(printf '%s' "$t05_g" | jq -r '.verification.measured')"
+
+# guardrail 行: path に `:` を含む位置は最後の `:` で分け、同じ reviewer の 2 行は別の候補になる
+gsplit_json="$sandbox/pr-gsplit.json"
+write_json "$gsplit_json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":3,"overall_assessment":"mergeable","findings":[],"non_blocking_findings":[],
+ "guardrail_audit_log":[
+  {"reviewer":"test-reviewer","filter_category":"Category #2","original_severity":"LOW","file_line":"a:b.ts:7","description":"colon path","filter_reason":"r1","verification":"なし"},
+  {"reviewer":"test-reviewer","filter_category":"Category #2","original_severity":"LOW","file_line":"src/t.sh:98-101","description":"range","filter_reason":"r2","verification":"なし"}]}
+JSON
+gsplit_out=$("$COLLECT" --json "$gsplit_json" 2>/dev/null)
+assert "guardrail colon path file" "a:b.ts" "$(printf '%s' "$gsplit_out" | jq -r '.candidates[] | select(.description == "colon path") | .file')"
+assert "guardrail colon path line" "7" "$(printf '%s' "$gsplit_out" | jq -r '.candidates[] | select(.description == "colon path") | .line')"
+assert "guardrail range line joins back" "src/t.sh:98-101" "$(printf '%s' "$gsplit_out" | jq -r '.candidates[] | select(.description == "range") | .file + ":" + (.line | tostring)')"
+assert "guardrail same reviewer two rows two ids" "2" "$(printf '%s' "$gsplit_out" | jq '[.candidates[].id] | unique | length')"
+
+# 同じ reviewer・file_line の 2 行目以降は key に #n が付き、重複除去で落ちない
+gdup_json="$sandbox/pr-gdup.json"
+write_json "$gdup_json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":3,"overall_assessment":"mergeable","findings":[],"non_blocking_findings":[],
+ "guardrail_audit_log":[
+  {"reviewer":"test-reviewer","filter_category":"Category #2","original_severity":"LOW","file_line":"src/d.ts:3","description":"first","filter_reason":"r1","verification":"なし"},
+  {"reviewer":"test-reviewer","filter_category":"Category #2","original_severity":"LOW","file_line":"src/d.ts:3","description":"second","filter_reason":"r2","verification":"なし"}]}
+JSON
+gdup_out=$("$COLLECT" --json "$gdup_json" 2>/dev/null)
+assert "guardrail same position: both rows are candidates" "2" "$(printf '%s' "$gdup_out" | jq '.count')"
+assert "guardrail same position: second row key has #2" "first=guardrail:test-reviewer:src/d.ts:3,second=guardrail:test-reviewer:src/d.ts:3#2" \
+  "$(printf '%s' "$gdup_out" | jq -r '[.candidates[] | "\(.description)=\(.id)"] | sort | join(",")')"
+assert "guardrail same position: loc stays the file_line" "src/d.ts:3" "$(printf '%s' "$gdup_out" | jq -r '[.candidates[].loc] | unique | join(",")')"
+
+# file_line の形は問わない (producer は `-` や関数名も書く)。loc に原文のまま運ぶ
+for g_ok in '-' 'parse_args' 'src/x.ts'; do
+  jq -n --arg fl "$g_ok" '{schema_version:"1.1.0",pr_number:3,overall_assessment:"mergeable",findings:[],non_blocking_findings:[],guardrail_audit_log:[{reviewer:"r",original_severity:"LOW",file_line:$fl,description:"d"}]}' > "$sandbox/gok.json"
+  gok_out=$("$COLLECT" --json "$sandbox/gok.json" 2>/dev/null)
+  assert "guardrail file_line of any shape is a candidate ($g_ok)" "guardrail:r:${g_ok}|${g_ok}" "$(printf '%s' "$gok_out" | jq -r '.candidates[0] | "\(.id)|\(.loc)"')"
+done
+
+# guardrail 行が判定に要る本文を欠けば、落とさずに止まる
+for g_bad in '{"reviewer":"","original_severity":"LOW","file_line":"src/x.ts:1","description":"d"}' \
+             '{"reviewer":"r","original_severity":"LOW","file_line":"src/x.ts:1","description":""}'; do
+  jq -n --argjson g "$g_bad" '{schema_version:"1.1.0",pr_number:3,overall_assessment:"mergeable",findings:[],non_blocking_findings:[],guardrail_audit_log:[$g]}' > "$sandbox/gbad.json"
+  gbad_rc=0
+  "$COLLECT" --json "$sandbox/gbad.json" >"$sandbox/gbad.out" 2>"$sandbox/gbad.err" || gbad_rc=$?
+  assert "guardrail row without text stops ($g_bad)" "1" "$gbad_rc"
+  assert_grep "guardrail row without text reason ($g_bad)" "$sandbox/gbad.err" 'NB_SWEEP_COLLECT=failed; count=0; .*reason=guardrail_row_invalid'
+  assert_grep "guardrail row without text names its file_line ($g_bad)" "$sandbox/gbad.err" 'file_line=src/x.ts:1'
+  case "$g_bad" in *'"reviewer":"r"'*)
+    assert_grep "guardrail row without text names its reviewer ($g_bad)" "$sandbox/gbad.err" 'reviewer=r file_line=src/x.ts:1' ;;
+  esac
+  assert_grep "guardrail row without text names the review JSON ($g_bad)" "$sandbox/gbad.err" 'gbad.json'
+  assert "guardrail row without text prints no result ($g_bad)" "" "$(cat "$sandbox/gbad.out")"
+done
 assert_not_grep "collect has no filtered_suggestion fallback" "$COLLECT" 'filtered_suggestion'
 assert_not_grep "collect has no failed_condition fallback" "$COLLECT" 'failed_condition'
 
@@ -275,9 +331,9 @@ jq '{guardrail_audit_log}' "$mix_json" > "$guard_json"
 guard_out=$("$COLLECT" --json "$guard_json")
 assert "guardrail-only status ok" "ok" "$(printf '%s' "$guard_out" | jq -r '.status')"
 assert "guardrail-only count 1" "1" "$(printf '%s' "$guard_out" | jq -r '.count')"
-assert "guardrail carries no route" "false" "$(printf '%s' "$guard_out" | jq -r '.already_rejected[0] | has("route")')"
-assert "guardrail measured false" "false" "$(printf '%s' "$guard_out" | jq -r '.already_rejected[0].verification.measured')"
-assert "guardrail severity original" "MEDIUM" "$(printf '%s' "$guard_out" | jq -r '.already_rejected[0].severity')"
+assert "guardrail-only row is the one candidate" "guardrail:code-quality-reviewer:src/g.ts:7" "$(printf '%s' "$guard_out" | jq -r '[.candidates[].id] | join(",")')"
+assert "guardrail carries no route" "false" "$(printf '%s' "$guard_out" | jq -r '.candidates[0] | has("route")')"
+assert "guardrail-only has no already_rejected output" "false" "$(printf '%s' "$guard_out" | jq 'has("already_rejected")')"
 
 # Read legacy and new dispositions only inside the persisted ledger section.
 ledger_body="$sandbox/live-ledger.md"
@@ -303,10 +359,10 @@ jq -n --slurpfile guard "$guard_json" '{non_blocking_findings:[
 {id:"collision",file:"src/keep.ts",line:9}
 ],guardrail_audit_log:$guard[0].guardrail_audit_log}' > "$live_json"
 live_out=$("$COLLECT" --json "$live_json" --pr 1)
-assert "only the issued row excludes a target; legacy rejected / recorded rows do not (id collision retained)" "collision,old,rec" "$(printf '%s' "$live_out" | jq -r '[.targets[].id] | sort | join(",")')"
+assert "only the issued row excludes a target; legacy rejected / recorded rows do not (id collision retained)" "code-quality-reviewer,collision,old,rec" "$(printf '%s' "$live_out" | jq -r '[.targets[].id] | sort | join(",")')"
 assert "legacy rows keep their target at the same location" "src/old.ts" "$(printf '%s' "$live_out" | jq -r '.targets[] | select(.id=="old") | .file')"
 assert "legacy rows give no prior" 0 "$(printf '%s' "$live_out" | jq '[.targets[] | select(has("prior"))] | length')"
-assert "guardrail ledger excluded" "0" "$(printf '%s' "$live_out" | jq '.already_rejected | length')"
+assert "a legacy recorded guardrail row does not exclude the guardrail candidate" "1" "$(printf '%s' "$live_out" | jq '[.candidates[] | select(.id == "guardrail:code-quality-reviewer:src/g.ts:7")] | length')"
 assert "candidates are the targets with id=key, finding_id and the record of the JSON read" \
   "$(printf '%s' "$live_out" | jq -c '[.targets[] | . + {finding_id: .id, id: .key, record: "live.json"}]')" \
   "$(printf '%s' "$live_out" | jq -c '.candidates')"
@@ -351,6 +407,129 @@ printf '{"candidates": [{"id": "x", "key": "x"}]}\n' > "$carry_hold"
 assert "carry: a hold without the candidates' record stops the collect" 1 "$?"
 assert_grep "carry: the unreadable hold is named" "$sandbox/carry-bad.err" 'reason=hold_unreadable'
 assert_grep "carry: the unreadable hold's path is printed" "$sandbox/carry-bad.err" 'adoption-hold-1-sweep.json'
+# A held guardrail candidate the JSON still has is not carried a second time.
+printf '%s' "$live_out" | jq '{kind: "sweep", pr: 1, head: "aaaa", review_result: "/x/live.json", reason: "undecided",
+  detail: "", held_ids: [], resume: "r",
+  candidates: [.candidates[] | select(.source == "guardrail_audit_log")]}' > "$carry_hold"
+gcarry_out=$("$COLLECT" --json "$live_json" --pr 1 --state-root "$carry_root")
+assert "carry: a held guardrail candidate is not duplicated" 1 \
+  "$(printf '%s' "$gcarry_out" | jq '[.candidates[] | select(.key == "guardrail:code-quality-reviewer:src/g.ts:7")] | length')"
+rm -f -- "$carry_hold"
+
+# guardrail 行の台帳照合: reviewer と file_line の REJECT 行 (スコープ外処分) は、今回読む JSON を
+# 出典に持っても除外せず prior になる。key の REJECT 行は、今回読む JSON を出典に持つときだけ除外する。
+gprior_body="$sandbox/gprior-ledger.md"
+printf '%s\n' "$MARKER" '' '### 却下台帳' '' '| finding_id | file:line | 判定 | 判定文 | 出典 |' \
+  '|------------|-----------|------|--------|------|' \
+  '| code-quality-reviewer | src/g.ts:7 | REJECT | scope triage premise | live.json |' \
+  '' '📎 non_blocking_count: 0' '' "$SENTINEL" > "$gprior_body"
+jq -n --rawfile body "$gprior_body" '[[{id:11,user:{login:"rite-bot"},body:$body}]]' > "$NB_TEST_COMMENTS"
+gprior_out=$("$COLLECT" --json "$live_json" --pr 1)
+gprior_c=$(printf '%s' "$gprior_out" | jq -c '.candidates[] | select(.source == "guardrail_audit_log")')
+assert "guardrail prior: the reviewer-keyed REJECT row from the JSON read does not exclude it" 1 \
+  "$(printf '%s' "$gprior_out" | jq '[.candidates[] | select(.source == "guardrail_audit_log")] | length')"
+assert "guardrail prior: the reviewer-keyed REJECT row is the prior" "code-quality-reviewer|src/g.ts:7|REJECT|scope triage premise" \
+  "$(printf '%s' "$gprior_c" | jq -r '"\(.prior.finding_id)|\(.prior.file_line)|\(.prior.disposition)|\(.prior.premise)"')"
+printf '%s\n' "$MARKER" '' '### 却下台帳' '' '| finding_id | file:line | 判定 | 判定文 | 出典 |' \
+  '|------------|-----------|------|--------|------|' \
+  '| guardrail:code-quality-reviewer:src/g.ts:7 | src/g.ts:7 | REJECT | judged | live.json |' \
+  '' '📎 non_blocking_count: 0' '' "$SENTINEL" > "$gprior_body"
+jq -n --rawfile body "$gprior_body" '[[{id:11,user:{login:"rite-bot"},body:$body}]]' > "$NB_TEST_COMMENTS"
+gdone_out=$("$COLLECT" --json "$live_json" --pr 1)
+assert "guardrail: a REJECT row of its key from the JSON read now excludes it" 0 \
+  "$(printf '%s' "$gdone_out" | jq '[.candidates[] | select(.source == "guardrail_audit_log")] | length')"
+
+# 旧形式の recorded 行の出典 JSON が結果ディレクトリにも archive/ にも無ければ、原文を判定できないので止まる
+printf '%s\n' "$MARKER" '' '### 却下台帳' '' '| finding_id | file:line | 判定 | 判定文 | 出典 |' \
+  '|------------|-----------|------|--------|------|' \
+  '| lost-reviewer | src/lost.ts:4 | recorded | guardrail | 1-20251231000000.json |' \
+  '' '📎 non_blocking_count: 0' '' "$SENTINEL" > "$gprior_body"
+jq -n --rawfile body "$gprior_body" '[[{id:11,user:{login:"rite-bot"},body:$body}]]' > "$NB_TEST_COMMENTS"
+: > "$NB_TEST_GH_LOG"
+glost_rc=0
+"$COLLECT" --json "$live_json" --pr 1 >"$sandbox/glost.out" 2>"$sandbox/glost.err" || glost_rc=$?
+assert "guardrail source missing: stops non-zero" "1" "$glost_rc"
+assert_grep "guardrail source missing: reason" "$sandbox/glost.err" 'NB_SWEEP_COLLECT=failed; count=0; .*reason=guardrail_source_missing'
+assert_grep "guardrail source missing: ERROR names reviewer, file_line and source" "$sandbox/glost.err" 'reviewer=lost-reviewer file_line=src/lost.ts:4 source=1-20251231000000.json'
+assert "guardrail source missing: prints no result" "" "$(cat "$sandbox/glost.out")"
+assert_grep "guardrail source missing: the ledger is read" "$NB_TEST_GH_LOG" 'repos/test/repo/issues/42/comments'
+assert "guardrail source missing: ledger unchanged (every gh call is a read)" "0" \
+  "$(grep -cvE '^(repo view |pr view |api user |issue view |api --paginate --slurp repos/test/repo/issues/42/comments$|api repos/test/repo/issues/comments/[0-9]+$)' "$NB_TEST_GH_LOG")"
+# 出典 JSON が archive/ にあれば止まらない
+mkdir -p "$sandbox/archive"
+: > "$sandbox/archive/1-20251231000000.json"
+garch_rc=0
+"$COLLECT" --json "$live_json" --pr 1 >/dev/null 2>&1 || garch_rc=$?
+assert "guardrail source in archive: does not stop" "0" "$garch_rc"
+rm -f -- "$sandbox/archive/1-20251231000000.json"
+# 今回の JSON に同じ reviewer・file_line の guardrail 行があれば原文はそこにあるので止めない。
+# 別の PR を出典に持つ行はこの PR の候補ではないので止めない (台帳は Issue 単位)
+printf '%s\n' "$MARKER" '' '### 却下台帳' '' '| finding_id | file:line | 判定 | 判定文 | 出典 |' \
+  '|------------|-----------|------|--------|------|' \
+  '| code-quality-reviewer | src/g.ts:7 | recorded | guardrail | 1-20251231000000.json |' \
+  '| lost-reviewer | src/lost.ts:4 | recorded | guardrail | 2-20251231000000.json |' \
+  '' '📎 non_blocking_count: 0' '' "$SENTINEL" > "$gprior_body"
+jq -n --rawfile body "$gprior_body" '[[{id:11,user:{login:"rite-bot"},body:$body}]]' > "$NB_TEST_COMMENTS"
+ghere_rc=0
+"$COLLECT" --json "$live_json" --pr 1 >/dev/null 2>&1 || ghere_rc=$?
+assert "guardrail source missing: a row present in the JSON or of another PR does not stop" "0" "$ghere_rc"
+# 空のセルを持つ旧形式行も列がずれずに出典を読み、rejected 行も同じく止まる
+printf '%s\n' "$MARKER" '' '### 却下台帳' '' '| finding_id | file:line | 判定 | 判定文 | 出典 |' \
+  '|------------|-----------|------|--------|------|' \
+  '| lost-reviewer |  | recorded | guardrail | 1-20251231000000.json |' \
+  '|  | src/e.ts:1 | rejected | legacy | 1-20251231000000.json |' \
+  '' '📎 non_blocking_count: 0' '' "$SENTINEL" > "$gprior_body"
+jq -n --rawfile body "$gprior_body" '[[{id:11,user:{login:"rite-bot"},body:$body}]]' > "$NB_TEST_COMMENTS"
+gempty_rc=0
+"$COLLECT" --json "$live_json" --pr 1 >/dev/null 2>"$sandbox/gempty.err" || gempty_rc=$?
+assert "guardrail source missing: a row with an empty cell stops" "1" "$gempty_rc"
+assert_grep "guardrail source missing: the empty file:line row is named" "$sandbox/gempty.err" 'reviewer=lost-reviewer file_line=<empty> source=1-20251231000000.json'
+assert_grep "guardrail source missing: the rejected row with an empty id is named" "$sandbox/gempty.err" 'reviewer=<empty> file_line=src/e.ts:1 source=1-20251231000000.json'
+# 出典 JSON が今回の JSON と同じディレクトリにあれば止まらない
+: > "$sandbox/1-20251231000000.json"
+gdir_rc=0
+"$COLLECT" --json "$live_json" --pr 1 >/dev/null 2>&1 || gdir_rc=$?
+assert "guardrail source in the same directory: does not stop" "0" "$gdir_rc"
+rm -f -- "$sandbox/1-20251231000000.json"
+
+# 位置の無い guardrail 行 (file_line が -) は reviewer ごとに key が同じになるので、別の JSON を出典に持つ
+# key の行では除外せず、スコープ外処分の - 行を prior にせず、旧形式行の原文がある根拠にもしない
+nl_ledger() {
+  printf '%s\n' "$MARKER" '' '### 却下台帳' '' '| finding_id | file:line | 判定 | 判定文 | 出典 |' \
+    '|------------|-----------|------|--------|------|' "$@" '' '📎 non_blocking_count: 0' '' "$SENTINEL" > "$gprior_body"
+  jq -n --rawfile body "$gprior_body" '[[{id:11,user:{login:"rite-bot"},body:$body}]]' > "$NB_TEST_COMMENTS"
+}
+# file_line が - の行と、file_line の無い (null) 行の両方で同じ規則を固定する
+for nl_fl in '-' 'null'; do
+  nl_name="nl-$([ "$nl_fl" = null ] && echo null || echo dash).json"
+  nl_json="$sandbox/$nl_name"
+  jq -n --argjson fl "$([ "$nl_fl" = null ] && echo null || echo '"-"')" '{schema_version:"1.1.0",pr_number:1,overall_assessment:"mergeable",findings:[],non_blocking_findings:[],
+    guardrail_audit_log:[{reviewer:"nl-reviewer",filter_category:"Category #2",original_severity:"LOW",description:"no location"} + (if $fl == null then {} else {file_line:$fl} end)]}' > "$nl_json"
+  nl_loc=$([ "$nl_fl" = null ] && echo '' || echo '-')
+  nl_ledger "| guardrail:nl-reviewer:$nl_loc | $nl_loc | issued | #5 https://example.test/issues/5 | 1-20260101000000.json |"
+  assert "unlocated guardrail ($nl_fl): an issued row of its key from another JSON does not exclude it" 1 \
+    "$("$COLLECT" --json "$nl_json" --pr 1 | jq '.count')"
+  nl_ledger "| guardrail:nl-reviewer:$nl_loc | $nl_loc | REJECT | judged | $nl_name |"
+  assert "unlocated guardrail ($nl_fl): a REJECT row of its key from the JSON read excludes it" 0 \
+    "$("$COLLECT" --json "$nl_json" --pr 1 | jq '.count')"
+  nl_ledger "| nl-reviewer | $nl_loc | REJECT | unrelated scope triage | $nl_name |"
+  assert "unlocated guardrail ($nl_fl): a reviewer-keyed REJECT row gives no prior" "false" \
+    "$("$COLLECT" --json "$nl_json" --pr 1 | jq '.candidates[0] | has("prior")')"
+  nl_ledger "| nl-reviewer | $nl_loc | recorded | guardrail | 1-20251231000000.json |"
+  gnl_rc=0
+  "$COLLECT" --json "$nl_json" --pr 1 >/dev/null 2>"$sandbox/gnl.err" || gnl_rc=$?
+  assert "unlocated guardrail ($nl_fl): it does not hold the text of a legacy row whose source is gone" "1" "$gnl_rc"
+  assert_grep "unlocated guardrail ($nl_fl): the stop is for the lost source" "$sandbox/gnl.err" 'reason=guardrail_source_missing'
+  assert_grep "unlocated guardrail ($nl_fl): the lost row is named" "$sandbox/gnl.err" "reviewer=nl-reviewer file_line=${nl_loc:-<empty>} source=1-20251231000000.json"
+done
+
+# 関数名の file_line は loc のまま台帳と照合する (key の REJECT 行で除外される)
+fn_json="$sandbox/fn.json"
+jq -n '{schema_version:"1.1.0",pr_number:1,overall_assessment:"mergeable",findings:[],non_blocking_findings:[],
+  guardrail_audit_log:[{reviewer:"fn-reviewer",filter_category:"Category #2",original_severity:"LOW",file_line:"parse_args",description:"fn"}]}' > "$fn_json"
+nl_ledger '| guardrail:fn-reviewer:parse_args | parse_args | REJECT | judged | fn.json |'
+assert "function-name guardrail: a REJECT row of its key and loc excludes it" 0 \
+  "$("$COLLECT" --json "$fn_json" --pr 1 | jq '.count')"
 
 # CRLF body: the ledger section must be read exactly as the LF body (same targets, same section boundary).
 crlf_ledger_body="$sandbox/live-ledger-crlf.md"
@@ -358,7 +537,7 @@ sed 's/$/\r/' "$ledger_body" > "$crlf_ledger_body"
 assert "CRLF fixture contains CR" "yes" "$(grep -q $'\r' "$crlf_ledger_body" && echo yes || echo no)"
 jq -n --rawfile body "$crlf_ledger_body" '[[{id:11,user:{login:"rite-bot"},body:$body}]]' > "$NB_TEST_COMMENTS"
 crlf_out=$("$COLLECT" --json "$live_json" --pr 1)
-assert "CRLF ledger excludes the same rows" "3" "$(printf '%s' "$crlf_out" | jq '.count')"
+assert "CRLF ledger excludes the same rows" "$(printf '%s' "$live_out" | jq '.count')" "$(printf '%s' "$crlf_out" | jq '.count')"
 assert "CRLF targets equal LF targets" "$(printf '%s' "$live_out" | jq -cS '[.targets[] | {id, file, line}]')" "$(printf '%s' "$crlf_out" | jq -cS '[.targets[] | {id, file, line}]')"
 assert "CRLF keeps the collision row outside the ledger" "1" "$(printf '%s' "$crlf_out" | jq '[.targets[] | select(.id=="collision")] | length')"
 jq -n --rawfile body "$ledger_body" '[[{id:11,user:{login:"rite-bot"},body:$body}]]' > "$NB_TEST_COMMENTS"
@@ -456,7 +635,8 @@ assert_not_grep "T-07 fix record drops the failed-only check" "$fn_persist" 'NON
 assert_grep "T-07 fix gates the sweep on the adoption exit" "$fn_gate" 'review-adoption-gate\.sh --pr "\$\{pr_number\}" --kind sweep'
 assert_grep "T-07 fix files only verdict=file" "$FIX" '`verdict=file` の記録ごとに 1 件起票する'
 assert_not_grep "T-07 fix has no severity route" "$fix_sweep_all" 'route=issued'
-assert_grep "T-07 fix recorded machine rationale" "$FIX" 'severity=\{sev\}; measured=\{bool\}'
+assert_grep "T-07 fix judges guardrail rows at the gate" "$FIX" 'guardrail が除外した行（`guardrail_audit_log\[\]`）も `candidates\[\]` に入り、ほかの target と同じくゲートの出口で処分する'
+assert_not_grep "T-07 fix no longer transcribes guardrail rows without the gate" "$FIX" 'ゲートに掛けず'
 assert_grep "T-07 sweep forbids commits" "$FIX" 'コードを変更せず、commit / push を行わない'
 assert_grep "T-07 pr-review rejected_ledger" "$REVIEW" '{rejected_ledger}'
 assert_grep "T-07 pr-review merge-into" "$REVIEW_STEP" 'nb-sweep-ledger.sh merge-into'
@@ -544,7 +724,7 @@ cat > "$stub_plugin/hooks/scripts/nb-sweep-collect.sh" <<'SH'
 jq -n --arg r "$NB_TEST_STATE/.rite/review-results/7-20260101120000.json" \
   '{id:"F-01",key:"F-01",file:"src/a.ts",line:1,description:"d"} as $t
    | {status:"ok",count:1,record:$r,targets:[$t],
-      candidates:[$t + {finding_id:"F-01",record:"7-20260101120000.json"}],already_rejected:[]}'
+      candidates:[$t + {finding_id:"F-01",record:"7-20260101120000.json"}],ledger:[]}'
 SH
 # ゲートは stub (出口ごとの stdout と exit) と実物 (判定記録が無いと hold する) の両方で通す
 cat > "$stub_plugin/hooks/scripts/review-adoption-gate.sh" <<'SH'
@@ -1751,7 +1931,7 @@ fi
 t23_step3=$(awk '/^3\. \*\*台帳 persist\*\*/{s=1} /^4\. \*\*完了\*\*/{s=0} s && /^```/{f=!f; next} s && !f' "$FIX")
 for t23_phrase in 'entries（`.rite/state/nb-sweep-entries-{pr_number}.md`）を stderr の理由に合わせて直し' '手順 2 の起票をやり直さない' \
                   '手順 3 だけを再実行する' '起票済みの Issue は entries の issued 行が持つ' \
-                  'entries の全行について最終列がその行の candidate の `record`（`already_rejected` は手順 1 の `record=` の basename）になっているかを確かめ、欠けた行には最終列として足す。別の record を名指す行は書き換えない' \
+                  'entries の全行について最終列がその行の candidate の `record` になっているかを確かめ、欠けた行には最終列として足す。別の record を名指す行は書き換えない' \
                   'この会話で続けられないときは entries を直したうえで `/rite:iterate {pr_number}` を再実行する（別の会話からでもよい）' \
                   'iterate のステップ 0.7 が再レビューを回さずに 5.S へ戻し、手順 1 が `NB_SWEEP_ENTRIES=present` を出すので手順 2 を飛ばして手順 3 から続く' \
                   '1 行でもあれば、append は entries 全体を `reason=entries_source_invalid` で拒否し、台帳を変更しない'; do
