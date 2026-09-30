@@ -342,9 +342,9 @@ fi
 assert "base-branch reproduction uses a detached worktree in the reviewer namespace" yes "$base_repro_ok"
 
 # No sanctioned procedure embeds mktemp in the worktree command: a worktree-isolated
-# session refuses that form because it cannot see the created path. The pin rejects
-# every `$(mktemp …rite-…)` in these documents, with or without spaces after `$(` and
-# whatever follows the `rite-` prefix, so they carry no embedded mktemp example at all.
+# session refuses that form because it cannot see the created path. The pin matches
+# `rite-` before the first `)` after `mktemp`, with or without spaces after `$(`.
+# A nested substitution that closes before `rite-` in the path is not detected.
 embedded_mktemp_re='\$\([[:space:]]*mktemp[^)]*rite-'
 for sample in '$(mktemp -d -t rite-review-mutation-XXXXXX)' \
   '$( mktemp -d -t rite-review-mutation-XXXXXX)' \
