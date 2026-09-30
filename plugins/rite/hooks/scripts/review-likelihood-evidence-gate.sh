@@ -81,7 +81,14 @@ parsed=$(awk -v exception_category="$exception_category" -v reviewer_type="$revi
           else if (index(rest, "か") == 1) rest = substr(rest, length("か") + 1)
           else if (index(rest, "と") == 1) rest = substr(rest, length("と") + 1)
           else if (tolower(substr(rest, 1, 6)) == "and/or" || tolower(substr(rest, 1, 6)) == "or/and") rest = substr(rest, 7)
-          else if (substr(rest, 1, 1) == "(") rest = substr(rest, 2)
+          else if (substr(rest, 1, 1) == "(") {
+            # An opening paren joins values only when a connective follows it; otherwise
+            # it opens a note ("boundary (actionable ではない)").
+            peek = substr(rest, 2)
+            while (peek != "" && substr(peek, 1, 1) ~ /[ \t`*]/) peek = substr(peek, 2)
+            if ((tolower(substr(peek, 1, 2)) == "or" && substr(peek, 3, 1) !~ /[A-Za-z0-9_]/) || (tolower(substr(peek, 1, 3)) == "and" && substr(peek, 4, 1) !~ /[A-Za-z0-9_]/)) rest = substr(rest, 2)
+            else break
+          }
           else if (tolower(substr(rest, 1, 2)) == "or" && substr(rest, 3, 1) !~ /[A-Za-z0-9_]/) rest = substr(rest, 3)
           else if (tolower(substr(rest, 1, 3)) == "and" && substr(rest, 4, 1) !~ /[A-Za-z0-9_]/) rest = substr(rest, 4)
           else break
