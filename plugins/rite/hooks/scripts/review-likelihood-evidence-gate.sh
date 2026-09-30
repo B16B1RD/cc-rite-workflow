@@ -3,7 +3,8 @@ set -u
 
 # Validate the producer contract before reviewer output reaches aggregation.
 # rc=0: every finding has a valid evidence anchor (or an explicit allowed
-#       Hypothetical exception); rc=1: retryable contract violation; rc=2: usage.
+#       Hypothetical exception) and every recommendation carries one of the
+#       three 分類 values; rc=1: retryable contract violation; rc=2: usage.
 
 reviewer_type=""
 input=""
@@ -35,9 +36,35 @@ case "$reviewer_type" in
   *) exception_category="" ;;
 esac
 
-stats=$(awk -v exception_category="$exception_category" -v reviewer_type="$reviewer_type" '
-  BEGIN { in_findings=0; saw_heading=0; saw_header=0; saw_separator=0; findings=0; missing=0; malformed=0 }
+parsed=$(awk -v exception_category="$exception_category" -v reviewer_type="$reviewer_type" '
+  BEGIN { in_findings=0; in_recommendations=0; saw_heading=0; saw_header=0; saw_separator=0; findings=0; missing=0; malformed=0; recommendations=0; invalid=0 }
   function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
+  /^###[[:space:]]*(推奨事項|Recommendations)[[:space:]]*$/ { in_recommendations=1; in_findings=0; next }
+  in_recommendations && /^#/ { in_recommendations=0 }
+  in_recommendations {
+    # Every non-indented line is one recommendation; indented lines continue the
+    # previous one. An unclassified item must never fall out of adoption triage.
+    if (trim($0) == "" || substr($0, 1, 1) ~ /[ \t]/ || $0 ~ /^\|[[:space:]]*:?-+/) next
+    text = $0
+    sub(/^([-*+]|[0-9]+\.)[[:space:]]+/, "", text)
+    text = trim(text)
+    if (text ~ /^(なし|None)$/) next
+    recommendations++
+    value = "(missing)"
+    if (match(text, /分類[*`]*[[:space:]]*[:：][*`]*[[:space:]]*[^[:space:]]*/)) {
+      value = substr(text, RSTART, RLENGTH)
+      sub(/^分類[*`]*[[:space:]]*[:：][*`]*[[:space:]]*/, "", value)
+      sub(/^[`*]+/, "", value)
+      # Cut trailing prose such as "actionable、..." but keep a non-ASCII value whole for the report.
+      if (match(value, /[^A-Za-z_-]/) && RSTART > 1) value = substr(value, 1, RSTART - 1)
+      if (value == "") value = "(missing)"
+    }
+    if (value != "actionable" && value != "design_confirmation" && value != "boundary") {
+      invalid++
+      bad[invalid] = NR "\t" value
+    }
+    next
+  }
   /^###[[:space:]]*(指摘事項|Findings)[[:space:]]*$/ { in_findings=1; saw_heading=1; next }
   in_findings && /^###[[:space:]]/ { in_findings=0 }
   !in_findings || $0 !~ /^[[:space:]]*\|/ { next }
@@ -68,14 +95,17 @@ stats=$(awk -v exception_category="$exception_category" -v reviewer_type="$revie
     hypothetical = (exception_category != "" && index(content, "Likelihood: Hypothetical (例外カテゴリ: " exception_category ")") > 0)
     if (!evidence && !hypothetical) missing++
   }
-  END { printf "%d\t%d\t%d\t%d\t%d\t%d\n", findings, missing, malformed, saw_heading, saw_header, saw_separator }
+  END {
+    printf "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", findings, missing, malformed, saw_heading, saw_header, saw_separator, recommendations, invalid
+    for (i = 1; i <= invalid; i++) print bad[i]
+  }
 ' "$input") || {
   echo "[CONTEXT] LIKELIHOOD_EVIDENCE_GATE_FAILED=1; reason=parse_failed; reviewer=$reviewer_type" >&2
   exit 2
 }
 
-IFS=$'\t' read -r findings missing malformed saw_heading saw_header saw_separator <<EOF
-$stats
+IFS=$'\t' read -r findings missing malformed saw_heading saw_header saw_separator recommendations invalid <<EOF
+${parsed%%$'\n'*}
 EOF
 if [ "$saw_heading" -ne 1 ]; then
   echo "ERROR: reviewer output is missing the canonical findings heading" >&2
@@ -103,4 +133,13 @@ if [ "$missing" -gt 0 ]; then
   exit 1
 fi
 
-echo "[CONTEXT] LIKELIHOOD_EVIDENCE_GATE=passed; reviewer=$reviewer_type; findings=$findings"
+if [ "$invalid" -gt 0 ]; then
+  echo "ERROR: reviewer output contains $invalid recommendation(s) whose 分類 is missing or not one of actionable / design_confirmation / boundary" >&2
+  printf '%s\n' "$parsed" | tail -n +2 | while IFS=$'\t' read -r line value; do
+    echo "  line $line: 分類=$value" >&2
+  done
+  echo "[CONTEXT] LIKELIHOOD_EVIDENCE_GATE_FAILED=1; reason=recommendation_classification_invalid; reviewer=$reviewer_type; recommendations=$recommendations; invalid=$invalid" >&2
+  exit 1
+fi
+
+echo "[CONTEXT] LIKELIHOOD_EVIDENCE_GATE=passed; reviewer=$reviewer_type; findings=$findings; recommendations=$recommendations"

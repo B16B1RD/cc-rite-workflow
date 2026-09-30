@@ -133,7 +133,7 @@ Finding Quality Guardrail Category #2 で除外した候補を次の表へ必ず
 
 **⚠️ 各推奨事項に 3 分類を必ず明示すること** (`aggregate label` 禁止規定):
 
-各推奨事項を `分類: <actionable|design_confirmation|boundary>` を冒頭に付して記載する。分類が無い推奨事項は ステップ 5.1 collection で `design_confirmation` (default) として扱われるが、reviewer 自身が判断したうえで明示することが望ましい。
+各推奨事項を `分類: <actionable|design_confirmation|boundary>` を冒頭に付して記載する。分類は必須で、欠落や 3 値以外の値（`follow-up` など）は producer gate が検出してレビューを 1 回だけ再生成させ、再発すればレビューを止める。推奨事項が無いときは `なし` とだけ書く。
 
 | 分類 | 意味 | 対応経路 |
 |------|------|---------|
