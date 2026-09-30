@@ -2,6 +2,8 @@
 
 ## 2026-09-30
 
+* **Skip**: [行継続の奇偶判定のレビュー結果](raw/reviews/20260930T065252Z-pr-3514.md) — 機構と回帰テストへ反映済みで、追加のドメイン経験則はない
+
 * **Update**: [冪等化の key を前の run が残した状態から毎回作り直すと、2 回目の再実行で key がずれる](pages/anti-patterns/idempotency-key-rebuilt-from-previous-run-state-drifts.md) — raw/fixes/20260929T193322Z-pr-3459.md を統合
 * **Update**: [冪等化の key を前の run が残した状態から毎回作り直すと、2 回目の再実行で key がずれる](pages/anti-patterns/idempotency-key-rebuilt-from-previous-run-state-drifts.md) — raw/reviews/20260929T194655Z-pr-3459.md を統合
 * **Create**: [持ち越した識別子の単位の変化は束ねと分けの両方向で止め、同じ規則を書き手の手順に優先順位付きで書く](pages/patterns/carried-identifier-unit-change-stops-both-ways.md) — raw/reviews/20260929T194655Z-pr-3459.md を新規ページ化
