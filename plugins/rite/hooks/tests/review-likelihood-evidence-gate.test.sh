@@ -10,7 +10,7 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 pass=0 fail=0
-check() { if "$@"; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: line ${BASH_LINENO[0]}" >&2; fi; }
+check() { if "$@"; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: line ${BASH_LINENO[0]}" >&2; return 1; fi; }
 
 printf '%s\n' '### 指摘事項' '| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |' '|---|---|---|---|---|' '| HIGH | current-pr | a.sh:1 | defect. Likelihood-Evidence: existing_call_site a.sh:1 | fix |' > "$TMP/valid.md"
 printf '%s\n' '### 指摘事項' '| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |' '|---|---|---|---|---|' '| HIGH | current-pr | a.sh:1 | defect without anchor | fix |' > "$TMP/missing.md"
@@ -64,11 +64,11 @@ check grep -q 'findings=0; recommendations=1$' <<<"$(gate_out "$TMP/rec-valid-en
 check grep -q 'findings=0; recommendations=0$' <<<"$(gate_out "$TMP/rec-none.md")"
 for none_line in 'なし。' '特になし' '該当なし' 'None' 'none.' 'N/A' 'n/a' '-' '**なし**' '- なし。'; do
   printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '' "$none_line" > "$TMP/rec-none-variant.md"
-  check grep -q 'findings=0; recommendations=0$' <<<"$(gate_out "$TMP/rec-none-variant.md")"
+  check grep -q 'findings=0; recommendations=0$' <<<"$(gate_out "$TMP/rec-none-variant.md")" || echo "  none line: $none_line" >&2
 done
 for item_line in 'なし。ただし A を直すとよい' '無し' 'なし、' 'None of note' '--' '**' '。'; do
   printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' "$item_line" > "$TMP/rec-not-none.md"
-  check grep -q 'recommendations=1; invalid=1$' <<<"$(gate_out "$TMP/rec-not-none.md")"
+  check grep -q 'recommendations=1; invalid=1$' <<<"$(gate_out "$TMP/rec-not-none.md")" || echo "  item line: $item_line" >&2
 done
 printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' 'なし。' '- 別 Issue で扱う改善' > "$TMP/rec-none-then-item.md"
 check grep -q 'recommendations=1; invalid=1$' <<<"$(gate_out "$TMP/rec-none-then-item.md")"
