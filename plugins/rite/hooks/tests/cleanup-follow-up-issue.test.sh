@@ -2817,6 +2817,11 @@ ADOPT_MODE=manual
 run_target "$r"
 assert_grep "T-94 照合に失敗したら起票は失敗" "$ERR" 'FOLLOW_UP_ISSUE=failed; reason=guardrail_source_check_failed; pr=9'
 assert "T-94 照合に失敗したら判定記録があっても create 0 回" "0" "$(create_count)"
+# loc が null の指摘も照合キーは file から作るので、同じく出典 JSON と id で示す
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings": [{"id": "F-02", "severity": "MEDIUM", "scope": "current-pr", "loc": null, "file": 5, "line": 1, "description": "d"}], "guardrail_audit_log": []}'
+rm -f "$TMP_ROOT/t94-chk-cands.json"
+run_target "$r" --list-candidates "$TMP_ROOT/t94-chk-cands.json"
+assert_grep "T-94 loc が null でも照合に失敗したら指摘を示す" "$ERR" '^  source=9-20260101120000\.json id=F-02 file=5$'
 rm -rf "$r"
 # 出典 JSON の無い rejected 旧行も止める。出典 JSON が結果ディレクトリ直下にあれば止めない
 reset_stubs

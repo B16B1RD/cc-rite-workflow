@@ -596,12 +596,10 @@ if [ -n "$SOURCE_ISSUE" ] && { [ -n "$LIST_OUT" ] || [ "$deferred_n" -gt 0 ] || 
       # 台帳は上で解析できているので、ここでの失敗は読んだ JSON との照合の失敗。検査を飛ばして起票へ進まない
       echo "ERROR: 却下台帳の旧形式行とレビュー結果 JSON を照合できません。原文を失った行を判定できないため follow-up を判定しません (PR #${PR_NUMBER})" >&2
       # jq のエラーは台帳本文 (stdin) の位置しか示さないので、照合キーを作れない指摘を出典 JSON と id で示す
-      if ! broken=$(jq -r '.[] | objects | select(has("loc") | not) | select((.file // "") | type != "string")
-          | "  source=\((._src // "") | split("/") | last) id=\(.id // "" | tostring) file=\(.file | tojson)"' "$cur_file" 2>/dev/null) \
-         || [ -z "$broken" ]; then
-        broken="  照合キーを作れない指摘を特定できません (和集合の一時ファイル $cur_file を確認してください)"
-      fi
-      printf '%s\n' "$broken" | neutralize_ctrl --keep-newline >&2
+      # 照合キーの式 (.loc // (.file + ...)) と同じく loc の null / false を「位置なし」として選ぶ
+      jq -r '.[] | objects | select(.loc | not) | select((.file // "") | type != "string")
+          | "  source=\((._src // "") | split("/") | last) id=\(.id // "" | tostring) file=\(.file | tojson)"' "$cur_file" \
+        | neutralize_ctrl --keep-newline >&2
       [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  jq: /' >&2
       if [ -n "$LIST_OUT" ]; then
         echo "[CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_source_check_failed; pr=${PR_NUMBER}" >&2
