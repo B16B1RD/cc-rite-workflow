@@ -84,6 +84,7 @@ _rite_wiki_init_cleanup() {
     [ "$stash_needed" = true ] && { stash_needed=false; _rite_pop_own_stash; }
   elif [ "$stash_needed" = true ]; then
     echo "WARNING: 元のブランチへ戻れなかったため、退避した変更 (stash $stash_sha) を戻していません" >&2
+    echo "  復旧: git checkout '$current_branch' のあと、git stash list --format='%gd %H %gs' で SHA が一致する entry を pop します" >&2
   fi
 }
 trap 'rc=$?; _rite_wiki_init_cleanup; exit $rc' EXIT
@@ -100,7 +101,7 @@ if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/de
     echo "ERROR: git stash push が新しい entry を作りませんでした" >&2
     # stash は submodule の変更を退避しない。判定を submodule 抜きに狭めると orphan checkout が submodule の編集を消すため、止めたまま原因を示す
     git diff --quiet --ignore-submodules HEAD && git diff --cached --quiet --ignore-submodules HEAD \
-      && echo "  原因: 変更は submodule（中身または参照先の commit）だけです。submodule 内で git stash するか、submodule 内で commit したうえで親でも git add <submodule> && git commit してから再実行してください" >&2
+      && echo "  原因: 変更は submodule（中身または参照先の commit）だけです。変更を残すなら submodule 内で commit したうえで親でも git add <submodule> && git commit、残さないなら git submodule update で記録済みの commit に戻してから再実行してください" >&2
     exit 1
   }
   stash_needed=true
@@ -165,6 +166,7 @@ _rite_wiki_ingest_cleanup() {
     [ "$stash_needed" = true ] && { stash_needed=false; _rite_pop_own_stash; }
   elif [ "$stash_needed" = true ]; then
     echo "WARNING: 元のブランチへ戻れなかったため、退避した変更 (stash $stash_sha) を戻していません" >&2
+    echo "  復旧: git checkout '$current_branch' のあと、git stash list --format='%gd %H %gs' で SHA が一致する entry を pop します" >&2
   fi
 }
 trap 'rc=$?; _rite_wiki_ingest_cleanup; exit $rc' EXIT
