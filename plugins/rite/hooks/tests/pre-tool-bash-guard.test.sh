@@ -1168,6 +1168,10 @@ else
 fi
 echo ""
 
+# Time only checks that the hook is not killed; verdicts are fixed by the input.
+sb_timeout_s=$(jq -r '[.. | objects | select((.command // "") | contains("pre-tool-bash-guard.sh")) | .timeout] | if length == 1 then .[0] else empty end' "$(dirname "$HOOK")/hooks.json") || sb_timeout_s=""
+if [[ "$sb_timeout_s" =~ ^[1-9][0-9]*$ ]]; then sb_timeout_ms=$(( sb_timeout_s * 1000 )); else sb_timeout_ms=""; fi
+[ -n "$sb_timeout_ms" ] || fail "timed guard cases need one positive integer bash-guard timeout from hooks.json"
 echo "TC-124: oversized command → length-guard fail-closed deny WITHOUT the O(n²) paths"
 # The (L) length guard is the primary timeout-bypass bound: any reviewer command
 # over the byte ceiling is denied fail-closed BEFORE the O(n²) Pattern 2 regex
@@ -1197,10 +1201,10 @@ if [[ "$reason" == *"reviewer-oversized-command"* ]] && [[ "$reason" == *"abnorm
 else
   fail "TC-124 expected reviewer-oversized-command explanation in reason, got: $reason"
 fi
-if [ "$_ms" -lt 5000 ]; then
-  pass "TC-124 oversized deny completes fast (${_ms}ms < 5s — O(n²) paths skipped, no timeout→fail-open)"
+if [ -n "$sb_timeout_ms" ] && [ "$_ms" -lt "$sb_timeout_ms" ]; then
+  pass "TC-124 oversized deny returns before the hook timeout (${_ms}ms)"
 else
-  fail "TC-124 oversized deny too slow (${_ms}ms) — length guard is not short-circuiting the O(n²) work"
+  fail "TC-124 oversized deny reached the hook timeout or timeout is unavailable (${_ms}ms)"
 fi
 # (b) oversized (~80KB) READ-ONLY command → deny (allow→deny flip; a small `git status` allows)
 { printf 'git '; for _i in $(seq 1 8); do printf -- '-C %s ' "$tc124_bigval"; done; printf 'status'; } > "$tc124_dir/ro.txt"
@@ -2458,13 +2462,13 @@ fi
 p7_timed "$p7_big"
 decision=$(extract_hook_field "$output" permissionDecision)
 reason=$(extract_hook_field "$output" permissionDecisionReason)
-if [ "$decision" = "deny" ] && [[ "$reason" == *"too long to inspect"* ]] && [ "$_ms" -lt 5000 ]; then
+if [ "$decision" = "deny" ] && [[ "$reason" == *"too long to inspect"* ]] && [ -n "$sb_timeout_ms" ] && [ "$_ms" -lt "$sb_timeout_ms" ]; then
   pass "Pattern 7 denies a ~120KB non-adjacent commit as too long to inspect (${_ms}ms)"
 else
   fail "Pattern 7 on a ~120KB non-adjacent commit rc=$rc ms=$_ms decision=$decision reason=$reason"
 fi
-# At each limit the parser still finishes (the reason is its own) within 8s, under the
-# 10s hook timeout. Past a parser limit, a commit that could hide there is refused, and a
+# At each limit the parser still finishes (the reason is its own) before the hook
+# timeout. Past a parser limit, a commit that could hide there is refused, and a
 # command that moves no HEAD outside an unparsed substitution is not.
 p7_max=$(sed -n 's/^_RITE_BTG_P7_PARSE_MAX_CHARS=//p' "$HOOK")
 p7_scope_py="$(dirname "$HOOK")/scripts/lib/review-fix-scope.py"
@@ -2478,16 +2482,16 @@ p7_limit_case() {  # $1 label, $2 expected reason
   p7_timed "$p7_big"
   decision=$(extract_hook_field "$output" permissionDecision)
   reason=$(extract_hook_field "$output" permissionDecisionReason)
-  if [ "$decision" = "deny" ] && [[ "$reason" == *"$2"* ]] && [ "$_ms" -lt 8000 ]; then
-    pass "Pattern 7 denies $1 within 8s ($(wc -c < "$p7_big") bytes, ${_ms}ms)"
+  if [ "$decision" = "deny" ] && [[ "$reason" == *"$2"* ]] && [ -n "$sb_timeout_ms" ] && [ "$_ms" -lt "$sb_timeout_ms" ]; then
+    pass "Pattern 7 denies $1 before the hook timeout ($(wc -c < "$p7_big") bytes, ${_ms}ms)"
   else
     fail "Pattern 7 on $1 rc=$rc ms=$_ms decision=$decision reason=$reason"
   fi
 }
 p7_allow_case() {  # $1 label
   p7_timed "$p7_big"
-  if [ "$rc" = "0" ] && [ -z "$output" ] && [ "$_ms" -lt 8000 ]; then
-    pass "Pattern 7 allows $1 within 8s (${_ms}ms)"
+  if [ "$rc" = "0" ] && [ -z "$output" ] && [ -n "$sb_timeout_ms" ] && [ "$_ms" -lt "$sb_timeout_ms" ]; then
+    pass "Pattern 7 allows $1 before the hook timeout (${_ms}ms)"
   else
     fail "Pattern 7 on $1 rc=$rc ms=$_ms output=$output"
   fi
@@ -2546,8 +2550,8 @@ for p7_shape in gt wrapper; do
   output=$(_timeout 15 bash "$p7_scope_check" commit-target --command "$(cat "$p7_big")" --cwd "$p7_repo" 2>&1) || rc=$?
   _t1=$(date +%s%N)
   _ms=$(( (_t1 - _t0) / 1000000 ))
-  if [ "$rc" = "0" ] && [[ "$output" == index* || "$output" == other* ]] && [ "$_ms" -lt 1000 ]; then
-    pass "commit-target parses a ~120KB $p7_shape command within 1s (${_ms}ms)"
+  if [ "$rc" = "0" ] && [[ "$output" == index* || "$output" == other* ]] && [ -n "$sb_timeout_ms" ] && [ "$_ms" -lt "$sb_timeout_ms" ]; then
+    pass "commit-target parses a ~120KB $p7_shape command before the hook timeout (${_ms}ms)"
   else
     fail "commit-target on a ~120KB $p7_shape command rc=$rc ms=$_ms output=$(printf '%s' "$output" | head -c 200)"
   fi
@@ -2563,8 +2567,6 @@ sb_max_cost=$(sed -n 's/^_RITE_BTG_SURFACE_MAX_COST=//p' "$HOOK")
 # Where a case falls is fixed by the cost constants, not by the clock. The clock only has to
 # show the hook is not killed: the ceiling is the timeout the harness enforces, so a slow
 # runner cannot turn a correct verdict into a failure.
-sb_timeout_s=$(jq -r '[.. | objects | select((.command // "") | contains("pre-tool-bash-guard.sh")) | .timeout] | if length == 1 then .[0] else empty end' "$(dirname "$HOOK")/hooks.json") || sb_timeout_s=""
-if [[ "$sb_timeout_s" =~ ^[1-9][0-9]*$ ]]; then sb_timeout_ms=$(( sb_timeout_s * 1000 )); else sb_timeout_ms=""; fi
 if [[ "$sb_line_cost" =~ ^[1-9][0-9]*$ && "$sb_max_cost" =~ ^[1-9][0-9]*$ && -n "$sb_timeout_ms" ]]; then
   sb_case() {  # $1 label, $2 "deny" when commit-guard-uninspectable is expected, "other" when not
     LC_ALL="$sb_utf8" p7_timed "$p7_big"

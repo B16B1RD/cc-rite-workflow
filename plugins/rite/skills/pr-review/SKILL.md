@@ -2266,7 +2266,7 @@ Source A は `Likelihood-Evidence:` の有無を保持する。
 |--------|------|
 | PR not found | Check with `gh pr list -R {owner_repo}` and re-run with the correct number |
 | Skill file load failure | Fall back to the built-in pattern table (ステップ 2.2) for reviewer selection (WARNING を stderr に出力) |
-| Review execution error | Choose skip/retry/cancel (skip 時は WARNING を stderr に出力) |
+| Review execution error | 質問せず 1 回だけ自動再試行し、再失敗は当該 reviewer を incomplete として `[review:error]` で停止する（ステップ 4.4） |
 | Comment post failure | Display review results as text (WARNING を stderr に出力) |
 | `pr-review-step.sh` が exit 2（`ERROR: pr-review-step.sh:`） | marker を待たずに停止する。未知のサブコマンド・オプションは skill 定義の不整合として `[review:error]` で停止する。それ以外は ERROR 行に従って引数を直し、当該ステップから 1 回だけ再実行する。再実行でも exit 2 になったときは、原因を問わず `[review:error]` で停止する。各ステップの rc 別の指示（表・散文・箇条書きを問わない）より先に本行を適用する（ステップ側の rc=2 / 非ゼロの指示は、この接頭辞の無い失敗だけを指す） |
 

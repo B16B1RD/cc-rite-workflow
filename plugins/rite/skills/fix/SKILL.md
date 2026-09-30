@@ -59,7 +59,7 @@ rationale: references/design-rationale.md#e2e-output-minimization-scope
 E2E output format (ステップ 4):
 
 ```
-[fix:{result}] — {fixed_count} fixed, {skipped_count} skipped, {files_changed} files changed; non_fatal_moved={non_fatal_moved_count}; review_json={triage_review_path}
+[fix:{result}] — {fixed_count} fixed, {files_changed} files changed; non_fatal_moved={non_fatal_moved_count}; review_json={triage_review_path}
 ```
 
 Detection: ステップ 0.1 end-to-end flow determination を再利用。
@@ -1400,7 +1400,6 @@ stdout の `FIX_WM_UPDATE` と `issue_number`、stderr の `WM_UPDATE_FAILED` / 
 **Response types:**
 - `修正` - Code was fixed
 - `返信` - Explanation/reply only
-- `スキップ` - Deferred for later
 
 **`{review_source}` / `{review_source_path_display}` の展開ルール** (schema.md `Priority 1 emit 義務の理由` に記載された provenance log 契約の履行):
 
@@ -1509,7 +1508,7 @@ BSD wc 空白は剥がす (2.1.A Step 7 と対称)。不在/空は `0`。state �
 | Field | Description | Calculation |
 |-------|-------------|-------------|
 | `全指摘: {total_count}件` | Total findings | reload 済み JSON の findings + non_blocking_findings（ID ごと、nit を含む）と未解決の外部レビューの件数。全経路共通 |
-| `対応した指摘: {count}件` | Number of findings addressed | `fix_count + reply_count + skip_count + acknowledged_nit_count + non_blocking_count`。**`fix_count` は `diff_verified: true` の action:fix のみ**。`diff_verified: false` は「未対応」に載せ、この件数から除外する (nit-noted 分類と non-blocking 分類も「対応」に含めることで、nit-only / non-blocking-only PR でも `全指摘 == 対応指摘` 条件を満たし有限 cycle で収束する — `non_blocking_count` を式に含めないと非実測 finding が「未対応」として残り finalize 分岐が発火せず max_review_cycles まで空転する)。**各項は排他**: `skip_count` は ファイル修正のエラーで「この指摘をスキップして続行」を選んだ finding（Error Handling）のみを数え、**non-blocking 分類による ステップ 2.1 skip は含めない** (そちらは `non_blocking_count` が受け持つ)。`acknowledged_nit_count` との排他も同様 (nit-noted は scope による分類で、non-blocking は永続 JSON の別集合) |
+| `対応した指摘: {count}件` | Number of findings addressed | `fix_count + reply_count + acknowledged_nit_count + non_blocking_count`。**`fix_count` は `diff_verified: true` の action:fix のみ**。`diff_verified: false` は「未対応」に載せ、この件数から除外する (nit-noted 分類と non-blocking 分類も「対応」に含めることで、nit-only / non-blocking-only PR でも `全指摘 == 対応指摘` 条件を満たし有限 cycle で収束する — `non_blocking_count` を式に含めないと非実測 finding が「未対応」として残り finalize 分岐が発火せず max_review_cycles まで空転する)。**各項は排他**: `acknowledged_nit_count` と `non_blocking_count` は重ならない (nit-noted は scope による分類で、non-blocking は永続 JSON の別集合) |
 | `non-blocking（fix 対象外）: {non_blocking_count}件` | Recorded findings | reload 済み non_blocking_findings の nit 以外。0 件でも表示。今回の移送件数は non_fatal_moved_count、永続参照先は triage_review_path |
 | `Confidence override (policy bypass): {N}件` | Number of findings imported via Confidence policy override | ステップ 1.2 best-effort parse で「Confidence 70 のままバイパス」を選択した finding 数 (Confidence 80+ ゲート invariant の policy override 追跡義務)。0 件でも常時表示 |
 | `レビューソース: {review_source} (...)` | Provenance of the review findings consumed by this fix run | ステップ 1.2.0 Priority chain で決定された `review_source` 値 (schema.md Priority 1 emit 義務の provenance 契約を ステップ 4.6 で履行)。展開ルールは ステップ 4.5.3 の `{review_source}` / `{review_source_path_display}` 表を参照 |
@@ -1550,7 +1549,7 @@ See [Common Error Handling](../../references/common-error-handling.md) for share
 |-------|----------|
 | When PR is Not Found | See [common patterns](../../references/common-error-handling.md) |
 | When Comment Retrieval Fails | ネットワーク接続を確認; `gh auth status` で認証状態を確認 |
-| Error During File Modification | この指摘をスキップして続行 / 手動で修正 (WARNING を stderr に出力) |
+| Error During File Modification | 原因（対象パス・一致しない置換元など）を直して 1 回再試行する。再失敗なら指摘を飛ばさず `[fix:error]` で停止する (WARNING を stderr に出力) |
 | Commit Failure | `git status` で状態を確認; 問題を解決してから再度コミット (WARNING を stderr に出力) |
 | `fix-step.sh` が exit 2（`ERROR: fix-step.sh:`）で止まった | marker を待たずに停止し、未置換の placeholder・空値・数値でない引数を直して当該ステップから再実行する |
 

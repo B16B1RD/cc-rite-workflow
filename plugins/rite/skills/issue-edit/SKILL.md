@@ -479,6 +479,6 @@ See [Common Error Handling](../../references/common-error-handling.md) for share
 |-------|----------|
 | Issue Not Found | See [common patterns](../../references/common-error-handling.md) |
 | Permission Error | See [common patterns](../../references/common-error-handling.md) |
-| Not Registered in Projects | タイトル・本文のみ編集 / キャンセル |
+| Not Registered in Projects | Projects フィールドの確認を省き、タイトル・本文のみ編集する（Phase 1.3） |
 | Invalid Field Value | See error output for details |
 | Network Error | See [common patterns](../../references/common-error-handling.md) |
