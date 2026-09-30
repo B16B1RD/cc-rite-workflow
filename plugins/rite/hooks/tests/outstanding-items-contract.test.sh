@@ -44,9 +44,9 @@ assert_grep "checklist keeps local work-memory deletion as its own line" "$CLEAN
   '^- \[x\] ローカル作業メモリファイル削除$'
 assert_not_grep "checklist no longer hard-codes the work-memory update as done" "$CLEANUP" \
   '^- \[x\] 作業メモリを最終更新 \+ ローカルファイル削除$'
-# x にする値は許可リスト 3 値に限る (legitimate skip を含む)。失敗 status と marker 不在は未チェック
-assert_grep "wm check allows exactly success / no_comment / section_absent as x (T-05/T-06)" "$CLEANUP" \
-  '^  - `status=success` / `reason=no_comment` / `reason=section_absent` のいずれか: `x`（後 2 つは legitimate skip。x とする値はこの 3 つに限る）$'
+# x にする値は許可リスト 4 値に限る (legitimate skip を含む)。失敗 status と marker 不在は未チェック
+assert_grep "wm check allows exactly success / no_comment / section_absent / pr_not_merged as x (T-05/T-06)" "$CLEANUP" \
+  '^  - `status=success` / `reason=no_comment` / `reason=section_absent` / `reason=pr_not_merged` のいずれか: `x`（後 3 つは legitimate skip。x とする値はこの 4 つに限る）$'
 assert_grep "wm check leaves any other status unchecked with an annotation (T-05)" "$CLEANUP" \
   '^  - 上記以外（`reason=invalid_args` / `reason=transform_failed` / `status=missing` 等）: ` ` \+ 「⚠️ 作業メモリの'
 assert_grep "wm check leaves marker absence unchecked (T-07)" "$CLEANUP" \
@@ -78,8 +78,8 @@ echo "=== cleanup.md ステップ 10/12: 関連 Issue のクローズを読み�
 # チェックリストが無条件 x だと、クローズ失敗が完了報告にも outstanding 件数にも出ない。
 assert_grep "checklist carries the issue-close check" "$CLEANUP" '^- \[\{issue_close_check\}\] 関連 Issue をクローズ$'
 assert_not_grep "checklist no longer hard-codes the issue close as done" "$CLEANUP" '^- \[x\] 関連 Issue をクローズ$'
-assert_grep "issue-close check allows exactly closed / already_closed / not_identified as x" "$CLEANUP" \
-  '^  - `ISSUE_CLOSE=closed` / `ISSUE_CLOSE=already_closed` / `ISSUE_CLOSE=not_identified` のいずれか: `x`（x とする値はこの 3 つに限る）$'
+assert_grep "issue-close check allows exactly skipped(pr_not_merged) / closed / already_closed / not_identified as x" "$CLEANUP" \
+  '^  - `ISSUE_CLOSE=closed` / `ISSUE_CLOSE=already_closed` / `ISSUE_CLOSE=not_identified` のいずれか: `x`（x とする値は上の skipped とこの 3 つに限る）$'
 assert_grep "issue-close check leaves failed values unchecked with an annotation" "$CLEANUP" \
   '^  - 上記以外（`ISSUE_CLOSE=failed` かつ `reason=` が `close_failed` / .*: ` ` \+ 「⚠️ Issue #\{issue_number\} のクローズを確認できませんでした'
 assert_grep "issue-close check gives no_pr its own annotation without PR-number commands" "$CLEANUP" \
@@ -107,6 +107,7 @@ else
   fail "archive-procedures §3.6 re-reads the state after gh issue close (close=${close_line:-none} reread=${reread_line:-none})"
 fi
 
+nl=$'\n'
 # §3.6 の bash を抽出し、PATH 先頭の gh stub で実行して marker の値を観測する。
 IC_TMP=$(mktemp -d "${TMPDIR:-/tmp}/rite-issue-close-test-XXXXXX")
 trap 'rm -rf "$IC_TMP"' EXIT
@@ -136,15 +137,15 @@ STUB
   chmod +x "$IC_TMP/bin/gh"
   # $1=issue $2=before $3=close rc $4=after $5=PR 本文とブランチ名（省略時は Issue 41 を閉じる PR）
   # $6=PR 番号（省略時は 900。空文字は PR 無しで続行した cleanup）
+  # $7={pr_merged}（省略時は true。"{pr_merged}" を渡すと置換漏れ）
   # → ISSUE_CLOSE marker 行と、gh issue close / gh 全体の呼び出し回数
   run_issue_close() {
     local d; d=$(mktemp -d "$IC_TMP/case-XXXXXX")
-    sed -e "s|{issue_number}|$1|g" -e 's|{owner_repo}|owner/repo|g' -e "s|{pr_number}|${6-900}|g" "$IC_TMP/block.sh" > "$d/run.sh"
+    sed -e "s|{issue_number}|$1|g" -e 's|{owner_repo}|owner/repo|g' -e "s|{pr_number}|${6-900}|g" -e "s|{pr_merged}|${7-true}|g" "$IC_TMP/block.sh" > "$d/run.sh"
     GH_STUB_DIR="$d" GH_BEFORE="$2" GH_CLOSE_RC="$3" GH_AFTER="$4" GH_PR_REFS="${5-Closes #41${nl}fix/issue-41-x}" \
       PATH="$IC_TMP/bin:$PATH" bash "$d/run.sh" 2>/dev/null | grep '^\[CONTEXT\] ISSUE_CLOSE=' | tail -1
     printf 'closes=%s calls=%s\n' "$(cat "$d/closes" 2>/dev/null | wc -l | tr -d ' ')" "$(cat "$d/calls" 2>/dev/null | wc -l | tr -d ' ')"
   }
-  nl=$'\n'
   assert "OPEN → close → re-read CLOSED is closed" "[CONTEXT] ISSUE_CLOSE=closed; issue=41${nl}closes=1 calls=4" "$(run_issue_close 41 OPEN 0 CLOSED)"
   assert "close command failure is failed/close_failed" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=close_failed${nl}closes=1 calls=3" "$(run_issue_close 41 OPEN 1 CLOSED)"
   assert "close succeeds but re-read stays OPEN is failed" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=state_OPEN${nl}closes=1 calls=4" "$(run_issue_close 41 OPEN 0 OPEN)"
@@ -158,7 +159,59 @@ STUB
   assert "branch name issue-N alone is a reference" "[CONTEXT] ISSUE_CLOSE=closed; issue=41${nl}closes=1 calls=4" "$(run_issue_close 41 OPEN 0 CLOSED "body without keyword${nl}fix/issue-41-x")"
   assert "cleanup without a PR is no_pr without calling gh" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=no_pr${nl}closes=0 calls=0" "$(run_issue_close 41 OPEN 0 CLOSED "Closes #41" "")"
   assert "PR read failure is pr_view_failed without closing" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=pr_view_failed${nl}closes=0 calls=1" "$(run_issue_close 41 OPEN 0 CLOSED ERR)"
+  # 未マージ PR の強制 cleanup: マージの記録も close も書かず、gh を一切呼ばない
+  assert "unmerged PR leaves an OPEN issue open without any gh call" "[CONTEXT] ISSUE_CLOSE=skipped; issue=41; reason=pr_not_merged${nl}closes=0 calls=0" "$(run_issue_close 41 OPEN 0 CLOSED "Closes #41" 900 false)"
+  assert "unmerged PR skips an already CLOSED issue the same way" "[CONTEXT] ISSUE_CLOSE=skipped; issue=41; reason=pr_not_merged${nl}closes=0 calls=0" "$(run_issue_close 41 CLOSED 0 CLOSED "Closes #41" 900 false)"
+  assert "unmerged cleanup without a PR stays no_pr" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=no_pr${nl}closes=0 calls=0" "$(run_issue_close 41 OPEN 0 CLOSED "Closes #41" "" false)"
+  assert "unidentified issue stays not_identified when the PR is unmerged" "[CONTEXT] ISSUE_CLOSE=not_identified; issue=${nl}closes=0 calls=0" "$(run_issue_close '' OPEN 0 CLOSED "Closes #41" 900 false)"
+  # {pr_merged} が true / false 以外（置換漏れ・空）のときは、閉じずにエラーとして出す
+  assert "unsubstituted {pr_merged} is pr_merged_unset without any gh call" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=pr_merged_unset${nl}closes=0 calls=0" "$(run_issue_close 41 OPEN 0 CLOSED "Closes #41" 900 '{pr_merged}')"
+  assert "empty {pr_merged} is pr_merged_unset without any gh call" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=pr_merged_unset${nl}closes=0 calls=0" "$(run_issue_close 41 OPEN 0 CLOSED "Closes #41" 900 '')"
 fi
+# ステップ 12 は skipped を「上記以外」の受け皿より前で x にする。順序が逆だと skipped がクローズ失敗の付記に落ちる。
+assert_grep "issue-close check treats skipped/pr_not_merged as x with the issue-cancel note" "$CLEANUP" \
+  '^  - `ISSUE_CLOSE=skipped` かつ `reason=pr_not_merged`: `x` \+ 「ℹ️ PR がマージされていないため Issue #\{issue_number\} は開いたまま残しています。.*`/rite:issue-cancel \{issue_number\}`'
+skipped_line=$(grep -n '^  - `ISSUE_CLOSE=skipped` かつ `reason=pr_not_merged`' "$CLEANUP" | head -1 | cut -d: -f1)
+catch_all_line=$(grep -n '^  - 上記以外（`ISSUE_CLOSE=failed`' "$CLEANUP" | head -1 | cut -d: -f1)
+if [ -n "$skipped_line" ] && [ -n "$catch_all_line" ] && [ "$skipped_line" -lt "$catch_all_line" ]; then
+  pass "issue-close check evaluates skipped before the catch-all failure branch"
+else
+  fail "issue-close check evaluates skipped before the catch-all failure branch (skipped=${skipped_line:-none} catch_all=${catch_all_line:-none})"
+fi
+assert_grep "cleanup substitutes {pr_merged} in steps 8 / 10 / 11 as well" "$CLEANUP" 'ステップ 4-W / ステップ 5 / ステップ 8 / ステップ 10 / ステップ 11 の全分岐で `\{pr_merged\}` を literal substitute する'
+
+echo "=== cleanup.md ステップ 8 / 11: マージ済みの PR が無いとき、Status と作業メモリを完了にしない ==="
+# 抽出した bash を {pr_merged} だけ変えて実行する。false と true/false 以外では、Status 更新の script も
+# 作業メモリの helper も呼ばずに marker を出す。呼び出しは {plugin_root} に置いた stub が calls に記録する
+UM_TMP=$(mktemp -d "${TMPDIR:-/tmp}/rite-unmerged-test-XXXXXX")
+trap 'rm -rf "$IC_TMP" "$UM_TMP"' EXIT
+mkdir -p "$UM_TMP/root/scripts" "$UM_TMP/root/hooks"
+printf '#!/bin/bash\necho called >> "%s/calls"\necho "{\\"result\\":\\"updated\\"}"\n' "$UM_TMP" > "$UM_TMP/root/scripts/projects-status-update.sh"
+printf '#!/bin/bash\necho called >> "%s/calls"\necho status=success\n' "$UM_TMP" > "$UM_TMP/root/hooks/issue-comment-wm-sync.sh"
+# $1=抽出元 $2=ブロックの目印 $3={pr_merged} → marker 行と、stub の呼び出し回数
+run_unmerged_block() {
+  awk -v mark="$2" '/^```bash$/ {inside=1; block=""; next}
+       /^```$/ {if (inside && index(block, mark)) {printf "%s", block; exit}; inside=0}
+       inside {block=block $0 "\n"}' "$1" > "$UM_TMP/block.sh"
+  [ -s "$UM_TMP/block.sh" ] || { echo "block not extracted"; return; }
+  rm -f "$UM_TMP/calls"
+  sed -e 's|{issue_number}|41|g' -e "s|{plugin_root}|$UM_TMP/root|g" -e "s|{pr_merged}|$3|g" \
+      -e 's|{project_number}|1|g' -e 's|{owner}|o|g' -e 's|{repo}|r|g' "$UM_TMP/block.sh" > "$UM_TMP/run.sh"
+  bash "$UM_TMP/run.sh" 2>/dev/null | grep '^\[CONTEXT\] ' | tail -1
+  printf 'calls=%s\n' "$(cat "$UM_TMP/calls" 2>/dev/null | wc -l | tr -d ' ')"
+}
+assert "step 8 leaves the Status alone when no PR is merged" "[CONTEXT] PROJECTS_STATUS_UPDATED=skipped_unmerged${nl}calls=0" "$(run_unmerged_block "$CLEANUP" '# cleanup-projects-status' false)"
+assert "step 8 reports an unsubstituted {pr_merged} as a failed update" "[CONTEXT] PROJECTS_STATUS_UPDATED=false${nl}calls=0" "$(run_unmerged_block "$CLEANUP" '# cleanup-projects-status' '{pr_merged}')"
+assert "step 8 still updates the Status for a merged PR" "[CONTEXT] PROJECTS_STATUS_UPDATED=true${nl}calls=1" "$(run_unmerged_block "$CLEANUP" '# cleanup-projects-status' true)"
+for side in completion progress; do
+  assert "wm $side is skipped when no PR is merged" "[CONTEXT] WM_FINAL_UPDATE=$side; issue=41; status=skipped; reason=pr_not_merged${nl}calls=0" "$(run_unmerged_block "$ARCHIVE" "# cleanup-wm-final-$side" false)"
+  assert "wm $side reports an unsubstituted {pr_merged} as an error" "[CONTEXT] WM_FINAL_UPDATE=$side; issue=41; status=error; reason=pr_merged_unset${nl}calls=0" "$(run_unmerged_block "$ARCHIVE" "# cleanup-wm-final-$side" '{pr_merged}')"
+  assert "wm $side is still written for a merged PR" "[CONTEXT] WM_FINAL_UPDATE=$side; issue=41; status=success${nl}calls=1" "$(run_unmerged_block "$ARCHIVE" "# cleanup-wm-final-$side" true)"
+done
+assert_grep "projects check treats skipped_unmerged as x without claiming Done" "$CLEANUP" \
+  '`\[CONTEXT\] PROJECTS_STATUS_UPDATED=skipped_unmerged` が見つかったとき: `\{projects_status_result\}` = `（マージ済みの PR が無いため変更なし）`、`\{projects_check\}` = `x`'
+assert_grep "parent tasklist and auto-close are skipped when no PR is merged" "$ARCHIVE" \
+  'detected in `cleanup.md` ステップ 2 and `\{pr_merged\}=true`\. With `\{pr_merged\}=false` the child Issue stays open'
 # 判定基準は絵文字 prefix ではなくチェックボックスの空欄/x であることを pin する。
 # 絵文字 prefix 一致方式は {local_branch_check} の BRANCH_DELETE_FAILED/UNMERGED（prefix 無しの
 # bare-text 付記）を取りこぼし、まさに T-02 が守るべきシナリオ（ブランチ削除失敗）で
