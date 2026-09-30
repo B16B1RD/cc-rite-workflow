@@ -165,6 +165,8 @@
 * **Update**: [assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる](pages/anti-patterns/assert-label-overclaims-predicate-scope.md) — raw/fixes/20260930T082444Z-pr-3518-fix.md を統合
 * **Update**: [assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる](pages/anti-patterns/assert-label-overclaims-predicate-scope.md) — raw/reviews/20260930T083013Z-pr-3518-c2.md を統合
 
+* **lint:clean** — contradictions=0, stale=62, orphans=0, missing_concept=0, unregistered_raw=607, broken_refs=0
+
 ## 2026-09-29
 
 * **Update**: [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) — raw/reviews/20260929T104700Z-pr-3448.md で補強
