@@ -1283,7 +1283,7 @@ rationale: references/design-rationale.md#verification-post-condition-notes
  - 「次 cycle で再 retry されないこと」は counter / flag の pre-condition guard ではなく、**Step 3 で `verification_post_condition: error` を set することによって Judgment Matrix 行 3 (`error` 分類) に遷移し、Retry Procedure ではなく Failure Procedure に分岐させる flow 分岐によって保証される**。つまり terminal state は retry counter の数値ではなく、classification 状態 (`error`) によって実現される
 2. **ステップ 4.4 default action への委譲**: reviewer を incomplete として記録し、成功済みの raw 結果と flow-state を保持して `[review:error]` を返す。人数を減らした統合や承認による mergeable 判定には進まない。
 
-retry の回収結果で manifest を更新し、ステップ 5.1 の回収完了ゲートを再実行する。新しい実子 ID と raw 出力を記録し、初回 spawn 時刻は既存 spread 計測用に保持する。
+retry の回収結果で manifest を更新し、ステップ 5.1 の回収完了ゲート → 5.1.0.L を再実行して、retry の出力から推奨事項を抽出し直す。新しい実子 ID と raw 出力を記録し、初回 spawn 時刻は既存 spread 計測用に保持する。
 
 **Failure Procedure** (`error` 検出時、以下の 4 step を順に実行):
 1. `verification_post_condition: error` フラグを set
@@ -1669,7 +1669,7 @@ bash {plugin_root}/scripts/pr-review-step.sh measured-gate --input {review_tmp_d
 
 | 観測 | LLM action |
 |---|---|
-| `[CONTEXT] MEASURED_GATE_FAILED=1; reason=verification_preset_by_caller` / `scope_enum_violation` / `anchor_undetermined` (helper 非ゼロ終了) | **同 cycle 内で契約違反を修復する。** preset は step 1 の JSON を作り直す。scope 違反または `anchor_undetermined` は診断の対象 finding IDs のみ **Reviewer reject + reroll** とし、当該 reviewer に先頭行の読取完了申告も含めて再生成させる。他 finding は保持する。アンカーは `Verification: repro <cmd> => <観測>` または `Verification: failing_test <path> => <失敗出力>`、raw pipe は `¦` と案内する。回収結果で manifest（`agent_id` / `output_file`）を更新し、5.1 の回収完了ゲート（読取完了申告の照合を含む）を再実行してから step 1 の JSON を作り直し step 2 を再実行する。`measured_gate_retry_count` が `1` なら `[review:error]` で停止する。`/rite:fix` に形式修正を渡さず、review cycle を増やさない |
+| `[CONTEXT] MEASURED_GATE_FAILED=1; reason=verification_preset_by_caller` / `scope_enum_violation` / `anchor_undetermined` (helper 非ゼロ終了) | **同 cycle 内で契約違反を修復する。** preset は step 1 の JSON を作り直す。scope 違反または `anchor_undetermined` は診断の対象 finding IDs のみ **Reviewer reject + reroll** とし、当該 reviewer に先頭行の読取完了申告も含めて再生成させる。他 finding は保持する。アンカーは `Verification: repro <cmd> => <観測>` または `Verification: failing_test <path> => <失敗出力>`、raw pipe は `¦` と案内する。回収結果で manifest（`agent_id` / `output_file`）を更新し、5.1 の回収完了ゲート（読取完了申告の照合を含む）→ 5.1.0.L → 5.1.0.AC を再実行し、作り直した出力から推奨事項を抽出し直してから step 1 の JSON を作り直し step 2 を再実行する。`measured_gate_retry_count` が `1` なら `[review:error]` で停止する。`/rite:fix` に形式修正を渡さず、review cycle を増やさない |
 | `[CONTEXT] MEASURED_GATE_FAILED=1; reason=...` (上記 3 種以外。`jq_missing` / `input_missing` / `input_unreadable` / `json_invalid` / `findings_not_array` / `non_blocking_not_array` / `jq_transform_failed` / `stats_read_failed` / `mktemp_failure` / `write_failure` / `mv_failure` / `signal_aborted`) | **`[review:error]` を stdout に出力して停止する。LLM 分類へ fallback してはならない** — fallback は本ゲートが閉じた不発の再生産になる。helper が ERROR 行の直後に外部コマンドの stderr 先頭 5 行を転記するので、原因はそこを見る |
 | marker が一切出ずに helper が非ゼロ終了した (exit 2 = 引数欠落 / 未知フラグ) | 同上 — `[review:error]` を stdout に出力して停止する |
 | `[CONTEXT] MEASURED_GATE=applied; blocking={n}; demoted={d}; non_blocking_total={t}; assessment={a}` (helper rc=0) | ゲート適用成功。`total_findings = {n}`、`non_blocking_count = {t}`、`overall_assessment = {a}` として 5.3.1 以降へ進む (**再分類しない**)。下記 2 種の観測 marker が併記されていても分類は変えず、会話コンテキストに残して続行する |
