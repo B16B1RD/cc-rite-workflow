@@ -1049,7 +1049,7 @@ cands_list=$(jq -c '.candidates' "$cands_file")
 
 if [ -z "$PREVIEW_BODY" ]; then
   gh label create follow-up -R "${OWNER}/${REPO}" \
-    --description "マージ時の残存指摘と先送りした欠陥" --color "c5def5" >/dev/null 2>&1 || true
+    --description "マージ時の残存指摘と先送りした欠陥" --color "c5def5" --force >/dev/null 2>&1 || true
 else
   rite_tempfile_new preview_tmp "fu-preview" || exit 1
 fi
