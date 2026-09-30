@@ -92,6 +92,7 @@
 * **Create**: [失敗の原因を列挙する条件は失敗する式と同じ述語で書き、「特定できません」の既定文言で覆わない](pages/anti-patterns/failure-enumeration-predicate-diverges-from-failing-expression.md) — raw/reviews/20260930T033135Z-pr-3468.md を新規ページ化
 * **Update**: [失敗の原因を列挙する条件は失敗する式と同じ述語で書き、「特定できません」の既定文言で覆わない](pages/anti-patterns/failure-enumeration-predicate-diverges-from-failing-expression.md) — raw/fixes/20260930T034612Z-pr-3468.md を統合
 * **Update**: [失敗の原因を列挙する条件は失敗する式と同じ述語で書き、「特定できません」の既定文言で覆わない](pages/anti-patterns/failure-enumeration-predicate-diverges-from-failing-expression.md) — raw/reviews/20260930T035710Z-pr-3468.md を統合
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=596, broken_refs=0
 
 ## 2026-09-29
 
