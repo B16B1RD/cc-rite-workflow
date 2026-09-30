@@ -1877,8 +1877,8 @@ try:
 finally:
     f.close()
 
-# With a run start pin and a previous run's result beside this run's, the gate reads
-# only this run's results, so the stop cycle still names the point the retry passed.
+# The previous result is at the pin boundary and lacks the live run_id.
+# The pin marker reports the configured boundary; it does not prove pin filtering.
 f = Fixture()
 try:
     (f.root / '.rite/review-results').mkdir(parents=True, exist_ok=True)
@@ -1894,8 +1894,8 @@ try:
     f.observe()
     recommendation_fix(f)
     output = gate(f)
-    passes_gate(output, '1,2,3,0', 'T-26: with a run start pin the gate does not fire on the point the retry moved past')
-    check('RUN_SINCE_USED=pin' in marker(output, 'ITERATE_CB'), 'T-26: the gate read the run start pin:\n' + output)
+    passes_gate(output, '1,2,3,0', 'T-26: the previous result is excluded from the trend after the retry')
+    check('RUN_SINCE_USED=pin' in marker(output, 'ITERATE_CB'), 'T-26: the gate reports the configured run start pin:\n' + output)
 finally:
     f.close()
 
