@@ -36,7 +36,9 @@ case "$reviewer_type" in
   *) exception_category="" ;;
 esac
 
-parsed=$(awk -v exception_category="$exception_category" -v reviewer_type="$reviewer_type" '
+# LC_ALL=C: macOS awk compares strings by locale collation in a UTF-8 locale, so a
+# value with a Japanese note can compare equal to a bare classification word.
+parsed=$(LC_ALL=C awk -v exception_category="$exception_category" -v reviewer_type="$reviewer_type" '
   BEGIN { in_findings=0; in_recommendations=0; saw_heading=0; saw_header=0; saw_separator=0; findings=0; missing=0; malformed=0; recommendations=0; invalid=0 }
   function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
   /^###[[:space:]]*(推奨事項|Recommendations)/ { in_recommendations=1; in_findings=0; next }

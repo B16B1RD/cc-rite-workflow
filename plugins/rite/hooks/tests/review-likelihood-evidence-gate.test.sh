@@ -10,7 +10,7 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 pass=0 fail=0
-check() { if "$@"; then pass=$((pass+1)); else fail=$((fail+1)); fi; }
+check() { if "$@"; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: line ${BASH_LINENO[0]}" >&2; fi; }
 
 printf '%s\n' '### 指摘事項' '| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |' '|---|---|---|---|---|' '| HIGH | current-pr | a.sh:1 | defect. Likelihood-Evidence: existing_call_site a.sh:1 | fix |' > "$TMP/valid.md"
 printf '%s\n' '### 指摘事項' '| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |' '|---|---|---|---|---|' '| HIGH | current-pr | a.sh:1 | defect without anchor | fix |' > "$TMP/missing.md"
