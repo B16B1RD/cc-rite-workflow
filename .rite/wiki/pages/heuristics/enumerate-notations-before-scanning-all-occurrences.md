@@ -4,10 +4,12 @@ title: "文書中の全箇所を対象にする検査や grep は、書き方の
 domain: "heuristics"
 description: "「すべての箇所」を検査するテストや、同じ規範の記述を探す grep は、表記の 1 種類だけを見ると別の書き方の箇所を取りこぼす。inline code と fenced code、言い回しの揺れなど、同じ内容が現れうる書き方を先に列挙してから抽出条件を決める。"
 created: "2026-09-29T04:35:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T16:54:00Z" }
+generated: { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T09:44:17Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T04:44:52Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T16:54:00Z" }
+  - { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T09:44:17Z" }
+  - { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T09:44:17Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260929T041314Z-pr-3425.md"
@@ -21,6 +23,10 @@ sources:
     resource: "raw/reviews/20260929T150753Z-pr-3451.md"
   - type: "fixes"
     resource: "raw/fixes/20260929T155401Z-pr-3451.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T091842Z-pr-3516.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260930T092742Z-pr-3516.md"
 tags: ["grep", "pin", "fence", "notation"]
 confidence: medium
 ---
@@ -57,6 +63,12 @@ fenced code の取りこぼしを直すときは、抽出を inline code とコ�
 
 Markdown の fence を正規表現で抜き出すテストは、開き・閉じの fence が行頭にある前提で書かれがちで、リスト項目の中でインデントされたブロックを黙って取りこぼす。抽出の件数下限を「今取れた件数」に合わせていると、取りこぼしは表に出ない。抽出だけインデントを許して（開き fence のインデントを閉じ fence にも要求する形にして）本文を dedent し、下限は別の形検査が数える対象の実数に合わせる。取りこぼしていた位置への変異で fail することを確かめる。
 
+### 確認を求める箇所は、ツール名だけでなく選択肢を示す書き方も列挙する
+
+「人間に確認する箇所をすべて洗い出した」という検査が、特定のツール名の出現だけを数えていた。確認は、その名前を出さずに「選択肢を示して選ばせる」書き方でも現れる。起点では選択肢の見出しと、問いかけの文末を掃引して、名前の無い確認が漏れていることが分かった。件数を固定する契約テストが同じ名前だけを数えていると、検査と同じ穴を持つ。
+
+洗い出しの前に、確認が現れうる書き方（ツール名、選択肢の見出し、問いかけの文末）を列挙し、その和で掃引する。1 種類の名前で「全箇所」と主張しない。修正では、ツール名の有無ではなく、選択肢を示して人間に選ばせる箇所を掃引対象にした。
+
 ## 関連ページ
 
 - [検出文法が一部の表記だけを見るとき、同じ画面の別表記が検査外に残って整合が壊れたままゲートは通る](../anti-patterns/partial-format-detector-leaves-sibling-tokens-inconsistent.md)
@@ -72,3 +84,5 @@ Markdown の fence を正規表現で抜き出すテストは、開き・閉じ�
 - [否定 pin の解消検証と正の pin を主にする判断のレビュー結果](../../raw/reviews/20260929T042643Z-pr-3426.md)
 - [インデントされた fence の取りこぼしを指摘したレビュー結果](../../raw/reviews/20260929T150753Z-pr-3451.md)
 - [抽出をインデント対応にし下限を実数へ合わせた fix 結果](../../raw/fixes/20260929T155401Z-pr-3451.md)
+- [確認箇所の洗い出しがツール名だけを見ていたレビュー結果](../../raw/reviews/20260930T091842Z-pr-3516.md)
+- [選択肢を示す書き方で掃引した fix 結果](../../raw/fixes/20260930T092742Z-pr-3516.md)

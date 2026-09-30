@@ -14,11 +14,14 @@ sources:
     resource: "raw/reviews/20260901T173133Z-pr-2500.md"
   - type: "fixes"
     resource: "raw/fixes/20260901T173714Z-pr-2500.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T093556Z-pr-3516.md"
 tags: ["mechanism-teardown", "marker-contract", "dead-structure", "coverage-migration", "simplification-first"]
 confidence: high
-generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
+generated: { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T09:44:17Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
+  - { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T09:44:17Z" }
 ---
 
 # 機構を畳んだら、その機構のために作った付随物も同時に畳む — 名前を変えて残すと動機を失った構造だけが次の欠陥面になる
@@ -84,6 +87,12 @@ marker を廃止したとき、その marker が拾っていた経路は「marke
 
 **「機構を畳んだら付随物も畳む」の裏返し** — 畳むときは「消したものが受けていた入力の行き先」も設計対象になる。畳む前の bash が持っていた分岐（rc / marker / 正常）を表に書き出し、畳んだ後の prose がその全行に行き先を与えているかを突き合わせる。同一コミット内の sibling 節が同じ選言を持っているのに当該節だけ持たない非対称は、設計判断ではなく取り残しである証拠になる。
 
+### 確認ブロックを外すときは、そのブロックが渡していた値の行き先も洗う
+
+確認のブロックは質問だけを担っているとは限らない。選択肢に紐づいた集計の入力や、修正案の提示先への参照も、同じブロックが兼ねていることがある。ブロックを消すと、それらの参照先が残って宙に浮く。
+
+確認を外す前に、消すブロックの識別子や見出しを検索し、表示・集計・他の節からの参照を列挙する。質問文を消すことと、そのブロックが渡していた値の行き先を付け替えることは同時にやる。
+
 ## 関連ページ
 
 - [不正入力は「落とす」より「無害化して残す」— 落とす設計は件数報告という第 2 の機構を要求する](./neutralize-invalid-input-instead-of-dropping.md)
@@ -95,3 +104,4 @@ marker を廃止したとき、その marker が拾っていた経路は「marke
 - [fix 結果](../../raw/fixes/20260829T191402Z-pr-2468.md)
 - [レビュー結果](../../raw/reviews/20260901T173133Z-pr-2500.md)
 - [fix 結果](../../raw/fixes/20260901T173714Z-pr-2500.md)
+- [確認ブロックを外すと集計と参照が宙に浮くことを確かめたレビュー結果](../../raw/reviews/20260930T093556Z-pr-3516.md)

@@ -189,6 +189,13 @@
 * **Skip**: [20260930T085932Z-pr-3516.md](raw/reviews/20260930T085932Z-pr-3516.md) — 指摘も推奨も 0 件で収束した記録のみで、経験則がない
 * **Skip**: [20260930T091030Z-pr-3526.md](raw/reviews/20260930T091030Z-pr-3526.md) — 指摘も推奨も 0 件の記録のみで、経験則がない
 * **lint:clean** — contradictions=0, stale=62, orphans=0, missing_concept=0, unregistered_raw=616, broken_refs=0
+* **Update**: [文書中の全箇所を対象にする検査や grep は、書き方の種類を先に列挙してから書く](pages/heuristics/enumerate-notations-before-scanning-all-occurrences.md) — raw/reviews/20260930T091842Z-pr-3516.md を統合
+* **Update**: [文書中の全箇所を対象にする検査や grep は、書き方の種類を先に列挙してから書く](pages/heuristics/enumerate-notations-before-scanning-all-occurrences.md) — raw/fixes/20260930T092742Z-pr-3516.md を統合
+* **Update**: [機構を畳んだら、その機構のために作った付随物も同時に畳む — 名前を変えて残すと動機を失った構造だけが次の欠陥面になる](pages/heuristics/teardown-mechanism-with-its-accessories.md) — raw/reviews/20260930T093556Z-pr-3516.md を統合
+* **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw/reviews/20260930T092118Z-pr-3525.md を統合
+* **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw/fixes/20260930T093720Z-pr-3525.md を統合
+* **Skip**: [20260930T092929Z-pr-3527.md](raw/reviews/20260930T092929Z-pr-3527.md) — 指摘はなく、時間判定の既存契約を維持した記録だけで、新しい経験則はない
+* **Skip**: [20260930T091659Z-pr-3524.md](raw/reviews/20260930T091659Z-pr-3524.md) — 指摘はなく、説明文を現行の書込値へ合わせた記録だけで、繰り返す欠陥パターンはない
 
 ## 2026-09-29
 

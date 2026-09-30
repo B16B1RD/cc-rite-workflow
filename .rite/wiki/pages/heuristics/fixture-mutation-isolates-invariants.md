@@ -73,9 +73,13 @@ sources:
     resource: "raw/reviews/20260928T094130Z-pr-3391.md"
   - type: "reviews"
     resource: "raw/reviews/20260929T054229Z-pr-3434.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T092118Z-pr-3525.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260930T093720Z-pr-3525.md"
 tags: ["test", "fixture", "mutation", "invariant", "coverage"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T05:45:52Z" }
+generated: { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T09:44:17Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T18:43:00+00:00" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T23:20:00+00:00" }
@@ -97,6 +101,8 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T01:02:34Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T09:47:59Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T05:45:52Z" }
+  - { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T09:44:17Z" }
+  - { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T09:44:17Z" }
 ---
 
 # テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する
@@ -290,6 +296,8 @@ helper の docstring が「この場合に記録を書く」と分岐を列挙�
 
 寄せるときは、寄せた後の fixture が通る判定経路をすべて列挙する。副次のデータが残っていると別の規則でも同じ結果になり、分離は成立しない。また、どの規則よりも先に必ず走る処理の失敗（例: 判定の前に行う書き込みの失敗）は、fixture の状態を変えても経路が変わらない。規則の順序を読まずに fixture を動かすと、挙動に影響しない差分が入る。コメントには、分離できた範囲だけを書く。
 
+**同じ fixture を複数の除外が落とすと、一機構を無効化してもテストは通る**: 結果から行を除く機構が 2 つあり、両方が同じ fixture を除いていると、片方だけを無効化してももう片方が同じ行を除くのでテストは通る。コメントを狭めて、別の未検査の機構が保証しているかのように書き換えても、保証の置き換えであって検査にはならない。機構を 1 つずつ無効化し、残った機構だけでは通らないことを確かめる。コメントが名乗る範囲は、観測した傾向と印、および fixture の条件に限る。原因そのものを保証した書き方にしない。製品側を変えずにコメントだけを直すときも、未検査の機構の保証へ文を移さない。
+
 **積で書いた除外条件は因子ごとに結果が変わる入力を置く**: 除外を「名前が一致 かつ 種別が一致 かつ symlink でない」の積で書いたら、各因子を 1 つだけ外す変異ごとに結果が変わる入力（同名の通常ファイル、同名のディレクトリ、実在する先を指す symlink）を検査に揃える。どれか 1 つを外しても他の因子が同じ結果を返す入力しかなければ、その因子は固定されない。除外の範囲を ignore 判定で代用すると、ignore 済みディレクトリを入力にしたとき配下がすべて落ちて無検査になるので、対象は名前で限定する。
 
 ## 関連ページ
@@ -335,3 +343,5 @@ helper の docstring が「この場合に記録を書く」と分岐を列挙�
 - [連言の片側の fixture と、規則ごとに寄せた fixture の fix 結果](../../raw/fixes/20260928T092706Z-pr-3391.md)
 - [寄せた fixture に副次のデータが残り分離が成立しないと確かめたレビュー結果](../../raw/reviews/20260928T094130Z-pr-3391.md)
 - [積で書いた除外条件を検査したレビュー結果](../../raw/reviews/20260929T054229Z-pr-3434.md)
+- [重なった除外の片方を無効化しても通ることを確かめたレビュー結果](../../raw/reviews/20260930T092118Z-pr-3525.md)
+- [名乗りを観測した傾向と印に限った fix 結果](../../raw/fixes/20260930T093720Z-pr-3525.md)
