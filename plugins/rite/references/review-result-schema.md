@@ -51,14 +51,14 @@
 
 **読取側 (3 値受理義務、4 箇所で完全同期)**:
 
-- `scripts/review-source-resolve.sh` Priority 0 (`--review-file` case 文。`fix.md` ステップ 1.2.0 が呼ぶ helper 側に在る)
+- `scripts/review-source-resolve.sh` Priority 0 (`--review-file` case 文。`fix/SKILL.md` ステップ 1.2.0 が呼ぶ helper 側に在る)
 - `scripts/review-source-resolve.sh` Priority 2 (local file case 文。同上)
-- `scripts/fix-step.sh` の `p3-raw-json` (PR comment Raw JSON case 文。`fix.md` ステップ 1.2.0 Priority 3 が呼ぶ helper 側に在る)
+- `scripts/fix-step.sh` の `p3-raw-json` (PR comment Raw JSON case 文。`fix/SKILL.md` ステップ 1.2.0 Priority 3 が呼ぶ helper 側に在る)
 - `hooks/scripts/review-trend-divergence.sh` (収束トレンド判定の入力として `findings[]` を読む case 文)
 
 上記 4 箇所の `case "$schema_version" in "1.0.0"|"1.0"|"1.1.0")` は常に同じ accept list を持つ。将来 `"1.2.0"` 追加 / legacy `"1.0"` 廃止時は 4 箇所を同時更新すること。
 
-> 4 番目の読取側 (`review-trend-divergence.sh`) は accept list 外の値に遭遇したとき、fix.md の 3 箇所のような Priority fallthrough を持たず **判定不能 (`reason=schema_version_unknown`) として発火せずに返す**。これは silent skip ではなく、理由付きで `[CONTEXT] TREND_DIVERGENCE=insufficient` を emit した上で `safety.max_review_cycles` の backstop に判定を委ねる設計 (未知スキーマで発散と判定して健全な run を殺すより安全側)。
+> 4 番目の読取側 (`review-trend-divergence.sh`) は accept list 外の値に遭遇したとき、fix/SKILL.md の 3 箇所のような Priority fallthrough を持たず **判定不能 (`reason=schema_version_unknown`) として発火せずに返す**。これは silent skip ではなく、理由付きで `[CONTEXT] TREND_DIVERGENCE=insufficient` を emit した上で `safety.max_review_cycles` の backstop に判定を委ねる設計 (未知スキーマで発散と判定して健全な run を殺すより安全側)。
 
 **書込側 (canonical 値のみ出力、同期義務なし)**:
 
@@ -72,7 +72,7 @@
 - **Priority 2 (ローカルファイル)** 失敗時: WARNING を出して **Priority 3 (PR コメント)** へ routing (古い timestamp ファイルには fallback しない)
 - **Priority 3 (PR コメント Raw JSON)** 失敗時: Raw JSON section が無い / 抽出できない場合だけ legacy Markdown parser へ進む (後方互換経路)。Raw JSON が存在して壊れている場合 (parse 失敗 / 必須フィールド欠落 / schema_version 未知など) は `[fix:error]` で停止し、legacy 表で補完しない
 
-詳細は `scripts/review-source-resolve.sh`（Priority 0 / Priority 2）と `scripts/fix-step.sh` の `p3-raw-json`（Priority 3）を参照（いずれも `fix.md` ステップ 1.2.0 Hybrid Review Source Resolution が呼ぶ helper 側に在る）。
+詳細は `scripts/review-source-resolve.sh`（Priority 0 / Priority 2）と `scripts/fix-step.sh` の `p3-raw-json`（Priority 3）を参照（いずれも `fix/SKILL.md` ステップ 1.2.0 Hybrid Review Source Resolution が呼ぶ helper 側に在る）。
 
 ## JSON Schema
 
@@ -189,10 +189,10 @@
 | `pr_number` | integer | ✅ | PR 番号 (>= 1) |
 | `producer` | string | 任意 (1.1.0 additive) | fix が新規永続化する記録は `"fix"`。既存ファイルの in-place triage は値を維持する。トレンド helper は文字列 `"fix"` と完全一致した記録だけを列と件数ガードから除外し、欠落・null・その他の値は従来のレビュー検証へ渡す。記録の削除・移動はしない。 |
 | `timestamp` | string | ✅ | レビュー実行時刻 (ISO 8601 `YYYY-MM-DDTHH:MM:SS+TZ`) |
-| `commit_sha` | string | ✅ | レビュー対象の commit SHA。用途: (a) verification mode 用の diff 起点、(b) Priority 0/2/3 の stale file detection 用の HEAD 比較キー、(c) `pr-review.md` ステップ 8.0.4 positive 検査の判定軸。write 側の値源はステップ 1.2.5 で記録した commit SHA。`review-result-save.sh` は現在、この値と `measured_gate.commit_sha` の一致を保存直前に強制し、不一致を `gate_record_mismatch` で拒否する。read 側 (`fix.md` ステップ 1.2.0) も各 Priority success 経路で現 HEAD および gate receipt との一致を検査する。 |
+| `commit_sha` | string | ✅ | レビュー対象の commit SHA。用途: (a) verification mode 用の diff 起点、(b) Priority 0/2/3 の stale file detection 用の HEAD 比較キー、(c) `pr-review.md` ステップ 8.0.4 positive 検査の判定軸。write 側の値源はステップ 1.2.5 で記録した commit SHA。`review-result-save.sh` は現在、この値と `measured_gate.commit_sha` の一致を保存直前に強制し、不一致を `gate_record_mismatch` で拒否する。read 側 (`fix/SKILL.md` ステップ 1.2.0) も各 Priority success 経路で現 HEAD および gate receipt との一致を検査する。 |
 | `review_context` | object | 通常 caller ✅ (1.1.0 additive) | `review-start` が固定した session / run / PR / cycle / HEAD。manifest・全 reviewer・結果で完全一致させる。過去 JSON の読取互換とは別に、工程遷移には必須。 |
 | `measured_gate` | object | 現行 write/read 側 ✅ (1.1.0 additive) | `review-measured-gate.sh` の適用記録。`{commit_sha, applied_at, blocking, demoted, anchor_undetermined}` を持ち、`commit_sha` はトップレベル値と一致する。schema version は据え置くため形式上 additive だが、現行 producer の保存、8.0.4 positive 検査、`/rite:fix` の JSON consumer では必須。欠落する既存アーカイブは遡及修復せず、再利用時は fail-closed で停止して `/rite:pr-review` の再実行を要求する。 |
-| `overall_assessment` | **enum** (string) | ✅ | 総合評価。**受理値**: `"mergeable"` / `"fix-needed"` の 2 値のみ。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=overall_assessment_unknown_value` を stderr に出力し、Priority に応じた fallback/routing を実行する (P0: fallback、P2: Priority 3 routing、P3: `[fix:error]` で停止。詳細は fix.md failure reasons table `overall_assessment_unknown_value` 参照) |
+| `overall_assessment` | **enum** (string) | ✅ | 総合評価。**受理値**: `"mergeable"` / `"fix-needed"` の 2 値のみ。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=overall_assessment_unknown_value` を stderr に出力し、Priority に応じた fallback/routing を実行する (P0: fallback、P2: Priority 3 routing、P3: `[fix:error]` で停止。詳細は fix/SKILL.md failure reasons table `overall_assessment_unknown_value` 参照) |
 | `verdict` | **enum** (string) | ✅ | 本 cycle の最終判定。**受理値**: `"mergeable"` / `"fix-needed"` の 2 値のみ (`overall_assessment` と同一語彙で、`pr-review.md` ステップ 8.1 の terminal sentinel `[review:mergeable]` / `[review:fix-needed:{n}]` と対応する)。**merge ゲート (`hooks/pre-tool-bash-guard.sh`) が読む必須キー**。`overall_assessment` と**同値であることが不変条件**で、両者は `scripts/review-measured-gate.sh` の単一の blocking 件数式から同時に代入される。下記 [verdict と reviewers](#verdict-と-reviewers) 参照 |
 | `reviewers` | array (string) | ✅ (非空) | 本 cycle で **ステップ 5.1 が Task 結果を回収できた** reviewer agent の名簿。`findings` とは独立で、findings 0 件の mergeable cycle でも非空になる。値は `plugins/rite/agents/*-reviewer.md` の basename (拡張子を除く、接尾辞 `-reviewer` を含む) と一致する — `findings[].reviewer` と同じ参照整合性規則。下記 [verdict と reviewers](#verdict-と-reviewers) 参照 |
 | `findings` | array | ✅ | producer 保存時は `/rite:pr-review` のゲート通過後の `全指摘事項`（blocking + nit-noted、0 件でも `[]`）。fix consumer の共通ステップ 1.2.2 適用後は fatal（CRITICAL/HIGH、および class A・除外判別子付き class B のうち PR 起因の MEDIUM/LOW-MEDIUM/LOW）+ nit-noted を保持し、それ以外の gated な非 fatal（実測なし、除外判別子なしの class B、`pre_existing: true`）は `non_blocking_findings[]` へ移送済みとなる。`measured_gate` / `overall_assessment` / `verdict` は producer の観測を維持し、consumer は `fatal_map` と分類後の配列を使う |
@@ -208,7 +208,7 @@
 
 | フィールド | 型 | 必須 | 説明 |
 |-----------|-----|------|------|
-| `id` | string | ✅ | 指摘 ID (`F-NN` 形式、最小 2 桁ゼロパディング可変長連番、正規表現 `^F-[0-9]{2,}$`)。例: `F-01`, `F-42`, `F-99`, `F-100`, `F-999`。レビュー内ユニーク。99 件以下は 2 桁、100 件以上は 3 桁以上に自然成長する。write 側 (`pr-review.md` ステップ 6.1.a) の machine-enforced jq validation と read 側 (`fix.md`) の正規表現は同一パターンで検証される |
+| `id` | string | ✅ | 指摘 ID (`F-NN` 形式、最小 2 桁ゼロパディング可変長連番、正規表現 `^F-[0-9]{2,}$`)。例: `F-01`, `F-42`, `F-99`, `F-100`, `F-999`。レビュー内ユニーク。99 件以下は 2 桁、100 件以上は 3 桁以上に自然成長する。write 側 (`pr-review.md` ステップ 6.1.a) の machine-enforced jq validation と read 側 (`fix/SKILL.md`) の正規表現は同一パターンで検証される |
 | `reviewer` | string | ✅ | レビュアー種別 (例: `code-quality-reviewer`, `security-reviewer`, `tech-writer-reviewer`)。**参照整合性**: 値は `plugins/rite/agents/*-reviewer.md` の basename (拡張子を除く、接尾辞 `-reviewer` を含む) と一致する。新 reviewer を追加する際は agents/ 側のファイル追加と合わせて本ドキュメントにも追記すること (drift-check による自動検証はないため手動同期)。例外: `pr-review` は pr-review 自身が産出する number-reference 指摘の orchestrator reviewer id として有効（agents/ ファイルは追加しない）。 |
 | `category` | string | ✅ | カテゴリ (例: `code_quality`, `security`, `performance`, `error_handling`) |
 | `severity` | **enum** (string) | ✅ | 重要度。**受理値**: `"CRITICAL"` / `"HIGH"` / `"MEDIUM"` / `"LOW-MEDIUM"` / `"LOW"` の 5 値のみ (LOW-MEDIUM は `severity-levels.md` Severity Levels 表で正式定義された first-class severity で、`COMMENT_QUALITY` 軸の独自ジャーゴン濫用 等の bounded blast radius 違反に使う)。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=severity_unknown_value; value=<val>` を stderr 出力し、fix consumer の分類では `[fix:error]` で停止し、元 JSON を変更しない (silent skip・MEDIUM への丸めは禁止)。外部ツール出力の別名は下記「severity 別名マッピング表」に従って read 側で正規化してから本 enum に落とす |
@@ -218,7 +218,7 @@
 | `nit_reason` | string | (条件付き必須、1.1.0+) | `severity == "MEDIUM"` ∧ `scope == "nit-noted"` の組み合わせ時は **必須**。それ以外は omit 可。MEDIUM 級の指摘を「nit として受け流す」判断には bounded blast radius (localized で単発修正で完了する) の根拠が必要なため、reviewer に明示的に reason を記載させて auditability を担保する |
 | `verification` | object | (任意、1.1.0+) | **`"1.1.0"` JSON でも欠落しうる** (schema_version を bump しない additive 追加のため — [Schema Version](#schema-version-sot) 参照)。runtime 実測の記録 `{measured, repro, failing_test}` (下記 [verification サブフィールド](#verification-サブフィールド) 参照)。**欠落時は記録・表示経路では `measured=false` 扱い** ([後方互換性](#後方互換性-schema-10--110) の verification default mapping)。**値は blocking / mergeable 判定の入力として消費される** （実測必須ゲートの定義: [severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate))。判定 consumer は `measured` を **2 値 + error** として扱う。producer は算出時の判定不能を `anchor_undetermined` で拒否し、fix consumer も gated finding の欠落を `[fix:error]` とする ([判定 consumer の 2 値 + error](#3値モデルへの上書き) 参照)。**型は判定に使われる**: read 側の型ガードが object/boolean 制約を検証し、違反時は当該 review-result file 全体の routing を変える ([verification 型ガード (read 側)](#verification-型ガード-read-側)) |
 | `file` | string | ✅ | 対象ファイルのリポジトリルート相対パス (絶対パス禁止、`..` による親ディレクトリ参照禁止) |
-| `line` | integer \| null | ✅ | 対象行番号 (正の整数 >= 1)、または `null` (行非依存指摘の sentinel)。負数は無効 (read 側での挙動は未定義)。cycle 10 S-4 対応で旧「`0` を行非依存 sentinel として扱う」設計から `null` 許容に変更。severity_map 構築時は `line == null` を `"anchor"` key に正規化して同一ファイル複数指摘の key 衝突を防ぐ (fix.md ステップ 1.2.0 severity_map 構築参照)。**後方互換**: 読取側は `line: 0` を引き続き legacy sentinel として受理し、`null` と同じ扱いにする |
+| `line` | integer \| null | ✅ | 対象行番号 (正の整数 >= 1)、または `null` (行非依存指摘の sentinel)。負数は無効 (read 側での挙動は未定義)。cycle 10 S-4 対応で旧「`0` を行非依存 sentinel として扱う」設計から `null` 許容に変更。fatal_map / severity_map / scope_map は finding ID を key とする (`fix/SKILL.md` ステップ 1.2.2 step 2)。file:line（null / 0 行は anchor）は thread 対応候補にだけ使い、finding の集約や fatal 判定には使わない（同ステップ 1.3 step 3）。**後方互換**: 読取側は `line: 0` を引き続き legacy sentinel として受理し、`null` と同じ扱いにする |
 | `description` | string | ✅ | 指摘内容 |
 | `suggestion` | string | ✅ | 推奨対応 |
 | `status` | **enum** (string) | ✅ | 対応状態。**受理値**: `"open"` / `"fixed"` / `"replied"` / `"deferred"` / `"acknowledged"` の **5 値**。現行実装では `/rite:pr-review` ステップ 6.1.a は常に `"open"` を出力する (将来の state machine 拡張で `/rite:fix` 完了時に `"fixed"` / `"acknowledged"` 等を書き戻す slot を予約)。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=status_unknown_value; value=<val>` を stderr 出力する |
@@ -404,7 +404,7 @@ K は判定 `issued` の行数、M は `REJECT` / `RESOLVED` / `LINK` / `recorde
 | `Low-Medium`, `LOW-MEDIUM`, `LowMedium`, `low_medium`, `中低`, `軽中` | `LOW-MEDIUM` |
 | `Low`, `LOW`, `INFO`, `TRIVIAL`, `Nit`, `NIT`, `🔵`, `低`, `情報` | `LOW` |
 
-**運用ポリシーとの関係**: schema enum 5 値 / reviewer checklist 見出し / 運用 3 段の対応関係は [`severity-levels.md` Severity 語彙 3 系統 Crosswalk](./severity-levels.md#severity-vocabulary-crosswalk) を単一 SoT とする(本ファイルでは再定義しない)。write 側 (`pr-review.md` ステップ 6.1.a) は必ず schema enum 5 値で出力し、read 側 (`fix.md` ステップ 1.2 best-effort parser) が外部ツール由来の別名を上記マッピング表で正規化する。
+**運用ポリシーとの関係**: schema enum 5 値 / reviewer checklist 見出し / 運用 3 段の対応関係は [`severity-levels.md` Severity 語彙 3 系統 Crosswalk](./severity-levels.md#severity-vocabulary-crosswalk) を単一 SoT とする(本ファイルでは再定義しない)。write 側 (`pr-review.md` ステップ 6.1.a) は必ず schema enum 5 値で出力し、read 側 (`fix/SKILL.md` ステップ 1.2.1 Parsing algorithm) が外部ツール由来の別名を上記マッピング表で正規化する。
 
 **絵文字エイリアスの実運用検証状況**: 絵文字 (`🔴`/`🟠`/`🟡`/`🔵`) は将来の互換性のため列挙しているが、主要な外部ツールが絵文字を出力する事例は未検証。新しい外部レビューツールへの対応として絵文字エイリアスを追加した場合は、本表の下に注記を追加すること。
 
@@ -412,20 +412,20 @@ K は判定 `issued` の行数、M は `REJECT` / `RESOLVED` / `LINK` / `recorde
 
 ### Cross-field invariants (型レベルで表現しきれない制約)
 
-以下の制約は単一フィールドの型では表現できないため、write 側 (`pr-review.md` ステップ 6.1.a) が生成時に守る義務があり、read 側 (`fix.md` ステップ 1.2.0) は post-condition jq として検証する:
+以下の制約は単一フィールドの型では表現できないため、write 側 (`pr-review.md` ステップ 6.1.a) が生成時に守る義務があり、read 側 (`fix/SKILL.md` ステップ 1.2.0) は post-condition jq として検証する:
 
 1. **ファイル名 ↔ JSON `pr_number` 同期**: `.rite/review-results/{pr_number}-{timestamp}.json` の `{pr_number}` prefix と JSON 内 `.pr_number` の値は必ず一致する。不一致時は read 側で WARNING + `[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=pr_number_mismatch` を emit して legacy parser fallthrough。手動でファイルを rename した場合のみ発火しうる。
 2. **`overall_assessment == "mergeable"` ∧ CRITICAL/HIGH open finding 存在禁止**: `overall_assessment` が `"mergeable"` のとき、`findings[]` に `severity ∈ {"CRITICAL", "HIGH"}` かつ `status == "open"` の要素が含まれてはならない。違反時は read 側で WARNING + `[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=mergeable_has_open_blockers` を emit し、P0 は fallback、P2 は Priority 3 へ routing、P3 は `[fix:error]` で停止する (手書き JSON で fix ループを silent に 0 件脱出させる bypass を防ぐ)。
 3. **ファイル名 timestamp ↔ JSON `timestamp` 同期**: `{timestamp}` prefix (JST `YYYYMMDDHHMMSS`) と JSON 内 `.timestamp` (ISO 8601) は同一瞬間を指す。ただし本不変条件は read 側で検証せず (ファイル rename 時にしか破綻しえないため)、write 側が ステップ 6.1.a で一度に生成することで担保する。
 4. **`severity ∈ {CRITICAL, HIGH}` ∧ `scope == "nit-noted"` 禁止**: blocker (CRITICAL/HIGH) 級の指摘は「修正不要の nit」として受け流すことができない。違反時は read 側で WARNING + `[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason={priority_prefix}_critical_high_scope_nit_noted` を emit して invariant #2 と同じ FAIL routing を取る (P0: fallback、P2: Priority 3 routing、P3: `[fix:error]` で停止)。canonical jq expression: `[.findings[] | select((.severity == "CRITICAL" or .severity == "HIGH") and .scope == "nit-noted")] | length == 0`。reviewer が CRITICAL を nit に降格させたい場合は severity を MEDIUM/LOW へ自己降格し、`original_severity` フィールドに元値を保持すること。本 invariant は 1.1.0 JSON にのみ適用される (1.0/1.0.0 では `scope` フィールドが欠落しているため後方互換 default mapping 経由で評価)。
 5. **`pre_existing == false` ∧ `scope == "nit-noted"` 禁止**: 本 PR で **新規に導入された** finding (`pre_existing == false`) を「修正不要の nit」として受け流すことは、本 PR の責任範囲内の問題を silent に放置することを意味するため禁止。違反時は read 側で WARNING + `[CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1; reason=pre_existing_false_scope_nit_noted; count={n}` を emit し、該当 finding の `scope` を **自動で `"current-pr"` に書き換え** (auto-correct) して severity_map 構築を続行する。canonical jq mutation: `(.findings[] | select(.pre_existing == false and .scope == "nit-noted") | .scope) |= "current-pr"`。本 invariant は **#4 と異なり FAIL ではなく auto-correct** のため、JSON read 全体を fallthrough させない。1.0/1.0.0 JSON では `pre_existing` フィールドが欠落しているため本 invariant は発火しない (default mapping は scope を severity ベースで補完するのみで、`pre_existing` は補完しない)。
-6. **`verification.measured == true` ∧ `repro`/`failing_test` とも null/空 禁止 (write 側 auto-correct 降格)**: 実測の証跡なしに `measured: true` を宣言することは、記録された実測フラグを無意味にするため禁止。**本 invariant は形式契約であり、現時点の配線状況の記述ではない** — `pr-review.md` ステップ 6.1.a に本自己点検を行う手順は存在しない。主経路では `review-measured-gate.sh` の `computed_verification` が `measured: true` を設定するとき、検出したアンカーから必ず `repro` または `failing_test` の片方を同時に設定するため、この組は生成されない。ただし `has_measured_bool` が保持する caller preset は別で、`--reject-preset-verification` は算出した measured 分類と食い違う preset だけを弾くため、分類が一致する `measured: true` preset の空証跡は残りうる。したがって preset 残存経路を含む invariant 自体の機械配線は後続スコープである。以下は**配線後に** write 側が守るべき挙動を規定する。**検出主体は write 側のみ** — `pr-review.md` ステップ 6.1.a が JSON 生成時に `measured=true` ∧ `repro`/`failing_test` とも null/空文字の組を検出したら `measured` を **`false` に書き換え** (auto-correct) し、WARNING を stderr に出力して続行する。これは機械 helper (`review-result-save.sh` は `verification` を検証しない) ではなく **Claude の生成時自己点検**であり、canonical jq mutation はその自己点検に使う参照式: `(.findings[] | select((.verification.measured // false) == true and ((.verification.repro // "") == "") and ((.verification.failing_test // "") == "")) | .verification.measured) |= false`。**read 側 (`fix.md` ステップ 1.2.0) は auto-correct を実装しない** (#5 が read 側 auto-correct を持つのと異なる) — 実測証跡の空検出は write 側と `pr-review.md` ステップ 5.3.0.M の anchor regex 層が担い、read 側で二重に降格させると同一 finding が 2 経路で non-blocking 化して降格理由の帰属が失われるため。ただし**型**は read 側で検証する (違反は専用 reason で reject — [verification 型ガード (read 側)](#verification-型ガード-read-側))。`verification` フィールド自体が欠落している finding は本 invariant の対象外 (判定 consumer からは未判定、記録・表示経路では `measured=false` の default mapping が適用されるのみ)。
+6. **`verification.measured == true` ∧ `repro`/`failing_test` とも null/空 禁止 (write 側 auto-correct 降格)**: 実測の証跡なしに `measured: true` を宣言することは、記録された実測フラグを無意味にするため禁止。**本 invariant は形式契約であり、現時点の配線状況の記述ではない** — `pr-review.md` ステップ 6.1.a に本自己点検を行う手順は存在しない。主経路では `review-measured-gate.sh` の `computed_verification` が `measured: true` を設定するとき、検出したアンカーから必ず `repro` または `failing_test` の片方を同時に設定するため、この組は生成されない。ただし `has_measured_bool` が保持する caller preset は別で、`--reject-preset-verification` は算出した measured 分類と食い違う preset だけを弾くため、分類が一致する `measured: true` preset の空証跡は残りうる。したがって preset 残存経路を含む invariant 自体の機械配線は後続スコープである。以下は**配線後に** write 側が守るべき挙動を規定する。**検出主体は write 側のみ** — `pr-review.md` ステップ 6.1.a が JSON 生成時に `measured=true` ∧ `repro`/`failing_test` とも null/空文字の組を検出したら `measured` を **`false` に書き換え** (auto-correct) し、WARNING を stderr に出力して続行する。これは機械 helper (`review-result-save.sh` は `verification` を検証しない) ではなく **Claude の生成時自己点検**であり、canonical jq mutation はその自己点検に使う参照式: `(.findings[] | select((.verification.measured // false) == true and ((.verification.repro // "") == "") and ((.verification.failing_test // "") == "")) | .verification.measured) |= false`。**read 側 (`fix/SKILL.md` ステップ 1.2.0) は auto-correct を実装しない** (#5 が read 側 auto-correct を持つのと異なる) — 実測証跡の空検出は write 側と `pr-review.md` ステップ 5.3.0.M の anchor regex 層が担い、read 側で二重に降格させると同一 finding が 2 経路で non-blocking 化して降格理由の帰属が失われるため。ただし**型**は read 側で検証する (違反は専用 reason で reject — [verification 型ガード (read 側)](#verification-型ガード-read-側))。`verification` フィールド自体が欠落している finding は本 invariant の対象外 (判定 consumer からは未判定、記録・表示経路では `measured=false` の default mapping が適用されるのみ)。
 
 ## 後方互換性 (schema 1.0 ↔ 1.1.0)
 
 <a id="後方互換性-schema-10--110"></a>
 
-1.1.0 で導入された `findings[].scope` / `findings[].pre_existing` フィールドは 1.0 / 1.0.0 JSON には欠落しているため、read 側 (`fix.md` ステップ 1.2.0) は schema_version が `"1.0.0"` または `"1.0"` の場合、下記 `scope` 節の default mapping を適用する。`pre_existing` は 1.1.0 JSON でも欠落しうる additive optional field であり、schema_version に依らず default mapping を**適用しない** — 下記 `pre_existing` 節参照。欠落のまま保持することが invariant #5 の後方互換の前提になっている。
+1.1.0 で導入された `findings[].scope` / `findings[].pre_existing` フィールドは 1.0 / 1.0.0 JSON には欠落しているため、read 側 (`fix/SKILL.md` ステップ 1.2.0) は schema_version が `"1.0.0"` または `"1.0"` の場合、下記 `scope` 節の default mapping を適用する。`pre_existing` は 1.1.0 JSON でも欠落しうる additive optional field であり、schema_version に依らず default mapping を**適用しない** — 下記 `pre_existing` 節参照。欠落のまま保持することが invariant #5 の後方互換の前提になっている。
 
 **`verification` の default mapping のみ schema_version に依らず適用される** — `verification` は 1.1.0 内で additive 追加されたため 1.1.0 JSON でも欠落しうる ([Schema Version](#schema-version-sot) 参照)。schema_version で gate してはならない。
 
@@ -599,17 +599,17 @@ emit の目的は observability — 「どの review-result file が 1.0 schema 
 
 **Priority 2 schema_version 不明時の挙動**: lexicographic sort で選ばれた最新ファイルが未知 schema の場合、古い timestamp ファイルには fallback せず、直接 Priority 3 (PR コメント) に routing する。これは「古い schema のファイルを選ぶより、最新の通信経路 (PR コメント) を信頼する」という設計判断。
 
-**Stale file detection (Priority 0/2/3 共通の commit_sha mismatch routing)**: `fix.md` ステップ 1.2.0 は各 Priority の success 経路で `json_commit_sha` を `git rev-parse HEAD` と比較し、不一致時は以下の routing を実行する (cycle 12 I-4 で本 table に明記):
+**Stale file detection (Priority 0/2/3 共通の commit_sha mismatch routing)**: `fix/SKILL.md` ステップ 1.2.0 は各 Priority の success 経路で `json_commit_sha` を `git rev-parse HEAD` と比較し、不一致時は以下の routing を実行する (cycle 12 I-4 で本 table に明記):
 
 - Priority 0 mismatch → Priority 1-3 にフォールスルーせず **Priority 4 (対話式 fallback)** へ直接遷移 (ユーザー意図尊重)
 - Priority 2 mismatch → **Priority 3 (PR コメント)** へ routing
 - Priority 3 mismatch → **WARNING のみで continue** (Raw JSON の severity_map 構築を続行、legacy Markdown parser への fallthrough はしない)。**注意: Priority 2 も stale で Priority 3 に routing された場合、Priority 3 の stale データが WARNING のみで消費されるカスケードが発生しうる** (WARNING には P2 stale 経由であることを明示する文言を含む)
 
-retained flag: `[CONTEXT] REVIEW_SOURCE_STALE=1; reason={explicit_file|local_file|pr_comment}_commit_sha_mismatch` を stderr に emit。これは「review した時点の commit と現 HEAD が異なる場合、findings は既に修正済み / 意味を失っている可能性がある」という invariant を守るための defense-in-depth。`fix.md` ステップ 1.2.0 が呼ぶ `scripts/review-source-resolve.sh`（Priority 0 / 2）と `scripts/fix-step.sh` の `p3-raw-json`（Priority 3）にある `commit_sha stale detection` コメントアンカーを参照。
+retained flag: `[CONTEXT] REVIEW_SOURCE_STALE=1; reason={explicit_file|local_file|pr_comment}_commit_sha_mismatch` を stderr に emit。これは「review した時点の commit と現 HEAD が異なる場合、findings は既に修正済み / 意味を失っている可能性がある」という invariant を守るための defense-in-depth。`fix/SKILL.md` ステップ 1.2.0 が呼ぶ `scripts/review-source-resolve.sh`（Priority 0 / 2）と `scripts/fix-step.sh` の `p3-raw-json`（Priority 3）にある `commit_sha stale detection` コメントアンカーを参照。
 
 ## 明示的ファイル指定
 
-`/rite:fix --review-file <path>` で任意のファイルパスを直接指定可能。パスが存在しない / JSON パース失敗時はエラーを表示して対話式 fallback に誘導する (上記 Priority 0 行参照)。fix.md ステップ 1.0.1 で `$ARGUMENTS` から `--review-file` トークンを pre-strip し、ステップ 1.0 Detection rules は残りの引数のみを評価する。コメント URL と同時に指定した場合は止まる (上記 T 行参照)。
+`/rite:fix --review-file <path>` で任意のファイルパスを直接指定可能。パスが存在しない / JSON パース失敗時はエラーを表示して対話式 fallback に誘導する (上記 Priority 0 行参照)。fix/SKILL.md ステップ 1.0.1 で `$ARGUMENTS` から `--review-file` トークンを pre-strip し、ステップ 1.0 Detection rules は残りの引数のみを評価する。コメント URL と同時に指定した場合は止まる (上記 T 行参照)。
 
 ## エラーハンドリング
 
@@ -635,7 +635,7 @@ retained flag: `[CONTEXT] REVIEW_SOURCE_STALE=1; reason={explicit_file|local_fil
 `/rite:cleanup` は PR マージ後のブランチ削除時に、該当 PR 番号のローカル artifact を **削除または退避** する（採否保留ファイル `.rite/state/adoption-hold-{pr_number}-*.json` があるときは、follow-up に限らず purge helper が何も削除も退避もしない。`/rite:cleanup` ステップ 6）。削除対象のうちレビュー結果ファイルだけが条件付き退避で、それ以外は削除する。下記の永続履歴と判定済み記録は削除対象に含めない。reason 語彙の単一の真実の源は artifact ごとに異なる — レビュー結果ファイルは helper (`hooks/scripts/review-results-archive-or-rm.sh`) の docstring、それ以外は helper (`hooks/scripts/cleanup-pr-state-purge.sh`) の docstring (`cleanup.md` ステップ 6 が呼び出す。ステップ 6 自体が持つのは helper 起動失敗時の `state_purge_helper_failed` のみ):
 
 1. **レビュー結果ファイル**: `.rite/review-results/{pr_number}-*.json*` — **`non_blocking_findings[]` が非空なら削除せず `.rite/review-results/archive/` へ退避する**。記録コメント (`pr-review.md` ステップ 6.1.d) がポインタと降格理由 (class B 降格分は `demotion.reason` の判定文、`/rite:fix` が非 fatal として移送した実測済み分は「実測済み（非 fatal）」、それ以外は「実測なし」) しか載せないため、無条件削除すると非実測指摘の全文が merge 直後にどこにも残らない。中身を判定できない場合 (jq 不在 / parse 失敗 / query error / 空ファイル) もすべて退避側 (安全側) へ倒し、判定不能が起きた事実を `{label}_undecidable` marker で残す。**glob が `.json` ではなく `.json*` なのは `.json.corrupt-*` を同じ経路に載せるため** — corrupt は「中身を判定できない」状態そのものなので、別経路で無条件削除すると同一ステップ内に「判定不能は保全」と「判定不能は削除」の 2 ポリシーが並ぶ (`scripts/review-source-resolve.sh` の corrupt rename 3 経路のうち 2 つは構造的に valid な JSON で、`non_blocking_findings[]` の全文を保持しうる)
-2. **fix retry state file（legacy）**: `.rite/state/fix-fallback-retry-{pr_number}.count` — 旧 retry-counter 機構が生成した orphan の回収。retry-counter 機構の廃止により `fix.md` は現在このファイルを生成しないが、旧版が残した file を掃除するため削除対象に残す
+2. **fix retry state file（legacy）**: `.rite/state/fix-fallback-retry-{pr_number}.count` — 旧 retry-counter 機構が生成した orphan の回収。retry-counter 機構の廃止により `fix/SKILL.md` は現在このファイルを生成しないが、旧版が残した file を掃除するため削除対象に残す
 
 上記のほか、`fix-cycle-state/{pr_number}.json` / legacy `fix-cycle-state.json` / `accepted-fingerprints-{pr_number}.txt` / `review-run-since-{pr_number}.txt` / `nb-sweep-done-{pr_number}.txt` も同ステップで無条件削除される (完全な列挙は `hooks/scripts/cleanup-pr-state-purge.sh` の `rite_rm` 呼び出し列が単一源)。
 

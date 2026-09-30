@@ -42,18 +42,18 @@
 #   --p1-scan-turns         Priority 1 receipt: scan した assistant turn 数 (use 時は 1 以上)。
 #   --p1-scan-found         Priority 1 receipt: `true` (use) / `false` (none)。
 #
-# Output — stderr (observability / marker fidelity contract with fix.md):
+# Output — stderr (observability / marker fidelity contract with fix/SKILL.md):
 #   全 `[CONTEXT] REVIEW_SOURCE*` / `[CONTEXT] REVIEW_SOURCE_*` WARNING を stderr へ emit。
-#   解決完了時に最終 marker を emit する (fix.md 旧 L952 と verbatim):
+#   解決完了時に最終 marker を emit する (fix/SKILL.md ステップ 1.2.0 と同形式):
 #     [CONTEXT] REVIEW_SOURCE=<explicit_file|conversation|local_file|pr_comment|fallback>; \
 #               review_source_path=<path or empty>; pr_number=<n>
-#   下流の severity_map build ブロック (fix.md L979+) はこの marker を LLM 仲介で読み、
+#   下流の 共通 triage ブロック (fix/SKILL.md ステップ 1.2.2) はこの marker を LLM 仲介で読み、
 #   review_source / review_source_path を literal 置換する。markerフォーマット変更厳禁。
 #
 # Output — stdout:
 #   なし。`[fix:error]` sentinel は **emit しない** ([fix:error] stdout 分離)。
 #   fatal は stderr の `[CONTEXT] FIX_FALLBACK_FAILED=1; reason=...` + 非ゼロ exit で signal し、
-#   caller (fix.md) が `[fix:error]` を stdout へ出力する。
+#   caller (fix/SKILL.md) が `[fix:error]` を stdout へ出力する。
 #
 # Exit codes:
 #   0 = review_source 解決成功 (fallback を含む — fallback は interactive への正常 routing)
@@ -71,7 +71,7 @@ _rsr_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_rsr_dir/../hooks/control-char-neutralize.sh"
 
 # --- bash 4+ compat guard (mapfile builtin; Priority 2 で使用) ---
-# fix.md ステップ 1.0.1 の canonical guard と対称。helper は独立プロセスのため
+# fix/SKILL.md ステップ 1.0.1 の canonical guard と対称。helper は独立プロセスのため
 # defense-in-depth として再掲する。bash 3.2 (macOS default) では mapfile が無く
 # Priority 2 が silent に Priority 3 へ fallthrough する regression を起こす。
 # Source: GNU Bash 4.0 NEWS (https://tiswww.case.edu/php/chet/bash/NEWS)
@@ -302,10 +302,10 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
        [ "$vg_rc_p0" -ne 0 ]; then
     # verification 型ガード (review-result-schema.md §verification 型ガード (read 側))。
     # 本ガードを cross-field invariant より前段に置くのは、`.verification.measured` を
-    # 評価する下流 consumer (`fix/SKILL.md` ステップ 1.2.1 step 6 / ステップ 1.3 measured lookup の
-    # 3 値判定 — .verification が object かつ .measured が boolean のときのみ値を採用する) に
+    # 評価する下流 consumer (`fix/SKILL.md` ステップ 1.2.1 step 6 / ステップ 1.2.2 の
+    # 共通 triage — .verification が object かつ .measured が boolean のときのみ値を採用する) に
     # 型崩れを到達させないため。判定 consumer は schema.md の default mapping 節が示す
-    # `(.verification.measured // false)` 形を**使わない** (同節「3 値モデルへの上書き」参照)。
+    # `(.verification.measured // false)` 形を**使わない** (同節「判定 consumer の 2 値 + error」参照)。
     # 本スクリプト内の後段 invariant (#2 / #4 / enum) は .verification を参照しないので、
     # ここでの順序は予防的配置であり、後段が rc=5 になるからではない。
     # 順序が観測可能な差を生むのは reason ラベル (先に評価した側が routing を取る) のみ。
