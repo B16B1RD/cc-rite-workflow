@@ -85,7 +85,7 @@ blocking gate として実行する。
 - **日本語ロケールの診断が文字化けしない** — `neutralize_ctrl --keep-newline` は UTF-8 の継続バイトを `?` に置き換えていた。整形式の UTF-8 列は残し、単独の C1 バイトは引き続き置き換える。
 - **`/rite:lint` は、exit 0 で skip した検査の WARNING を表示する** — base 未設定による `wiki-growth-check` の skip は、単独実行で見えなかった。SIGPIPE の検出は、幅指定で出力が膨らむ `printf` も対象にする。
 - **post-compact hook が PR の見つからない失敗を見分ける grep が、GNU grep の `\s` に頼らない** — `gh pr view` が失敗すると、`post-compact.sh` は PR が見つからない失敗とそれ以外の失敗を grep で見分け、WARNING に原因を示す。このパターンは空白を `\s` と書いていたが、`\s` は POSIX の拡張正規表現では空白として決まっていない。`[[:space:]]` に置き換え、GNU grep で一致していた行と同じ行に一致する。
-- **`pipefail` の lint が、`while` / `until` / `elif` / `else` / `do` の直後から呼ぶ関数の中の `grep -q` も検出する** — `/rite:lint` が実行する `pipefail-grep-q-check.sh` は、関数が `pipefail` の有効な状態で呼ばれていると分かると、その関数の中の `grep -q` パイプラインを報告する。`if` / `then` / `command` の直後に同じ行で書いた呼び出しは認識していたが、`while` / `until` / `elif` / `else` / `do` の直後に同じ行で書いた呼び出しは認識していなかったため、その呼び出しは `pipefail` の有効な状態での呼び出しとして数えられなかった。これら 5 語の直後の呼び出しも認識する。
+- **`pipefail` の lint が関数の呼び出しとみなす直前の語に、`while` / `until` / `elif` / `else` / `do` が加わった** — `/rite:lint` が実行する `pipefail-grep-q-check.sh` は、関数が `pipefail` の有効な状態で呼ばれていると分かると、その関数の中の `grep -q` パイプラインを報告する。関数の呼び出しとみなす直前の語は `if` / `then` / `command` だけだったが、`while` / `until` / `elif` / `else` / `do` も加わった。
 - **テストが、固定していると名乗る変更を検出する** — 検出すべき変異を当てても通っていた assert を絞り、テスト名とコメントを実際の検査範囲に合わせ、実行環境に依存する失敗（セッションの環境変数、`TMPDIR` の場所、macOS、並列実行、遅い CI runner）を除いた。
 
 ### 削除
