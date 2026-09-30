@@ -16,9 +16,11 @@ sources:
     resource: "raw/fixes/20260929T134642Z-pr-3452.md"
   - type: "reviews"
     resource: "raw/reviews/20260929T140253Z-pr-3452.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T013945Z-pr-3468.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T16:54:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-30T04:20:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-24T12:45:00+09:00" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T16:54:00Z" }
@@ -72,6 +74,10 @@ hazard ありと判定した箇所のみ、`jq` 側を `@tsv` → `join("")`、
 
 区切りを join 形式へ変えると、`@tsv` が行っていた区切り文字のエスケープは失われる。受け取った値（台帳など外部から戻る値）を git の位置引数へ渡すなら、`--end-of-options` で閉じるか値を検証して、`-` で始まる値がオプションとして読まれないようにする。
 
+### 同じファイル内に回避済みの兄弟実装があるとき
+
+新しく足す読み戻しは、同じスクリプト内に既に `\x1f` 区切りで回避済みの兄弟関数があるなら、最初からそれに揃える。台帳のセルのように空になりうる列（位置の無い行の file_line など）を `@tsv` と `IFS=$'\t' read` で読み戻したところ、空セルで出典の列が左にずれ、誤った出典名で停止判定が走った。空セルは表示の段で `<empty>` のように置き換えると、診断を読む側も空であることを取り違えない。
+
 ## 関連ページ
 
 - （関連ページなし）
@@ -83,3 +89,4 @@ hazard ありと判定した箇所のみ、`jq` 側を `@tsv` → `join("")`、
 - [フィールド追加で後続が左へずれたレビュー結果](../../raw/reviews/20260929T134642Z-pr-3452.md)
 - [区切りを非空白へ移した fix 結果](../../raw/fixes/20260929T134642Z-pr-3452.md)
 - [join 区切りでエスケープを失う点を指摘したレビュー結果](../../raw/reviews/20260929T140253Z-pr-3452.md)
+- [レビュー結果](../../raw/reviews/20260930T013945Z-pr-3468.md)

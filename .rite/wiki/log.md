@@ -81,6 +81,18 @@
 * **Skip**: [20260929T214950Z-pr-3446.md](raw/reviews/20260929T214950Z-pr-3446.md) — rite workflow 自体のトリアージ方針に関する知見で、Wiki ではなくプラグイン本体に置く対象
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=596, broken_refs=0
 
+* **Update**: [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) — raw/reviews/20260930T004144Z-pr-3468.md を統合
+* **Create**: [新しい種類の行を既存の照合キーへ合流させると、キーが一意でない行が黙って落ちる・誤って除外される](pages/anti-patterns/merging-new-rows-into-existing-match-keys.md) — raw/fixes/20260930T011205Z-pr-3468.md を新規ページ化
+* **Update**: [@tsv+IFS read の field-shift hazard 横断監査は cut-f免除と空フィールド可否の2条件で判定する](pages/heuristics/tsv-ifs-field-shift-hazard-audit-criteria.md) — raw/reviews/20260930T013945Z-pr-3468.md を統合
+* **Create**: [「書き込みが起きない」の検査は、呼び出しログの全行が読み取りであることの allowlist で行う](pages/patterns/no-write-assertion-uses-call-log-allowlist.md) — raw/fixes/20260930T015930Z-pr-3468.md を新規ページ化
+* **Create**: [停止を固定するテストは、止まらなかった場合に観測値が変わる条件で assert する](pages/heuristics/stop-test-asserts-with-observable-that-changes-if-not-stopped.md) — raw/reviews/20260930T022509Z-pr-3468.md を新規ページ化
+* **Update**: [停止を固定するテストは、止まらなかった場合に観測値が変わる条件で assert する](pages/heuristics/stop-test-asserts-with-observable-that-changes-if-not-stopped.md) — raw/fixes/20260930T024747Z-pr-3468.md を統合
+* **Create**: [回復手順は実際のエラー出力だけで実行できるかを確かめ、直す対象の識別子を ERROR に添える](pages/heuristics/recovery-steps-must-be-executable-from-error-output.md) — raw/reviews/20260930T030451Z-pr-3468.md を新規ページ化
+* **Update**: [回復手順は実際のエラー出力だけで実行できるかを確かめ、直す対象の識別子を ERROR に添える](pages/heuristics/recovery-steps-must-be-executable-from-error-output.md) — raw/fixes/20260930T031623Z-pr-3468.md を統合
+* **Create**: [失敗の原因を列挙する条件は失敗する式と同じ述語で書き、「特定できません」の既定文言で覆わない](pages/anti-patterns/failure-enumeration-predicate-diverges-from-failing-expression.md) — raw/reviews/20260930T033135Z-pr-3468.md を新規ページ化
+* **Update**: [失敗の原因を列挙する条件は失敗する式と同じ述語で書き、「特定できません」の既定文言で覆わない](pages/anti-patterns/failure-enumeration-predicate-diverges-from-failing-expression.md) — raw/fixes/20260930T034612Z-pr-3468.md を統合
+* **Update**: [失敗の原因を列挙する条件は失敗する式と同じ述語で書き、「特定できません」の既定文言で覆わない](pages/anti-patterns/failure-enumeration-predicate-diverges-from-failing-expression.md) — raw/reviews/20260930T035710Z-pr-3468.md を統合
+
 ## 2026-09-29
 
 * **Update**: [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) — raw/reviews/20260929T104700Z-pr-3448.md で補強

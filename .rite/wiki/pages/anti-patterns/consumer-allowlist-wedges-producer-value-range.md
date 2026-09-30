@@ -21,9 +21,11 @@ sources:
     resource: "raw/reviews/20260926T103101Z-pr-3148.md"
   - type: "reviews"
     resource: "raw/reviews/20260929T104700Z-pr-3448.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T004144Z-pr-3468.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-29T10:58:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-30T04:20:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-14T23:10:01Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T10:45:00Z" }
@@ -107,6 +109,10 @@ consumer 側に検証を足すときは、呼び出し元を 1 本ずつ辿り�
 
 信頼境界を狭める修正で、consumer 側の許可文字を reviewer の推奨どおりに決め、producer（起票 helper）が実際に出力する形式を確かめなかった例がある。許可リストが producer の実出力より狭かったため、正規の入力まで拒否した。許可リストの値域は、推奨や想像ではなく producer の実出力と、その実出力を写したテストの fixture から決める。fixture が producer の実形式ではなく合成した形式だと、この形式のずれをテストが検出できない。
 
+### 停止条件は「判定に要る本文が無い」ことだけにする
+
+消費側の検証に形の検査（file_line が `path:line` 形であること等）を足すと、生成側が正当に書く値（関数名の位置、`-`、null）で処理が恒久停止する。保存済みの実データ（archive を含む）に当てると停止件数がすぐ分かる。消費側の停止条件は判定に要る本文（reviewer・description）が無いことだけに絞り、形の違う値は原文のまま運ぶと停止を増やさない。緩めて通した値は下流で照合キーとして使われるので、一意性は別途確かめる（[新しい種類の行を既存の照合キーへ合流させると、キーが一意でない行が黙って落ちる・誤って除外される](../anti-patterns/merging-new-rows-into-existing-match-keys.md)）。
+
 ## 関連ページ
 
 - [非収束の review ループは個別修正ではなく構造を疑う](../heuristics/non-converging-review-loop-suspect-structure.md)
@@ -122,3 +128,4 @@ consumer 側に検証を足すときは、呼び出し元を 1 本ずつ辿り�
 - [同秒衝突 suffix を受理形と射影の両方で同時に受け付けたレビュー結果](../../raw/reviews/20260914T224913Z-pr-2826.md)
 - [新しい必須入力を運べない producer 経路で停止が必ず発火したレビュー結果](../../raw/reviews/20260926T103101Z-pr-3148.md)
 - [許可文字を producer の実出力ではなく推奨から決めて正規の入力まで拒否した](../../raw/reviews/20260929T104700Z-pr-3448.md)
+- [レビュー結果](../../raw/reviews/20260930T004144Z-pr-3468.md)
