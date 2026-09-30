@@ -225,7 +225,7 @@ assert "wiki_ingest_check carries the lock-lost note" "1" \
 # 付記の文面は wiki-ingest 自身のロック行の展開文と同じ語句を使う
 assert "the lock-lost note shares its wording with the wiki-ingest lock row" "1" \
   "$(grep -c '^| ロック | .*ingest 中に wiki ingest のロックを失っていました.*直近の wiki の commit に重複や上書きが無いか確認してください' "$WIKI_INGEST" || true)"
-push_note_line=$(printf '%s\n' "$wiki_check_item" | grep -n 'ℹ️\|⚠️ Wiki ingest: commit は local wiki branch に landed' | head -1 | cut -d: -f1)
+push_note_line=$(printf '%s\n' "$wiki_check_item" | grep -n '^  ⚠️ Wiki ingest: commit は local wiki branch に landed' | head -1 | cut -d: -f1)
 lost_note_line=$(printf '%s\n' "$wiki_check_item" | grep -nF -- "  ${lost_note}" | head -1 | cut -d: -f1)
 if [ -n "$push_note_line" ] && [ -n "$lost_note_line" ] && [ "$push_note_line" -lt "$lost_note_line" ]; then
   pass "wiki_ingest_check lists the push-failure note before the lock-lost note"
