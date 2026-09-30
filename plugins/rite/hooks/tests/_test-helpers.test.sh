@@ -861,8 +861,9 @@ for t in pre-tool-bash-guard wiki-apply-gate; do
   else
     outer_fail "TC-18.11: $t.test.sh must call hermetic_leave_checkout || exit 1 between the hermetic source and the first mktemp"
   fi
-  # The removal counts only where it runs on exit: the last EXIT registration
-  # itself, or the body of the function that registration names.
+  # Match scratch-removal text in the last EXIT line or in the function body
+  # selected by the last named EXIT trap. A later quoted trap can override that
+  # handler; this static check does not verify which handler runs on exit.
   exit_line=$(awk '/^trap .* EXIT$/ {line = $0} END {print line}' "$test_file")
   exit_handler=$(awk '/^trap [A-Za-z_]+ EXIT$/ {name = $2} END {print name}' "$test_file")
   if [[ "$exit_line" == *'rm -rf '*'"$HERMETIC_CWD"'* ]] \
@@ -871,9 +872,9 @@ for t in pre-tool-bash-guard wiki-apply-gate; do
       body && /^}/ {body = 0}
       body && /rm -rf .*"\$HERMETIC_CWD"/ {found = 1}
       END {exit !found}' "$test_file"; }; then
-    outer_pass "TC-18.11: $t.test.sh removes \$HERMETIC_CWD on exit"
+    outer_pass "TC-18.11: $t.test.sh has scratch-removal text in its last EXIT line or last named EXIT handler"
   else
-    outer_fail "TC-18.11: $t.test.sh must remove \$HERMETIC_CWD on exit"
+    outer_fail "TC-18.11: $t.test.sh must have scratch-removal text in its last EXIT line or last named EXIT handler"
   fi
 done
 
