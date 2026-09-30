@@ -108,6 +108,8 @@
 * **Update**: [エラーメッセージが案内するコマンドは、テストで出力から抽出して逐語実行する](pages/patterns/guidance-command-test-by-verbatim-execution.md) — raw/fixes/20260930T053150Z-pr-3509.md を統合
 * **Skip**: [20260930T053125Z-pr-3512.md](raw/reviews/20260930T053125Z-pr-3512.md) — cd 拒否の判定機構に固有の修正結果報告で、一般化できる経験則を抽出できないため
 
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=604, broken_refs=0
+
 ## 2026-09-29
 
 * **Update**: [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) — raw/reviews/20260929T104700Z-pr-3448.md で補強
