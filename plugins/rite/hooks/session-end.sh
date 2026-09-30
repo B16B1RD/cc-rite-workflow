@@ -25,8 +25,8 @@
 # (`RITE_SESSION_LIVENESS_TTL_HOURS`, default 24h): an `active=true` holder is
 # protected only while its flow-state `updated_at` is within that TTL, so a
 # session whose termination skipped this hook eventually stops blocking reap
-# instead of doing so forever. run-queue-reap.sh relies on the same TTL for a
-# run-queue whose owner never got the ended marker this hook writes.
+# instead of doing so forever. run-queue-reap.sh does not use this TTL: a
+# run-queue whose owner never got the ended marker this hook writes is kept.
 set -euo pipefail
 
 # Double-execution guard (hooks.json + settings.local.json migration)
@@ -104,7 +104,8 @@ fi
 
 # Mark this session's run-queue as ended. run-queue-reap.sh cannot tell an
 # ended owner from one paused by a usage limit by timestamps alone; only a
-# marked queue is reaped on the 2h rule. The payload names the session that is
+# marked queue is reaped, and an unmarked one is kept and announced at
+# SessionStart. The payload names the session that is
 # ending; the resolved state file is used only when the payload has no id.
 _end_sid=$(extract_session_id "$INPUT") || _end_sid=""
 if [ -z "$_end_sid" ] && [[ "$STATE_FILE" == *"/.rite/sessions/"*".flow-state" ]]; then

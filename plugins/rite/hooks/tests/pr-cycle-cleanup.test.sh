@@ -31,6 +31,9 @@
 #   T-64               → the running session's own worktree is reaped; no / invalid self ID
 #   T-65               → an unreadable owner record is kept with a WARNING
 #   T-66               → a mutant without the owner check loses T-60's worktree
+#   T-69 / T-70        → the Ready gate's `rite-ready-pr-head-owner.<session_id>.<random>`
+#                        (name taken from the gate's template): kept while live, reaped when inactive
+#   T-71               → the unowned `rite-ready-pr-head.<random>` is reaped at once
 #
 # Reviewer worktree guidance — _reviewer-base.md is where reviewers learn how to
 # create the worktrees this cleanup reaps:
@@ -1280,6 +1283,18 @@ t43_output=$(cd "$TEST_REPO" && bash "$CLEANUP" 2>&1)
 if [ -e "$TEST_REPO/.rite/review-results/704-clean.json" ] && grep -q '回収をスキップ' <<< "$t43_output"; then pass "T-43 unreadable flow-state fails safe"; else fail "T-43 flow-state failure did not protect review JSON"; fi
 cleanup_temp_repo "$TEST_REPO"
 
+echo "T-43b: orphan JSON with guardrail rows only is archived (a follow-up candidate)"
+TEST_REPO=$(make_temp_repo)
+write_gh_pr_mock "$TEST_REPO"
+mkdir -p "$TEST_REPO/.rite/review-results"
+printf '{"non_blocking_findings":[],"guardrail_audit_log":[{"reviewer":"r","file_line":"-","description":"d"}]}\n' > "$TEST_REPO/.rite/review-results/709-guard.json"
+printf '{"non_blocking_findings":[],"guardrail_audit_log":"broken"}\n' > "$TEST_REPO/.rite/review-results/710-badguard.json"
+t43b_output=$(cd "$TEST_REPO" && GH_PR_STATE_709=MERGED GH_PR_STATE_710=MERGED \
+  PATH="$TEST_REPO/bin:$PATH" bash "$CLEANUP" 2>&1)
+if [ -e "$TEST_REPO/.rite/review-results/archive/709-guard.json" ] && [ ! -e "$TEST_REPO/.rite/review-results/709-guard.json" ]; then pass "T-43b guardrail-only JSON archived"; else fail "T-43b guardrail-only JSON not archived: $t43b_output"; fi
+if [ -e "$TEST_REPO/.rite/review-results/710-badguard.json" ] && grep -q '710-badguard.json.*解析できない' <<< "$t43b_output"; then pass "T-43b malformed guardrail_audit_log kept with WARNING"; else fail "T-43b malformed guardrail_audit_log not kept: $t43b_output"; fi
+cleanup_temp_repo "$TEST_REPO"
+
 # -----------------------------------------------------------------------
 # T-44..47: OPEN/draft PR JSON is not archived across session boundaries
 # -----------------------------------------------------------------------
@@ -1865,6 +1880,42 @@ else
   rm -rf "$t68_ok" "$t68_old" "$t68_used"
   cleanup_temp_repo "$TEST_REPO"
 fi
+
+echo "T-69: Ready 検査の一時 worktree は、live な別セッションが所有する間は残る"
+# The name comes from the gate's own mktemp template, so a drift on either side
+# (gate naming or cleanup parsing) fails here instead of silently reaping.
+t69_tpl=$(grep -o 'rite-ready-pr-head-owner\.\$[A-Za-z_]*\.XXXXXX' "$SCRIPT_DIR/../scripts/ready-pr-head-gate.sh" | head -1 || true)
+t69_name=$(printf '%s' "$t69_tpl" | sed -E "s/\\\$[A-Za-z_]*/$OWNER_SID/; s/XXXXXX\$/Rd12Ab/")
+TEST_REPO=$(make_temp_repo)
+write_owner_state "$TEST_REPO" true "$(now_utc)"
+if [ -z "$t69_tpl" ]; then
+  fail "T-69: ready-pr-head-gate.sh に所有者入りの mktemp テンプレートが無い"
+else
+  t69_wt=$(add_owner_wt "$TEST_REPO" "$t69_name")
+  t69_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+  assert_kept_by_owner "T-69: live な別セッションの Ready 検査の一時 worktree を残す" "$TEST_REPO" "$t69_wt" "$t69_out" "別セッション $OWNER_SID が使用中"
+  drop_wt "$TEST_REPO" "$t69_wt"
+
+  echo "T-70: 所有セッションが active でない Ready 検査の一時 worktree は回収する"
+  write_owner_state "$TEST_REPO" false "$(now_utc)"
+  t70_wt=$(add_owner_wt "$TEST_REPO" "${t69_name%Rd12Ab}Rd34Cd")
+  t70_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+  assert_reaped "T-70: active=false の所有者の Ready 検査の一時 worktree を回収する" "$TEST_REPO" "$t70_wt" "$t70_out"
+  drop_wt "$TEST_REPO" "$t70_wt"
+fi
+
+echo "T-71: 所有者の無い従来名の Ready 検査の一時 worktree は即回収する"
+write_owner_state "$TEST_REPO" true "$(now_utc)"
+t71_wt=$(add_owner_wt "$TEST_REPO" "rite-ready-pr-head.Ab12Cd")
+t71_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+assert_reaped "T-71: 従来名の Ready 検査の一時 worktree を回収する" "$TEST_REPO" "$t71_wt" "$t71_out"
+if ! grep -q '所有者を読めないため' <<< "$t71_out"; then
+  pass "T-71: 従来名を所有者の読めない名前として扱わない"
+else
+  fail "T-71: 従来名で所有者の WARNING が出た. Output: $t71_out"
+fi
+drop_wt "$TEST_REPO" "$t71_wt"
+cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
 # Summary
