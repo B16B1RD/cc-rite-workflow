@@ -249,10 +249,10 @@ _value_domain_heading_n() {
 _vd_count=$(_value_domain_count "$CLEANUP_MD") || true
 if [ "$_vd_count" = "NOEND" ] || [ -z "$_vd_count" ]; then
   fail "cleanup ステップ 12 値域ブロック終端（空行）が見つからない（0 件を pass と読まない）"
-elif [ "$_vd_count" = "7" ]; then
-  pass "cleanup ステップ 12 値域 - \` 行数が 7"
+elif [ "$_vd_count" = "8" ]; then
+  pass "cleanup ステップ 12 値域 - \` 行数が 8"
 else
-  fail "cleanup ステップ 12 値域 - \` 行数が ${_vd_count}（expected 7）"
+  fail "cleanup ステップ 12 値域 - \` 行数が ${_vd_count}（expected 8）"
 fi
 _vd_heading=$(_value_domain_heading_n "$CLEANUP_MD")
 if [ -n "$_vd_heading" ] && [ "$_vd_heading" = "$_vd_count" ]; then

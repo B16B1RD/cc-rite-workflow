@@ -21,7 +21,7 @@ github:
 
 > **Source of truth**: This phase delegates to `plugins/rite/scripts/projects-status-update.sh` — the same shared script used by `skills/open/SKILL.md` ステップ 2.4 / `skills/ready/SKILL.md` Phase 4 / `skills/issue-close/SKILL.md`。
 
-Skip Phase 3.2 if `github.projects.enabled: false` in `rite-config.yml` or if no related Issue was identified in `cleanup.md` ステップ 2, and proceed to Phase 3.5 (work memory update). Otherwise, invoke the shared script to transition the Issue Status to **Done**:
+Skip Phase 3.2 if `github.projects.enabled: false` in `rite-config.yml`, if no related Issue was identified in `cleanup.md` ステップ 2, or if `{pr_merged}=false` (the Status is left as it is; `cleanup.md` ステップ 8 emits `PROJECTS_STATUS_UPDATED=skipped_unmerged`), and proceed to Phase 3.5 (work memory update). Otherwise, invoke the shared script to transition the Issue Status to **Done**:
 
 ```bash
 status_json_args=$(jq -n \
@@ -109,6 +109,19 @@ If a work memory comment exists on the Issue, automatically append a completion 
 `### 完了情報` は WM 初期テンプレに存在しない**新規セクション**のため、既存セクション専用の `append-section`（不在時 no-op）ではなく EOF へ raw 追記する `append-eof` を用いる（原 inline 実装の heredoc 追記挙動を再現。末尾改行は `\n\n` セパレータに正規化する意図的差異があるが、レンダリング結果は同一）。
 
 ```bash
+# cleanup-wm-final-completion
+pr_merged="{pr_merged}"
+case "$pr_merged" in
+  true) ;;
+  false)
+    echo "マージ済みの PR が無いため作業メモリに完了を書きません"
+    echo "[CONTEXT] WM_FINAL_UPDATE=completion; issue={issue_number}; status=skipped; reason=pr_not_merged"
+    exit 0 ;;
+  *)
+    echo "警告: {pr_merged} が true / false のどちらでもないため作業メモリを更新しません。" >&2
+    echo "[CONTEXT] WM_FINAL_UPDATE=completion; issue={issue_number}; status=error; reason=pr_merged_unset"
+    exit 0 ;;
+esac
 # 完了情報セクションを content-file に生成し append-eof transform で委譲追記する。
 # {merged_at} 等は cleanup.md コンテキストの実値で置換する（heredoc malform 回避のため printf を使用）。
 completion_tmp=$(mktemp)
@@ -181,6 +194,19 @@ The progress section update in Phase 3.5.2 follows this logic（`merge-checklist
 進捗チェックリストの完了項目を `merge-checklist` transform で委譲追記する。全文・完全行 dedup（既出項目スキップ＝冪等）・`### 進捗サマリー` セクション末尾への挿入・backup・空body/ヘッダー/safety check・PATCH はすべて helper 内部で完結する（§3.5.1 と同じ canonical caller パターン）。`--section` は必須（欠けると helper がコメント取得前に `status=error; reason=invalid_args` で止まる）。
 
 ```bash
+# cleanup-wm-final-progress
+pr_merged="{pr_merged}"
+case "$pr_merged" in
+  true) ;;
+  false)
+    echo "マージ済みの PR が無いため作業メモリに完了を書きません"
+    echo "[CONTEXT] WM_FINAL_UPDATE=progress; issue={issue_number}; status=skipped; reason=pr_not_merged"
+    exit 0 ;;
+  *)
+    echo "警告: {pr_merged} が true / false のどちらでもないため作業メモリを更新しません。" >&2
+    echo "[CONTEXT] WM_FINAL_UPDATE=progress; issue={issue_number}; status=error; reason=pr_merged_unset"
+    exit 0 ;;
+esac
 # 進捗セクションの完了項目を content-file に生成し merge-checklist transform で委譲追記する。
 # {issue_number} は cleanup.md コンテキストの実値で置換する（heredoc malform 回避のため printf を使用）。
 progress_tmp=$(mktemp)
@@ -244,7 +270,7 @@ rm -f "${wm_sync_err:-}"
 
 #### 3.5.3 Completion Mark on Work Memory
 
-When performing the final update, update the work memory title to indicate closure:
+When performing the final update with `{pr_merged}=true`, update the work memory title to indicate closure (not when `{pr_merged}=false`):
 
 ```markdown
 ## 📜 rite 作業メモリ ✅ 完了
@@ -322,7 +348,7 @@ Every value is non-blocking: cleanup continues to ステップ 11. ステップ 
 
 ### 3.6.4 Update Parent Issue Tasklist Checkbox
 
-**Execution condition**: Only executed when a parent Issue was detected in `cleanup.md` ステップ 2.
+**Execution condition**: Only executed when a parent Issue was detected in `cleanup.md` ステップ 2 and `{pr_merged}=true`. With `{pr_merged}=false` the child Issue stays open, so the checkbox is left as it is.
 
 When a child Issue's PR is merged and cleanup runs, update the parent Issue's Tasklist checkbox for this child Issue from `- [ ]` to `- [x]`.
 
@@ -378,7 +404,7 @@ Replace `{tmpfile_read}`, `{tmpfile_write}`, `{original_length}` with the values
 
 ### 3.7 Auto-Close Parent Issue
 
-**Execution condition**: Only executed when a parent Issue was detected in `cleanup.md` ステップ 2.
+**Execution condition**: Only executed when a parent Issue was detected in `cleanup.md` ステップ 2 and `{pr_merged}=true`. With `{pr_merged}=false`, skip 3.7 and report `ℹ️ PR 未マージのため親 Issue は更新していません`.
 
 If assessment in 3.7.1 routes here (all children CLOSED, none `NOT_PLANNED`, no unavailable `stateReason`), automatically close the parent Issue.
 

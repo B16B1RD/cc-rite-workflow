@@ -125,8 +125,9 @@ F-NN に触れた本文は、再報告でなくても誤って結ばれ欠落側
 `{pr_merged}` を全経路で既定するのは、ステップ 4-W の worktree パス manifest 記録とステップ 5 の
 ブランチ削除（squash 残渣の強制削除 / 遅延ブランチの manifest 記録）が未定義値を参照しないため。
 `mergedAt` 非 null 以外（未マージ PR の強制クリーンアップ、PR 未検出でブランチ削除を選んだ経路）を
-`false` に倒すのは、未マージ作業を reap 対象に混ぜないため。ステップ 10 も `{pr_merged}` を見て、未マージ PR の
-関連 Issue にマージの記録を書かず完了として閉じない。
+`false` に倒すのは、未マージ作業を reap 対象に混ぜないため。ステップ 8 / 10 / 11 も `{pr_merged}` を見て、未マージ PR の
+関連 Issue にマージの記録を書かず完了として閉じず、Projects Status・作業メモリ・親 Issue の Tasklist も完了にしない
+（Issue を開いたまま残すのに他の記録だけが完了になる食い違いを作らない）。
 
 ## tasklist-parent-verify
 
