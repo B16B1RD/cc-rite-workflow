@@ -2252,6 +2252,41 @@ else
 fi
 echo ""
 
+# A newline after an even backslash run starts a new command; an odd run joins it.
+tc144_slashes=""
+for tc144_n in 1 2 3 4; do
+  tc144_slashes+='\'
+  for tc144_size in 4 10240; do
+    tc144_body=$(printf '%*s' "$tc144_size" '' | tr ' ' x)
+    tc144_cmd=$(printf "cat <<'EOF'\n%s\nEOF\necho foo%s\ngh issue create --title x" \
+      "$tc144_body" "$tc144_slashes")
+    rc=0
+    output=$(run_guard "Bash" "$tc144_cmd") || rc=$?
+    decision=$(extract_hook_field "$output" permissionDecision)
+    reason=$(extract_hook_field "$output" permissionDecisionReason)
+    if [ $((tc144_n % 2)) = 0 ]; then
+      if [ "$rc" = 0 ] && [ "$decision" = deny ] && [[ "$reason" == *direct-gh-issue-create* ]] \
+        && { [ "$tc144_size" = 4 ] || [[ "$reason" == *"bodies were checked"* ]]; }; then
+        pass "Pattern 6 keeps the newline after $tc144_n backslashes (body=$tc144_size)"
+      else
+        fail "Pattern 6 even backslashes ($tc144_n, body=$tc144_size): rc=$rc reason=$reason"
+      fi
+    elif [ "$rc" = 0 ] && [ -z "$output" ]; then
+      pass "Pattern 6 joins the newline after $tc144_n backslashes (body=$tc144_size)"
+    else
+      fail "Pattern 6 odd backslashes ($tc144_n, body=$tc144_size): rc=$rc output=$output"
+    fi
+  done
+  tc144_cmd=$(printf "cat <<'EOF'\necho foo%s\ngh issue create --title literal\nEOF" "$tc144_slashes")
+  rc=0
+  output=$(run_guard "Bash" "$tc144_cmd") || rc=$?
+  if [ "$rc" = 0 ] && [ -z "$output" ]; then
+    pass "Pattern 6 omits heredoc data after $tc144_n backslashes"
+  else
+    fail "Pattern 6 heredoc data after $tc144_n backslashes: rc=$rc output=$output"
+  fi
+done
+
 echo "TC-145 / T-02,T-03: approved Issue helpers → allow"
 for tc145_cmd in \
   'bash plugins/rite/scripts/create-issue-with-projects.sh "$args_json"' \
@@ -2596,6 +2631,21 @@ if [[ "$sb_line_cost" =~ ^[1-9][0-9]*$ && "$sb_max_cost" =~ ^[1-9][0-9]*$ && -n 
   sb_case "a merge with a 10KB message" deny
   { printf 'echo '; sb_x 40960; } > "$p7_big"
   sb_case "a 40KB command without git" other
+  # Two separate 5000-byte lines fit; joining them exceeds the same budget.
+  sb_slashes=""
+  for sb_n in 1 2 3 4; do
+    sb_slashes+='\'
+    {
+      printf "cat <<'EOF'\nbody\nEOF\n"
+      for _i in 1 2; do printf 'echo '; sb_x 5000; printf '%s\n' "$sb_slashes"; done
+      printf 'git commit -m x'
+    } > "$p7_big"
+    if [ $((sb_n % 2)) = 0 ]; then
+      sb_case "two lines ending in $sb_n backslashes stay separate" other
+    else
+      sb_case "two lines ending in $sb_n backslashes join" deny
+    fi
+  done
   # A failed estimate denies.
   printf 'git commit -m y' > "$p7_big"
   RITE_BTG_TEST_CRASH=surface-budget sb_case "a commit whose estimate fails" deny
@@ -3033,7 +3083,7 @@ p10_deny "gh in a subshell after its cd" outside-checkout "runs 'gh' in $p10_scr
   "$p10_wt" "(cd $p10_scratch && gh api x)"
 p10_deny "git -C to a variable after cd to a scratch dir" outside-checkout "runs 'git' in $p10_scratch" \
   "$p10_wt" "cd $p10_scratch && git -C \"\$X\" status"
-p10_deny "a literal variable cd to a scratch dir" outside-checkout "runs 'git' in $p10_scratch" \
+p10_deny "a conditional variable cd to a scratch dir" outside-checkout-uninspectable "cannot determine the working directory" \
   "$p10_wt" "d=$p10_scratch; if [ -z \"\$d\" ] || ! cd \"\$d\" 2>/dev/null; then echo no; else git status; fi"
 p10_deny "more cd than the parser follows" outside-checkout "cannot be determined" \
   "$p10_wt" "$(printf 'cd . && %.0s' $(seq 1 17))git status"
@@ -3046,7 +3096,7 @@ p10_allow "cd into the worktree then git" "$p10_wt" "cd $p10_wt && git status"
 p10_allow "git -C the worktree" "$p10_scratch" "git -C $p10_wt status"
 p10_allow "cd into the main checkout then gh" "$p10_scratch" "cd $p10_main && gh api x"
 p10_allow "git -C a variable from the worktree" "$p10_wt" 'git -C "$X" status'
-p10_allow "a literal variable cd into the main checkout" "$p10_wt" \
+p10_deny "a conditional variable cd into the main checkout" outside-checkout-uninspectable "cannot determine the working directory" "$p10_wt" \
   "d=$p10_main; if [ -z \"\$d\" ] || ! cd \"\$d\" 2>/dev/null; then echo no; else git status; fi"
 p10_allow "no git, gh or script in a scratch dir" "$p10_wt" "cd $p10_scratch && ls && cat a > b"
 p10_allow "a cd kept inside its subshell" "$p10_wt" "(cd $p10_scratch && ls); gh api x"
@@ -3115,7 +3165,7 @@ p10_deny "gh behind a joined env -u" outside-checkout "runs 'gh' in $p10_scratch
 p10_deny "gh after popd" outside-checkout "cannot be determined" "$p10_wt" "popd; gh api x"
 p10_deny "a variable reassigned by read" outside-checkout "cannot be determined" \
   "$p10_wt" "d=$p10_wt; read d; cd \"\$d\" && gh api x"
-p10_deny "a variable reassigned by for" outside-checkout "cannot be determined" \
+p10_deny "a variable reassigned by for" outside-checkout-uninspectable "cannot determine the working directory" \
   "$p10_wt" "d=$p10_wt; for d in $p10_scratch; do cd \"\$d\" && gh api x; done"
 p10_long=$(printf 'x%.0s' $(seq 1 9000))
 p10_out="in $p10_scratch, which is outside the checkout"
@@ -3224,8 +3274,81 @@ p10_deny "gh after a here-string" outside-checkout "runs 'gh' $p10_out" \
   "$p10_wt" "grep -q x <<< \"\$v\" && cd $p10_scratch && gh api x"
 p10_deny "gh after a << in a double-quoted string" outside-checkout "runs 'gh' $p10_out" \
   "$p10_wt" "echo \"a << b\"; cd $p10_scratch && gh api x"
-p10_deny "a script in a function body" outside-checkout "runs './rec.sh' $p10_out" \
+p10_deny "a script in a function body after cd" outside-checkout-uninspectable "combined with a function definition" \
   "$p10_wt" "cd $p10_scratch && f() { ./rec.sh; }; f"
+# Compound commands cannot be treated as one unconditional pass through their body.
+for p10_cmd in \
+  "for i in 1 2; do gh api x; cd $p10_scratch; done" \
+  "while true; do git status; cd $p10_scratch; done" \
+  "until false; do ./rec.sh; cd $p10_scratch; done" \
+  "for ((i=0;i<2;i++)); do gh api x; cd $p10_scratch; done" \
+  "for i in a b; do cd $p10_scratch; done; gh api x" \
+  "if false; then cd $p10_wt; fi; gh api x" \
+  "if true; then :; elif cd $p10_scratch; then :; else gh api x; fi" \
+  "case x in x) cd $p10_scratch;; esac; gh api x" \
+  "f() { cd $p10_scratch; }; f; gh api x" \
+  "function f { cd $p10_scratch; gh api x; }; f" \
+  "function f() { gh api x; }; cd $p10_scratch; f" \
+  "f() { gh api x; }; cd $p10_scratch; f" \
+  "f() (gh api x); cd $p10_scratch; f" \
+  "for i in a b; do if true; then builtin cd $p10_scratch; fi; gh api x; done" \
+  "for i in a b; do command cd $p10_scratch; gh api x; done" \
+  "if pushd $p10_scratch; then gh api x; fi" \
+  "case x in x) popd; ./rec.sh;; esac" \
+  "case x in x) f() { gh api x; };; esac; cd $p10_scratch; f" \
+  "echo \$(if true; then cd $p10_scratch; gh api x; fi)" \
+  "echo \$(f() { gh api x; }; cd $p10_scratch; f)"; do
+  p10_deny "compound directory change: $p10_cmd" outside-checkout-uninspectable \
+    "cannot determine the working directory" "$p10_wt" "$p10_cmd"
+done
+p10_deny "compound rejection advises a separate call from the checkout" outside-checkout-uninspectable \
+  "separate Bash call from the checkout" "$p10_wt" "for i in 1 2; do gh api x; cd $p10_scratch; done"
+p10_allow "a loop without cd" "$p10_wt" "for i in 1 2; do gh api x; done"
+p10_allow "a loop with cd but no protected call" "$p10_wt" "for d in a b; do cd $p10_scratch; ls; done"
+p10_allow "a conditional cd without a protected call" "$p10_wt" "if true; then cd $p10_scratch; fi; ls"
+p10_allow "a function with cd but no protected call" "$p10_wt" "f() { cd $p10_scratch; }; f; ls"
+p10_allow "cd after a completed condition" "$p10_wt" "if true; then :; fi; cd $p10_wt; gh api x"
+p10_allow "literal compound words are data" "$p10_wt" \
+  "printf '%s' 'if true; then cd /tmp; fi' 'f() { cd /tmp; gh api x; }'; gh api x"
+p10_allow "commented compound words are data" "$p10_wt" \
+  "$(printf '# for i in a; do cd /tmp; gh api x; done\ncd %s; gh api x' "$p10_wt")"
+p10_allow "quoted heredoc compound words are data" "$p10_wt" \
+  "$(printf "cat <<'EOF'\nif true; then cd /tmp; gh api x; fi\nEOF\ncd %s; gh api x" "$p10_wt")"
+p10_allow "a path-only substitution in a condition does not move the caller" "$p10_wt" \
+  "if true; then d=\$(cd $p10_scratch && pwd); fi; gh api x"
+p10_allow "a case arm before an if is not a function definition" "$p10_wt" \
+  "case x in y) :;; x) if true; then :; fi;; esac; cd $p10_wt; gh api x"
+# Patterns are data, even when their dequoted words spell control keywords.
+for p10_pattern in if "'if'" 'a|if' for "'esac'" 'a|esac' '(if' '\if' '[' '[abc' "'[()]'" '[\(]' '[\)]'; do
+  p10_allow_cmd="case x in y) :;; $p10_pattern) :;; esac; cd $p10_wt; gh api x"
+  p10_deny_cmd="case x in y) :;; $p10_pattern) cd $p10_wt;; esac; gh api x"
+  if bash -n <<<"$p10_allow_cmd" && bash -n <<<"$p10_deny_cmd"; then
+    pass "case pattern $p10_pattern fixtures are valid Bash"
+  else
+    fail "case pattern $p10_pattern fixtures are invalid Bash"
+  fi
+  p10_allow "case pattern $p10_pattern before an outer cd" "$p10_wt" "$p10_allow_cmd"
+  p10_deny "case pattern $p10_pattern does not close the case before cd" outside-checkout-uninspectable \
+    "cannot determine the working directory" "$p10_wt" "$p10_deny_cmd"
+done
+p10_deny "literal open bracket preserves an outside cd after the case" outside-checkout \
+  "runs 'gh' $p10_out" "$p10_wt" "case x in [) :;; esac; cd $p10_scratch; gh api x"
+p10_deny "nested cases retain the outer conditional cd" outside-checkout-uninspectable \
+  "cannot determine the working directory" "$p10_wt" \
+  "case x in x) case y in y) :;; esac; cd $p10_wt;; esac; gh api x"
+p10_allow "case alternatives preserve a following loop without cd" "$p10_wt" \
+  "case x in x|if) :;; esac; for i in 1 2; do gh api x; done"
+
+rc=0
+p10_helper=$(python3 "$SCRIPT_DIR/../scripts/lib/checkout-cwd.py" \
+  --cwd "$p10_scratch" --root "$p10_main" \
+  --command "gh api x; for i in 1 2; do gh api x; cd $p10_scratch; done" 2>"$STDERR_FILE") || rc=$?
+if [ "$rc" = 1 ] && [ -z "$p10_helper" ] && grep -q 'cannot determine the working directory' "$STDERR_FILE"; then
+  pass "helper rejects compound changes before producing any normal output"
+else
+  fail "compound helper rejection: rc=$rc stdout=$p10_helper stderr=$(cat "$STDERR_FILE")"
+fi
+
 p10_huge=$(printf 'Run cd into the worktree and write notes. %.0s' $(seq 1 3500))
 p10_allow "a heredoc longer than one argument may be" "$p10_scratch" \
   "$(printf 'cat > big.md <<%s\n%s\nEOF' "'EOF'" "$p10_huge")"
