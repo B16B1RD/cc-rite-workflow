@@ -32,7 +32,7 @@ Past version sections carry none either — they have already been stripped.
 
 ## [Unreleased]
 
-## [0.19.0] - 2026-09-30
+## [0.19.0] - 2026-10-01
 
 ### Added
 
