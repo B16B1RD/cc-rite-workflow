@@ -409,7 +409,7 @@ okf_version: "0.2"
 | [pin の説明文に pin 対象の literal を書くと、注記自身が出現数に数えられて count pin が落ちる](pages/anti-patterns/pin-note-containing-pinned-literal.md) | anti-patterns | 「特定の文字列がファイル内にちょうど N 個ある」という count pin を導入したあと、その pin の意図を説明する注記に**対象の literal をそのまま書く**と、注記自身が N+1 個目の出現になり pin が落ちる。 | 2026-08-07T18:40:00+09:00 | high |
 | [安全側へ倒れる fail-safe は、倒れた事実が観測されない限り機能の恒久的不作動を隠す](pages/anti-patterns/safe-side-degradation-hides-permanent-inoperability.md) | anti-patterns | 「情報が欠ければ従来のフル装備へ倒す」型の fail-safe は、倒れた向きが安全側であるがゆえに**壊れていることを誰にも伝えない**。 | 2026-08-08T14:00:41+09:00 | high |
 | [診断を 1 行足す修正は、外部入力・エラー経路・テスト網羅の 3 領域を同時に開く](pages/heuristics/added-diagnostic-opens-three-review-surfaces.md) | heuristics | 診断メッセージの追加は「1 行足すだけ」に見える。 | 2026-08-08T14:00:41+09:00 | high |
-| [assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる](pages/anti-patterns/assert-label-overclaims-predicate-scope.md) | anti-patterns | assert のラベル（テスト名・メッセージ）は、その assert が守る契約の宣言である。 | 2026-09-27T10:21:25Z | high |
+| [assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる](pages/anti-patterns/assert-label-overclaims-predicate-scope.md) | anti-patterns | assert のラベル（テスト名・メッセージ）は、その assert が守る契約の宣言である。 | 2026-09-30T08:55:00Z | high |
 | [awk の exit は END 規則を実行する — 早期終了と END フォールバックの併用は二重出力になる](pages/anti-patterns/awk-exit-runs-end-rule-double-output.md) | anti-patterns | POSIX awk の `exit` は**プログラムを即座に終えるのではなく END 規則へ飛ぶ**。 | 2026-08-08T14:00:41+09:00 | high |
 | [awk のデフォルト FS は `\\r` を含まない — CRLF 入力で「空行」判定が壊れる](pages/anti-patterns/awk-default-fs-excludes-cr-breaks-empty-line-test.md) | anti-patterns | awk のデフォルト FS は space / tab / newline であり **`\\r` を含まない**。 | 2026-08-08T14:00:41+09:00 | high |
 | [機構を削除して解くと、pin 面積だけでなく失敗モードの重さ（blast radius）も縮む](pages/heuristics/simplification-shrinks-pin-surface-and-blast-radius.md) | heuristics | 「規律を作って pin で守る」より「規律が要らない構造にする」ほうが安い、という判断は pin の本数だけでは測れない。 | 2026-08-10T11:55:05Z | high |
@@ -668,5 +668,5 @@ okf_version: "0.2"
 
 - 総ページ数: 654
 - ドメイン別: patterns=138, heuristics=326, anti-patterns=190
-- 最終更新: 2026-09-30T07:59:11Z
+- 最終更新: 2026-09-30T08:55:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

@@ -15,14 +15,22 @@ sources:
     resource: "raw/fixes/20260830T034210Z-pr-2471.md"
   - type: "fixes"
     resource: "raw/fixes/20260927T100333Z-pr-3256.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T081809Z-pr-3518.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260930T082444Z-pr-3518-fix.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T083013Z-pr-3518-c2.md"
 tags: ["test", "mutation-testing", "assertion-strength", "contract", "review-fix-loop"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:21:25Z" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-30T08:55:00Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-30T12:50:00+09:00"
   - by: "rite-wiki-ingest/claude-opus-5-5"
     at: "2026-09-27T10:21:25Z"
+  - by: "rite-wiki-ingest/claude-sonnet-5-5"
+    at: "2026-09-30T08:55:00Z"
 ---
 
 # assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる
@@ -63,6 +71,8 @@ assert のラベル（テスト名・メッセージ）は、その assert が�
 
 いずれも修正は名前を弱めることではなく述語を強めること（`-eq 3` にする / 逆方向のケースを足す）。名前が正しい契約を述べているなら、直すのは述語のほうである。
 
+**順序の乖離** — テスト名が「A の付記は B の付記より前」と述べ、述語は 2 行の行番号を比べて `A_line < B_line` を確かめる形。A の行番号を `grep -n 'ℹ️\|⚠️ 本物の付記' | head -1` のような alternation で取ると、対象ブロックの**別種の行**（表の先頭にある ℹ️ の行）に先に一致し、比較の左辺が常にその行の番号になる。付記ブロックを入れ替えても左辺は変わらず、緑のまま順序を守っていると主張する。実測では抽出した 29 行のうち 8〜11 行目が表の ℹ️ 行、本物の付記は 20 行目だった。**位置を測る grep は測りたい行だけに一致する行頭アンカー付きの単一パターンにする**。一致しないときは位置が空になって失敗する形（fail-loud）を保つ。直したら、対象ブロックを入れ替えた複製で落ちることを確かめてから pin とみなす。
+
 ### ラベルは検査する振る舞いで書き、実装の識別子を書かない
 
 assert 名に変数名のような実装詳細を入れると、内部名を変えたときにラベルだけが古くなり、どの振る舞いが守られているかをラベルから読めなくなる。述語は変えずに、ラベルを「その assert が守る振る舞い」（例: marker の状態が同じ節の helper 出力から来る）で言い直す。
@@ -79,3 +89,6 @@ assert 名に変数名のような実装詳細を入れると、内部名を変�
 - [レビュー結果](../../raw/reviews/20260808T013358Z-pr-2142.md)
 - [fix 結果](../../raw/fixes/20260808T014357Z-pr-2142.md)
 - [fix 結果（assert 名を振る舞いで言い直す）](../../raw/fixes/20260927T100333Z-pr-3256.md)
+- [レビュー結果](../../raw/reviews/20260930T081809Z-pr-3518.md)
+- [fix 結果](../../raw/fixes/20260930T082444Z-pr-3518-fix.md)
+- [レビュー結果（差分スコープ）](../../raw/reviews/20260930T083013Z-pr-3518-c2.md)
