@@ -2252,6 +2252,41 @@ else
 fi
 echo ""
 
+# A newline after an even backslash run starts a new command; an odd run joins it.
+tc144_slashes=""
+for tc144_n in 1 2 3 4; do
+  tc144_slashes+='\'
+  for tc144_size in 4 10240; do
+    tc144_body=$(printf '%*s' "$tc144_size" '' | tr ' ' x)
+    tc144_cmd=$(printf "cat <<'EOF'\n%s\nEOF\necho foo%s\ngh issue create --title x" \
+      "$tc144_body" "$tc144_slashes")
+    rc=0
+    output=$(run_guard "Bash" "$tc144_cmd") || rc=$?
+    decision=$(extract_hook_field "$output" permissionDecision)
+    reason=$(extract_hook_field "$output" permissionDecisionReason)
+    if [ $((tc144_n % 2)) = 0 ]; then
+      if [ "$rc" = 0 ] && [ "$decision" = deny ] && [[ "$reason" == *direct-gh-issue-create* ]] \
+        && { [ "$tc144_size" = 4 ] || [[ "$reason" == *"bodies were checked"* ]]; }; then
+        pass "Pattern 6 keeps the newline after $tc144_n backslashes (body=$tc144_size)"
+      else
+        fail "Pattern 6 even backslashes ($tc144_n, body=$tc144_size): rc=$rc reason=$reason"
+      fi
+    elif [ "$rc" = 0 ] && [ -z "$output" ]; then
+      pass "Pattern 6 joins the newline after $tc144_n backslashes (body=$tc144_size)"
+    else
+      fail "Pattern 6 odd backslashes ($tc144_n, body=$tc144_size): rc=$rc output=$output"
+    fi
+  done
+  tc144_cmd=$(printf "cat <<'EOF'\necho foo%s\ngh issue create --title literal\nEOF" "$tc144_slashes")
+  rc=0
+  output=$(run_guard "Bash" "$tc144_cmd") || rc=$?
+  if [ "$rc" = 0 ] && [ -z "$output" ]; then
+    pass "Pattern 6 omits heredoc data after $tc144_n backslashes"
+  else
+    fail "Pattern 6 heredoc data after $tc144_n backslashes: rc=$rc output=$output"
+  fi
+done
+
 echo "TC-145 / T-02,T-03: approved Issue helpers → allow"
 for tc145_cmd in \
   'bash plugins/rite/scripts/create-issue-with-projects.sh "$args_json"' \
@@ -2596,6 +2631,21 @@ if [[ "$sb_line_cost" =~ ^[1-9][0-9]*$ && "$sb_max_cost" =~ ^[1-9][0-9]*$ && -n 
   sb_case "a merge with a 10KB message" deny
   { printf 'echo '; sb_x 40960; } > "$p7_big"
   sb_case "a 40KB command without git" other
+  # Two separate 5000-byte lines fit; joining them exceeds the same budget.
+  sb_slashes=""
+  for sb_n in 1 2 3 4; do
+    sb_slashes+='\'
+    {
+      printf "cat <<'EOF'\nbody\nEOF\n"
+      for _i in 1 2; do printf 'echo '; sb_x 5000; printf '%s\n' "$sb_slashes"; done
+      printf 'git commit -m x'
+    } > "$p7_big"
+    if [ $((sb_n % 2)) = 0 ]; then
+      sb_case "two lines ending in $sb_n backslashes stay separate" other
+    else
+      sb_case "two lines ending in $sb_n backslashes join" deny
+    fi
+  done
   # A failed estimate denies.
   printf 'git commit -m y' > "$p7_big"
   RITE_BTG_TEST_CRASH=surface-budget sb_case "a commit whose estimate fails" deny

@@ -271,7 +271,10 @@ _rite_btg_pattern6_command_surface() {
   local _source="$1" _line _delimiter="" _strip_tabs=0 _candidate _decl
   local _surface="" _i _len _ch _next _state _quoted _start
   _source="${_source//$'\r'/}"
-  _source="${_source//$'\\\n'/}"
+  # Only an unescaped (odd-numbered) trailing backslash continues a line.
+  _source=$(printf '%s' "$_source" | LC_ALL=C awk '
+    { if (match($0, /\\+$/) && RLENGTH % 2) { sub(/\\$/, ""); printf "%s", $0 }
+      else print }') || return $?
   # Quote state carries across lines, as in bash: a << inside a multi-line quoted
   # string (a commit message) is text, not a heredoc declaration.
   _state=plain
@@ -355,7 +358,9 @@ _rite_btg_surface_within_budget() {
   [ "${RITE_BTG_TEST_CRASH:-}" != "surface-budget" ] || return 2
   printf '%s' "$1" | LC_ALL=C tr -d '\r' | LC_ALL=C awk \
     -v unit="$_RITE_BTG_SURFACE_LINE_COST" -v max="$_RITE_BTG_SURFACE_MAX_COST" '
-    { joined = sub(/\\$/, ""); len += length($0) }
+    { joined = match($0, /\\+$/) && RLENGTH % 2
+      if (joined) sub(/\\$/, "")
+      len += length($0) }
     joined { next }
     { cost += len * len + unit; len = 0; if (cost > max) exit 1 }
     END { if (len) cost += len * len + unit; exit cost > max }'
@@ -1350,7 +1355,9 @@ if [ -z "$BLOCKED_PATTERN" ]; then
       P6_CHECK=$(_rite_btg_pattern6_command_surface "$COMMAND")
     else
       P6_CHECK=$(printf '%s' "$COMMAND" | LC_ALL=C tr -d '\r' |
-        LC_ALL=C awk '{ if (sub(/\\$/, "")) printf "%s", $0; else print }')
+        LC_ALL=C awk '
+          { if (match($0, /\\+$/) && RLENGTH % 2) { sub(/\\$/, ""); printf "%s", $0 }
+            else print }')
       _p6_raw=1
     fi
   else
