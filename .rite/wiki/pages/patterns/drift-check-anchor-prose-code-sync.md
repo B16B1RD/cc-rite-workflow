@@ -23,12 +23,16 @@ sources:
     resource: "raw/fixes/20260503T183643Z-pr-799-cycle4.md"
   - type: "reviews"
     resource: "raw/reviews/20260915T052437Z-pr-2834.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T230622Z-pr-3562.md"
 tags: ["drift-detection", "lint", "pre-commit", "convergence", "mechanical-validation", "anchor-prose-enumeration"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-15T05:29:08Z" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-10-01T08:45:00Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-09-15T05:29:08Z"
+  - by: "rite-wiki-ingest/claude-sonnet-5-5"
+    at: "2026-10-01T08:45:00Z"
 ---
 
 # AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する
@@ -122,6 +126,10 @@ helper に失敗 reason・成功 marker の suffix・判定の入力源を足し
 
 同じ同期で残りやすいのは assert の精度の問題である。helper の出力ではなく source の代入文を照合する assert、片方の marker にしか実行時 pin が無い suffix、配置を区別せず出現回数だけを数える assert がこれにあたる。いずれも検出網の粒度の話で、実行時の挙動は変わらない。
 
+### 新しい停止 reason の追加は reason 名の grep で列挙箇所を洗い出す
+
+fail-loud 化のために新しい停止 reason を足した変更では、同じ停止要因を列挙する記述が実装より古くなりやすい。列挙はスクリプト冒頭の Reason 一覧コメント、スキーマ文書の説明、隣接スキルの停止例示、テスト冒頭の Coverage コメント、呼び出し側スキルの停止表に散らばる。既存の reason 名（例: 同じ系統の別 reason）でリポジトリ全体を grep して列挙箇所を全数出し、新 reason を同じ変更の中で 1 語ずつ足すと、レビューで「列挙の更新漏れ」として複数 reviewer から繰り返し指摘される事態を避けられる。動作は変わらない文言同期なので、足すのは 1 語で足りる。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -138,3 +146,4 @@ helper に失敗 reason・成功 marker の suffix・判定の入力源を足し
 - [prose 側 4-arg 拡張完了](../../raw/fixes/20260425T161635Z-pr-661.md)
 - [prose-implementation drift 訂正 + reference Edge Case / 既知の限界表 factual error 訂正](../../raw/fixes/20260503T183643Z-pr-799-cycle4.md)
 - [helper docstring の Reason 一覧と手順書列挙の集合一致、base 側での assert 評価](../../raw/reviews/20260915T052437Z-pr-2834.md)
+- [新しい停止 reason を足したときの列挙箇所の同期](../../raw/reviews/20260930T230622Z-pr-3562.md)

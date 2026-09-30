@@ -30,6 +30,12 @@
 * **Skip**: [20260930T231451Z-pr-3545.md](raw/reviews/20260930T231451Z-pr-3545.md) — 独立レビューの成功記録であり、新しい経験則の記述がない
 
 
+* **Update**: [AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する](pages/patterns/drift-check-anchor-prose-code-sync.md) — 新しい停止 reason を足したときの列挙箇所の同期（reason 名の grep で全数洗い出し）を統合
+
+* **Skip**: [20260930T232357Z-pr-3562.md](raw/reviews/20260930T232357Z-pr-3562.md) — 既存ページの補強済みで新規の経験則なし（前 cycle の指摘の解消確認のみ）
+
+* **Skip**: [20260930T231815Z-pr-3562.md](raw/fixes/20260930T231815Z-pr-3562.md) — 既存ページの補強済み。sweep の保留と再開は rite workflow の挙動で plugin 側の責務
+
 ## 2026-09-30
 
 * **Lint incomplete** — 機械検査は stale=64、orphans=0、missing_concept=0、unregistered_raw=621、broken_refs=0、descriptive_number_ref=0。更新ページは出典と関連ページを照合した。全658ページの意味的な矛盾比較は未完了であり、Wiki 全体の品質検査成功とは扱わない。
