@@ -188,6 +188,7 @@
 * **Skip**: [20260930T082429Z-pr-3521.md](raw/reviews/20260930T082429Z-pr-3521.md) — 競合を両側の変更を併せて解消した記録で、経験則は既存の表セル競合のページが扱っている
 * **Skip**: [20260930T085932Z-pr-3516.md](raw/reviews/20260930T085932Z-pr-3516.md) — 指摘も推奨も 0 件で収束した記録のみで、経験則がない
 * **Skip**: [20260930T091030Z-pr-3526.md](raw/reviews/20260930T091030Z-pr-3526.md) — 指摘も推奨も 0 件の記録のみで、経験則がない
+* **lint:clean** — contradictions=0, stale=62, orphans=0, missing_concept=0, unregistered_raw=616, broken_refs=0
 
 ## 2026-09-29
 
