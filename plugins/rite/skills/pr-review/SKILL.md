@@ -1447,7 +1447,7 @@ Check `review.debate.enabled` in `rite-config.yml` (see [Configuration in cross-
  案 B（{Reviewer B}）: {assessment_B}
  根拠: {reason_B}
 
-なぜ AI では決められないか: {両案の再現コマンド・テストを実行した結果と、仕様に記載が無い点}
+なぜ AI では決められないか: {挙動の割れなら「両案の再現コマンド・テストを実行した結果と、仕様に記載が無い点」、scope の割れなら「Issue の範囲の記載からは、どちらとも決まらない点」}
 どう判断するか: {案 A を採ったときの帰結} / {案 B を採ったときの帰結}
 期待する回答: 採る案
 ```

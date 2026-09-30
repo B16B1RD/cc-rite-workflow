@@ -95,7 +95,7 @@ Escalation occurs in two stages: a pre-debate guard and post-debate evaluation.
 |-----------|--------|
 | Either reviewer's finding is CRITICAL severity | Skip deliberation entirely, escalate to user immediately |
 
-**Before any escalation** (both stages): check both positions against the code at `file:line` and run the reproduction command or test each side cites. A contradiction the run settles is resolved by that result and recorded as agreed; it is not escalated. Escalate only what the run cannot settle — which behaviour the specification should have — and write the request with the four elements of [question_resolution](../../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) rule 6. Never ask a person to judge whether the code is correct.
+**Before any escalation** (both stages): check both positions against the code at `file:line` and run the reproduction command or test each side cites. A contradiction the run settles is resolved by that result and recorded as agreed; it is not escalated. Escalate only what the run cannot settle — which behaviour the specification should have, or whether the fix belongs in this PR or a separate Issue — and write the request with the four elements of [question_resolution](../../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) rule 6. Never ask a person to judge whether the code is correct.
 
 **Post-deliberation evaluation**:
 
@@ -117,7 +117,7 @@ Escalate to user (via `AskUserQuestion`) when:
   案 B（{Reviewer B}）: {revised_position_b}
     根拠: {evidence_b}
 
-なぜ AI では決められないか: {両案の再現コマンド・テストを実行した結果と、仕様に記載が無い点}
+なぜ AI では決められないか: {挙動の割れなら「両案の再現コマンド・テストを実行した結果と、仕様に記載が無い点」、scope の割れなら「Issue の範囲の記載からは、どちらとも決まらない点」}
 どう判断するか: {案 A を採ったときの帰結} / {案 B を採ったときの帰結}
 期待する回答: 採る案
 
@@ -131,6 +131,8 @@ Escalate to user (via `AskUserQuestion`) when:
 - 両方を満たす形にする（最高 severity を採用）
 - どちらも採らない（指摘を取り下げる）
 ```
+
+scope の割れでは「両方を満たす形にする」を選択肢に出さない（同じ根因を、この PR の修正と別 Issue の両方にはできない）。
 
 ### Configuration
 

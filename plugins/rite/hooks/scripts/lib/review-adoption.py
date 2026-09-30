@@ -42,9 +42,10 @@ Record (classification map ``adoption.records[]``; ``adoption.head`` = reviewed 
   prior        null or {"finding_id", "file_line", "disposition", "premise"}: a ledger row
                whose 判定 cell equals disposition. REJECT and ADOPT are the terminal
                dispositions this helper compares against. The sweep writes issued
-               (filed), REJECT / RESOLVED / LINK (exits recorded without filing) and
-               recorded (guardrail transcription); issued, recorded and the older
-               rejected rows are not terminal, and RESOLVED / LINK rows are never a prior.
+               (filed) and the exit names REJECT / RESOLVED / LINK. recorded and the
+               older rejected rows are legacy forms: they are read, they are not
+               terminal, and the sweep does not write them. issued is not terminal,
+               and RESOLVED / LINK rows are never a prior.
   reason       why not adopted and when to reconsider; required when any of V/C/T is
                "unknown", and REJECT needs it
   proposition  {"claim", "reach", "reach_source", "done"} for an investigation
