@@ -372,6 +372,7 @@ args: "{pr_number}"
 |---------|-----------|
 | `[merge:returned-to-caller]` | ステップ 6 へ |
 | `[merge:not-ready]` + `[CONTEXT] MERGE_NOT_READY=conflicting` | base と競合。停止せず下記「競合の解消」を行い、ステップ 3 へ戻る |
+| `[merge:error]` + `[CONTEXT] MERGE_ERROR=behind` | **失敗** → ステップ 8（段階=merge）。BEHIND の解消手順を復旧欄に載せる |
 | `MERGE_NOT_READY=conflicting` を伴わない `[merge:not-ready]` / `[merge:error]` / sentinel 不在 | **失敗** → ステップ 8（段階=merge） |
 
 **競合の解消**（上表の競合行のときだけ）:
@@ -577,13 +578,18 @@ echo "[CONTEXT] RUN_STOP; cursor=$cursor; done=$done_issues; remaining=$remainin
 ```
 
 > 復旧行の `/rite:batch-run` には、`{run_mode}=merge` のときのみ `--merge` を併記する（引数省略再開でも自セッションの run-queue の `mode` が維持されるため必須ではないが、明示再開する場合の指針として示す）。
+> `[merge:error]` + `MERGE_ERROR=behind` の停止では、上の汎用復旧 2 行を以下で**置き換える**。base を取り込む前に recover / batch-run で同じ merge を再試行させない:
+>
+> 1. `BEHIND: マージ失敗後も base に遅れています` と表示し、ステップ 5「競合の解消」の手順 1〜2と同じ draft 戻し → phase=fix → [fix-plan の base 取り込み](../fix/references/fix-plan.md#base-取り込み)（検証・commit・push）を案内する。実際に競合しているとは扱わず、保護設定を変更しない。
+> 2. `/rite:iterate {pr_number}` で変更後の HEAD を再レビューし、mergeable を確認する。全 CI job の完了・成功を確認して `/rite:ready {pr_number}` を実行する。
+> 3. 取り込み・再レビュー・CI 確認・ready を完了した後に `/rite:batch-run --merge`（引数省略）でキューを再開する。失敗中の手順があれば、その手順の対処を示して停止し、未完のままキューを再開しない。
 > `--merge` モードで `[fix:replied-only]` により停止した場合は、停止報告に続行コマンドも併記する: `/rite:ready {pr_number} && /rite:merge {pr_number}`（デフォルトモードでは `[fix:replied-only]` は停止せず draft を残して次へ進むため、この併記は不要）
 
 ---
 
 ## エラー時の方針
 
-- **失敗は即停止**。失敗 Issue は `/rite:recover {issue}` で個別復帰。merge 時の base との競合（`MERGE_NOT_READY=conflicting`）は失敗ではなく、ステップ 5 の「競合の解消」でステップ 3 へ戻る
+- **失敗は即停止**。`MERGE_ERROR=behind` はステップ 8 の専用復旧手順を先に実施し、それ以外の失敗 Issue は `/rite:recover {issue}` で個別復帰。merge 時の base との競合（`MERGE_NOT_READY=conflicting`）は失敗ではなく、ステップ 5 の「競合の解消」でステップ 3 へ戻る
 - **サーキットブレーカーも即停止**。`[iterate:max-cycles-reached]` はステップ 8 で `failed[]` に記録し、cursor を保持する。再開後に当該 Issue がステップ 6 まで到達したら、その failed 記録を除去して前進する
 - **session_id 解決不可は fail-loud**: `run-queue-{session_id}.json` を組む前に解決。不可なら global 名へフォールバックせず `exit 1`
 - run-queue は停止時に残す。引数省略 `/rite:batch-run` で cursor から再開（同一セッション）
