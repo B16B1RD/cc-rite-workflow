@@ -206,8 +206,8 @@ gh repo create "$owner/$repo_name" --source . "$visibility_flag" --remote origin
 
 The visibility flag is mandatory; never invoke the interactive form. If the command fails, display gh's stderr and probe both `gh repo view "$owner/$repo_name"` and `git remote get-url origin` before choosing recovery:
 
-- If neither repository nor origin exists, the create step failed before side effects. Use AskUserQuestion to offer retrying the create command or stopping.
-- If the repository and origin exist, treat this as a partial success in the push step. Resolve `current_branch=$(git branch --show-current)` and fail loudly if it is empty. Use AskUserQuestion to offer retrying only `git push origin "$current_branch"` or stopping; never rerun `gh repo create` on this path.
+- If neither repository nor origin exists, the create step failed before side effects. Classify gh's stderr first: retry a transient network/API failure once, and stop with the cause for a name conflict or missing permission. Use AskUserQuestion to offer retrying the create command or stopping only when the cause cannot be classified.
+- If the repository and origin exist, treat this as a partial success in the push step. Resolve `current_branch=$(git branch --show-current)` and fail loudly if it is empty. Classify the push stderr the same way (retry a transient failure once, stop with the cause for a permission or rejection). Use AskUserQuestion to offer retrying only `git push origin "$current_branch"` or stopping when it cannot be classified; never rerun `gh repo create` on this path.
 - If only one of repository/origin exists, show the observed state and stop for manual recovery rather than guessing.
 
 For a name collision, resolve `current_branch=$(git branch --show-current)` and the existing repository URL with `gh repo view "$owner/$repo_name" --json url --jq .url`. Fail loudly if either is empty. Then stop after showing these commands with the resolved values; do not execute them automatically:

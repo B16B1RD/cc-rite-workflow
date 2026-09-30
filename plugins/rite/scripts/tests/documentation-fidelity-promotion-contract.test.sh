@@ -208,7 +208,8 @@ assert_not_grep 'review retryable errors are not user prompts' \
 
 # 対象 6 スキルの質問点を棚卸した inventory。新しい AskUserQuestion を追加すると
 # 文言が異なっても fail し、2 類型のどちらかへの分類と inventory 更新を必須化する。
-assert_grep_count 'iterate question inventory is unchanged' "$ROOT/plugins/rite/skills/iterate/SKILL.md" 'AskUserQuestion' 5
+# The branch_absent question is gone: every option stopped, so iterate stops and shows the branch state.
+assert_grep_count 'iterate question inventory is unchanged' "$ROOT/plugins/rite/skills/iterate/SKILL.md" 'AskUserQuestion' 4
 # Count relocated procedures together with the entrypoint; keep the original totals.
 assert_grep_count 'fix question inventory is unchanged' "$ROOT/plugins/rite/skills/fix/SKILL.md" 'AskUserQuestion' 13 \
   "$ROOT/plugins/rite/skills/fix/references/"{target-comment,nb-sweep,accept-finding,wiki-recording}.md
@@ -222,7 +223,8 @@ assert_grep_count 'cleanup question inventory matches the approved set' "$ROOT/p
 # Reviewer resolution failures now stop with [review:error]; the three
 # references to bypassing missing reviewers through user confirmation are removed.
 # The four scope-triage questions are gone: the adoption exit decides each out-of-scope candidate.
-assert_grep_count 'pr-review question inventory is unchanged' "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'AskUserQuestion' 28 \
+# The quality-check run question is gone: the review runs the detected commands (the AI can check them).
+assert_grep_count 'pr-review question inventory is unchanged' "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'AskUserQuestion' 27 \
   "$ROOT/plugins/rite/skills/pr-review/references/"{doc-heavy-reviewers,doc-heavy-validation,output-diagnostics,scope-triage,wiki-recording}.md
 
 if [ "$failures" -ne 0 ]; then

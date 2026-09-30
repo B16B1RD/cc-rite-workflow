@@ -334,17 +334,27 @@ class WorkflowContracts(unittest.TestCase):
                        "| rc=1 + `reason=unmet_finding_not_blocking`"]:
             line = next(line for line in pr_review.splitlines() if line.startswith(marker))
             self.assertIn("5.1 の回収完了ゲート", line, marker)
-        # Every row that replaces a reviewer output reruns the producer gate after
-        # the collection gate, so a regenerated output never reaches aggregation
-        # unchecked. The producer gate's own retry row is the only collection-gate
-        # rerun left out: it reruns its helper directly (pinned above).
+        # Every line that reruns the collection gate replaces a reviewer output, so it
+        # reruns the producer gate after it: a regenerated output never reaches
+        # aggregation unchecked. The lines are collected from the skill, so a new
+        # regeneration route is checked without being listed here. The producer
+        # gate's own retry row is left out: it reruns its helper directly (pinned above).
+        regenerating = [line for line in pr_review.splitlines()
+                        if "回収完了ゲート" in line and ("再実行" in line or "rerun" in line)
+                        and line != likelihood_retry]
         for marker in ["| rc=1 + `reason ∈ {table_missing,", "retry の回収結果で manifest を更新し",
                        "| `[CONTEXT] MEASURED_GATE_FAILED=1; reason=verification_preset_by_caller`",
                        "| rc=1 + `reason=unmet_finding_not_blocking`"]:
-            with self.subTest(regenerated_by=marker):
-                line = next(line for line in pr_review.splitlines() if line.startswith(marker))
+            self.assertTrue(any(line.startswith(marker) for line in regenerating), marker)
+        for line in regenerating:
+            with self.subTest(regenerated_by=line[:60]):
                 self.assertIn("5.1.0.L", line)
-                self.assertLess(line.index("5.1 の回収完了ゲート"), line.index("5.1.0.L"))
+                self.assertLess(line.index("回収完了ゲート"), line.index("5.1.0.L"))
+        # The retry of a missing verification table replaces the output too, so its
+        # recommendations are extracted again after the producer gate passed.
+        retry_row = next(line for line in regenerating if line.startswith("retry の回収結果で manifest を更新し"))
+        self.assertIn("推奨事項を抽出し直す", retry_row)
+        self.assertLess(retry_row.index("5.1.0.L"), retry_row.index("推奨事項を抽出し直す"))
         # The measured-gate row rebuilds the JSON only after the regenerated output
         # passed every output check and its recommendations were extracted again.
         order = ["5.1 の回収完了ゲート", "5.1.0.L", "5.1.0.AC", "推奨事項を抽出し直し", "step 1 の JSON を作り直し step 2"]

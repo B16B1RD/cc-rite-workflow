@@ -43,7 +43,7 @@ AC の履歴照合では、項目先頭のチェック状態だけを比較か�
 
 `signals` に `prior_conflict` があるときは `none` / `normal` で矛盾を無視できず、helper は `record_invalid` にする。前提と処分を照合してトリガーを認定するか、誤った判定記録を修正して新しい request を取得する。
 
-`change_contract` は要件の決定が必要なので人間へ確認し、ゲートを保留したまま停止する。`fix_implementation` は同じ PR の採否出口に従って修正する。マージ後など同じ PR で直せない場合も、元の出口の保留を解除しない。同じ前提の再掲は、既存の `prior` と、同じ根因を追跡する `tracker` があればそれに紐付けて `consolidate` する。未解決の ADOPT を再掲という理由だけで REJECT にしない。REJECT は引き続き `V=C=T=false` の場合だけで、裁定は採否条件を上書きしない。回数・予算（cycle 数・登録上限・トークン予算）の到達は採否の理由にしない（[no_budget_quality_tradeoff](../skills/rite-workflow/references/coding-principles.md#no_budget_quality_tradeoff-no-budget-driven-quality-trade-off)）。
+`change_contract` は要件の決定が必要なので人間へ確認し、ゲートを保留したまま停止する。確認の依頼は、どの契約のどの要件を変えるか・なぜ AI では決められないか・どう判断するか（変える案と維持する案それぞれの帰結）・期待する回答を、前提知識のない人に分かる言葉で示す（[question_resolution](../skills/rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) 規則 6。人間が応答しない経路では規則 7）。`fix_implementation` は同じ PR の採否出口に従って修正する。マージ後など同じ PR で直せない場合も、元の出口の保留を解除しない。同じ前提の再掲は、既存の `prior` と、同じ根因を追跡する `tracker` があればそれに紐付けて `consolidate` する。未解決の ADOPT を再掲という理由だけで REJECT にしない。REJECT は引き続き `V=C=T=false` の場合だけで、裁定は採否条件を上書きしない。回数・予算（cycle 数・登録上限・トークン予算）の到達は採否の理由にしない（[no_budget_quality_tradeoff](../skills/rite-workflow/references/coding-principles.md#no_budget_quality_tradeoff-no-budget-driven-quality-trade-off)）。
 
 ## 保留と再開
 

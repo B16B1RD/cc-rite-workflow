@@ -95,6 +95,8 @@ Escalation occurs in two stages: a pre-debate guard and post-debate evaluation.
 |-----------|--------|
 | Either reviewer's finding is CRITICAL severity | Skip deliberation entirely, escalate to user immediately |
 
+**Before any escalation** (both stages): check both positions against the code at `file:line` and run the reproduction command or test each side cites. A contradiction the run settles is resolved by that result and recorded as agreed; it is not escalated. Escalate only what the run cannot settle — which behaviour the specification should have, or whether the fix belongs in this PR or a separate Issue — and write the request with the four elements of [question_resolution](../../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) rule 6. Never ask a person to judge whether the code is correct.
+
 **Post-deliberation evaluation**:
 
 Escalate to user (via `AskUserQuestion`) when:
@@ -105,29 +107,32 @@ Escalate to user (via `AskUserQuestion`) when:
 **Escalation format:**
 
 ```
-⚠️ レビュアー間で合意に至りませんでした
+⚠️ 実行しても決まらない判断があります
 
 ファイル: {file}:{line}
 
-  {Reviewer A} の最終見解:
-    主張: {revised_position_a}
+何を決めるか: {挙動の割れなら「この箇所の挙動として、どちらを仕様とするか」、scope の割れなら「この PR で直すか、別 Issue に回すか」}
+  案 A（{Reviewer A}）: {revised_position_a}
     根拠: {evidence_a}
-
-  {Reviewer B} の最終見解:
-    主張: {revised_position_b}
+  案 B（{Reviewer B}）: {revised_position_b}
     根拠: {evidence_b}
+
+なぜ AI では決められないか: {挙動の割れなら「両案の再現コマンド・テストを実行した結果と、仕様に記載が無い点」、scope の割れなら「Issue の範囲の記載からは、どちらとも決まらない点」}
+どう判断するか: {案 A を採ったときの帰結} / {案 B を採ったときの帰結}
+期待する回答: 採る案
 
 討論の経緯:
   - {Reviewer A} は {concession_a} を認めつつも、{claim_a} を主張
   - {Reviewer B} は {concession_b} を認めつつも、{claim_b} を主張
 
-どちらの評価を採用しますか？
 オプション:
-- {Reviewer A} の評価を採用
-- {Reviewer B} の評価を採用
-- 両方の指摘を統合（最高 severity を採用）
-- この指摘を無視
+- 案 A を採る
+- 案 B を採る
+- 両方を満たす形にする（最高 severity を採用）
+- どちらも採らない（指摘を取り下げる）
 ```
+
+scope の割れでは「両方を満たす形にする」を選択肢に出さない（同じ根因を、この PR の修正と別 Issue の両方にはできない）。
 
 ### Configuration
 

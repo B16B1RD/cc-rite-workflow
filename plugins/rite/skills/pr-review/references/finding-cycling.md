@@ -1,6 +1,6 @@
 # Finding Cycling Detection — Quality Signal SoT
 
-> **Source of Truth**: 本ファイルは Review/Fix ループにおける **Finding Cycling Detection** (review サイクル間の同一 finding 持続検出) と **Quality Signal 3 & 4 Detection** の SoT である。実際の caller は `skills/pr-review/SKILL.md` (Signal 3) と `skills/fix/SKILL.md` (Signal 2) であり、`skills/iterate/SKILL.md` の review-fix loop 内で間接的に実行される。本ファイルは cycle 間比較の判断基準 / Quality Signal markers / split bash / 4-option AskUserQuestion の標準形を定義する。
+> **Source of Truth**: 本ファイルは Review/Fix ループにおける **Finding Cycling Detection** (review サイクル間の同一 finding 持続検出) と **Quality Signal 3 & 4 Detection** の SoT である。実際の caller は `skills/pr-review/SKILL.md` (Signal 3) と `skills/fix/SKILL.md` (Signal 2) であり、`skills/iterate/SKILL.md` の review-fix loop 内で間接的に実行される。本ファイルは cycle 間比較の判断基準 / Quality Signal markers / split bash / 3-option AskUserQuestion の標準形を定義する。
 
 ## 概要 — Quality Signal 1-4 の位置付け
 
@@ -13,7 +13,7 @@ review-fix loop には、cycle 数に応じてレビュー品質を段階的に�
 | **Signal 3** — cross-validation disagreement | `pr-review.md` ステップ 5.2 + debate fails | レビュアー間の disagreement が debate でも解消されない |
 | **Signal 4** — finding quality gate failure | `_reviewer-base.md` Finding Quality Guardrail | reviewer 自身が self-degraded 状態を宣言 |
 
-Signal 1 は Phase 5.4.1.0 (本 reference §1)、Signal 3 と Signal 4 は Phase 5.4.3 Step 3.1 (本 reference §2) で検出する。4 signal すべてに対して **同じ 4-option AskUserQuestion** (本 reference §3) で escalation する。
+Signal 1 は Phase 5.4.1.0 (本 reference §1)、Signal 3 と Signal 4 は Phase 5.4.3 Step 3.1 (本 reference §2) で検出する。4 signal すべてに対して **同じ 3-option AskUserQuestion** (本 reference §3) で escalation する。
 
 設計判断: **品質 escalation の機構**は 4 quality signal のみとし、cycle 数に応じてレビュー品質を段階的に緩める iteration counter（progressive relaxation / degradation）は導入しない。過去に明示的に削除した cycle-count-based degradation の再発を防ぐため。ただしこれは「品質緩和の禁止」であり、非収束ループの最終安全網としてのサーキットブレーカー（収束トレンドの発散検出が主経路、`safety.max_review_cycles` は backstop）とは別レイヤで両立する — 後者は品質を一切緩めず、発火条件の成立で機械的に停止（対話は停止通知、`/rite:batch-run` バッチは failed 遷移）するだけで、本 signal 群の quality escalation を代替も抑制もしない。
 
@@ -90,7 +90,7 @@ context marker を emit:
 継続サイクル数ではなく、指摘そのものの循環を検出しています。
 ```
 
-4-option AskUserQuestion を提示する (§3 共通 4-option の節を参照)。
+3-option AskUserQuestion を提示する (§3 共通 3-option の節を参照)。
 
 ### Step 5 — Proceed to review invocation
 
@@ -129,9 +129,11 @@ Signal 3 は `pr-review.md` が stderr に emit 済みのため、conversation c
 
 ### Routing
 
-Signal 3 または Signal 4 が発火した場合、**§3 の 4-option AskUserQuestion** を提示し、§3 の branching table を適用する。いずれも発火しなかった場合は Phase 5.4.3 Step 4 (review result pattern routing) に直接進む。
+Signal 3 または Signal 4 が発火した場合、**§3 の 3-option AskUserQuestion** を提示し、§3 の branching table を適用する。いずれも発火しなかった場合は Phase 5.4.3 Step 4 (review result pattern routing) に直接進む。
 
-## §3 — 共通 4-option AskUserQuestion (Signal 1 / 3 / 4 共用)
+## §3 — 共通 3-option AskUserQuestion (Signal 1 / 3 / 4 共用)
+
+依頼は [question_resolution](../../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) 規則 6 の 4 要素で書く（どの指摘が繰り返しているか・なぜ実行結果では決着しないか・各選択肢で何が起きるか・期待する回答）。コードの妥当性の判定を人間に求める選択肢は置かない。
 
 > `-R {owner_repo}` は [Owner/Repo Resolution](../../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）をリテラル置換する（SSH host alias 環境対応）。
 
@@ -140,7 +142,6 @@ Signal 3 または Signal 4 が発火した場合、**§3 の 4-option AskUserQu
 | 本 PR 内で再試行（推奨） | review invocation (Phase 5.4.1.0 §1 Step 5 / Phase 5.4.3 Step 4) へ進む。再発火しても本 phase が再 escalate する (次サイクル経路) |
 | 別 Issue として切り出す | §4 の split bash で persistent finding を tracking Issue 化、work memory に split メモを残し、review invocation へ進む |
 | PR を取り下げる | `gh pr close {pr_number} -R {owner_repo}` を実行、review invocation を skip、Phase 5.6 (completion report) へ jump (workflow 終端) |
-| 手動レビューへエスカレーション | review invocation を skip、review-fix loop を抜けて Phase 5.5 (Ready for Review) へ jump (人手レビューに引継ぎ) |
 
 ### Branching after user selection
 
@@ -149,7 +150,6 @@ Signal 3 または Signal 4 が発火した場合、**§3 の 4-option AskUserQu
 | 本 PR 内で再試行 | review invocation 実行 |
 | 別 Issue として切り出す | §4 の split bash 実行 → review invocation 実行 |
 | PR を取り下げる | `gh pr close {pr_number} -R {owner_repo}` → Phase 5.6 (review invocation skip) |
-| 手動レビューへエスカレーション | Phase 5.5 へ jump (review invocation skip) |
 
 ## §4 — Split bash for "別 Issue として切り出す"
 

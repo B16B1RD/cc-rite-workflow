@@ -46,6 +46,10 @@ SHA == HEAD のときだけ `via=sweep`。2 行目不正は既存判定へ縮退
 `human-verified` であることを機械的に確認する。この境界により、未充足を override で通す経路を
 作らず、修正または AC 訂正後の再レビューを解消手段として維持する。
 
+attest の対象は、未検証のうち人間にしか確かめられない行に限る。AI が実行して確かめられる行は
+ready が実行し、その結果は review の記録を更新する再レビューで反映する。AI の実行結果で
+`human-verified` を作ると、人間の確認と実行結果の区別が記録から消えるためである。
+
 ## bang-backtick-hard-gate
 
 lint の bang-backtick は warning（`[lint:success]` を保つ）。本ゲートは同じパターンで Ready 遷移を
