@@ -226,6 +226,8 @@ named subagent の system prompt は各 agent ファイル本体だけで、別�
 
 値は `分類:` の直後の 1 語とし、注記は ` — ` の後ろに置く文法に閉じる。値の後ろに注記を自由に続けてよいとすると、「2 つ目の値」と「注記の中の分類語」を字面で区別する判定が要り、接続語や括弧を足すたびに取りこぼしと誤拒否が入れ替わる。文法を producer の指示と gate で揃えれば、外れた書き方は再生成の診断で直せる。
 
+分類は項目の冒頭（箇条書き記号と装飾の直後）の `分類:` だけから読む。文中や文末の `分類:` はラベルへの言及であり、その項目の分類の宣言ではない。行の中の最初の一致を読むと、「`分類: design_confirmation` を候補から外す点を別 Issue で直すべき」のように言及しただけの推奨が `design_confirmation` として通り、採否ゲートの候補から外れる。チェックボックス（`- [x] 分類: …`）や引用記号（`>`）を挟んだ項目は冒頭とみなさず、欠落として再生成に回す。
+
 `recommendation_items` は全推奨の canonical。`candidate_count` は Source A + Source B（actionable/boundary）の dedup 後の合算に triage の hold の候補を加えた数で、7.7 / 8.0.2 の trigger になる。
 
 ## likelihood-evidence-before-demotion

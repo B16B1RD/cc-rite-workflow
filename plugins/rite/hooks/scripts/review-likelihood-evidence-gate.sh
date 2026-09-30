@@ -51,7 +51,12 @@ parsed=$(LC_ALL=C awk -v exception_category="$exception_category" -v reviewer_ty
     if (trim($0) == "" || $0 ~ /^\|[[:space:]]*:?-+/) next
     text = $0
     marked = sub(/^[[:space:]]*([-*+]|[0-9]+\.)[[:space:]]+/, "", text)
+    if (!marked) marked = sub(/^[[:space:]]*・[[:space:]]*/, "", text)
     text = trim(text)
+    # The classification is the one that opens the item. A "分類:" later in the line
+    # is a mention of the label, not the classification of this item.
+    opens = match(text, /^[*`]*分類[*`]*[[:space:]]*(:|：)/)
+    head_length = RLENGTH
     indented = (substr($0, 1, 1) ~ /[ \t]/)
     # A line that only says there is nothing to recommend counts as zero items.
     # The set is closed: a line that goes on after "なし" is still an item. An
@@ -61,12 +66,12 @@ parsed=$(LC_ALL=C awk -v exception_category="$exception_category" -v reviewer_ty
     sub(/(\.|。)$/, "", none)
     none = tolower(trim(none))
     if (!indented && (none == "なし" || none == "特になし" || none == "該当なし" || none == "none" || none == "n/a" || none == "-")) { after_none = 1; next }
-    if (indented && !after_none && !(marked && text ~ /^[*`]*分類[*`]*[[:space:]]*(:|：)/)) next
+    if (indented && !after_none && !(marked && opens)) next
     after_none = 0
     recommendations++
     value = "(missing)"
-    if (match(text, /分類[*`]*[[:space:]]*(:|：)/)) {
-      clause = substr(text, RSTART + RLENGTH)
+    if (opens) {
+      clause = substr(text, head_length + 1)
       while (clause != "" && substr(clause, 1, 1) ~ /[*` \t]/) clause = substr(clause, 2)
       cut = index(clause, "—")
       if (cut) clause = substr(clause, 1, cut - 1)
@@ -159,7 +164,7 @@ if [ "$missing" -gt 0 ]; then
 fi
 
 if [ "$invalid" -gt 0 ]; then
-  echo "ERROR: reviewer output contains $invalid recommendation(s) whose 分類 is missing or not one of actionable / design_confirmation / boundary" >&2
+  echo "ERROR: reviewer output contains $invalid recommendation(s) whose 分類 is missing or not one of actionable / design_confirmation / boundary (分類 must open the item, right after the list marker)" >&2
   printf '%s\n' "$parsed" | tail -n +2 | while IFS=$'\t' read -r line value; do
     echo "  line $line: 分類=$value" >&2
   done
