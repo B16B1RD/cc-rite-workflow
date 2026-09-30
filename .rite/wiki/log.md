@@ -120,6 +120,7 @@
 * **Update**: [散文の主張を実装に合わせて絞るときは、限定の外側・指示語・同じ主張の別箇所まで突き合わせる](pages/heuristics/narrowed-prose-claim-check-outside-scope-and-same-claims.md) — raw/fixes/20260930T061718Z-pr-3513.md を統合
 * **Skip**: [再レビューのレビュー結果](raw/reviews/20260930T060534Z-pr-3513.md) — 指摘 0 件の再レビューで、新しい経験則はない
 * **Skip**: [再レビューのレビュー結果](raw/reviews/20260930T062244Z-pr-3513.md) — 指摘 0 件の再レビューで、新しい経験則はない
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=604, broken_refs=0
 
 ## 2026-09-29
 
