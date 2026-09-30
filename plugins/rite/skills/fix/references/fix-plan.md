@@ -62,7 +62,7 @@ mergeable のレビューの後に手で commit すると、その HEAD には f
 1. `git fetch origin <base>` のあと `git merge --no-commit --no-ff origin/<base>` で取り込み、競合を解消して `git add` する（HEAD はレビュー済み commit のまま）。`<base>` は `rite-config.yml` の `branch.base`（未設定なら取り込めず止まる）。merge が既に進行中（`MERGE_HEAD` がある）なら、取り込み相手が `origin/<base>` のときは競合解消と `git add` から始め、そうでなければ `git merge --abort` してからこの手順 1 に戻る
 2. `git diff --no-renames --name-only HEAD` の全パスを 1 つの `action: "base-intake"` グループの `paths` に並べ、全体検証を対応付ける。`finding_ids` は空でよい。改名は旧パスと新パスの 2 つとして並ぶ
 3. `check` → `verify --kind all` を通し、`git commit` で取り込みを確定する（`git merge --continue` も同じ検査を受ける）
-4. 別の Bash 呼び出しで Wiki 適用証跡の head をレビュー済み commit（取り込み commit の第 1 親）から新しい HEAD へ進める。進めないと次のレビューのゲートが `stale_head` で拒否する。`WIKI_APPLY_HEAD=advanced` または `=current` なら手順 5 へ進む。非 0 終了では証跡は変わっていないので、Wiki の capture からやり直して証跡を書き直してから手順 5 へ進む
+4. 別の Bash 呼び出しで Wiki 適用証跡の head をレビュー済み commit（取り込み commit の第 1 親）から新しい HEAD へ進める。進めないと次のレビューのゲートが `stale_head` で拒否する。`WIKI_APPLY_HEAD=advanced` または `=current` なら手順 5 へ進む。非 0 終了では証跡は変わっていないので、Wiki の capture からやり直して（手順は [fix](../SKILL.md) の 0.5.W、契約は [wiki-apply-contract.md](../../../references/wiki-apply-contract.md)）証跡を書き直してから手順 5 へ進む
 
    ```bash
    # base-intake-wiki-apply-head
