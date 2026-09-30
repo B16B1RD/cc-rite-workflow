@@ -155,14 +155,15 @@ esac
 
 ### 1.1 Retrieve Base Branch
 
-Read `rite-config.yml` at the project root using the Read tool, and get the `branch.base` value:
+セッション worktree では設定が main checkout にしか無いことがある。相対パスで読まず、resolver でパスを解決してから `branch.base` を取る:
 
-```
-Read: rite-config.yml
+```bash
+bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh
 ```
 
-1. `rite-config.yml` に `branch.base` があればその値を `{base_branch}` にする
-2. ファイル不在 / キー不在 / `null` / 空文字 / `branch` 節不在 → `main`
+1. rc=0: stdout のパスを `{rite_config}` として Read し、`branch.base` があればその値を `{base_branch}` にする
+2. rc=1（設定ファイルなし）/ キー不在 / `null` / 空文字 / `branch` 節不在 → `main`
+3. rc=2（読めない・解決不能）: stderr を表示して停止する。既定値へは倒さない
 
 ### 1.2 Branch Verification
 

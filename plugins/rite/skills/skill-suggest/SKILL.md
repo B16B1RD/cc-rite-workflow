@@ -52,7 +52,7 @@ ls -la package.json pyproject.toml Cargo.toml go.mod pom.xml build.gradle 2>/dev
 
 ### 1.4 Read rite-config.yml
 
-Use the Read tool to read `rite-config.yml` and check the following:
+Resolve the config path with `bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh` (worktree-safe; do not read a relative path). rc=0: Read the printed path as `{rite_config}`. rc=1 (no config): treat `language` as unset. rc=2: show stderr and stop, with no default fallback. Check the following:
 
 - `language`: Language setting (used to determine output language)
 

@@ -394,7 +394,7 @@ Execute test verification before committing when conditions are met.
 
 ##### Condition Check
 
-Read `rite-config.yml` and check:
+設定は 5.0.W と同じ resolver（`rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1`）で解決した `$rite_config` を読んで確認する。rc=2 は stderr を表示して停止し、既定値へ倒さない:
 
 | Condition | Check Method |
 |-----------|-------------|

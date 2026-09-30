@@ -387,7 +387,7 @@ bash "$plugin_root/hooks/scripts/wiki-branch-init.sh" \
 
 ## ステップ 3.5: Wiki Worktree セットアップ
 
-`separate_branch` のとき、ステップ 3.1 直後に `.rite/wiki-worktree/` を作成する。
+`separate_branch` のとき、ステップ 3.1 直後に `.rite/wiki-worktree/` を作成する。復旧案内の `{wiki_worktree_abs}` は共有 root 起点の絶対パス（`bash {plugin_root}/hooks/state-path-resolve.sh` の出力 + `/.rite/wiki-worktree`）をリテラル置換する。session worktree の cwd でも同じ worktree を指す。
 rationale: references/rationale.md#worktree-setup-nonblocking
 
 ```bash
@@ -475,7 +475,7 @@ EOF
       0) echo "✅ pages/ migration committed to wiki branch" ;;
       3)
         echo "WARNING: migration commit 内部で git 操作失敗 (rc=3)" >&2
-        echo "  対処: git -C .rite/wiki-worktree status で状態を確認してください" >&2
+        echo "  対処: git -C {wiki_worktree_abs} status で状態を確認してください" >&2
         ;;
       4) echo "WARNING: migration commit landed locally but push failed (rc=4)" >&2 ;;
       6) echo "WARNING: wiki worktree の管理ディレクトリに書き込めないため migration commit しませんでした (rc=6, reason=sandbox-mask)。実行エージェントは直後の再試行専用 bash block を別の Bash tool call で dangerouslyDisableSandbox: true を付けて 1 回だけ実行する (確認不要)" >&2 ;;
@@ -532,7 +532,7 @@ trap - EXIT INT TERM HUP
 echo "$retry_out"
 case "$retry_rc" in
   0) echo "✅ pages/ migration committed to wiki branch" ;;
-  3) echo "WARNING: migration commit 内部で git 操作失敗 (retry rc=3)。git -C .rite/wiki-worktree status で状態を確認してください" >&2 ;;
+  3) echo "WARNING: migration commit 内部で git 操作失敗 (retry rc=3)。git -C {wiki_worktree_abs} status で状態を確認してください" >&2 ;;
   4) echo "WARNING: migration commit landed locally but push failed (retry rc=4)" >&2 ;;
   6) echo "WARNING: sandbox 無効化付き再実行でも migration commit しませんでした (retry rc=6, reason=sandbox-mask)。これ以上は再試行せず、stderr の管理ディレクトリの権限・容量を確認する" >&2 ;;
   *) echo "WARNING: pages/ migration commit retry failed (rc=$retry_rc)" >&2 ;;

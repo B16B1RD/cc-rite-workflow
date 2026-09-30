@@ -303,5 +303,35 @@ else
   fail "T-12 template-reset detects, backs up and regenerates the resolved path (missing:$reset_missing)"
 fi
 
+# 設定を読む skill は相対パスの Read ではなく resolver の出力を読む。
+# resolver 行が最初の設定参照より前にあり、rc=2 は止める文言を持つ
+for sk in pr-create issue-implement lint skill-suggest issue-list setup; do
+  md="$PLUGIN_ROOT/skills/$sk/SKILL.md"
+  resolver_at=$(grep -nF 'rite-config-path.sh' "$md" | head -n 1 | cut -d: -f1) || resolver_at=""
+  use_at=$(grep -nE '\{rite_config\}|\$rite_config' "$md" | head -n 1 | cut -d: -f1) || use_at=""
+  relative_reads=$(grep -cE 'Read: rite-config\.yml|[Rr]ead `rite-config\.yml`|`rite-config\.yml` (at|in) the project root|`rite-config\.yml` using the Read tool' "$md") || relative_reads=0
+  sk_missing=""
+  [[ -n "$resolver_at" && -n "$use_at" && "$resolver_at" -le "$use_at" ]] || sk_missing="$sk_missing resolver-before-use"
+  [[ "$relative_reads" = "0" ]] || sk_missing="$sk_missing relative-reads=$relative_reads"
+  grep -qF 'rc=2' "$md" || sk_missing="$sk_missing rc2"
+  if [[ -z "$sk_missing" ]]; then
+    pass "T-13 $sk reads the resolved config path"
+  else
+    fail "T-13 $sk reads the resolved config path (missing:$sk_missing)"
+  fi
+done
+
+# Wiki 復旧案内は cwd 非依存の絶対パスで示す
+for sk in wiki-init recover cleanup wiki-ingest; do
+  md="$PLUGIN_ROOT/skills/$sk/SKILL.md"
+  rel=$(grep -cF 'git -C .rite/wiki-worktree' "$md") || rel=0
+  abs=$(grep -cF '{wiki_worktree_abs}' "$md") || abs=0
+  if [[ "$rel" = "0" && "$abs" -ge 1 ]]; then
+    pass "T-14 $sk wiki guidance uses the absolute worktree path"
+  else
+    fail "T-14 $sk wiki guidance uses the absolute worktree path (relative=$rel abs=$abs)"
+  fi
+done
+
 print_summary "$(basename "$0")" \
   "Drift hint: rite-config-path.sh — worktree toplevel first, then main checkout root; rc=1 lists tried paths, rc=2 never falls through."
