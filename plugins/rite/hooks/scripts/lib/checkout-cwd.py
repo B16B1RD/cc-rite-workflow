@@ -477,7 +477,7 @@ def each_call(command, cwd):
         return here
 
     command, has_function = prepare_command(command)
-    segments = scope.shell_segments(command, group_ids=True)
+    segments = scope.shell_segments(command, group_ids=True, omit_case_patterns=True)
     reject_compound_changes(segments, cwd, path_dirs, has_function)
     trusted = _assigned_once(segments)
     for position, (words, nested, before, after) in enumerate(segments):

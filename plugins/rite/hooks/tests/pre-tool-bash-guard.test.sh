@@ -3268,6 +3268,20 @@ p10_allow "a path-only substitution in a condition does not move the caller" "$p
   "if true; then d=\$(cd $p10_scratch && pwd); fi; gh api x"
 p10_allow "a case arm before an if is not a function definition" "$p10_wt" \
   "case x in y) :;; x) if true; then :; fi;; esac; cd $p10_wt; gh api x"
+# Patterns are data, even when their dequoted words spell control keywords.
+for p10_pattern in if "'if'" 'a|if' for "'esac'" 'a|esac' '(if' '\\if' '[(]' '[)]' '[[:alpha:](]'; do
+  p10_allow "case pattern $p10_pattern before an outer cd" "$p10_wt" \
+    "case x in y) :;; $p10_pattern) :;; esac; cd $p10_wt; gh api x"
+  p10_deny "case pattern $p10_pattern does not close the case before cd" outside-checkout-uninspectable \
+    "cannot determine the working directory" "$p10_wt" \
+    "case x in y) :;; $p10_pattern) cd $p10_wt;; esac; gh api x"
+done
+p10_deny "nested cases retain the outer conditional cd" outside-checkout-uninspectable \
+  "cannot determine the working directory" "$p10_wt" \
+  "case x in x) case y in y) :;; esac; cd $p10_wt;; esac; gh api x"
+p10_allow "case alternatives preserve a following loop without cd" "$p10_wt" \
+  "case x in x|if) :;; esac; for i in 1 2; do gh api x; done"
+
 rc=0
 p10_helper=$(python3 "$SCRIPT_DIR/../scripts/lib/checkout-cwd.py" \
   --cwd "$p10_scratch" --root "$p10_main" \
