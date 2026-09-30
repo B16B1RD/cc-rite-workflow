@@ -208,6 +208,7 @@
 * **Skip**: [20260930T092929Z-pr-3527.md](raw/reviews/20260930T092929Z-pr-3527.md) — 指摘はなく、時間判定の既存契約を維持した記録だけで、新しい経験則はない
 * **Skip**: [20260930T091659Z-pr-3524.md](raw/reviews/20260930T091659Z-pr-3524.md) — 指摘はなく、説明文を現行の書込値へ合わせた記録だけで、繰り返す欠陥パターンはない
 * **lint:clean** — contradictions=0, stale=63, orphans=0, missing_concept=0, unregistered_raw=618, broken_refs=0
+* **Skip**: [レビュー記録](raw/reviews/20260930T101614Z-pr-3530.md) — 指摘なしの検証結果で、新しい経験則はない。
 
 ## 2026-09-29
 
