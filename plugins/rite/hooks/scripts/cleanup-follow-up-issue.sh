@@ -90,7 +90,7 @@
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=head_unresolved; pr=<n>   (対象 commit を決められない。一覧を書かない)
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_row_invalid|guardrail_source_missing; pr=<n>   (判定できない guardrail 行がある。一覧を書かない)
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_source_check_failed; pr=<n>   (却下台帳の旧形式行とレビュー結果 JSON の
-#     照合そのものに失敗した。ERROR は行を示さず jq のエラーを添える。一覧を書かない)
+#     照合そのものに失敗した。ERROR は照合キーを作れない指摘を source (出典 JSON) と id で示し、jq のエラーを添える。一覧を書かない)
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=hold_unreadable; pr=<n>   (採否ゲートの hold ファイルがあるのに読めず、
 #     前回の判定記録を再利用する候補を決められない。一覧を書かない。起票実行ではゲートが同じ hold を読めず
 #     FOLLOW_UP_ISSUE=held; reason=gate_failed_rc1; hold_file=none で止まる)
@@ -595,7 +595,14 @@ if [ -n "$SOURCE_ISSUE" ] && { [ -n "$LIST_OUT" ] || [ "$deferred_n" -gt 0 ] || 
         | [.[1], .[2], .[5]] | join("\u001f")] | join("\n")' 2>"$comments_err"); then
       # 台帳は上で解析できているので、ここでの失敗は読んだ JSON との照合の失敗。検査を飛ばして起票へ進まない
       echo "ERROR: 却下台帳の旧形式行とレビュー結果 JSON を照合できません。原文を失った行を判定できないため follow-up を判定しません (PR #${PR_NUMBER})" >&2
-      [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+      # jq のエラーは台帳本文 (stdin) の位置しか示さないので、照合キーを作れない指摘を出典 JSON と id で示す
+      if ! broken=$(jq -r '.[] | objects | select(has("loc") | not) | select((.file // "") | type != "string")
+          | "  source=\((._src // "") | split("/") | last) id=\(.id // "" | tostring) file=\(.file | tojson)"' "$cur_file" 2>/dev/null) \
+         || [ -z "$broken" ]; then
+        broken="  照合キーを作れない指摘を特定できません (和集合の一時ファイル $cur_file を確認してください)"
+      fi
+      printf '%s\n' "$broken" | neutralize_ctrl --keep-newline >&2
+      [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  jq: /' >&2
       if [ -n "$LIST_OUT" ]; then
         echo "[CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_source_check_failed; pr=${PR_NUMBER}" >&2
       else

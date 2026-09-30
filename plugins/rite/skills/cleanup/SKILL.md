@@ -590,7 +590,7 @@ bash {plugin_root}/hooks/scripts/cleanup-follow-up-issue.sh \
 | `listed; count=<n>; ...; judge=<j>`（n ≥ 1） | 一覧ファイルを Read し、下の規則で判定記録を書いてから 6.0.C へ進む（`judge=0` なら `reuse` を写すだけで判定しない） |
 | `failed; reason=head_unresolved` | 判定記録を書かずに 6.0.C へ進む（対象 commit を決められないため、起票の実行も保留ではなく同じ reason の `FOLLOW_UP_ISSUE=failed` で止まる） |
 | `failed; reason=guardrail_row_invalid` / `guardrail_source_missing` | 判定記録を書かずに 6.0.C へ進む（判定できない guardrail 行があるため、起票の実行も同じ reason の `FOLLOW_UP_ISSUE=failed` で止まる。ERROR が示す行を直すか出典 JSON を戻して再実行する） |
-| `failed; reason=guardrail_source_check_failed` | 判定記録を書かずに 6.0.C へ進む（却下台帳の旧形式行とレビュー結果 JSON の照合そのものに失敗した。ERROR は行を示さない。続く jq のエラーが示すレビュー結果 JSON の壊れた指摘を直して再実行する。起票の実行も同じ reason の `FOLLOW_UP_ISSUE=failed` で止まる） |
+| `failed; reason=guardrail_source_check_failed` | 判定記録を書かずに 6.0.C へ進む（却下台帳の旧形式行とレビュー結果 JSON の照合そのものに失敗した。ERROR が `source=`（出典 JSON）と `id=` で示す指摘（`file` が文字列でない）を直して再実行する。jq のエラーの位置は却下台帳本文の行で、指摘の位置ではない。起票の実行も同じ reason の `FOLLOW_UP_ISSUE=failed` で止まる） |
 | `failed; reason=hold_unreadable` | 判定記録を書かずに 6.0.C へ進む（採否ゲートの hold ファイルを読めず再利用する記録を決められない。起票の実行はゲートが同じ hold ファイルを読めずに止まる） |
 | 上記以外の `failed` / marker なし | 判定記録を書かずに 6.0.C へ進む（helper は記録なしとして保留する） |
 

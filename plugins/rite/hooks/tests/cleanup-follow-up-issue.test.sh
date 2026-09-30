@@ -2809,6 +2809,7 @@ ADOPT_MODE=manual
 rm -f "$TMP_ROOT/t94-chk-cands.json"
 run_target "$r" --list-candidates "$TMP_ROOT/t94-chk-cands.json"
 assert_grep "T-94 照合に失敗したら一覧は失敗" "$ERR" '^\[CONTEXT\] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_source_check_failed; pr=9$'
+assert_grep "T-94 照合に失敗したら直す指摘を出典 JSON と id で示す" "$ERR" '^  source=9-20260101120000\.json id=F-01 file=5$'
 assert "T-94 照合に失敗したら一覧を書かない" "no" "$([ -e "$TMP_ROOT/t94-chk-cands.json" ] && echo yes || echo no)"
 # 起票の判定記録 (ADOPT) を置く。止まらなければこの候補が起票されるので、create 0 回が停止を示す
 write_adoption "$r" "$(rec '["9-20260101120000.json#F-01"]')"
