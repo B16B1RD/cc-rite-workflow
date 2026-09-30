@@ -209,6 +209,7 @@
 * **Skip**: [20260930T091659Z-pr-3524.md](raw/reviews/20260930T091659Z-pr-3524.md) — 指摘はなく、説明文を現行の書込値へ合わせた記録だけで、繰り返す欠陥パターンはない
 * **lint:clean** — contradictions=0, stale=63, orphans=0, missing_concept=0, unregistered_raw=618, broken_refs=0
 * **Skip**: [レビュー記録](raw/reviews/20260930T101614Z-pr-3530.md) — 指摘なしの検証結果で、新しい経験則はない。
+* **Lint incomplete** — 機械検査は stale=63、orphans=0、missing_concept=0、unregistered_raw=620、broken_refs=0、descriptive_number_ref=0。全ページの意味的な矛盾比較は未完了。今回の取り込みは指摘なしの検証記録の skip 状態だけを更新し、経験則ページは変更していない。
 
 ## 2026-09-29
 
