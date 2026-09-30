@@ -38,7 +38,13 @@ current_oid=$(git rev-parse HEAD) || { echo "ERROR: Ready gate: 現在の HEAD �
 scan_root="."
 if [ "$current_oid" != "$pr_head_oid" ]; then
   git fetch origin "$pr_head_oid" >/dev/null 2>&1 || { echo "ERROR: Ready gate: PR head $pr_head_oid の fetch に失敗しました" >&2; exit 2; }
-  ready_gate_tmp=$(mktemp -d "${TMPDIR:-/tmp}/rite-ready-pr-head.XXXXXX") || { echo "ERROR: Ready gate: 一時ディレクトリの作成に失敗しました" >&2; exit 2; }
+  # 名前に自セッションを記録し、別セッションの pr-cycle-cleanup が走査中に回収しないようにする。
+  # セッション ID を取れないときは所有者なしの名前で作る (その場合は回収から守られない)
+  if sid=$(bash "$(dirname "${BASH_SOURCE[0]}")/../session-identity.sh"); then
+    ready_gate_tmp=$(mktemp -d "${TMPDIR:-/tmp}/rite-ready-pr-head-owner.$sid.XXXXXX")
+  else
+    ready_gate_tmp=$(mktemp -d "${TMPDIR:-/tmp}/rite-ready-pr-head.XXXXXX")
+  fi || { echo "ERROR: Ready gate: 一時ディレクトリの作成に失敗しました" >&2; exit 2; }
   rmdir "$ready_gate_tmp" || { echo "ERROR: Ready gate: 一時 worktree path の準備に失敗しました" >&2; exit 2; }
   git worktree add --detach "$ready_gate_tmp" "$pr_head_oid" >/dev/null 2>&1 || { echo "ERROR: Ready gate: PR head $pr_head_oid の一時 worktree 作成に失敗しました" >&2; exit 2; }
   scan_root="$ready_gate_tmp"
