@@ -172,6 +172,11 @@ if [ "$branch_strategy" = "separate_branch" ]; then
     # 何も退避しなかった push は refs/stash をほかの entry に残す。それを戻すと他人の変更を展開する
     if [ -z "$stash_sha" ] || [ "$stash_sha" = "$stash_before" ]; then
       echo "ERROR: git stash push が新しい entry を作りませんでした。自分の退避なしには続行しません" >&2
+      # stash は submodule の変更を退避しない。判定を submodule 抜きに狭めると orphan checkout が submodule の編集を消すため、止めたまま原因を示す
+      if git diff --quiet --ignore-submodules HEAD 2>/dev/null && git diff --cached --quiet --ignore-submodules HEAD 2>/dev/null; then
+        echo "  原因: 変更は submodule の中だけです。git stash は submodule の変更を退避できません" >&2
+        echo "  対処: submodule 側で変更を commit するか退避してから再実行してください" >&2
+      fi
       exit 1
     fi
     stash_needed=true

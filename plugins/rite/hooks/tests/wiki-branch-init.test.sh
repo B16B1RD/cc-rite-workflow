@@ -613,6 +613,23 @@ else
   fail "before=$before stash=$(stash_shas "$repo") rc=$HELPER_RC state=$state output=$HELPER_OUTPUT"
 fi
 
+echo "TC-16: a submodule-only change stops with its cause and keeps the submodule edit"
+# git stash does not save submodule changes, so the new-entry guard stops. The stop must
+# name the cause; skipping the guard would let the orphan checkout wipe the submodule edit.
+repo=$(make_sandbox tc16)
+sub="$TEST_DIR/tc16-sub"
+git init -q -b main "$sub"
+(cd "$sub" && git config user.email t@e && git config user.name t && echo a > a && git add a && git commit -qm s)
+(cd "$repo" && git -c protocol.file.allow=always submodule add -q "$sub" sub >/dev/null 2>&1 && git commit -qm sub && git push -q origin main 2>/dev/null)
+echo "edited" > "$repo/sub/a"
+run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"submodule"* ]] \
+   && [ "$(cat "$repo/sub/a")" = "edited" ] && ! git -C "$repo" rev-parse --verify -q wiki >/dev/null; then
+  pass "submodule-only change → ERROR names submodule, edit kept, no wiki branch"
+else
+  fail "rc=$HELPER_RC sub/a=$(cat "$repo/sub/a" 2>/dev/null) output=$HELPER_OUTPUT"
+fi
+
 echo "TC-15: no argument-less stash pop remains in the helper or its reference pattern"
 PATTERNS_DOC="$SCRIPT_DIR/../../references/wiki-patterns.md"
 for f in "$TARGET" "$PATTERNS_DOC"; do

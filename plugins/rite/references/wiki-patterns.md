@@ -95,7 +95,13 @@ if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/de
   stash_before=$(git rev-parse -q --verify refs/stash) || stash_before=""
   git stash push -m "rite-wiki-init-stash" || { echo "ERROR: git stash push failed" >&2; exit 1; }
   stash_sha=$(git rev-parse -q --verify refs/stash) || stash_sha=""
-  [ -n "$stash_sha" ] && [ "$stash_sha" != "$stash_before" ] || { echo "ERROR: git stash push が新しい entry を作りませんでした" >&2; exit 1; }
+  [ -n "$stash_sha" ] && [ "$stash_sha" != "$stash_before" ] || {
+    echo "ERROR: git stash push が新しい entry を作りませんでした" >&2
+    # stash は submodule の変更を退避しない。判定を submodule 抜きに狭めると orphan checkout が submodule の編集を消すため、止めたまま原因を示す
+    git diff --quiet --ignore-submodules HEAD && git diff --cached --quiet --ignore-submodules HEAD \
+      && echo "  原因: 変更は submodule の中だけです。submodule 側で commit か退避をしてから再実行してください" >&2
+    exit 1
+  }
   stash_needed=true
 fi
 
