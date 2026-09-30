@@ -23,6 +23,8 @@
 * **Skip**: [レビュー結果](raw/reviews/20260930T225422Z-pr-3550.md) — 上流 writer 不在という既存の対処を文書・一次資料・実測で確認した記録であり、新しい欠陥や運用上の経験則はない。版依存の説明は配布文書へ反映済み。
 * **Skip**: [レビュー結果](raw/reviews/20260930T230650Z-pr-3550.md) — 上流 writer 不在という既存の対処を文書・一次資料・実測で確認した記録であり、新しい欠陥や運用上の経験則はない。版依存の説明は配布文書へ反映済み。
 
+* **lint:clean** — contradictions=0, stale=65, orphans=0, missing_concept=0, unregistered_raw=640, broken_refs=0
+
 ## 2026-09-30
 
 * **Lint incomplete** — 機械検査は stale=64、orphans=0、missing_concept=0、unregistered_raw=621、broken_refs=0、descriptive_number_ref=0。更新ページは出典と関連ページを照合した。全658ページの意味的な矛盾比較は未完了であり、Wiki 全体の品質検査成功とは扱わない。
