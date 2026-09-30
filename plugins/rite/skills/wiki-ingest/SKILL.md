@@ -1141,7 +1141,7 @@ fi
 
 ### 9.0 Ingest セッション lock の解放
 
-ステップ 1.4 で取得した ingest セッション lock がまだ自分のものかを確かめてから解放する。`own` 以外（奪われた・消えた・確認に失敗した）なら WARNING を出し、解放は必ず実行する。`own` 以外でも、解放に失敗しても、ingest は完了扱いとして完了レポートへ進み、WARNING は `{ingest_outstanding_line}` のロック系統の行に載せる。block の終了コードは解放の終了コードをそのまま返す:
+ステップ 1.4 で取得した ingest セッション lock がまだ自分のものかを確かめてから解放する。`own` 以外（奪われた・消えた・確認に失敗した）なら WARNING を出し、解放は必ず実行する。`own` 以外でも、解放に失敗しても、ingest は完了扱いとして完了レポートへ進み、WARNING は `{ingest_outstanding_line}` のロック系統の行に載せる。`own` 以外では stdout にも `[CONTEXT] WIKI_INGEST_LOCK_LOST=1; check={値}` を 1 行出す（`/rite:cleanup` ステップ 9 が拾う。確認に失敗したときの値は `unknown`。取り込みの成否は変えない）。block の終了コードは解放の終了コードをそのまま返す:
 rationale: references/rationale.md#lock-release-failsafe
 
 ```bash
@@ -1155,6 +1155,7 @@ case "$lock_state" in
   *) echo "WARNING: ingest 中に wiki ingest のロックを失っていました (check=$lock_state)。別のセッションが同じ wiki worktree へ並行して書き込んだ可能性があります" >&2 ;;
 esac
 if [ "$lock_state" != "own" ]; then
+  echo "[CONTEXT] WIKI_INGEST_LOCK_LOST=1; check=${lock_state:-unknown}"
   wiki_wt_abs="{wiki_worktree_abs}"; wiki_wt_abs="${wiki_wt_abs:-.rite/wiki-worktree}"
   case "{branch_strategy}" in
     separate_branch) echo "  対処: 直近の wiki の commit を確認し（git -C \"$wiki_wt_abs\" log --oneline -n 20）、重複や上書きがあれば手で直してください" >&2 ;;
