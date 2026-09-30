@@ -82,6 +82,7 @@ rationale: references/rationale.md#circuit-breaker-conditions
 | `{sweep_origin}` | ステップ 5.S へ入った通常ループの sentinel。ステップ 0.7 から入ったときは `ITERATE_NB_SWEEP_RESUME=resume` の `origin=`。sweep 内の sentinel で上書きしない。5.S を経由せずにステップ 5.0.1 へ来た終端（`[fix:cancelled-by-user]`）ではその終端 sentinel |
 | `{sweep_issued}` / `{sweep_recorded}` | ステップ 5.S の `NB_SWEEP_RESULT` / `ITERATE_NB_SWEEP=done` の `issued=` / `recorded=` |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
+| `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式） |
 | `{action_items}` | 本ループの最終試行に残った、ユーザーの操作が必要な WARNING / ERROR。ステップ 5 / 6 の `要対応:` 欄へ転記する（0 件なら欄ごと省略） |
 
 ---
@@ -95,7 +96,7 @@ rationale: references/rationale.md#step0-canonical-pattern
 bash {plugin_root}/scripts/iterate-step.sh restore
 ```
 
-LLM は `[CONTEXT] ITERATE_ISSUE` / `ITERATE_BRANCH` から値を読み、後続の flow-state.sh set 呼び出しで `--issue` / `--branch` に literal substitute する。値が空の場合は、先に `gh pr view {pr_number} --json headRefName,closingIssuesReferences` から補う。それでも取れないときだけ AskUserQuestion で「Issue 番号 / ブランチ名を入力 / 中止」を提示。
+LLM は `[CONTEXT] ITERATE_ISSUE` / `ITERATE_BRANCH` から値を読み、後続の flow-state.sh set 呼び出しで `--issue` / `--branch` に literal substitute する。値が空の場合は、先に `gh pr view {pr_number} -R {owner_repo} --json headRefName,closingIssuesReferences` から補う。それでも取れないときだけ AskUserQuestion で「Issue 番号 / ブランチ名を入力 / 中止」を提示。
 
 ### ステップ 0.5: セッション worktree 健全性の保証（multi_session 有効時）
 

@@ -325,7 +325,7 @@ fi
 残骸（前のセッションの作業フォルダが、worktree の登録を外れて残ったもの）や古い worktree を消すかは、必ず人間に確認する（削除は不可逆操作で、中身を調べても承認は省かない）。AI は依頼の説明に載せる中身を先に調べる（[question_resolution](../skills/rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) 規則 6）:
 
 1. `ls -A {path}` で中身を見る。空かどうかを説明に載せる
-2. 中身があれば、`git -C {path} rev-parse --show-toplevel` が `{path}` と一致するときは `git -C {path} status --porcelain --ignored` で未コミットの変更と ignore 対象のファイルを集める。一致しないか失敗するとき（`{path}` 自身が作業ツリーの最上位ではなく、git は親の checkout を読む）は `ls -A {path}` のファイル一覧（先頭 20 件）を集める
+2. 中身があれば、`git -C {path} rev-parse --show-toplevel` が `{path}` の絶対パス（`cd {path} && pwd -P` の出力）と一致するときは `git -C {path} status --porcelain --ignored` で未コミットの変更と ignore 対象のファイルを集める。一致しないか失敗するとき（`{path}` 自身が作業ツリーの最上位ではなく、git は親の checkout を読む）は `ls -A {path}` のファイル一覧（先頭 20 件）を集める
 3. 規則 6 の 4 要素で依頼する。何を確かめるか = `{path}` を消してよいか。なぜ AI では決められないか = 手順 1・2 で見つかった内容が必要かどうかは、作業した本人にしか分からない。どう確かめるか = 見つかった変更・ファイルの一覧（空ならその旨）を見て、残したいものがあれば別の場所へ移す。期待する結果 = 不要なら削除、必要なら退避してから削除するか中止する
 
 ---

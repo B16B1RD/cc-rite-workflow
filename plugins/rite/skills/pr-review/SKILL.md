@@ -1436,16 +1436,18 @@ Check `review.debate.enabled` in `rite-config.yml` (see [Configuration in cross-
 先に [cross-validation.md の Before any escalation](../../skills/reviewers/references/cross-validation.md#escalation-conditions) を当て、実行結果で決着する矛盾はユーザーに上げない。残った矛盾だけ AskUserQuestion で確認する（fallback: see ステップ 1.4 note）:
 
 ```
-⚠️ 矛盾する指摘を検出:
+⚠️ 実行しても決まらない仕様の判断があります
 ファイル: {file}:{line}
 
- {Reviewer A} の評価: {assessment_A}
- 理由: {reason_A}
+何を決めるか: この箇所の挙動として、どちらを仕様とするか
+ 案 A（{Reviewer A}）: {assessment_A}
+ 根拠: {reason_A}
+ 案 B（{Reviewer B}）: {assessment_B}
+ 根拠: {reason_B}
 
- {Reviewer B} の評価: {assessment_B}
- 理由: {reason_B}
-
-どちらの評価を採用しますか？
+なぜ AI では決められないか: {両案の再現コマンド・テストを実行した結果と、仕様に記載が無い点}
+どう判断するか: {案 A を採ったときの帰結} / {案 B を採ったときの帰結}
+期待する回答: 仕様とする案
 ```
 
 ### 5.2.1 Debate Phase (Contradiction Deliberation)
@@ -2154,7 +2156,7 @@ bash {plugin_root}/scripts/pr-review-step.sh wm-record --issue "{issue_number}" 
 
 **Placeholder descriptions:**
 - `{next_step_file}`: `{next_step_content}` を Write tool で書いた絶対パス（自由文を引数に載せないため）
-- `{next_step_content}`: Next command based on assessment. 受入条件未検証（ステップ 8.1 の受入条件未検証行に一致）→ 未検証 AC の人間確認 | Merge OK → `/rite:ready` | Requires fixes → `/rite:fix`
+- `{next_step_content}`: Next command based on assessment. 受入条件未検証（ステップ 8.1 の受入条件未検証行に一致）→ `/rite:ready`（AI で確かめる AC は ready が実行し、人間の確認が必要な AC だけ確認を求める） | Merge OK → `/rite:ready` | Requires fixes → `/rite:fix`
 
 Steps 1-3 は 6.2 の local WM（SoT）と Issue comment（backup）を揃える。
 
@@ -2303,7 +2305,7 @@ rationale: references/design-rationale.md#defense-in-depth-handoff
 |--------|-------|-----------------------|-------------|
 | `[review:mergeable]` | `review` | `FINALIZE:review:mergeable:{pr_number}` | `rite:pr-review completed. Result: [review:mergeable]. Proceed to /rite:ready (caller の review-fix loop が ready 遷移を起動). Do NOT stop.` |
 | `[review:fix-needed:{n}]` | `review` | `/rite:fix {pr_number}` | `rite:pr-review completed. Result: [review:fix-needed:{n}]. Proceed to /rite:fix (caller の review-fix loop が fix 起動). Do NOT stop.` |
-| `[review:error]`（受入条件未検証: `total_findings == 0` かつ `{acceptance_unverified}` が非空） | `review` | （付けない） | `rite:pr-review stopped. Result: [review:error] with REVIEW_STOP=ac_unverified. Unverified acceptance criteria need a human check.` |
+| `[review:error]`（受入条件未検証: `total_findings == 0` かつ `{acceptance_unverified}` が非空） | `review` | （付けない） | `rite:pr-review stopped. Result: [review:error] with REVIEW_STOP=ac_unverified. /rite:ready runs the unverified acceptance criteria the AI can check and asks a person only for the rest.` |
 
 ```bash
 bash {plugin_root}/scripts/pr-review-step.sh state-update --result {result} --pr {pr_number} --next "{next_action_value}"

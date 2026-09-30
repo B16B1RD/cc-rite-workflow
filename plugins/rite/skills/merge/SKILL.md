@@ -153,7 +153,7 @@ fi
 echo "merge_in_e2e=$merge_in_e2e"
 ```
 
-LLM は `merge_in_e2e=` を読む。`true` なら AskUserQuestion を挟まず `[merge:not-ready]` で caller に戻し、停止理由に手順 1 の分類と人間のみの行の 4 要素を含める。`false` の standalone なら、未検証 ID `{reviewed_ac_ids}` に [ready の unverified 手順 1〜4](../ready/SKILL.md) を同じ順で当てる（`[ready:error]` は `[merge:not-ready]`、`/rite:iterate` の案内はそのまま）。人間が確認できたと答えた ID だけを `{human_ac_ids}` として渡す:
+LLM は `merge_in_e2e=` を読み、未検証 ID `{reviewed_ac_ids}` に [ready の unverified 手順 1〜4](../ready/SKILL.md) を同じ順で当てる（`[ready:error]` は `[merge:not-ready]`、`/rite:iterate` の案内はそのまま）。`true` なら AskUserQuestion を挟まず `[merge:not-ready]` で caller に戻し、停止理由に手順 1 の分類と人間のみの行の 4 要素を含める。手順 4 の依頼へ進むのは `false` の standalone だけで、人間が確認できたと答えた ID だけを `{human_ac_ids}` として渡す:
 
 ```bash
 human_ac_ids="{human_ac_ids}"
@@ -292,7 +292,7 @@ else
     echo "  詳細 (stderr):" >&2
     head -10 "$gh_err" | sed 's/^/    /' >&2
   fi
-  # AskUserQuestion を LLM 側で起動: 「再試行 / 中止」
+  # 失敗時の扱いは下の表に従う（先に stderr から原因を分類し、判定できないときだけ AskUserQuestion）
 fi
 ```
 

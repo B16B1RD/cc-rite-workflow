@@ -107,28 +107,29 @@ Escalate to user (via `AskUserQuestion`) when:
 **Escalation format:**
 
 ```
-⚠️ レビュアー間で合意に至りませんでした
+⚠️ 実行しても決まらない仕様の判断があります
 
 ファイル: {file}:{line}
 
-  {Reviewer A} の最終見解:
-    主張: {revised_position_a}
+何を決めるか: この箇所の挙動として、どちらを仕様とするか
+  案 A（{Reviewer A}）: {revised_position_a}
     根拠: {evidence_a}
-
-  {Reviewer B} の最終見解:
-    主張: {revised_position_b}
+  案 B（{Reviewer B}）: {revised_position_b}
     根拠: {evidence_b}
+
+なぜ AI では決められないか: {両案の再現コマンド・テストを実行した結果と、仕様に記載が無い点}
+どう判断するか: {案 A を採ったときの帰結} / {案 B を採ったときの帰結}
+期待する回答: 仕様とする案
 
 討論の経緯:
   - {Reviewer A} は {concession_a} を認めつつも、{claim_a} を主張
   - {Reviewer B} は {concession_b} を認めつつも、{claim_b} を主張
 
-どちらの評価を採用しますか？
 オプション:
-- {Reviewer A} の評価を採用
-- {Reviewer B} の評価を採用
-- 両方の指摘を統合（最高 severity を採用）
-- この指摘を無視
+- 案 A を仕様とする
+- 案 B を仕様とする
+- 両方を満たす形にする（最高 severity を採用）
+- どちらも仕様としない（指摘を取り下げる）
 ```
 
 ### Configuration

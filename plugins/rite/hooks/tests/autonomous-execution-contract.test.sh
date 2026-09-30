@@ -193,7 +193,7 @@ assert_not_grep "HC-3 ready no longer confirms every unverified ID at once" "$RE
 assert_grep "HC-4 ready batch stop carries the classification and four elements" "$READY" \
   '`in_e2e_flow=true`（batch を含む）では質問せず `\[ready:error\]` で停止し、停止理由に手順 1 の分類と、人間のみの行の 4 要素'
 assert_grep "HC-4 merge applies the ready steps and explains a batch stop" "$MERGE" \
-  '停止理由に手順 1 の分類と人間のみの行の 4 要素を含める.*\[ready の unverified 手順 1〜4\]'
+  '\[ready の unverified 手順 1〜4\].*停止理由に手順 1 の分類と人間のみの行の 4 要素を含める'
 assert_grep "HC-4 iterate stop notice lists the four elements" "$ITERATE" \
   '^  - なぜ AI では確かめられないか: '
 assert_not_grep "HC-4 iterate no longer asks for a bare real-environment check" "$ITERATE" \
@@ -212,7 +212,7 @@ assert_grep "HC-5 residue cleanup always asks a person" "$WT_PATTERNS" \
   '必ず人間に確認する（削除は不可逆操作で、中身を調べても承認は省かない）'
 assert_not_grep "HC-5 residue cleanup never deletes without asking" "$WT_PATTERNS" '確認せず'
 assert_grep "HC-5 residue status is read only at a work-tree top" "$WT_PATTERNS" \
-  'rev-parse --show-toplevel` が `\{path\}` と一致するときは `git -C \{path\} status --porcelain --ignored`'
+  'rev-parse --show-toplevel` が `\{path\}` の絶対パス（`cd \{path\} && pwd -P` の出力）と一致するときは `git -C \{path\} status --porcelain --ignored`'
 for residue_skill in open iterate fix pr-review recover; do
   assert_not_grep "HC-5 $residue_skill residue row does not skip the question" \
     "$SCRIPT_DIR/../../skills/$residue_skill/SKILL.md" '残骸の確認\]\([^)]*\)で決まらないときだけ'

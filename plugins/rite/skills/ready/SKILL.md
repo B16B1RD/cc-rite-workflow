@@ -300,9 +300,9 @@ echo "in_e2e_flow=$in_e2e_flow"
 
 The LLM reads the bash stdout (`in_e2e_flow=...`): when `in_e2e_flow=true`, skip the AskUserQuestion in this sub-section and proceed directly to Phase 3; only when `in_e2e_flow=false`, confirm via `AskUserQuestion`:
 
-`reviewed_ac_state=unverified` の場合は経路で分岐する。どちらの経路も、人間に依頼する前に未検証 ID `{reviewed_ac_ids}` の行ごとに [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) 規則 5〜7 を当てる（下の手順 1〜4）。`in_e2e_flow=true`（batch を含む）では質問せず `[ready:error]` で停止し、停止理由に手順 1 の分類と、人間のみの行の 4 要素（手順 4）を含める。`in_e2e_flow=false` の standalone は手順 1〜4 を順に実行する:
+`reviewed_ac_state=unverified` の場合は経路で分岐する。どちらの経路も、人間に依頼する前に未検証 ID `{reviewed_ac_ids}` の行ごとに [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) 規則 5〜7 を当てる（下の手順 1〜4）。手順 1〜3 はどちらの経路でも実行する。`in_e2e_flow=true`（batch を含む）では質問せず `[ready:error]` で停止し、停止理由に手順 1 の分類と、人間のみの行の 4 要素（手順 4）を含める。手順 4 の依頼へ進むのは `in_e2e_flow=false` の standalone だけである:
 
-1. **分類**: Phase 1.0 の `[CONTEXT] REVIEWED_AC=unverified; ac=...; file=` marker が示す review JSON（パスを組み立て直さない）から `status == "unverified"` の行の `evidence` を、Issue から当該 AC の Given / When / Then を読む。evidence が資格情報・外部サービス・人の操作・実環境を挙げる行は「人間のみ」、`Measurement-Blocked` や実行できるコマンドを挙げる行は「AI で確かめる」。どちらとも判定できない行は「人間のみ」とし、判定できなかった理由を手順 4 の説明に含める
+1. **分類**: Phase 1.0 の `[CONTEXT] REVIEWED_AC=unverified; ac=...; file=` marker が示す review JSON（パスを組み立て直さない）から `status == "unverified"` の行の `evidence` を、Issue から当該 AC の Given / When / Then を読む。evidence が資格情報・外部サービス・人の操作・実環境を挙げる行は「人間のみ」、観測だけのコマンド（テストの実行・`grep`・`gh ... view` など）を挙げる行は「AI で確かめる」。作業ツリー・リモート・state を変えるコマンドを挙げる行は、`Measurement-Blocked` と書かれていても「人間のみ」とし、手順 2 で実行しない（不可逆操作の承認は省かない）。両方に当たる行は「人間のみ」を優先する。どちらとも判定できない行は「人間のみ」とし、判定できなかった理由を手順 4 の説明に含める
 2. **実行**: 「AI で確かめる」行は Given を整えて When を実行し、Then を観測する。Then に反した行があれば質問せず `[ready:error]` で停止し、`実行したコマンド => 観測結果` を示して `/rite:iterate {pr_number}` の修正へ戻す
 3. **停止**: 「AI で確かめる」行が 1 行でもあれば、人間に質問せず `[ready:error]` で停止する。停止通知に行ごとの `実行したコマンド => 観測結果` を載せ（これが実行結果の記録）、review の記録を更新する `/rite:iterate {pr_number}` の再レビューを案内する。attest は人間の確認の記録なので、AI の実行結果では作らない
 4. **依頼**: 「人間のみ」の行だけが残ったときに限り、ID ごとに 4 要素を示して「確認できた ID を attest する / キャンセル」を AskUserQuestion で聞く。4 要素は、何を確かめるか = Then、なぜ AI では確かめられないか = evidence を内部用語なしで言い直したもの、どう確かめるか = Given / When を手順に書き直したもの、期待する結果 = Then の観測できる形、から作る。確認された ID だけを `{human_ac_ids}`（カンマ区切り）として helper に渡す:
@@ -314,7 +314,7 @@ bash "$plugin_root/hooks/scripts/ready-reviewed-head-gate.sh" \
   --attest "$human_ac_ids" || { echo "[ready:error]"; exit 1; }
 ```
 
-確認できなかった ID は attest に含めない（残った未検証は Phase 3 直前の `--enforce-ac` が止める）。unmet / missing / malformed は standalone でも質問や attest に送らない。
+確認できなかった ID は attest に含めない。1 件でも残るときは、下の Ready の確認を出さずに `[ready:error]` で停止し、残った ID を 4 要素とともに示す（確認済みの ID の attest は残る。残った未検証は `--enforce-ac` が通さない）。unmet / missing / malformed は standalone でも質問や attest に送らない。
 
 ```
 PR #{number} を Ready for review に変更します。

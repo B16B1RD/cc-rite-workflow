@@ -585,5 +585,5 @@ rationale: references/rationale.md#no-flow-state
 
 - owner/repo 解決失敗（git-remote.sh + `gh repo view` fallback とも失敗）→ エラー、認証・remote 設定確認を案内
 - Projects 未設定 → warning、Projects 追加を skip
-- Issue 作成失敗 → 先に `gh issue list --search "{title} in:title" --state open` で作成済みかを確かめ（作成済みなら再作成しない）、stderr から原因を分類する。一時障害なら 1 回だけ再試行する。それでも決まらないときだけ AskUserQuestion で「再試行 / 手動作成 / 中止」
+- Issue 作成失敗 → 先に `gh issue list -R {owner_repo} --search "{title} in:title" --state open` で作成済みかを確かめ（作成済みなら再作成しない）、stderr から原因を分類する。一時障害なら 1 回だけ再試行する。それでも決まらないときだけ AskUserQuestion で「再試行 / 手動作成 / 中止」
 - 親-子リンク失敗 → warning、後で手動リンクを案内
