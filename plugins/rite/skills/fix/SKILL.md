@@ -1549,7 +1549,7 @@ See [Common Error Handling](../../references/common-error-handling.md) for share
 |-------|----------|
 | When PR is Not Found | See [common patterns](../../references/common-error-handling.md) |
 | When Comment Retrieval Fails | ネットワーク接続を確認; `gh auth status` で認証状態を確認 |
-| Error During File Modification | 原因（対象パス・一致しない置換元など）を直して 1 回再試行する。再失敗なら指摘を飛ばさず `[fix:error]` で停止する (WARNING を stderr に出力) |
+| Error During File Modification | 原因（対象パス・一致しない置換元など）を直して 1 回再試行する。再失敗なら指摘を飛ばさず、失敗の内容を stderr に出して `[fix:error]` で停止する |
 | Commit Failure | `git status` で状態を確認; 問題を解決してから再度コミット (WARNING を stderr に出力) |
 | `fix-step.sh` が exit 2（`ERROR: fix-step.sh:`）で止まった | marker を待たずに停止し、未置換の placeholder・空値・数値でない引数を直して当該ステップから再実行する |
 
