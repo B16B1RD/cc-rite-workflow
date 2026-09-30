@@ -202,6 +202,38 @@ assert_grep "ingest_outstanding_line has a lock row for the lost-lock WARNING" "
 assert_grep "ingest_outstanding_line has a lock row for the unconfirmed-state WARNING" "$WIKI_INGEST" '^\| ロック \| .*ロックの状態を確認できませんでした'
 assert_grep "ingest_outstanding_line has a lock row for the release-failure WARNING" "$WIKI_INGEST" '^\| ロック \| .*ロックを解放できませんでした'
 assert_grep "ingest_outstanding_line none row also requires no lock WARNING" "$WIKI_INGEST" '^\| （全系統） \| .*ロックの WARNING を出していない'
+
+echo "=== cleanup.md ステップ 9/12: wiki-ingest がロックを失ったら最終報告の未完了事項に載せる ==="
+# wiki-ingest 9.0 は own 以外のとき stdout に marker を出し、cleanup ステップ 9 がそれを pr= 付きで発火し、
+# ステップ 12 の {wiki_ingest_check} が表とは独立に評価して空欄 + 付記にする。marker の実出力は
+# wiki-ingest-lock.test.sh TC-13 が実物のロックで固定する。ここでは手順書間の配線を固定する。
+assert_grep "wiki-ingest step 9.0 emits the lock-lost marker for a non-own lock" "$WIKI_INGEST" \
+  '^  echo "\[CONTEXT\] WIKI_INGEST_LOCK_LOST=1; check=\$\{lock_state:-unknown\}"$'
+step9_sentinels=$(awk '/^skill return 後、出力から以下のいずれかの sentinel を発火させる/{f=1} f{print} /^ingest の成否（skip 含む）に関わらずステップ 10 へ進む/{exit}' "$CLEANUP")
+[ -n "$step9_sentinels" ] || fail "cleanup step 9 sentinel section could not be extracted"
+count=$(printf '%s\n' "$step9_sentinels" | grep -cxF -- '- ロック喪失 (ingest 出力に `WIKI_INGEST_LOCK_LOST=1`): 上記のいずれとも併存しうる形で `[CONTEXT] WIKI_INGEST_LOCK_LOST=1; source=cleanup_step9; pr={pr_number}` を追加で発火する（取り込みの成否は変えない）' || true)
+assert "cleanup step 9 fires the lock-lost sentinel with pr= inside its sentinel list" "1" "$count"
+wiki_check_item=$(awk '/^- `\{wiki_ingest_check\}`:/{f=1} f && /^- `\{wm_final_update_check\}`:/{exit} f{print}' "$CLEANUP")
+[ -n "$wiki_check_item" ] || fail "cleanup step 12 wiki_ingest_check item could not be extracted"
+assert "wiki_ingest_check keeps WIKI_INGEST_DONE alone as x" "1" \
+  "$(printf '%s\n' "$wiki_check_item" | grep -cxF -- '  | `WIKI_INGEST_DONE=1` 単独 | `x` | — |' || true)"
+assert "wiki_ingest_check evaluates the lock loss independently of the table, scoped by pr=" "1" \
+  "$(printf '%s\n' "$wiki_check_item" | grep -c 'ロック喪失は上の表と独立に評価する.*表の一致判定にも最終行（marker 不在）の判定にも数えない.*`source=cleanup_step9; pr={pr_number}`.*check を ` ` にし、表の付記の\*\*後ろに\*\*ロック喪失の付記を続ける' || true)"
+lost_note='⚠️ ingest 中に wiki ingest のロックを失っていました。直近の wiki の commit に重複や上書きが無いか確認してください'
+assert "wiki_ingest_check carries the lock-lost note" "1" \
+  "$(printf '%s\n' "$wiki_check_item" | grep -cxF -- "  ${lost_note}" || true)"
+# 付記の文面は wiki-ingest 自身のロック行の展開文と同じ語句を使う
+assert "the lock-lost note shares its wording with the wiki-ingest lock row" "1" \
+  "$(grep -c '^| ロック | .*ingest 中に wiki ingest のロックを失っていました.*直近の wiki の commit に重複や上書きが無いか確認してください' "$WIKI_INGEST" || true)"
+push_note_line=$(printf '%s\n' "$wiki_check_item" | grep -n 'ℹ️\|⚠️ Wiki ingest: commit は local wiki branch に landed' | head -1 | cut -d: -f1)
+lost_note_line=$(printf '%s\n' "$wiki_check_item" | grep -nF -- "  ${lost_note}" | head -1 | cut -d: -f1)
+if [ -n "$push_note_line" ] && [ -n "$lost_note_line" ] && [ "$push_note_line" -lt "$lost_note_line" ]; then
+  pass "wiki_ingest_check lists the push-failure note before the lock-lost note"
+else
+  fail "wiki_ingest_check lists the push-failure note before the lock-lost note (push=${push_note_line:-none} lost=${lost_note_line:-none})"
+fi
+assert "the marker-absence row does not count the lock-lost marker" "1" \
+  "$(printf '%s\n' "$wiki_check_item" | grep -c 'LOCK_LOST しか無いとき（DONE 等の発火漏れ）は最終行を適用したうえでロック喪失の付記を続ける' || true)"
 # marker なし (未確認) は「なし」と混同せず {wiki_push_line} と同じ ⚠️ 未確認扱いにする
 assert_grep "ingest_outstanding_line treats marker-absent as unconfirmed, not none" "$WIKI_INGEST" '\{wiki_push_line\}` の同ケースと同じ扱い'
 

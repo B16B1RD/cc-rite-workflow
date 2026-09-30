@@ -198,7 +198,7 @@ lock を保持し続けると他セッションの ingest が `concurrent_ingest
 
 解放の前に `check` で lock がまだ自分のものかを確かめる。奪われた・消えたことを ingest の中で
 知る手段はここしかない（奪った側が解放すると lock 自体が消え、自分の `release` は `released`
-を返す）。`own` 以外でも WARNING を出すだけで ingest は完了扱いにする。ページと log は既に commit
+を返す）。`own` 以外でも WARNING と `WIKI_INGEST_LOCK_LOST` marker を出すだけで ingest は完了扱いにする。ページと log は既に commit
 済みで巻き戻せず、止めても利用者が取れる行動は変わらないため。確認に失敗した場合も `own` 以外として
 WARNING を出し、解放は必ず実行する。確認に失敗した原因（session を解決できない等）によっては解放も
 同じ理由で失敗し、lock は取得時刻による stale 判定（2h）まで残るので、確認失敗の WARNING にはその
@@ -215,7 +215,9 @@ Wiki push の未完了は `{wiki_push_line}` と同じ marker を再評価する
 試みる。marker なしを「失敗なし」と断定しないのは、未確認と成功を混同しないため。ロックの
 未完了もステップ 9.0 が stderr に出した WARNING の文面を再評価するだけで、新しい記録先は持た
 ない。WARNING は会話の途中に流れて見落とされやすく、完了レポートが最後に目に入る表示のため、
-そこへ行を載せる。
+そこへ行を載せる。ステップ 9.0 は `own` 以外のとき stdout にも `WIKI_INGEST_LOCK_LOST` marker を
+出す。これは呼び出し元の `/rite:cleanup` が最終報告へ数えるための信号で、`{ingest_outstanding_line}`
+のロック行は従来どおり stderr の WARNING から組み立てる（marker は記録先ではない）。
 
 ## returned-to-caller
 

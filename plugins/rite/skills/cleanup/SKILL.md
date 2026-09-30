@@ -815,6 +815,7 @@ skill return 後、出力から以下のいずれかの sentinel を発火させ
 
 - 成功: `[CONTEXT] WIKI_INGEST_DONE=1; pr={pr_number}`
 - push 失敗併存 (ingest 出力に `push=failed`): 上記 + `[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; source=cleanup_step9`
+- ロック喪失 (ingest 出力に `WIKI_INGEST_LOCK_LOST=1`): 上記のいずれとも併存しうる形で `[CONTEXT] WIKI_INGEST_LOCK_LOST=1; source=cleanup_step9; pr={pr_number}` を追加で発火する（取り込みの成否は変えない）
 - 並行 ingest スキップ (ingest 出力に `WIKI_INGEST_SKIPPED reason=concurrent_ingest`): `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=concurrent_ingest`（別 live セッションが ingest 中。pending raw は wiki branch に残り次回 ingest が冪等回収する — multi-session §9）
 - 失敗: `[CONTEXT] WIKI_INGEST_FAILED=1; reason=ingest_error`
 rationale: references/rationale.md#wiki-push-batch
@@ -1031,6 +1032,13 @@ rationale: references/rationale.md#review-cleanup-reasons
   ```
   ⚠️ Wiki ingest: commit は local wiki branch に landed しましたが origin への push に失敗しました。
     手動回復: git -C .rite/wiki-worktree push origin {wiki_branch}
+  ```
+
+  ロック喪失は上の表と独立に評価する（DONE / PUSH_FAILED と併存しうるため、表の一致判定にも最終行（marker 不在）の判定にも数えない）。`[CONTEXT] ` 行頭一致 + `WIKI_INGEST_LOCK_LOST=1` + `source=cleanup_step9; pr={pr_number}`（値の直後が `;` または行末）に該当する行があれば、表の判定に関わらず check を ` ` にし、表の付記の**後ろに**ロック喪失の付記を続ける（`/rite:batch-run --merge` では先行 Issue の marker が文脈に残るため `pr=` で絞る。wiki-ingest 自身が出す `check=` 付きの行は判定に使わない）。LOCK_LOST しか無いとき（DONE 等の発火漏れ）は最終行を適用したうえでロック喪失の付記を続ける。
+
+  ロック喪失の付記:
+  ```
+  ⚠️ ingest 中に wiki ingest のロックを失っていました。直近の wiki の commit に重複や上書きが無いか確認してください
   ```
 - `{wm_final_update_check}`: ステップ 11 の `[CONTEXT] WM_FINAL_UPDATE=` 行で判定する（archive-procedures §3.5.1 = `completion`、§3.5.2 = `progress`）。`{issue_number}` が空（関連 Issue 未識別）なら `x`。それ以外は **completion 側と progress 側を独立に評価し、両方が `x` 相当のときだけ `x`**（どちらか一方でも未完了なら ` ` にし、未完了だった側の付記をすべて列挙する。`{local_branch_check}` と同型）。各側は **2 段で判定する**: まず `[CONTEXT] ` 行頭一致 + `WM_FINAL_UPDATE={側}` + `issue={issue_number}`（値の直後が `;` または行末）に該当する行を集め、**その中の最後の出現 1 行だけを選ぶ**（recency。`{local_branch_check}` と同じ理由）。次にその 1 行を以下で評価する（`{対象}` は completion = 完了情報の追記、progress = 進捗チェックリストの更新）:
   - `status=success` / `reason=no_comment` / `reason=section_absent` のいずれか: `x`（後 2 つは legitimate skip。x とする値はこの 3 つに限る）
