@@ -175,7 +175,7 @@ if [ "$branch_strategy" = "separate_branch" ]; then
       # stash は submodule の変更を退避しない。判定を submodule 抜きに狭めると orphan checkout が submodule の編集を消すため、止めたまま原因を示す
       if git diff --quiet --ignore-submodules HEAD 2>/dev/null && git diff --cached --quiet --ignore-submodules HEAD 2>/dev/null; then
         echo "  原因: 変更は submodule（中身または参照先の commit）だけです。git stash はこれを退避できません" >&2
-        echo "  対処: 変更を残すなら submodule 内で commit したうえで親でも git add <submodule> && git commit、残さないなら git submodule update で記録済みの commit に戻してから再実行してください" >&2
+        echo "  対処: 変更を残すなら submodule 内で commit したうえで親でも git add <submodule> && git commit、残さないなら git submodule update --force で記録済みの commit と中身に戻してから再実行してください" >&2
       fi
       exit 1
     fi

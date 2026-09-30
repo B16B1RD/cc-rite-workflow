@@ -638,20 +638,23 @@ if [ "$HELPER_RC" = "0" ] && git -C "$repo" rev-parse --verify -q wiki >/dev/nul
 else
   fail "rerun after remedy: rc=$HELPER_RC output=$HELPER_OUTPUT"
 fi
-# A pointer-only change (submodule checked out at another commit) is undone by the other printed remedy
-repo=$(make_sandbox tc16b)
+# The discard remedy must undo both kinds of submodule-only change: a pointer change and a content edit
 (cd "$sub" && echo b > a && git commit -qam s2)
-(cd "$repo" && git -c protocol.file.allow=always submodule add -q "$sub" sub >/dev/null 2>&1 && git commit -qm sub && git push -q origin main 2>/dev/null)
-git -C "$repo/sub" checkout -q HEAD~1
-run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
-first_rc=$HELPER_RC
-git -C "$repo" submodule update -q
-run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
-if [ "$first_rc" = "1" ] && [ "$HELPER_RC" = "0" ] && git -C "$repo" rev-parse --verify -q wiki >/dev/null; then
-  pass "pointer-only change: git submodule update lets the rerun succeed"
-else
-  fail "pointer-only: first rc=$first_rc rerun rc=$HELPER_RC output=$HELPER_OUTPUT"
-fi
+for kind in pointer content; do
+  repo=$(make_sandbox "tc16-$kind")
+  (cd "$repo" && git -c protocol.file.allow=always submodule add -q "$sub" sub >/dev/null 2>&1 && git commit -qm sub && git push -q origin main 2>/dev/null)
+  if [ "$kind" = pointer ]; then git -C "$repo/sub" checkout -q HEAD~1; else echo edited > "$repo/sub/a"; fi
+  run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+  first_rc=$HELPER_RC first_output=$HELPER_OUTPUT
+  git -C "$repo" submodule update -q --force
+  run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+  if [ "$first_rc" = "1" ] && [[ "$first_output" == *"git submodule update --force"* ]] \
+     && [ "$HELPER_RC" = "0" ] && git -C "$repo" rev-parse --verify -q wiki >/dev/null; then
+    pass "$kind-only change: the printed git submodule update --force lets the rerun succeed"
+  else
+    fail "$kind-only: first rc=$first_rc rerun rc=$HELPER_RC output=$HELPER_OUTPUT"
+  fi
+done
 
 echo "TC-15: no argument-less stash pop remains in the helper or its reference pattern"
 PATTERNS_DOC="$SCRIPT_DIR/../../references/wiki-patterns.md"
