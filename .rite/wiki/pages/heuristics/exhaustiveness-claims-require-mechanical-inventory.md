@@ -33,12 +33,19 @@ sources:
     resource: "raw/reviews/20260930T095659Z-pr-3516.md"
   - type: "fixes"
     resource: "raw/fixes/20260930T100756Z-pr-3516.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T101757Z-pr-3516.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260930T102641Z-pr-3516.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T105948Z-pr-3516.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/gpt-6.1-sol", at: "2026-09-30T10:11:01Z" }
+generated: { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T12:10:17Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T12:25:07+09:00" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:42:47Z" }
+  - { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T12:10:17Z" }
 ---
 
 # 「網羅」を主張する列挙は grep 全数棚卸し + scope note で構造的に収束させる
@@ -117,6 +124,12 @@ Issue が具体的な 1 件だけを挙げていても、それは「この 1 �
 
 人へ選択を求める箇所は、質問コマンドやオプション見出しだけでなく、Error Handling 表の Recovery 列にある「A / B」の形式にも現れる。本文が自動再試行や確認なしの続行に変わったら、表の選択も同じ判断に揃える。母集団は API 名ではなく「利用者に選択を求める」という役割で集める。
 
+掃引の対象は、質問の見出しや表の Recovery 列だけではない。完了報告や削除ステップの途中にある「『A / B』を確認する」という散文も、人へ選択を求める箇所である。掃引のパターンは、選択の言い回し（「」を確認、スキップ、手動で）まで広げる。
+
+表の行を本文の手順に合わせるときは、本文が持つ例外（再試行しない種別）と本文の字面をそのまま写す。要約すると、表が指す対象が本文より広くなる。
+
+何を確認箇所として数えるかの条件は、掃引を広げる前に成果物へ書き、確認する側にも同じ条件を渡す。条件が無いと、広げるたびに別の種類が見つかり、確認が 1 回で終わらない。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -140,3 +153,6 @@ Issue が具体的な 1 件だけを挙げていても、それは「この 1 �
 
 - [統合の根拠](../../raw/reviews/20260930T095659Z-pr-3516.md)
 - [統合の根拠](../../raw/fixes/20260930T100756Z-pr-3516.md)
+- [選択の言い回しと表の字面](../../raw/reviews/20260930T101757Z-pr-3516.md)
+- [数える条件を成果物へ書いた修正](../../raw/fixes/20260930T102641Z-pr-3516.md)
+- [同じ条件を確認側へ渡して収束した記録](../../raw/reviews/20260930T105948Z-pr-3516.md)

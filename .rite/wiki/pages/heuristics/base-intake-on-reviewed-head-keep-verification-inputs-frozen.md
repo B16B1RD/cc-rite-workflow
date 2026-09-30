@@ -5,7 +5,7 @@ domain: "heuristics"
 description: "修正計画の検査はレビュー済みの HEAD でしか通らないので、未レビューの修正がある間は base を取り込めない。先にその修正をレビューしてから取り込み、同じ HEAD のレビューで採用した非実測指摘の修正は取り込みの計画に同じ根因のグループとして含める。検証記録の指紋は作業ツリーの全ファイル（Python のバイトコードキャッシュを含む）から作られるので、検証の後はレビュー開始までテストや import を走らせない。"
 promote: rite-plugin
 created: "2026-09-28T14:28:35Z"
-generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-29T08:28:00Z" }
+generated: { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T12:10:17Z" }
 sources:
   - type: "fixes"
     resource: "raw/fixes/20260928T135415Z-pr-3379.md"
@@ -13,6 +13,10 @@ sources:
     resource: "raw/fixes/20260929T082122Z-pr-3349.md"
   - type: "fixes"
     resource: "raw/fixes/20260929T055448Z-pr-3393.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260930T112444Z-pr-3537.md"
+verified:
+  - { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T12:10:17Z" }
 tags: ["base-intake", "fix-plan", "verification-fingerprint", "wiki-apply-evidence"]
 confidence: medium
 ---
@@ -37,6 +41,8 @@ confidence: medium
 
 **取り込みと修正を 1 つの計画にまとめる**: base の取り込みは `merge --no-commit` のまま、同じ HEAD のレビューで採用した修正と同じ計画・同じ検証にまとめて確定する。取り込みと修正の検証記録を分けると、検証済み修正の記録が 2 つに割れ、次のレビューが片方の記録を見失う。
 
+**base を基準にするテストが落ちたとき**: レビューを通過したあとの修正で、base を基準にするテストが落ちたら、取り込みを別の計画に分けない。同じ修正計画の中の取り込みの組として通し、取り込みと修正を 1 回の検証にまとめる。
+
 ## 関連ページ
 
 - [base 取り込みの競合は base 側の正本を基準にし、PR の変更意図だけを載せ直す](./base-intake-conflict-reapply-pr-intent-on-base-canonical.md)
@@ -46,3 +52,4 @@ confidence: medium
 - [レビュー済み HEAD で base を取り込んだ fix 結果](../../raw/fixes/20260928T135415Z-pr-3379.md)
 - [fix 結果（検証器の版と計画の統合）](../../raw/fixes/20260929T082122Z-pr-3349.md)
 - [fix 結果（取り込みと修正を 1 つの計画に）](../../raw/fixes/20260929T055448Z-pr-3393.md)
+- [base を基準にするテストが落ちた修正](../../raw/fixes/20260930T112444Z-pr-3537.md)

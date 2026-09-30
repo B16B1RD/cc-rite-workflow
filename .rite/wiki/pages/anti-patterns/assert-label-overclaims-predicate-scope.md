@@ -25,9 +25,17 @@ sources:
     resource: "raw/reviews/20260930T095402Z-pr-3525.md"
   - type: "reviews"
     resource: "raw/reviews/20260930T113713Z-pr-3539.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T110513Z-pr-3537.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260930T112444Z-pr-3537.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T113222Z-pr-3537.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260930T114011Z-pr-3537.md"
 tags: ["test", "mutation-testing", "assertion-strength", "contract", "review-fix-loop"]
 confidence: high
-generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-09-30T11:48:01Z" }
+generated: { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T12:10:17Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-30T12:50:00+09:00"
@@ -35,6 +43,8 @@ verified:
     at: "2026-09-27T10:21:25Z"
   - by: "rite-wiki-ingest/claude-sonnet-5-5"
     at: "2026-09-30T08:55:00Z"
+  - by: "rite-wiki-ingest/grok-4.7"
+    at: "2026-09-30T12:10:17Z"
 ---
 
 # assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる
@@ -89,6 +99,16 @@ assert 名に変数名のような実装詳細を入れると、内部名を変�
 
 規則の結果句を `grep -c` で数えるだけでは、条件の反転や句の後ろに足した否定を検出できない。受入条件が名称限定を認めるなら、assert 名を「結果句の部分文字列が一つの行に存在する」検査へ絞り、条件や意味を保証する表現を外す。述語を変えない名称修正でも、対象 suite の成功と非対象本文の不変を別々に確認する。
 
+### 同じ句を複数の行に足したら、足した行ごとに変異で固定する
+
+同じ句を手順書の 2 つの行に足し、順序の pin をそのうち 1 行専用に書くと、もう一方の行は未固定のまま残る。行ごとの変異を当てると、未固定の側は緑のまま生き残る。足した行ごとに、その行を壊す変異で落ちることを確かめてから pin とみなす。
+
+### 対象行を手書きで列挙するテストは、行の追加を見逃す
+
+作り直しの対象行をテストが手書きで列挙していると、手順書に行が増えても列挙を足し忘れれば緑のまま通る。対象は手順書から条件で集め、既知の行がその集合に入ることで、集め方の空振りを防ぐ。
+
+コメントには、意図した効果ではなく、集めている条件を書く。条件より広いコメントは、そのテストが条件の外まで検査しているように読まれ、次の確認で指摘になる。
+
 ## 関連ページ
 
 - [アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](../heuristics/mutation-testing-measures-assertion-strength.md)
@@ -107,3 +127,7 @@ assert 名に変数名のような実装詳細を入れると、内部名を変�
 
 - [統合の根拠](../../raw/reviews/20260930T095402Z-pr-3525.md)
 - [部分文字列の検査範囲に名称を限定した検証](../../raw/reviews/20260930T113713Z-pr-3539.md)
+- [行ごとの未固定と手書き列挙](../../raw/reviews/20260930T110513Z-pr-3537.md)
+- [足した行ごとの変異と条件収集](../../raw/fixes/20260930T112444Z-pr-3537.md)
+- [コメントが収集条件より広い](../../raw/reviews/20260930T113222Z-pr-3537.md)
+- [コメントを収集条件へ直した修正](../../raw/fixes/20260930T114011Z-pr-3537.md)

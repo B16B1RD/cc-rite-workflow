@@ -223,6 +223,18 @@
 
 * **Lint incomplete** — 機械検査は stale=64、orphans=0、missing_concept=0、unregistered_raw=620、broken_refs=0、descriptive_number_ref=0。更新した語照合の限界のページは出典と照合済み。全658ページの意味的な矛盾比較は未完了で、Wiki全体の品質検査成功とは扱わない。
 
+* **Update**: [「網羅」を主張する列挙は grep 全数棚卸し + scope note で構造的に収束させる](pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md) — raw/reviews/20260930T101757Z-pr-3516.md を統合
+* **Update**: [「網羅」を主張する列挙は grep 全数棚卸し + scope note で構造的に収束させる](pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md) — raw/fixes/20260930T102641Z-pr-3516.md を統合
+* **Update**: [「網羅」を主張する列挙は grep 全数棚卸し + scope note で構造的に収束させる](pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md) — raw/reviews/20260930T105948Z-pr-3516.md を統合
+* **Update**: [出力形式の gate を新設したら、producer 側にも同じ区切り規則を書く](pages/heuristics/output-format-gate-needs-producer-side-delimiter-rule.md) — raw/reviews/20260930T110513Z-pr-3537.md を統合
+* **Update**: [assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる](pages/anti-patterns/assert-label-overclaims-predicate-scope.md) — raw/fixes/20260930T112444Z-pr-3537.md を統合
+* **Update**: [assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる](pages/anti-patterns/assert-label-overclaims-predicate-scope.md) — raw/reviews/20260930T113222Z-pr-3537.md を統合
+* **Update**: [assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる](pages/anti-patterns/assert-label-overclaims-predicate-scope.md) — raw/fixes/20260930T114011Z-pr-3537.md を統合
+* **Skip**: [20260930T112518Z-pr-3526.md](raw/reviews/20260930T112518Z-pr-3526.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
+* **Skip**: [20260930T115224Z-pr-3526.md](raw/reviews/20260930T115224Z-pr-3526.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
+* **Skip**: [20260930T112642Z-pr-3536.md](raw/reviews/20260930T112642Z-pr-3536.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
+* **Skip**: [20260930T114425Z-pr-3537.md](raw/reviews/20260930T114425Z-pr-3537.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
+
 ## 2026-09-29
 
 * **Update**: [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) — raw/reviews/20260929T104700Z-pr-3448.md で補強
