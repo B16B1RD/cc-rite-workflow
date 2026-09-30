@@ -10,7 +10,7 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 pass=0 fail=0
-check() { if "$@"; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: line ${BASH_LINENO[0]}" >&2; fi; }
+check() { if "$@"; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: line ${BASH_LINENO[0]}" >&2; return 1; fi; }
 
 printf '%s\n' '### 指摘事項' '| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |' '|---|---|---|---|---|' '| HIGH | current-pr | a.sh:1 | defect. Likelihood-Evidence: existing_call_site a.sh:1 | fix |' > "$TMP/valid.md"
 printf '%s\n' '### 指摘事項' '| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |' '|---|---|---|---|---|' '| HIGH | current-pr | a.sh:1 | defect without anchor | fix |' > "$TMP/missing.md"
@@ -62,6 +62,28 @@ check bash -c '! grep -q recommendation_classification_invalid <<<"$1"' _ "$(gat
 check grep -q 'findings=0; recommendations=4$' <<<"$(gate_out "$TMP/rec-valid.md")"
 check grep -q 'findings=0; recommendations=1$' <<<"$(gate_out "$TMP/rec-valid-en.md")"
 check grep -q 'findings=0; recommendations=0$' <<<"$(gate_out "$TMP/rec-none.md")"
+for none_line in 'なし。' '特になし' '該当なし' 'None' 'none.' 'N/A' 'n/a' '-' '**なし**' '- なし。'; do
+  printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '' "$none_line" > "$TMP/rec-none-variant.md"
+  check grep -q 'findings=0; recommendations=0$' <<<"$(gate_out "$TMP/rec-none-variant.md")" || echo "  none line: $none_line" >&2
+done
+for item_line in 'なし。ただし A を直すとよい' '無し' 'なし、' 'None of note' '--' '**' '。'; do
+  printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' "$item_line" > "$TMP/rec-not-none.md"
+  check grep -q 'recommendations=1; invalid=1$' <<<"$(gate_out "$TMP/rec-not-none.md")" || echo "  item line: $item_line" >&2
+done
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' 'なし。' '- 別 Issue で扱う改善' > "$TMP/rec-none-then-item.md"
+check grep -q 'recommendations=1; invalid=1$' <<<"$(gate_out "$TMP/rec-none-then-item.md")"
+check grep -qx '  line 6: 分類=(missing)' <<<"$(gate_out "$TMP/rec-none-then-item.md")"
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' 'なし。' '  ただし A を直すとよい' '  続きの行' > "$TMP/rec-none-then-indented.md"
+check grep -q 'recommendations=1; invalid=1$' <<<"$(gate_out "$TMP/rec-none-then-indented.md")"
+check grep -qx '  line 6: 分類=(missing)' <<<"$(gate_out "$TMP/rec-none-then-indented.md")"
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '-' '  A を直すとよい' > "$TMP/rec-dash-then-indented.md"
+check grep -q 'recommendations=1; invalid=1$' <<<"$(gate_out "$TMP/rec-dash-then-indented.md")"
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '- 分類: actionable — a' '  続きの行' 'なし。' > "$TMP/rec-item-and-none.md"
+check grep -q 'findings=0; recommendations=1$' <<<"$(gate_out "$TMP/rec-item-and-none.md")"
+printf '%s\n' '### 指摘事項' 'なし。' '### 推奨事項' 'なし。' > "$TMP/findings-none-line.md"
+check grep -q 'reason=table_header_missing' <<<"$(gate_out "$TMP/findings-none-line.md")"
+printf '%s\n' "${FINDINGS_EMPTY[@]}" '| 該当なし |' > "$TMP/findings-none-row.md"
+check grep -q 'reason=table_malformed' <<<"$(gate_out "$TMP/findings-none-row.md")"
 printf '%s\n' "${FINDINGS_EMPTY[@]}" '### 推奨事項' '- 分類: actionable/boundary — x' '- 分類: actionable,design_confirmation — y' '- 分類: actionable / boundary — z' '- 分類: `actionable`/`boundary` — w' '- 分類: **boundary**/**actionable** — v' '- 分類: actionable、boundary — u' '- 分類: Actionable — t' '- 分類: design_confirmation2 — s' > "$TMP/rec-compound.md"
 check bash -c '"$1" --reviewer-type application --input "$2" >/dev/null 2>&1; [ "$?" -eq 1 ]' _ "$HELPER" "$TMP/rec-compound.md"
 check grep -q 'recommendations=8; invalid=8$' <<<"$(gate_out "$TMP/rec-compound.md")"
@@ -102,6 +124,13 @@ NOTE_AFTER_DASH_RULE='注記は値の後ろに ` — ` を挟んで書く'
 check grep -q "$NOTE_AFTER_DASH_RULE" "$PROMPT_GEN"
 check grep -q "$NOTE_AFTER_DASH_RULE" "$SKILL"
 check grep -q 'この節の後ろには `###` 見出しで始まる節しか置かない' "$PROMPT_GEN"
+NO_RECOMMENDATION_RULE='推奨事項が無いときは `なし` とだけ書く'
+check grep -q "$NO_RECOMMENDATION_RULE" "$PROMPT_GEN"
+check grep -q "$NO_RECOMMENDATION_RULE" "$BASE_FILE"
+check grep -q "$NO_RECOMMENDATION_RULE" "$SKILL"
+for none_word in 'なし' '特になし' '該当なし' 'None' 'N/A' '-'; do
+  check grep -qF "\`$none_word\`" <<<"$(grep -F '推奨が無いことだけを書いた行' "$SKILL")"
+done
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

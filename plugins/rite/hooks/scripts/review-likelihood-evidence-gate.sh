@@ -41,7 +41,7 @@ esac
 parsed=$(LC_ALL=C awk -v exception_category="$exception_category" -v reviewer_type="$reviewer_type" '
   BEGIN { in_findings=0; in_recommendations=0; saw_heading=0; saw_header=0; saw_separator=0; findings=0; missing=0; malformed=0; recommendations=0; invalid=0 }
   function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
-  /^###[[:space:]]*(推奨事項|Recommendations)/ { in_recommendations=1; in_findings=0; next }
+  /^###[[:space:]]*(推奨事項|Recommendations)/ { in_recommendations=1; in_findings=0; after_none=0; next }
   in_recommendations && /^#/ && $0 !~ /^####/ { in_recommendations=0 }
   in_recommendations {
     # Every non-indented line is one recommendation (a deeper heading included, so
@@ -52,8 +52,17 @@ parsed=$(LC_ALL=C awk -v exception_category="$exception_category" -v reviewer_ty
     text = $0
     marked = sub(/^[[:space:]]*([-*+]|[0-9]+\.)[[:space:]]+/, "", text)
     text = trim(text)
-    if (substr($0, 1, 1) ~ /[ \t]/ && !(marked && text ~ /^[*`]*分類[*`]*[[:space:]]*(:|：)/)) next
-    if (text ~ /^(なし|None)$/) next
+    indented = (substr($0, 1, 1) ~ /[ \t]/)
+    # A line that only says there is nothing to recommend counts as zero items.
+    # The set is closed: a line that goes on after "なし" is still an item. An
+    # indented line under such a line has no item to continue, so it is an item.
+    none = text
+    gsub(/[*`]/, "", none)
+    sub(/(\.|。)$/, "", none)
+    none = tolower(trim(none))
+    if (!indented && (none == "なし" || none == "特になし" || none == "該当なし" || none == "none" || none == "n/a" || none == "-")) { after_none = 1; next }
+    if (indented && !after_none && !(marked && text ~ /^[*`]*分類[*`]*[[:space:]]*(:|：)/)) next
+    after_none = 0
     recommendations++
     value = "(missing)"
     if (match(text, /分類[*`]*[[:space:]]*(:|：)/)) {
