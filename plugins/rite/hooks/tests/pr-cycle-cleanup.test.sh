@@ -1280,6 +1280,18 @@ t43_output=$(cd "$TEST_REPO" && bash "$CLEANUP" 2>&1)
 if [ -e "$TEST_REPO/.rite/review-results/704-clean.json" ] && grep -q '回収をスキップ' <<< "$t43_output"; then pass "T-43 unreadable flow-state fails safe"; else fail "T-43 flow-state failure did not protect review JSON"; fi
 cleanup_temp_repo "$TEST_REPO"
 
+echo "T-43b: orphan JSON with guardrail rows only is archived (a follow-up candidate)"
+TEST_REPO=$(make_temp_repo)
+write_gh_pr_mock "$TEST_REPO"
+mkdir -p "$TEST_REPO/.rite/review-results"
+printf '{"non_blocking_findings":[],"guardrail_audit_log":[{"reviewer":"r","file_line":"-","description":"d"}]}\n' > "$TEST_REPO/.rite/review-results/709-guard.json"
+printf '{"non_blocking_findings":[],"guardrail_audit_log":"broken"}\n' > "$TEST_REPO/.rite/review-results/710-badguard.json"
+t43b_output=$(cd "$TEST_REPO" && GH_PR_STATE_709=MERGED GH_PR_STATE_710=MERGED \
+  PATH="$TEST_REPO/bin:$PATH" bash "$CLEANUP" 2>&1)
+if [ -e "$TEST_REPO/.rite/review-results/archive/709-guard.json" ] && [ ! -e "$TEST_REPO/.rite/review-results/709-guard.json" ]; then pass "T-43b guardrail-only JSON archived"; else fail "T-43b guardrail-only JSON not archived: $t43b_output"; fi
+if [ -e "$TEST_REPO/.rite/review-results/710-badguard.json" ] && grep -q '710-badguard.json.*解析できない' <<< "$t43b_output"; then pass "T-43b malformed guardrail_audit_log kept with WARNING"; else fail "T-43b malformed guardrail_audit_log not kept: $t43b_output"; fi
+cleanup_temp_repo "$TEST_REPO"
+
 # -----------------------------------------------------------------------
 # T-44..47: OPEN/draft PR JSON is not archived across session boundaries
 # -----------------------------------------------------------------------

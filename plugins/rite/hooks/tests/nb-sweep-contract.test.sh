@@ -211,6 +211,8 @@ for g_bad in '{"reviewer":"","original_severity":"LOW","file_line":"src/x.ts:1",
   "$COLLECT" --json "$sandbox/gbad.json" >"$sandbox/gbad.out" 2>"$sandbox/gbad.err" || gbad_rc=$?
   assert "guardrail row without text stops ($g_bad)" "1" "$gbad_rc"
   assert_grep "guardrail row without text reason ($g_bad)" "$sandbox/gbad.err" 'NB_SWEEP_COLLECT=failed; count=0; .*reason=guardrail_row_invalid'
+  assert_grep "guardrail row without text names its file_line and JSON ($g_bad)" "$sandbox/gbad.err" 'file_line=src/x.ts:1'
+  assert_grep "guardrail row without text names the review JSON ($g_bad)" "$sandbox/gbad.err" 'gbad.json'
   assert "guardrail row without text prints no result ($g_bad)" "" "$(cat "$sandbox/gbad.out")"
 done
 assert_not_grep "collect has no filtered_suggestion fallback" "$COLLECT" 'filtered_suggestion'
@@ -440,14 +442,15 @@ printf '%s\n' "$MARKER" '' '### 却下台帳' '' '| finding_id | file:line | 判
   '| lost-reviewer | src/lost.ts:4 | recorded | guardrail | 1-20251231000000.json |' \
   '' '📎 non_blocking_count: 0' '' "$SENTINEL" > "$gprior_body"
 jq -n --rawfile body "$gprior_body" '[[{id:11,user:{login:"rite-bot"},body:$body}]]' > "$NB_TEST_COMMENTS"
-cp "$NB_TEST_COMMENTS" "$sandbox/glost-comments.before"
+: > "$NB_TEST_GH_LOG"
 glost_rc=0
 "$COLLECT" --json "$live_json" --pr 1 >"$sandbox/glost.out" 2>"$sandbox/glost.err" || glost_rc=$?
 assert "guardrail source missing: stops non-zero" "1" "$glost_rc"
 assert_grep "guardrail source missing: reason" "$sandbox/glost.err" 'NB_SWEEP_COLLECT=failed; count=0; .*reason=guardrail_source_missing'
 assert_grep "guardrail source missing: ERROR names reviewer, file_line and source" "$sandbox/glost.err" 'reviewer=lost-reviewer file_line=src/lost.ts:4 source=1-20251231000000.json'
 assert "guardrail source missing: prints no result" "" "$(cat "$sandbox/glost.out")"
-assert "guardrail source missing: ledger unchanged" "$(cat "$sandbox/glost-comments.before")" "$(cat "$NB_TEST_COMMENTS")"
+assert_grep "guardrail source missing: the ledger is read" "$NB_TEST_GH_LOG" 'repos/test/repo/issues/42/comments'
+assert_not_grep "guardrail source missing: ledger unchanged (no write call to gh)" "$NB_TEST_GH_LOG" '(-X|--method) *(PATCH|POST|PUT|DELETE)'
 # 出典 JSON が archive/ にあれば止まらない
 mkdir -p "$sandbox/archive"
 : > "$sandbox/archive/1-20251231000000.json"
@@ -466,6 +469,56 @@ jq -n --rawfile body "$gprior_body" '[[{id:11,user:{login:"rite-bot"},body:$body
 ghere_rc=0
 "$COLLECT" --json "$live_json" --pr 1 >/dev/null 2>&1 || ghere_rc=$?
 assert "guardrail source missing: a row present in the JSON or of another PR does not stop" "0" "$ghere_rc"
+# 空のセルを持つ旧形式行も列がずれずに出典を読み、rejected 行も同じく止まる
+printf '%s\n' "$MARKER" '' '### 却下台帳' '' '| finding_id | file:line | 判定 | 判定文 | 出典 |' \
+  '|------------|-----------|------|--------|------|' \
+  '| lost-reviewer |  | recorded | guardrail | 1-20251231000000.json |' \
+  '|  | src/e.ts:1 | rejected | legacy | 1-20251231000000.json |' \
+  '' '📎 non_blocking_count: 0' '' "$SENTINEL" > "$gprior_body"
+jq -n --rawfile body "$gprior_body" '[[{id:11,user:{login:"rite-bot"},body:$body}]]' > "$NB_TEST_COMMENTS"
+gempty_rc=0
+"$COLLECT" --json "$live_json" --pr 1 >/dev/null 2>"$sandbox/gempty.err" || gempty_rc=$?
+assert "guardrail source missing: a row with an empty cell stops" "1" "$gempty_rc"
+assert_grep "guardrail source missing: the empty file:line row is named" "$sandbox/gempty.err" 'reviewer=lost-reviewer file_line=<empty> source=1-20251231000000.json'
+assert_grep "guardrail source missing: the rejected row with an empty id is named" "$sandbox/gempty.err" 'reviewer=<empty> file_line=src/e.ts:1 source=1-20251231000000.json'
+# 出典 JSON が今回の JSON と同じディレクトリにあれば止まらない
+: > "$sandbox/1-20251231000000.json"
+gdir_rc=0
+"$COLLECT" --json "$live_json" --pr 1 >/dev/null 2>&1 || gdir_rc=$?
+assert "guardrail source in the same directory: does not stop" "0" "$gdir_rc"
+rm -f -- "$sandbox/1-20251231000000.json"
+
+# 位置の無い guardrail 行 (file_line が -) は reviewer ごとに key が同じになるので、別の JSON を出典に持つ
+# key の行では除外せず、スコープ外処分の - 行を prior にせず、旧形式行の原文がある根拠にもしない
+nl_json="$sandbox/nl.json"
+jq -n '{schema_version:"1.1.0",pr_number:1,overall_assessment:"mergeable",findings:[],non_blocking_findings:[],
+  guardrail_audit_log:[{reviewer:"nl-reviewer",filter_category:"Category #2",original_severity:"LOW",file_line:"-",description:"no location"}]}' > "$nl_json"
+nl_ledger() {
+  printf '%s\n' "$MARKER" '' '### 却下台帳' '' '| finding_id | file:line | 判定 | 判定文 | 出典 |' \
+    '|------------|-----------|------|--------|------|' "$@" '' '📎 non_blocking_count: 0' '' "$SENTINEL" > "$gprior_body"
+  jq -n --rawfile body "$gprior_body" '[[{id:11,user:{login:"rite-bot"},body:$body}]]' > "$NB_TEST_COMMENTS"
+}
+nl_ledger '| guardrail:nl-reviewer:- | - | issued | #5 https://example.test/issues/5 | 1-20260101000000.json |'
+assert "unlocated guardrail: an issued row of its key from another JSON does not exclude it" 1 \
+  "$("$COLLECT" --json "$nl_json" --pr 1 | jq '.count')"
+nl_ledger '| guardrail:nl-reviewer:- | - | REJECT | judged | nl.json |'
+assert "unlocated guardrail: a REJECT row of its key from the JSON read excludes it" 0 \
+  "$("$COLLECT" --json "$nl_json" --pr 1 | jq '.count')"
+nl_ledger '| nl-reviewer | - | REJECT | unrelated scope triage | nl.json |'
+assert "unlocated guardrail: a reviewer-keyed - REJECT row gives no prior" "false" \
+  "$("$COLLECT" --json "$nl_json" --pr 1 | jq '.candidates[0] | has("prior")')"
+nl_ledger '| nl-reviewer | - | recorded | guardrail | 1-20251231000000.json |'
+gnl_rc=0
+"$COLLECT" --json "$nl_json" --pr 1 >/dev/null 2>"$sandbox/gnl.err" || gnl_rc=$?
+assert "unlocated guardrail: it does not hold the text of a legacy row whose source is gone" "1" "$gnl_rc"
+
+# 関数名の file_line は loc のまま台帳と照合する (key の REJECT 行で除外される)
+fn_json="$sandbox/fn.json"
+jq -n '{schema_version:"1.1.0",pr_number:1,overall_assessment:"mergeable",findings:[],non_blocking_findings:[],
+  guardrail_audit_log:[{reviewer:"fn-reviewer",filter_category:"Category #2",original_severity:"LOW",file_line:"parse_args",description:"fn"}]}' > "$fn_json"
+nl_ledger '| guardrail:fn-reviewer:parse_args | parse_args | REJECT | judged | fn.json |'
+assert "function-name guardrail: a REJECT row of its key and loc excludes it" 0 \
+  "$("$COLLECT" --json "$fn_json" --pr 1 | jq '.count')"
 
 # CRLF body: the ledger section must be read exactly as the LF body (same targets, same section boundary).
 crlf_ledger_body="$sandbox/live-ledger-crlf.md"

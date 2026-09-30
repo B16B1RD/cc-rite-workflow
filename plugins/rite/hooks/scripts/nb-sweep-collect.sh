@@ -18,7 +18,10 @@
 # (reason=guardrail_row_invalid) instead of dropping it.
 # --json is an offline transform; pass --pr as well to read the persisted ledger
 # (a row matches a target on [id or key, loc]; a guardrail target is excluded only by
-# rows of its key, while a row of its reviewer id can still become its prior):
+# rows of its key, while a row of its reviewer id can still become its prior. A guardrail
+# target without a location (file_line empty or `-`) shares its key and loc with every other
+# such row of its reviewer, so only rows of its key whose 出典 is the JSON read now match it,
+# it gets no prior, and it is not taken as holding a legacy row's text):
 #   - excluded: an `issued` row, or a REJECT / RESOLVED / LINK row whose 出典 is the
 #     review JSON read now (this sweep already recorded it). Legacy recorded / rejected
 #     rows never exclude a target.
@@ -142,22 +145,25 @@ if [ -n "$pr" ]; then
   # 旧形式の recorded / rejected 行は guardrail 行を原文なしで転記したものを含む。この PR のレビュー結果を
   # 出典に持ち、今回の JSON に同じ [finding_id, file:line] の指摘 (guardrail 行は reviewer と file_line) が
   # 無い行の原文は出典 JSON にしかないので、出典が今回の JSON のディレクトリにも archive/ にも無ければ、
-  # その行は判定できないまま消える (台帳は Issue 単位なので、別の PR の行はこの PR の候補ではない)
+  # その行は判定できないまま消える (台帳は Issue 単位なので、別の PR の行はこの PR の候補ではない)。
+  # 位置の無い guardrail 行 (file_line が空か -) は reviewer ごとに同じ組になり行を見分けられないので、
+  # 原文がここにある根拠にしない。セルは空になりうるため、空白でない \x1f で区切って読み戻す
   if ! unmatched_rows=$(printf '%s' "$ledger_rows" | jq -er --slurpfile cur "$json" --arg pfx "$pr-" '
     ([($cur[0].findings // [])[], ($cur[0].non_blocking_findings // [])[]
         | [((.id // "") | tostring), ((.file // "") + ":" + (.line | tostring))]]
-     + [($cur[0].guardrail_audit_log // [])[] | [((.reviewer // "") | tostring), ((.file_line // "") | tostring)]]) as $here
+     + [($cur[0].guardrail_audit_log // [])[] | [((.reviewer // "") | tostring), ((.file_line // "") | tostring)]
+         | select(.[1] != "" and .[1] != "-")]) as $here
     | [.[] | select((.disposition == "recorded" or .disposition == "rejected") and (.source | startswith($pfx)))
         | select([.id, .loc] as $k | $here | index([$k]) | not)
-        | [.id, .loc, .source] | @tsv] | join("\n")'); then
+        | [.id, .loc, .source] | join("\u001f")] | join("\n")'); then
     collect_fail ledger_invalid
   fi
   src_dir=$(dirname "$json")
   lost_rows=""
-  while IFS=$'\t' read -r l_id l_loc l_src; do
+  while IFS=$'\x1f' read -r l_id l_loc l_src; do
     [ -n "$l_src" ] || continue
     case "$l_src" in */*) lost=1 ;; *) lost=0; [ -f "$src_dir/$l_src" ] || [ -f "$src_dir/archive/$l_src" ] || lost=1 ;; esac
-    [ "$lost" -eq 1 ] && lost_rows="${lost_rows}  reviewer=${l_id} file_line=${l_loc} source=${l_src}"$'\n'
+    [ "$lost" -eq 1 ] && lost_rows="${lost_rows}  reviewer=${l_id:-<empty>} file_line=${l_loc:-<empty>} source=${l_src}"$'\n'
   done <<< "$unmatched_rows"
   if [ -n "$lost_rows" ]; then
     echo "ERROR: legacy recorded / rejected ledger rows match no finding or guardrail row of $json, and their source JSON is in neither $src_dir nor its archive/; their text cannot be judged:" >&2
@@ -198,9 +204,13 @@ if ! out=$(jq -c --arg record "$json" --argjson ledger "$ledger_rows" --argjson 
         suggestion: (.suggestion // ""),
         verification: .verification
       };
+  # 位置の無い guardrail 行 (file_line が空か -) は reviewer ごとに key と loc が同じになり、別の行の
+  # 処分と見分けられない。同じ JSON を出典に持つ key の行 (#n で一意) だけを照合に使い、prior は付けない
+  def unlocated($t): $t.source == "guardrail_audit_log" and ($t.loc == "" or $t.loc == "-");
   def rows($t):
     ($t.loc // ($t.file + ":" + ($t.line | tostring))) as $loc
-    | $ledger | map(select(.loc == $loc and (.id == ($t.id | tostring) or .id == $t.key)));
+    | $ledger | map(select(.loc == $loc and (.id == ($t.id | tostring) or .id == $t.key)))
+    | if unlocated($t) then map(select(.id == $t.key and .source == $record_base)) else . end;
   def pending:
     . as $t
     | rows($t) | map(select($t.source != "guardrail_audit_log" or .id == $t.key))
@@ -210,7 +220,7 @@ if ! out=$(jq -c --arg record "$json" --argjson ledger "$ledger_rows" --argjson 
   def with_prior:
     . as $t
     | (rows($t) | map(select(.disposition == "REJECT" or .disposition == "ADOPT")) | last) as $p
-    | if $p == null then .
+    | if $p == null or unlocated($t) then .
       else . + {prior: {finding_id: $p.id, file_line: $p.loc, disposition: $p.disposition, premise: $p.premise}}
       end;
   # $n は同じ reviewer・file_line の行のうち何番目か (0 始まり)

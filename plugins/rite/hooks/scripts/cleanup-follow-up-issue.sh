@@ -88,7 +88,7 @@
 #     (--list-candidates のとき。0 件で終えたときは count=0 の後に reason=<下記 skipped / failed の reason>)
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=list_write; pr=<n>   (一覧を --list-candidates のパスへ書けない)
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=head_unresolved; pr=<n>   (対象 commit を決められない。一覧を書かない)
-#   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_row_invalid|guardrail_source_missing; pr=<n>   (判定できない guardrail 行がある。一覧を書かない)
+#   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_row_invalid|guardrail_source_missing|guardrail_source_check_failed; pr=<n>   (判定できない guardrail 行がある。一覧を書かない)
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=hold_unreadable; pr=<n>   (採否ゲートの hold ファイルがあるのに読めず、
 #     前回の判定記録を再利用する候補を決められない。一覧を書かない。起票実行ではゲートが同じ hold を読めず
 #     FOLLOW_UP_ISSUE=held; reason=gate_failed_rc1; hold_file=none で止まる)
@@ -123,12 +123,14 @@
 #   書けなくても結果は変えず WARNING を出す。影響は再実行の報告が no_json に戻ることだけ。
 #   [CONTEXT] FOLLOW_UP_DEFERRED=unavailable; reason=issue_body_api; pr=<n>
 #     元 Issue の本文を取得できず先送り欠陥を読めなかった (ゲートが本文を読み直し、読めなければ保留する)
-#   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable|head_unresolved|guardrail_row_invalid|guardrail_source_missing|preview_write; pr=<n>
+#   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable|head_unresolved|guardrail_row_invalid|guardrail_source_missing|guardrail_source_check_failed|preview_write; pr=<n>
 #     head_unresolved: commit_sha を持つレビュー結果 JSON が無く、PR の head も取得できないか <state-root> の git で解決できない
 #     guardrail_row_invalid: guardrail_audit_log の行が reviewer か description を欠き、判定できない
 #     guardrail_source_missing: 却下台帳の recorded / rejected 行 (guardrail 行を原文なしで転記した旧形式) のうち、
 #       この PR のレビュー結果を出典に持ち、読んだ JSON に同じ位置の指摘が無い行の出典 JSON がレビュー結果
-#       (直下と archive/) に無く、原文を判定できない (この PR の JSON が 1 本も無いときは問わない)
+#       (直下と archive/) に無く、原文を判定できない (この PR の JSON が 1 本も無いときは問わない。
+#       位置の無い guardrail 行 (file_line が空か -) は原文がある根拠にしない)
+#     guardrail_source_check_failed: 却下台帳の旧形式行と読んだ JSON の照合自体に失敗し、上の判定ができない
 #   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=create_api; issue=<起票できた番号の CSV>; pr=<n>
 #     根因の一部だけ起票できた。再実行すると起票済みの根因は増やさず残りだけを起票する
 #   [CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=<r>; pr=<n>
@@ -570,31 +572,41 @@ if [ -n "$SOURCE_ISSUE" ] && { [ -n "$LIST_OUT" ] || [ "$deferred_n" -gt 0 ] || 
   # 出典に持ち、読んだ JSON に同じ [finding_id, file:line] の指摘 (guardrail 行は reviewer と file_line) が
   # 無い行の原文は出典 JSON にしかないので、出典がこの PR のレビュー結果 JSON (直下と archive/) に無ければ、
   # その行は判定できないまま消える (台帳は Issue 単位なので、別の PR の行はこの PR の候補ではない)。
-  # JSON が 1 本も無いときは上の WARNING (別環境での cleanup) が全指摘について同じことを告げているので問わない
+  # JSON が 1 本も無いときは上の WARNING (別環境での cleanup) が全指摘について同じことを告げているので問わない。
+  # 位置の無い guardrail 行 (file_line が空か -) は reviewer ごとに同じ組になり行を見分けられないので、
+  # 原文がここにある根拠にしない。セルは空になりうるため、空白でない \x1f で区切って読み戻す
   if [ -z "$ledger_unread" ] && [ "$matched" -gt 0 ]; then
-    if ! unmatched_rows=$(printf '%s' "$record_body" | jq -Rsre --argjson cur "$findings_json" --arg pfx "${PR_NUMBER}-" '
+    # 和集合は大きくなりうるので引数ではなくファイルで渡す (1 引数の長さ上限で jq が起動できなくなる)
+    rite_tempfile_new cur_file "fu-cur" || exit 1
+    if ! printf '%s' "$findings_json" > "$cur_file" \
+       || ! unmatched_rows=$(printf '%s' "$record_body" | jq -Rsre --slurpfile cur "$cur_file" --arg pfx "${PR_NUMBER}-" '
       def trim: gsub("^\\s+|\\s+$"; "");
-      ([$cur[] | objects | [((.id // "") | tostring), (.loc // ((.file // "") + ":" + (.line | tostring)))]]
-       + [$cur[] | objects | select(.reviewer != null) | [(.reviewer | tostring), .loc]]) as $here
+      ([$cur[0][] | objects | [((.id // "") | tostring), (.loc // ((.file // "") + ":" + (.line | tostring)))]]
+       + [$cur[0][] | objects | select((.id | tostring | startswith("guardrail:")) and .loc != "" and .loc != "-")
+          | [(.reviewer | tostring), .loc]]) as $here
       | [split("### 却下台帳\n")[1:][]
         | split("📎 non_blocking_count:")[0] | split("\n### ")[0]
         | split("\n")[] | select(startswith("|"))
         | gsub("\\\\\\|"; "\ue000") | split("|") | map(gsub("\ue000"; "\\|") | trim)
         | select(length >= 7 and (.[3] == "recorded" or .[3] == "rejected") and (.[5] | startswith($pfx)))
         | select([.[1], .[2]] as $k | $here | index([$k]) | not)
-        | [.[1], .[2], .[5]] | @tsv] | join("\n")' 2>"$comments_err"); then
-      # 台帳は上で解析できている。ここで失敗するのは想定外なので、読めない台帳と同じ扱いで WARNING を出す
+        | [.[1], .[2], .[5]] | join("\u001f")] | join("\n")' 2>"$comments_err"); then
+      # 台帳は上で解析できているので、ここでの失敗は読んだ JSON との照合の失敗。検査を飛ばして起票へ進まない
+      echo "ERROR: 却下台帳の旧形式行とレビュー結果 JSON を照合できません。原文を失った行を判定できないため follow-up を判定しません (PR #${PR_NUMBER})" >&2
       [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-      ledger_hint='[]'
-      ledger_unread=ledger_invalid
-      unmatched_rows=""
+      if [ -n "$LIST_OUT" ]; then
+        echo "[CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_source_check_failed; pr=${PR_NUMBER}" >&2
+      else
+        emit_failed guardrail_source_check_failed
+      fi
+      exit 0
     fi
     source_bases=$(printf '%s\n' "$sources" | awk '{ n = split($0, p, "/"); print p[n] }')
     lost_rows=""
-    while IFS=$'\t' read -r l_id l_loc l_src; do
+    while IFS=$'\x1f' read -r l_id l_loc l_src; do
       [ -n "$l_src" ] || continue
       grep -Fxq -- "$l_src" <<< "$source_bases" \
-        || lost_rows="${lost_rows}  reviewer=${l_id} file_line=${l_loc} source=${l_src}"$'\n'
+        || lost_rows="${lost_rows}  reviewer=${l_id:-<empty>} file_line=${l_loc:-<empty>} source=${l_src}"$'\n'
     done <<< "$unmatched_rows"
     if [ -n "$lost_rows" ]; then
       echo "ERROR: 却下台帳の recorded / rejected 行が指す出典 JSON が PR #${PR_NUMBER} のレビュー結果 (直下と archive/) にありません。この guardrail 行の原文を判定できないため follow-up を判定しません:" >&2

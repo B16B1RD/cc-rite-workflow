@@ -589,7 +589,7 @@ bash {plugin_root}/hooks/scripts/cleanup-follow-up-issue.sh \
 | `listed; count=0` | 判定記録を書かずに 6.0.C へ進む（helper は同じ 0 件の結果で終える） |
 | `listed; count=<n>; ...; judge=<j>`（n ≥ 1） | 一覧ファイルを Read し、下の規則で判定記録を書いてから 6.0.C へ進む（`judge=0` なら `reuse` を写すだけで判定しない） |
 | `failed; reason=head_unresolved` | 判定記録を書かずに 6.0.C へ進む（対象 commit を決められないため、起票の実行も保留ではなく同じ reason の `FOLLOW_UP_ISSUE=failed` で止まる） |
-| `failed; reason=guardrail_row_invalid` / `guardrail_source_missing` | 判定記録を書かずに 6.0.C へ進む（判定できない guardrail 行があるため、起票の実行も同じ reason の `FOLLOW_UP_ISSUE=failed` で止まる。ERROR が示す行を直すか出典 JSON を戻して再実行する） |
+| `failed; reason=guardrail_row_invalid` / `guardrail_source_missing` / `guardrail_source_check_failed` | 判定記録を書かずに 6.0.C へ進む（判定できない guardrail 行があるため、起票の実行も同じ reason の `FOLLOW_UP_ISSUE=failed` で止まる。ERROR が示す行を直すか出典 JSON を戻して再実行する） |
 | `failed; reason=hold_unreadable` | 判定記録を書かずに 6.0.C へ進む（採否ゲートの hold ファイルを読めず再利用する記録を決められない。起票の実行はゲートが同じ hold ファイルを読めずに止まる） |
 | 上記以外の `failed` / marker なし | 判定記録を書かずに 6.0.C へ進む（helper は記録なしとして保留する） |
 
@@ -975,7 +975,7 @@ rationale: references/rationale.md#marker-data-delimiter
   | `FOLLOW_UP_ISSUE=held`（`hold_file=none`） | 未完了 | `⚠️ 採否ゲート自体が失敗したため follow-up を起票せず保留しました（{reason}）。候補は hold ファイルに保存されていません。直前の WARNING の原因を解消して /rite:cleanup {pr_number} を再実行してください（起票済みの根因は増えません）` |
   | `FOLLOW_UP_ISSUE=held` | 未完了 | `⚠️ 採否の出口が出ていない候補があるため follow-up を起票せず保留しました（{reason}）。候補の全文は {hold_file} に保存済みです。{hold_file} の resume（ゲートの WARNING にも出る）に従って再開してください（起票済みの根因は増えません）` |
   | `FOLLOW_UP_ISSUE=failed; reason=preview_write` | 未完了 | `⚠️ follow-up 起票の確認用の本文を書き出せず、起票を試みていません。書き出し先を確認して /rite:cleanup {pr_number} を再実行してください` |
-  | `FOLLOW_UP_ISSUE=failed`（reason 問わず。preview_write 以外。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` / `head_unresolved` / `guardrail_row_invalid` / `guardrail_source_missing` を含む） | 未完了 | `⚠️ follow-up Issue の起票に失敗しました（{reason}。`issue=` があればその番号は起票済み）。原因を解消して /rite:cleanup {pr_number} を再実行してください（起票済みの根因は増えず、残りだけを起票します）` |
+  | `FOLLOW_UP_ISSUE=failed`（reason 問わず。preview_write 以外。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` / `head_unresolved` / `guardrail_row_invalid` / `guardrail_source_missing` / `guardrail_source_check_failed` を含む） | 未完了 | `⚠️ follow-up Issue の起票に失敗しました（{reason}。`issue=` があればその番号は起票済み）。原因を解消して /rite:cleanup {pr_number} を再実行してください（起票済みの根因は増えず、残りだけを起票します）` |
   | `skipped; reason=no_json` | 未完了 | 同上（レビュー結果 JSON 不在） |
   | `skipped; reason=jq_missing` | 未完了 | `⚠️ jq が見つからず follow-up 起票を skip しました。jq を導入したうえで /rite:cleanup {pr_number} を再実行してください` |
   | `created` / `skipped; reason=no_findings` / `skipped; reason=already_exists` / `skipped; reason=all_issued` / `skipped; reason=already_processed` / `skipped; reason=all_recorded` | x 相当 | — |

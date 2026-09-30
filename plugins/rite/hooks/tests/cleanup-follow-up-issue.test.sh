@@ -2724,6 +2724,8 @@ for t94_bad in '{"reviewer":"","file_line":"src/x.ts:1","description":"d"}' \
   ADOPT_MODE=manual
   run_target "$r" --list-candidates "$TMP_ROOT/t94-bad-cands.json"
   assert_grep "T-94 本文を欠く guardrail 行で一覧は失敗 ($t94_bad)" "$ERR" '^\[CONTEXT\] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_row_invalid; pr=9$'
+  assert_grep "T-94 本文を欠く guardrail 行は出典 JSON 名を示す ($t94_bad)" "$ERR" '9-20260101120000\.json'
+  assert_grep "T-94 本文を欠く guardrail 行は file_line を示す ($t94_bad)" "$ERR" 'file_line=src/x\.ts:1'
   assert "T-94 本文を欠く guardrail 行で一覧を書かない ($t94_bad)" "no" "$([ -e "$TMP_ROOT/t94-bad-cands.json" ] && echo yes || echo no)"
   ADOPT_MODE=manual
   run_target "$r"
@@ -2768,6 +2770,41 @@ ADOPT_MODE=manual
 run_target "$r" --list-candidates "$TMP_ROOT/t94-lost-cands.json"
 assert_not_grep "T-94 JSON にある guardrail 行・別 PR の旧行では止めない" "$ERR" 'guardrail_source_missing'
 assert "T-94 JSON にある guardrail 行・別 PR の旧行では一覧を書く" "yes" "$([ -e "$TMP_ROOT/t94-lost-cands.json" ] && echo yes || echo no)"
+# 出典 JSON が archive/ にある旧行では止めない
+mkdir -p "$r/.rite/review-results/archive"
+put_json "$r" "archive/9-20251231120000.json" '{"non_blocking_findings": []}'
+jq -n --argjson c "$(comment_obj "$(record_body '| lost-reviewer | src/lost.ts:4 | recorded | severity=LOW; measured=false | 9-20251231120000.json |')")" '[[$c]]' > "$GH_API_JSON"
+ADOPT_MODE=manual
+run_target "$r" --list-candidates "$TMP_ROOT/t94-arch-cands.json"
+assert_not_grep "T-94 出典 JSON が archive/ にある旧行では止めない" "$ERR" 'guardrail_source'
+# 空のセルを持つ旧行も列がずれずに出典を読んで止める
+jq -n --argjson c "$(comment_obj "$(record_body '| lost-reviewer |  | recorded | severity=LOW; measured=false | 9-20251230120000.json |')")" '[[$c]]' > "$GH_API_JSON"
+ADOPT_MODE=manual
+run_target "$r" --list-candidates "$TMP_ROOT/t94-empty-cands.json"
+assert_grep "T-94 空のセルの旧行も出典 JSON の欠落で止める" "$ERR" '^\[CONTEXT\] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_source_missing; pr=9$'
+assert_grep "T-94 空のセルは <empty> と示す" "$ERR" 'reviewer=lost-reviewer file_line=<empty> source=9-20251230120000\.json'
+rm -rf "$r"
+# 位置の無い guardrail 行 (file_line が -) は同じ reviewer の旧行の原文がある根拠にしない
+reset_stubs
+r=$(new_root t94-nl)
+put_json "$r" "9-20260101120000.json" "$(t94_json '{"reviewer":"nl-reviewer","original_severity":"LOW","file_line":"-","description":"no location"}')"
+jq -n --argjson c "$(comment_obj "$(record_body '| nl-reviewer | - | recorded | severity=LOW; measured=false | 9-20251230120000.json |')")" '[[$c]]' > "$GH_API_JSON"
+ADOPT_MODE=manual
+run_target "$r" --list-candidates "$TMP_ROOT/t94-nl-cands.json"
+assert_grep "T-94 位置の無い guardrail 行は旧行の原文の根拠にしない" "$ERR" '^\[CONTEXT\] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_source_missing; pr=9$'
+rm -rf "$r"
+# 旧行と読んだ JSON の照合自体に失敗したら、検査を飛ばして起票へ進まず止める
+reset_stubs
+r=$(new_root t94-chk)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings": [{"id": "F-01", "severity": "MEDIUM", "scope": "current-pr", "file": 5, "line": 1, "description": "d"}], "guardrail_audit_log": []}'
+jq -n --argjson c "$(comment_obj "$(record_body '| lost-reviewer | src/lost.ts:4 | recorded | severity=LOW; measured=false | 9-20251230120000.json |')")" '[[$c]]' > "$GH_API_JSON"
+ADOPT_MODE=manual
+run_target "$r" --list-candidates "$TMP_ROOT/t94-chk-cands.json"
+assert_grep "T-94 照合に失敗したら一覧は失敗" "$ERR" '^\[CONTEXT\] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_source_check_failed; pr=9$'
+ADOPT_MODE=manual
+run_target "$r"
+assert_grep "T-94 照合に失敗したら起票は失敗" "$ERR" 'FOLLOW_UP_ISSUE=failed; reason=guardrail_source_check_failed; pr=9'
+assert "T-94 照合に失敗したら create 0 回" "0" "$(create_count)"
 rm -rf "$r"
 
 echo "--- T-arg: 引数 gate ---"
