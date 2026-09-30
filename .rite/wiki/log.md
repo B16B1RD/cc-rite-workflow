@@ -234,6 +234,7 @@
 * **Skip**: [20260930T115224Z-pr-3526.md](raw/reviews/20260930T115224Z-pr-3526.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
 * **Skip**: [20260930T112642Z-pr-3536.md](raw/reviews/20260930T112642Z-pr-3536.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
 * **Skip**: [20260930T114425Z-pr-3537.md](raw/reviews/20260930T114425Z-pr-3537.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
+* **lint:clean** — contradictions=0, stale=64, orphans=0, missing_concept=0, unregistered_raw=625, broken_refs=0
 
 ## 2026-09-29
 
