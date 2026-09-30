@@ -336,9 +336,9 @@ class WorkflowContracts(unittest.TestCase):
             self.assertIn("5.1 の回収完了ゲート", line, marker)
         # Every line that reruns the collection gate replaces a reviewer output, so it
         # reruns the producer gate after it: a regenerated output never reaches
-        # aggregation unchecked. The lines are collected from the skill, so a new
-        # regeneration route is checked without being listed here. The producer
-        # gate's own retry row is left out: it reruns its helper directly (pinned above).
+        # aggregation unchecked. The checked lines are the ones that name the
+        # collection gate together with 再実行 / rerun. The producer gate's own
+        # retry row is left out: it reruns its helper directly (pinned above).
         regenerating = [line for line in pr_review.splitlines()
                         if "回収完了ゲート" in line and ("再実行" in line or "rerun" in line)
                         and line != likelihood_retry]
