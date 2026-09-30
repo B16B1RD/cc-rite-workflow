@@ -119,8 +119,10 @@ for q in "$queue_dir"/run-queue-*.json; do
   ended="$queue_dir/run-queue-${sid}.ended"
   if [ ! -e "$ended" ]; then
     sid_disp=$(printf '%s' "$sid" | neutralize_ctrl)
+    # The announcement is for a person to act on: keep UTF-8 in the path (C1 neutralize would break it).
+    q_show=$(printf '%s' "$q" | neutralize_ctrl --c0-only)
     progress=$(jq -r '"\(if (.cursor | type) == "number" then .cursor else 0 end)/\(if (.issues | type) == "array" then (.issues | length) else 0 end)"' "$q")
-    echo "[rite] Batch: 終了の印が無い他セッションの run-queue を回収せず残しています (cursor ${progress}): ${q_disp} — 持ち主のセッション ${sid_disp} を再開し、引数なしの /rite:batch-run で続行できます。不要なら run-queue-${sid_disp}.json と .watchdog を削除してください。"
+    echo "[rite] Batch: 終了の印が無い他セッションの run-queue を回収せず残しています (cursor ${progress}): ${q_show} — 持ち主のセッション ${sid_disp} を再開し、引数なしの /rite:batch-run で続行できます。不要なら run-queue-${sid_disp}.json と .watchdog を削除してください。"
     continue
   fi
 

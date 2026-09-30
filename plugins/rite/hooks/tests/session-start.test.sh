@@ -2261,6 +2261,23 @@ else
 fi
 echo ""
 
+echo "RQ-18: the announcement of a kept unmarked queue prints a non-ASCII state-root path byte for byte"
+dir_rq18="$TEST_DIR/rq-18-プロジェクト"
+mkdir -p "$dir_rq18"
+rq18_ts=$(iso8601_now -604800)
+write_queue_file "$dir_rq18" "week-sid" "$(jq -n --arg ts "$rq18_ts" '{issues:[15],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+write_owner_flow_state "$dir_rq18" "week-sid" "$(jq -n --arg ts "$rq18_ts" '{active:true,updated_at:$ts}')"
+rc_rq18=0
+RITE_STATE_ROOT="$dir_rq18" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq18-out" 2>"$TEST_DIR/rq18-err" || rc_rq18=$?
+if [ "$rc_rq18" -eq 0 ] \
+  && [ "$(grep -cF "(cursor 0/1): $dir_rq18/.rite/state/run-queue-week-sid.json — " "$TEST_DIR/rq18-out")" -eq 1 ] \
+  && [ -f "$dir_rq18/.rite/state/run-queue-week-sid.json" ]; then
+  pass "RQ-18: non-ASCII path appears unchanged in the single announcement line; queue kept"
+else
+  fail "RQ-18: rc=$rc_rq18 out=$(cat "$TEST_DIR/rq18-out") err=$(cat "$TEST_DIR/rq18-err")"
+fi
+echo ""
+
 echo "RQ-15: SessionStart drops only its own ended marker, so a resumed session's queue is protected again"
 dir_rq15="$TEST_DIR/rq-15"
 mkdir -p "$dir_rq15"
