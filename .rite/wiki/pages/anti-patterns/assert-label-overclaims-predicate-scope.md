@@ -23,9 +23,11 @@ sources:
     resource: "raw/reviews/20260930T083013Z-pr-3518-c2.md"
   - type: "reviews"
     resource: "raw/reviews/20260930T095402Z-pr-3525.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T113713Z-pr-3539.md"
 tags: ["test", "mutation-testing", "assertion-strength", "contract", "review-fix-loop"]
 confidence: high
-generated: { by: "rite-wiki-ingest/gpt-6.1-sol", at: "2026-09-30T10:11:01Z" }
+generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-09-30T11:48:01Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-30T12:50:00+09:00"
@@ -83,6 +85,10 @@ assert 名に変数名のような実装詳細を入れると、内部名を変�
 
 古い結果が trend から除かれるという観測だけでは、pin と run_id のどちらが除いたかは分からない。片方を無効にしても通る fixture では、その選別経路の検出をコメントに書かない。コメントは fixture の条件、assert 名は観測する trend、marker の検査は設定済み境界の表示に限定する。観測結果を崩す対照で assert が落ちることと、製品を変えない全 suite が通ることを別々に確認する。
 
+### 部分文字列の存在と規則の意味を分ける
+
+規則の結果句を `grep -c` で数えるだけでは、条件の反転や句の後ろに足した否定を検出できない。受入条件が名称限定を認めるなら、assert 名を「結果句の部分文字列が一つの行に存在する」検査へ絞り、条件や意味を保証する表現を外す。述語を変えない名称修正でも、対象 suite の成功と非対象本文の不変を別々に確認する。
+
 ## 関連ページ
 
 - [アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](../heuristics/mutation-testing-measures-assertion-strength.md)
@@ -100,3 +106,4 @@ assert 名に変数名のような実装詳細を入れると、内部名を変�
 - [レビュー結果（差分スコープ）](../../raw/reviews/20260930T083013Z-pr-3518-c2.md)
 
 - [統合の根拠](../../raw/reviews/20260930T095402Z-pr-3525.md)
+- [部分文字列の検査範囲に名称を限定した検証](../../raw/reviews/20260930T113713Z-pr-3539.md)
