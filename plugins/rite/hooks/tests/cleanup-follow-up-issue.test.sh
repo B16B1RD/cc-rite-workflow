@@ -2716,8 +2716,7 @@ assert_grep "T-94 sweep 起票済みの guardrail 行は起票しない" "$ERR" 
 assert "T-94 sweep 起票済みの guardrail 行で create 0 回" "0" "$(create_count)"
 # 判定に要る本文を欠く guardrail 行は落とさず、一覧も起票も止める
 for t94_bad in '{"reviewer":"","file_line":"src/x.ts:1","description":"d"}' \
-               '{"reviewer":"r","file_line":"src/x.ts:1","description":""}' \
-               '{"reviewer":"r","file_line":"src/x.ts","description":"d"}'; do
+               '{"reviewer":"r","file_line":"src/x.ts:1","description":""}'; do
   reset_stubs
   r=$(new_root t94-bad)
   put_json "$r" "9-20260101120000.json" "$(t94_json "$t94_bad")"
@@ -2732,6 +2731,44 @@ for t94_bad in '{"reviewer":"","file_line":"src/x.ts:1","description":"d"}' \
   assert "T-94 本文を欠く guardrail 行で create 0 回 ($t94_bad)" "0" "$(create_count)"
   rm -rf "$r"
 done
+# 同じ reviewer・file_line で本文の違う 2 行は別の候補 (2 行目の id は #2)
+reset_stubs
+r=$(new_root t94-dup)
+put_json "$r" "9-20260101120000.json" "$(jq -nc --argjson g "$T94_GUARD" '{non_blocking_findings: [], guardrail_audit_log: [$g, ($g + {description: "second"})]}')"
+ADOPT_MODE=manual
+run_target "$r" --list-candidates "$TMP_ROOT/t94-dup-cands.json"
+assert "T-94 同じ位置の guardrail 2 行は 2 件の候補" "range=guardrail:test-reviewer:src/t.sh:98-101,second=guardrail:test-reviewer:src/t.sh:98-101#2" \
+  "$(jq -r '[.candidates[].finding | "\(.description)=\(.id)"] | sort | join(",")' "$TMP_ROOT/t94-dup-cands.json")"
+# file_line の形は問わない (関数名でも候補になる)
+put_json "$r" "9-20260101120000.json" "$(t94_json '{"reviewer":"r","original_severity":"LOW","file_line":"parse_args","description":"d"}')"
+ADOPT_MODE=manual
+run_target "$r" --list-candidates "$TMP_ROOT/t94-fn-cands.json"
+assert "T-94 関数名の file_line も候補" "guardrail:r:parse_args" "$(jq -r '.candidates[0].finding.id' "$TMP_ROOT/t94-fn-cands.json")"
+rm -rf "$r"
+# 読んだ JSON に無い旧形式の recorded 行は、出典 JSON が無ければ原文を判定できないので一覧も起票も止める
+reset_stubs
+r=$(new_root t94-lost)
+put_json "$r" "9-20260101120000.json" "$(t94_json "$T94_GUARD")"
+jq -n --argjson c "$(comment_obj "$(record_body '| lost-reviewer | src/lost.ts:4 | recorded | severity=LOW; measured=false | 9-20251231120000.json |')")" '[[$c]]' > "$GH_API_JSON"
+rm -f "$TMP_ROOT/t94-lost-cands.json"
+ADOPT_MODE=manual
+run_target "$r" --list-candidates "$TMP_ROOT/t94-lost-cands.json"
+assert_grep "T-94 出典 JSON の無い旧行で一覧は失敗" "$ERR" '^\[CONTEXT\] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_source_missing; pr=9$'
+assert_grep "T-94 出典 JSON の無い旧行は reviewer・file_line・出典名を示す" "$ERR" 'reviewer=lost-reviewer file_line=src/lost.ts:4 source=9-20251231120000.json'
+assert "T-94 出典 JSON の無い旧行で一覧を書かない" "no" "$([ -e "$TMP_ROOT/t94-lost-cands.json" ] && echo yes || echo no)"
+ADOPT_MODE=manual
+run_target "$r"
+assert_grep "T-94 出典 JSON の無い旧行で起票は失敗" "$ERR" 'FOLLOW_UP_ISSUE=failed; reason=guardrail_source_missing; pr=9'
+assert "T-94 出典 JSON の無い旧行で create 0 回" "0" "$(create_count)"
+# 読んだ JSON に同じ位置の guardrail 行があれば、原文はそこにあるので止めない。
+# 別の PR を出典に持つ行はこの PR の候補ではないので止めない (台帳は Issue 単位)
+jq -n --argjson c "$(comment_obj "$(record_body '| test-reviewer | src/t.sh:98-101 | recorded | severity=LOW; measured=false | 9-20251231120000.json |
+| lost-reviewer | src/lost.ts:4 | recorded | severity=LOW; measured=false | 8-20251231120000.json |')")" '[[$c]]' > "$GH_API_JSON"
+ADOPT_MODE=manual
+run_target "$r" --list-candidates "$TMP_ROOT/t94-lost-cands.json"
+assert_not_grep "T-94 JSON にある guardrail 行・別 PR の旧行では止めない" "$ERR" 'guardrail_source_missing'
+assert "T-94 JSON にある guardrail 行・別 PR の旧行では一覧を書く" "yes" "$([ -e "$TMP_ROOT/t94-lost-cands.json" ] && echo yes || echo no)"
+rm -rf "$r"
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?

@@ -182,10 +182,30 @@ assert "guardrail colon path line" "7" "$(printf '%s' "$gsplit_out" | jq -r '.ca
 assert "guardrail range line joins back" "src/t.sh:98-101" "$(printf '%s' "$gsplit_out" | jq -r '.candidates[] | select(.description == "range") | .file + ":" + (.line | tostring)')"
 assert "guardrail same reviewer two rows two ids" "2" "$(printf '%s' "$gsplit_out" | jq '[.candidates[].id] | unique | length')"
 
+# 同じ reviewer・file_line の 2 行目以降は key に #n が付き、重複除去で落ちない
+gdup_json="$sandbox/pr-gdup.json"
+write_json "$gdup_json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":3,"overall_assessment":"mergeable","findings":[],"non_blocking_findings":[],
+ "guardrail_audit_log":[
+  {"reviewer":"test-reviewer","filter_category":"Category #2","original_severity":"LOW","file_line":"src/d.ts:3","description":"first","filter_reason":"r1","verification":"なし"},
+  {"reviewer":"test-reviewer","filter_category":"Category #2","original_severity":"LOW","file_line":"src/d.ts:3","description":"second","filter_reason":"r2","verification":"なし"}]}
+JSON
+gdup_out=$("$COLLECT" --json "$gdup_json" 2>/dev/null)
+assert "guardrail same position: both rows are candidates" "2" "$(printf '%s' "$gdup_out" | jq '.count')"
+assert "guardrail same position: second row key has #2" "first=guardrail:test-reviewer:src/d.ts:3,second=guardrail:test-reviewer:src/d.ts:3#2" \
+  "$(printf '%s' "$gdup_out" | jq -r '[.candidates[] | "\(.description)=\(.id)"] | sort | join(",")')"
+assert "guardrail same position: loc stays the file_line" "src/d.ts:3" "$(printf '%s' "$gdup_out" | jq -r '[.candidates[].loc] | unique | join(",")')"
+
+# file_line の形は問わない (producer は `-` や関数名も書く)。loc に原文のまま運ぶ
+for g_ok in '-' 'parse_args' 'src/x.ts'; do
+  jq -n --arg fl "$g_ok" '{schema_version:"1.1.0",pr_number:3,overall_assessment:"mergeable",findings:[],non_blocking_findings:[],guardrail_audit_log:[{reviewer:"r",original_severity:"LOW",file_line:$fl,description:"d"}]}' > "$sandbox/gok.json"
+  gok_out=$("$COLLECT" --json "$sandbox/gok.json" 2>/dev/null)
+  assert "guardrail file_line of any shape is a candidate ($g_ok)" "guardrail:r:${g_ok}|${g_ok}" "$(printf '%s' "$gok_out" | jq -r '.candidates[0] | "\(.id)|\(.loc)"')"
+done
+
 # guardrail 行が判定に要る本文を欠けば、落とさずに止まる
 for g_bad in '{"reviewer":"","original_severity":"LOW","file_line":"src/x.ts:1","description":"d"}' \
-             '{"reviewer":"r","original_severity":"LOW","file_line":"src/x.ts:1","description":""}' \
-             '{"reviewer":"r","original_severity":"LOW","file_line":"src/x.ts","description":"d"}'; do
+             '{"reviewer":"r","original_severity":"LOW","file_line":"src/x.ts:1","description":""}'; do
   jq -n --argjson g "$g_bad" '{schema_version:"1.1.0",pr_number:3,overall_assessment:"mergeable",findings:[],non_blocking_findings:[],guardrail_audit_log:[$g]}' > "$sandbox/gbad.json"
   gbad_rc=0
   "$COLLECT" --json "$sandbox/gbad.json" >"$sandbox/gbad.out" 2>"$sandbox/gbad.err" || gbad_rc=$?
@@ -391,16 +411,18 @@ assert "carry: a held guardrail candidate is not duplicated" 1 \
   "$(printf '%s' "$gcarry_out" | jq '[.candidates[] | select(.key == "guardrail:code-quality-reviewer:src/g.ts:7")] | length')"
 rm -f -- "$carry_hold"
 
-# guardrail 行の台帳照合: reviewer と file_line の REJECT 行は prior になり除外しない。
-# key の REJECT 行は、今回読む JSON を出典に持つときだけ除外する。
+# guardrail 行の台帳照合: reviewer と file_line の REJECT 行 (スコープ外処分) は、今回読む JSON を
+# 出典に持っても除外せず prior になる。key の REJECT 行は、今回読む JSON を出典に持つときだけ除外する。
 gprior_body="$sandbox/gprior-ledger.md"
 printf '%s\n' "$MARKER" '' '### 却下台帳' '' '| finding_id | file:line | 判定 | 判定文 | 出典 |' \
   '|------------|-----------|------|--------|------|' \
-  '| code-quality-reviewer | src/g.ts:7 | REJECT | scope triage premise | 1-20260101000000.json |' \
+  '| code-quality-reviewer | src/g.ts:7 | REJECT | scope triage premise | live.json |' \
   '' '📎 non_blocking_count: 0' '' "$SENTINEL" > "$gprior_body"
 jq -n --rawfile body "$gprior_body" '[[{id:11,user:{login:"rite-bot"},body:$body}]]' > "$NB_TEST_COMMENTS"
 gprior_out=$("$COLLECT" --json "$live_json" --pr 1)
 gprior_c=$(printf '%s' "$gprior_out" | jq -c '.candidates[] | select(.source == "guardrail_audit_log")')
+assert "guardrail prior: the reviewer-keyed REJECT row from the JSON read does not exclude it" 1 \
+  "$(printf '%s' "$gprior_out" | jq '[.candidates[] | select(.source == "guardrail_audit_log")] | length')"
 assert "guardrail prior: the reviewer-keyed REJECT row is the prior" "code-quality-reviewer|src/g.ts:7|REJECT|scope triage premise" \
   "$(printf '%s' "$gprior_c" | jq -r '"\(.prior.finding_id)|\(.prior.file_line)|\(.prior.disposition)|\(.prior.premise)"')"
 printf '%s\n' "$MARKER" '' '### 却下台帳' '' '| finding_id | file:line | 判定 | 判定文 | 出典 |' \
@@ -411,6 +433,39 @@ jq -n --rawfile body "$gprior_body" '[[{id:11,user:{login:"rite-bot"},body:$body
 gdone_out=$("$COLLECT" --json "$live_json" --pr 1)
 assert "guardrail: a REJECT row of its key from the JSON read now excludes it" 0 \
   "$(printf '%s' "$gdone_out" | jq '[.candidates[] | select(.source == "guardrail_audit_log")] | length')"
+
+# 旧形式の recorded 行の出典 JSON が結果ディレクトリにも archive/ にも無ければ、原文を判定できないので止まる
+printf '%s\n' "$MARKER" '' '### 却下台帳' '' '| finding_id | file:line | 判定 | 判定文 | 出典 |' \
+  '|------------|-----------|------|--------|------|' \
+  '| lost-reviewer | src/lost.ts:4 | recorded | guardrail | 1-20251231000000.json |' \
+  '' '📎 non_blocking_count: 0' '' "$SENTINEL" > "$gprior_body"
+jq -n --rawfile body "$gprior_body" '[[{id:11,user:{login:"rite-bot"},body:$body}]]' > "$NB_TEST_COMMENTS"
+cp "$NB_TEST_COMMENTS" "$sandbox/glost-comments.before"
+glost_rc=0
+"$COLLECT" --json "$live_json" --pr 1 >"$sandbox/glost.out" 2>"$sandbox/glost.err" || glost_rc=$?
+assert "guardrail source missing: stops non-zero" "1" "$glost_rc"
+assert_grep "guardrail source missing: reason" "$sandbox/glost.err" 'NB_SWEEP_COLLECT=failed; count=0; .*reason=guardrail_source_missing'
+assert_grep "guardrail source missing: ERROR names reviewer, file_line and source" "$sandbox/glost.err" 'reviewer=lost-reviewer file_line=src/lost.ts:4 source=1-20251231000000.json'
+assert "guardrail source missing: prints no result" "" "$(cat "$sandbox/glost.out")"
+assert "guardrail source missing: ledger unchanged" "$(cat "$sandbox/glost-comments.before")" "$(cat "$NB_TEST_COMMENTS")"
+# 出典 JSON が archive/ にあれば止まらない
+mkdir -p "$sandbox/archive"
+: > "$sandbox/archive/1-20251231000000.json"
+garch_rc=0
+"$COLLECT" --json "$live_json" --pr 1 >/dev/null 2>&1 || garch_rc=$?
+assert "guardrail source in archive: does not stop" "0" "$garch_rc"
+rm -f -- "$sandbox/archive/1-20251231000000.json"
+# 今回の JSON に同じ reviewer・file_line の guardrail 行があれば原文はそこにあるので止めない。
+# 別の PR を出典に持つ行はこの PR の候補ではないので止めない (台帳は Issue 単位)
+printf '%s\n' "$MARKER" '' '### 却下台帳' '' '| finding_id | file:line | 判定 | 判定文 | 出典 |' \
+  '|------------|-----------|------|--------|------|' \
+  '| code-quality-reviewer | src/g.ts:7 | recorded | guardrail | 1-20251231000000.json |' \
+  '| lost-reviewer | src/lost.ts:4 | recorded | guardrail | 2-20251231000000.json |' \
+  '' '📎 non_blocking_count: 0' '' "$SENTINEL" > "$gprior_body"
+jq -n --rawfile body "$gprior_body" '[[{id:11,user:{login:"rite-bot"},body:$body}]]' > "$NB_TEST_COMMENTS"
+ghere_rc=0
+"$COLLECT" --json "$live_json" --pr 1 >/dev/null 2>&1 || ghere_rc=$?
+assert "guardrail source missing: a row present in the JSON or of another PR does not stop" "0" "$ghere_rc"
 
 # CRLF body: the ledger section must be read exactly as the LF body (same targets, same section boundary).
 crlf_ledger_body="$sandbox/live-ledger-crlf.md"
