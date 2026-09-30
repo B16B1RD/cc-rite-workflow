@@ -88,7 +88,9 @@
 #     (--list-candidates のとき。0 件で終えたときは count=0 の後に reason=<下記 skipped / failed の reason>)
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=list_write; pr=<n>   (一覧を --list-candidates のパスへ書けない)
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=head_unresolved; pr=<n>   (対象 commit を決められない。一覧を書かない)
-#   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_row_invalid|guardrail_source_missing|guardrail_source_check_failed; pr=<n>   (判定できない guardrail 行がある。一覧を書かない)
+#   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_row_invalid|guardrail_source_missing; pr=<n>   (判定できない guardrail 行がある。一覧を書かない)
+#   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_source_check_failed; pr=<n>   (却下台帳の旧形式行とレビュー結果 JSON の
+#     照合そのものに失敗した。ERROR は行を示さず jq のエラーを添える。一覧を書かない)
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=hold_unreadable; pr=<n>   (採否ゲートの hold ファイルがあるのに読めず、
 #     前回の判定記録を再利用する候補を決められない。一覧を書かない。起票実行ではゲートが同じ hold を読めず
 #     FOLLOW_UP_ISSUE=held; reason=gate_failed_rc1; hold_file=none で止まる)

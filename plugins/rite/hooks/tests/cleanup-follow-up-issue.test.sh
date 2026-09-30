@@ -2792,6 +2792,13 @@ jq -n --argjson c "$(comment_obj "$(record_body '| nl-reviewer | - | recorded | 
 ADOPT_MODE=manual
 run_target "$r" --list-candidates "$TMP_ROOT/t94-nl-cands.json"
 assert_grep "T-94 位置の無い guardrail 行は旧行の原文の根拠にしない" "$ERR" '^\[CONTEXT\] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_source_missing; pr=9$'
+# file_line の無い (null) guardrail 行も同じ
+put_json "$r" "9-20260101120000.json" "$(t94_json '{"reviewer":"nl-reviewer","original_severity":"LOW","description":"no location"}')"
+jq -n --argjson c "$(comment_obj "$(record_body '| nl-reviewer |  | recorded | severity=LOW; measured=false | 9-20251230120000.json |')")" '[[$c]]' > "$GH_API_JSON"
+ADOPT_MODE=manual
+run_target "$r" --list-candidates "$TMP_ROOT/t94-nl-cands.json"
+assert_grep "T-94 file_line の無い guardrail 行も旧行の原文の根拠にしない" "$ERR" '^\[CONTEXT\] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_source_missing; pr=9$'
+assert_grep "T-94 file_line の無い旧行を示す" "$ERR" 'reviewer=nl-reviewer file_line=<empty> source=9-20251230120000\.json'
 rm -rf "$r"
 # 旧行と読んだ JSON の照合自体に失敗したら、検査を飛ばして起票へ進まず止める
 reset_stubs
@@ -2799,12 +2806,52 @@ r=$(new_root t94-chk)
 put_json "$r" "9-20260101120000.json" '{"non_blocking_findings": [{"id": "F-01", "severity": "MEDIUM", "scope": "current-pr", "file": 5, "line": 1, "description": "d"}], "guardrail_audit_log": []}'
 jq -n --argjson c "$(comment_obj "$(record_body '| lost-reviewer | src/lost.ts:4 | recorded | severity=LOW; measured=false | 9-20251230120000.json |')")" '[[$c]]' > "$GH_API_JSON"
 ADOPT_MODE=manual
+rm -f "$TMP_ROOT/t94-chk-cands.json"
 run_target "$r" --list-candidates "$TMP_ROOT/t94-chk-cands.json"
 assert_grep "T-94 照合に失敗したら一覧は失敗" "$ERR" '^\[CONTEXT\] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_source_check_failed; pr=9$'
+assert "T-94 照合に失敗したら一覧を書かない" "no" "$([ -e "$TMP_ROOT/t94-chk-cands.json" ] && echo yes || echo no)"
+# 起票の判定記録 (ADOPT) を置く。止まらなければこの候補が起票されるので、create 0 回が停止を示す
+write_adoption "$r" "$(rec '["9-20260101120000.json#F-01"]')"
 ADOPT_MODE=manual
 run_target "$r"
 assert_grep "T-94 照合に失敗したら起票は失敗" "$ERR" 'FOLLOW_UP_ISSUE=failed; reason=guardrail_source_check_failed; pr=9'
-assert "T-94 照合に失敗したら create 0 回" "0" "$(create_count)"
+assert "T-94 照合に失敗したら判定記録があっても create 0 回" "0" "$(create_count)"
+rm -rf "$r"
+# 出典 JSON の無い rejected 旧行も止める。出典 JSON が結果ディレクトリ直下にあれば止めない
+reset_stubs
+r=$(new_root t94-rej)
+put_json "$r" "9-20260101120000.json" "$(t94_json "$T94_GUARD")"
+jq -n --argjson c "$(comment_obj "$(record_body '| lost-reviewer | src/lost.ts:4 | rejected | legacy | 9-20251230120000.json |')")" '[[$c]]' > "$GH_API_JSON"
+ADOPT_MODE=manual
+run_target "$r" --list-candidates "$TMP_ROOT/t94-rej-cands.json"
+assert_grep "T-94 出典 JSON の無い rejected 旧行で止める" "$ERR" '^\[CONTEXT\] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_source_missing; pr=9$'
+assert_grep "T-94 rejected 旧行を示す" "$ERR" 'reviewer=lost-reviewer file_line=src/lost\.ts:4 source=9-20251230120000\.json'
+put_json "$r" "9-20251230120000.json" '{"non_blocking_findings": []}'
+ADOPT_MODE=manual
+run_target "$r" --list-candidates "$TMP_ROOT/t94-rej-cands.json"
+assert_not_grep "T-94 出典 JSON が直下にある旧行では止めない" "$ERR" 'guardrail_source'
+rm -rf "$r"
+# 関数名の file_line は loc のまま台帳へ書き、書いた台帳で再実行すると候補から外れる
+reset_stubs
+r=$(new_root t94-fn)
+put_json "$r" "9-20260101120000.json" "$(t94_json '{"reviewer":"fn-reviewer","original_severity":"LOW","file_line":"parse_args","description":"fn"}')"
+ADOPT_MODE=manual
+run_target "$r" --list-candidates "$TMP_ROOT/t94-fn-cands.json"
+t94_fn_id=$(jq -r '.candidates[] | select(.finding.id == "guardrail:fn-reviewer:parse_args") | .id' "$TMP_ROOT/t94-fn-cands.json")
+assert "T-94 関数名の file_line の guardrail 行だけが候補" "1" "$(jq '.candidates | length' "$TMP_ROOT/t94-fn-cands.json")"
+write_adoption "$r" "$(rec "[\"$t94_fn_id\"]" "$REJECT_FIELDS")"
+export GH_PATCH_OUT="$STUB_DIR/t94-fn-patched.md"
+rm -f "$GH_PATCH_OUT"
+jq -n --argjson c "$(comment_obj "$(record_body '| F-77 | other.md:1 | issued | #77 https://example.test/issues/77 | 9-20251231120000.json |')")" '[[$c]]' > "$GH_API_JSON"
+ADOPT_MODE=manual
+run_target "$r"
+assert "T-94 関数名の file_line の台帳行は loc をそのまま書く" "1" \
+  "$(grep -cxF -- "| guardrail:fn-reviewer:parse_args | parse_args | REJECT | 文書化された挙動 / 仕様が変わったら再検討 @${TEST_HEAD} | 9-20260101120000.json |" "$GH_PATCH_OUT")"
+jq -n --argjson c "$(comment_obj "$(cat "$GH_PATCH_OUT")")" '[[$c]]' > "$GH_API_JSON"
+ADOPT_MODE=manual
+run_target "$r" --list-candidates "$TMP_ROOT/t94-fn-cands2.json"
+assert "T-94 書いた台帳で関数名の file_line の候補が外れる" "0" "$(jq '.candidates | length' "$TMP_ROOT/t94-fn-cands2.json")"
+unset GH_PATCH_OUT
 rm -rf "$r"
 
 echo "--- T-arg: 引数 gate ---"
