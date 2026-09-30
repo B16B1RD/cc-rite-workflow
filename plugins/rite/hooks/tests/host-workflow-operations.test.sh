@@ -334,6 +334,24 @@ class WorkflowContracts(unittest.TestCase):
                        "| rc=1 + `reason=unmet_finding_not_blocking`"]:
             line = next(line for line in pr_review.splitlines() if line.startswith(marker))
             self.assertIn("5.1 の回収完了ゲート", line, marker)
+        # Every row that replaces a reviewer output reruns the producer gate after
+        # the collection gate, so a regenerated output never reaches aggregation
+        # unchecked. The producer gate's own retry row is the only collection-gate
+        # rerun left out: it reruns its helper directly (pinned above).
+        for marker in ["| rc=1 + `reason ∈ {table_missing,", "retry の回収結果で manifest を更新し",
+                       "| `[CONTEXT] MEASURED_GATE_FAILED=1; reason=verification_preset_by_caller`",
+                       "| rc=1 + `reason=unmet_finding_not_blocking`"]:
+            with self.subTest(regenerated_by=marker):
+                line = next(line for line in pr_review.splitlines() if line.startswith(marker))
+                self.assertIn("5.1.0.L", line)
+                self.assertLess(line.index("5.1 の回収完了ゲート"), line.index("5.1.0.L"))
+        # The measured-gate row rebuilds the JSON only after the regenerated output
+        # passed every output check and its recommendations were extracted again.
+        order = ["5.1 の回収完了ゲート", "5.1.0.L", "5.1.0.AC", "推奨事項を抽出し直し", "step 1 の JSON を作り直し step 2"]
+        for clause in order:
+            self.assertIn(clause, measured_reroll)
+        positions = [measured_reroll.index(clause) for clause in order]
+        self.assertEqual(positions, sorted(positions), order)
         # Both review templates tell the reviewer where READ-ONLY Enforcement lives
         # with the same sentence; the base is read from its path, not injected.
         rules = []
