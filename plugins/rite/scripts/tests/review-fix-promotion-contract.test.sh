@@ -910,6 +910,35 @@ out=$(run_ledger_block updated 0)
 if [ -e "$ledger_dir/root/.rite/state/adoption-hold-5-triage.json" ]; then fail 'T-03: a rerun with every write done must release the hold'; else pass 'T-03: a rerun with every write done releases the hold'; fi
 if grep -qF '重ねて書かれうる' "$review"; then fail 'the resume must not say the rerun writes twice'; else pass 'the resume no longer says the rerun writes twice'; fi
 
+principles="$ROOT/plugins/rite/skills/rite-workflow/references/coding-principles.md"
+reconciliation="$ROOT/plugins/rite/references/review-reconciliation.md"
+budget_id='no_budget_quality_tradeoff'
+assert_grep 'budget principle is in the list for Phase 5.1, PR Review and Fix' "$principles" \
+  "| \`$budget_id\` | No Budget-Driven Quality Trade-off | Phase 5.1, PR Review, Fix |"
+assert_grep 'budget principle has a details section' "$principles" "### $budget_id (No Budget-Driven Quality Trade-off)"
+for phase in 'Phase 5.1 (Implementation)' 'PR Review' 'Fix'; do
+  phase_row=$(grep -F -- "| $phase |" "$principles" || true)
+  case "$phase_row" in
+    *"\`$budget_id\`"*) pass "budget principle is in the $phase checklist" ;;
+    *) fail "budget principle is missing from the $phase checklist" ;;
+  esac
+done
+assert_grep 'budget principle forbids disposing findings on a reached limit' "$principles" \
+  'Never accept, downgrade, or defer an unresolved finding because a count or budget was reached'
+assert_grep 'budget principle cuts only divergence and idling' "$principles" \
+  'What may be cut is waste — divergence and idling — never a cycle that is converging.'
+assert_grep 'divergence and stagnation stops follow the principle' "$principles" \
+  'Stopping it — by the divergence verdict or the stagnation diagnosis — follows this principle and is not a violation.'
+assert_grep 'backstop stop is not a quality trade-off' "$principles" \
+  'Stopping at a limit (`safety.max_review_cycles` as a backstop) is a fail-loud stop, not a quality trade-off.'
+reject_line=$(grep -F -- 'REJECT は引き続き `V=C=T=false` の場合だけ' "$reconciliation" || true)
+assert_eq 'the REJECT rule stays on exactly one paragraph line' 1 "$(printf '%s\n' "$reject_line" | grep -c .)"
+case "$reject_line" in
+  *'未解決の ADOPT を再掲という理由だけで REJECT にしない。'*'裁定は採否条件を上書きしない。回数・予算'*"coding-principles.md#$budget_id-no-budget-driven-quality-trade-off"*)
+    pass 'the adoption paragraph rejects budget reasons and links the principle' ;;
+  *) fail 'the adoption paragraph must keep both existing sentences and then reject budget reasons with the principle link' ;;
+esac
+
 if [ "$failures" -ne 0 ]; then
   printf '%s contract assertion(s) failed\n' "$failures" >&2
   exit 1
