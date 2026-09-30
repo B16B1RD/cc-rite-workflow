@@ -452,7 +452,7 @@ E2E では結果を context に残す（`/rite:lint` Phase 3.4 が再利用で�
 
 **Check procedure:**
 
-1. Save the retrieved body unchanged to a temporary `{issue_body_file}` and run `bash {plugin_root}/scripts/acceptance-criteria-check.sh extract --body-file "{issue_body_file}"`; remove the temporary file after reading the result. `target` supplies the IDs to check; only `skipped; reason=no_ac_section` skips to 5.1.0.7. Any nonzero exit stops implementation with the helper diagnostic and format guidance, including unsupported AC headings, malformed/empty sections and duplicate IDs. Do not downgrade these errors to advisory warnings.
+1. Save the retrieved body unchanged to a temporary `{issue_body_file}` and run `bash {plugin_root}/scripts/acceptance-criteria-check.sh extract --body-file "{issue_body_file}"`; remove the temporary file after reading the result. `target` supplies the IDs to check; only `skipped; reason=no_ac_section` skips to 5.1.0.7. Any nonzero exit stops implementation with the helper diagnostic and format guidance, including unsupported AC headings, AC items outside the section, malformed/empty sections and duplicate IDs. Do not downgrade these errors to advisory warnings.
 2. For each criterion, evaluate whether the current implementation satisfies it based on:
    - Changed files and their content
    - Test results (if tests were run)
