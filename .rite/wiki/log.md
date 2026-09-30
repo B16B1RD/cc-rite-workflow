@@ -2,6 +2,14 @@
 
 ## 2026-09-30
 
+* **Update**: [検証範囲と手順の整合](pages/anti-patterns/assert-label-overclaims-predicate-scope.md) — [記録](raw/reviews/20260930T095402Z-pr-3525.md)を統合
+* **Update**: [検証範囲と手順の整合](pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md) — [記録](raw/reviews/20260930T095659Z-pr-3516.md)を統合
+* **Update**: [検証範囲と手順の整合](pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md) — [記録](raw/fixes/20260930T100756Z-pr-3516.md)を統合
+* **Update**: [検証範囲と手順の整合](pages/heuristics/teardown-mechanism-with-its-accessories.md) — [記録](raw/fixes/20260930T094735Z-pr-3516.md)を統合
+* **Update**: [検証範囲と手順の整合](pages/heuristics/input-grammar-close-not-enumerate-continuation-lines.md) — [記録](raw/reviews/20260930T095406Z-pr-3529.md)を統合
+* **Update**: [検証範囲と手順の整合](pages/heuristics/input-grammar-close-not-enumerate-continuation-lines.md) — [記録](raw/fixes/20260930T100135Z-pr-3529.md)を統合
+* **Skip**: [20260930T100414Z-pr-3529.md](raw/reviews/20260930T100414Z-pr-3529.md) — 再レビューは指摘・推奨0の確認のみで、新しい経験則を含まない
+
 * **Lint incomplete** — Markdown対象での機械検査は stale=61、orphans=0、missing_concept=0、unregistered_raw=605、broken_refs=0、descriptive_number_ref=0。既存helperのBroken pipe出力と全ページの意味比較未完了のため、Wiki全体の検査成功とは扱わない。
 
 * **Skip**: [行継続の奇偶判定のレビュー結果](raw/reviews/20260930T065252Z-pr-3514.md) — 機構と回帰テストへ反映済みで、追加のドメイン経験則はない

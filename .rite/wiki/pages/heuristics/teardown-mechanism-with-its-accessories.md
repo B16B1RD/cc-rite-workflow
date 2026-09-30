@@ -16,9 +16,15 @@ sources:
     resource: "raw/fixes/20260901T173714Z-pr-2500.md"
   - type: "reviews"
     resource: "raw/reviews/20260930T093556Z-pr-3516.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260930T094735Z-pr-3516.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T095659Z-pr-3516.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260930T100756Z-pr-3516.md"
 tags: ["mechanism-teardown", "marker-contract", "dead-structure", "coverage-migration", "simplification-first"]
 confidence: high
-generated: { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T09:44:17Z" }
+generated: { by: "rite-wiki-ingest/gpt-6.1-sol", at: "2026-09-30T10:11:01Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
   - { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T09:44:17Z" }
@@ -93,6 +99,12 @@ marker を廃止したとき、その marker が拾っていた経路は「marke
 
 確認を外す前に、消すブロックの識別子や見出しを検索し、表示・集計・他の節からの参照を列挙する。質問文を消すことと、そのブロックが渡していた値の行き先を付け替えることは同時にやる。
 
+### 集計の定義を付け替えるときは完了条件まで読む
+
+確認ブロックを外して件数の定義を別の経路へ向け直すと、別の処理が「対応」として数えられる。定義の参照先だけでなく、その式で判定する完了条件と表示を読み、廃止した経路の件数項も同じ変更で外す。
+
+削除後にも残す問いを別種類の判断へ使うなら、問い・理由・選択肢がすべてその判断に成り立つか確かめる。「呼ばない」条件は呼ぶコマンドより前に置く。文面上の説明を後置しても、上から実行する手順の禁止にはならない。
+
 ## 関連ページ
 
 - [不正入力は「落とす」より「無害化して残す」— 落とす設計は件数報告という第 2 の機構を要求する](./neutralize-invalid-input-instead-of-dropping.md)
@@ -105,3 +117,7 @@ marker を廃止したとき、その marker が拾っていた経路は「marke
 - [レビュー結果](../../raw/reviews/20260901T173133Z-pr-2500.md)
 - [fix 結果](../../raw/fixes/20260901T173714Z-pr-2500.md)
 - [確認ブロックを外すと集計と参照が宙に浮くことを確かめたレビュー結果](../../raw/reviews/20260930T093556Z-pr-3516.md)
+
+- [統合の根拠](../../raw/fixes/20260930T094735Z-pr-3516.md)
+- [統合の根拠](../../raw/reviews/20260930T095659Z-pr-3516.md)
+- [統合の根拠](../../raw/fixes/20260930T100756Z-pr-3516.md)

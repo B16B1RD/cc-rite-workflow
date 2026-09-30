@@ -4,7 +4,7 @@ title: "続きの行と項目を見分ける検査は、字面の列挙を足さ
 domain: "heuristics"
 description: "複合値と注記を字面の列挙で見分ける検査は、cycle ごとに取りこぼしと誤拒否を入れ替える。producer の出力指示が続きの行に許す書き方（字下げした散文）を受理側の fixture に先に置き、項目とみなす条件を箇条書き記号と固定の見出し語の両方に絞って文法を閉じる。"
 created: "2026-09-30T07:59:11Z"
-generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-30T07:59:11Z" }
+generated: { by: "rite-wiki-ingest/gpt-6.1-sol", at: "2026-09-30T10:11:01Z" }
 sources:
   - type: "fixes"
     resource: "raw/fixes/20260930T073649Z-pr-3521.md"
@@ -14,6 +14,10 @@ sources:
     resource: "raw/fixes/20260930T075036Z-pr-3521.md"
   - type: "reviews"
     resource: "raw/reviews/20260930T075730Z-pr-3521.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T095406Z-pr-3529.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260930T100135Z-pr-3529.md"
 tags: ["input-grammar", "fixture", "producer-consumer", "review-loop"]
 confidence: medium
 ---
@@ -41,6 +45,10 @@ confidence: medium
 - 同じ検査への指摘が、直前の修正で足した字面の条件に対して次の cycle も続くなら、列挙を足す方向をやめて入力の文法を見直す
 - producer の指示と consumer の検査が別々に書かれているなら、両方が参照する 1 つの規則に寄せる
 
+### 0 件の表記とその下の行も文法で分ける
+
+推奨が無いことを示す行を受理する場合は、その表記の集合を閉じて定め、近いが集合外の表記と、0 件行の下に字下げした実質的な項目がある形を拒否 fixture に置く。検査の説明は実装が無視する範囲に揃える。既存段落が別の対象を規定しているなら、追記する規則を独立した文へ移し、ループ内の失敗も表示する。
+
 ## 関連ページ
 
 - （関連ページなし）
@@ -51,3 +59,6 @@ confidence: medium
 - [続きの行の誤拒否を指摘したレビュー結果](../../raw/reviews/20260930T074356Z-pr-3521.md)
 - [受理側 fixture を先に置く順序を確認した fix 結果](../../raw/fixes/20260930T075036Z-pr-3521.md)
 - [記号と見出し語の両方に絞った修正を確認したレビュー結果](../../raw/reviews/20260930T075730Z-pr-3521.md)
+
+- [統合の根拠](../../raw/reviews/20260930T095406Z-pr-3529.md)
+- [統合の根拠](../../raw/fixes/20260930T100135Z-pr-3529.md)

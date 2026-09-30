@@ -21,9 +21,11 @@ sources:
     resource: "raw/fixes/20260930T082444Z-pr-3518-fix.md"
   - type: "reviews"
     resource: "raw/reviews/20260930T083013Z-pr-3518-c2.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T095402Z-pr-3525.md"
 tags: ["test", "mutation-testing", "assertion-strength", "contract", "review-fix-loop"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-30T08:55:00Z" }
+generated: { by: "rite-wiki-ingest/gpt-6.1-sol", at: "2026-09-30T10:11:01Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-30T12:50:00+09:00"
@@ -77,6 +79,10 @@ assert のラベル（テスト名・メッセージ）は、その assert が�
 
 assert 名に変数名のような実装詳細を入れると、内部名を変えたときにラベルだけが古くなり、どの振る舞いが守られているかをラベルから読めなくなる。述語は変えずに、ラベルを「その assert が守る振る舞い」（例: marker の状態が同じ節の helper 出力から来る）で言い直す。
 
+### 原因の選別経路を名乗る前に、その経路を壊して確かめる
+
+古い結果が trend から除かれるという観測だけでは、pin と run_id のどちらが除いたかは分からない。片方を無効にしても通る fixture では、その選別経路の検出をコメントに書かない。コメントは fixture の条件、assert 名は観測する trend、marker の検査は設定済み境界の表示に限定する。観測結果を崩す対照で assert が落ちることと、製品を変えない全 suite が通ることを別々に確認する。
+
 ## 関連ページ
 
 - [アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](../heuristics/mutation-testing-measures-assertion-strength.md)
@@ -92,3 +98,5 @@ assert 名に変数名のような実装詳細を入れると、内部名を変�
 - [レビュー結果](../../raw/reviews/20260930T081809Z-pr-3518.md)
 - [fix 結果](../../raw/fixes/20260930T082444Z-pr-3518-fix.md)
 - [レビュー結果（差分スコープ）](../../raw/reviews/20260930T083013Z-pr-3518-c2.md)
+
+- [統合の根拠](../../raw/reviews/20260930T095402Z-pr-3525.md)
