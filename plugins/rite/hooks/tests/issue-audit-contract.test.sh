@@ -56,8 +56,8 @@ disposals = re.findall(r'^bash \{plugin_root\}/hooks/scripts/issue-audit\.sh dis
 check(disposals == ['--repo {owner_repo} --base {base_branch}'], disposals)
 check(not re.search(r'gh issue (close|edit)|gh issue create', skill), 'no direct Issue writes')
 
-# The merge and redirection inputs are pinned verbatim: any narrowing of the candidates,
-# however it is worded, fails here. Update these strings when the step 2 table changes.
+# Only the merge and redirection input cells are pinned verbatim.
+# Narrowing added in bullets outside the table is not detected here.
 rows = [l.split(' | ') for l in skill.splitlines() if l.startswith(('| 統合 |', '| 方向修正 |'))]
 check([r[0] for r in rows] == ['| 統合', '| 方向修正'], rows)
 check({r[0][2:]: r[1] for r in rows} == {
