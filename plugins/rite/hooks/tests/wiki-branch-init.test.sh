@@ -629,6 +629,15 @@ if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"submodule"* ]] \
 else
   fail "rc=$HELPER_RC sub/a=$(cat "$repo/sub/a" 2>/dev/null) output=$HELPER_OUTPUT"
 fi
+# The printed remedy must actually unblock a rerun: commit inside the submodule, then the pointer in the parent
+(cd "$repo/sub" && git config user.email t@e && git config user.name t && git commit -qam edit)
+(cd "$repo" && git add sub && git commit -qm "sub pointer")
+run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+if [ "$HELPER_RC" = "0" ] && git -C "$repo" rev-parse --verify -q wiki >/dev/null; then
+  pass "following the printed remedy lets the rerun succeed"
+else
+  fail "rerun after remedy: rc=$HELPER_RC output=$HELPER_OUTPUT"
+fi
 
 echo "TC-15: no argument-less stash pop remains in the helper or its reference pattern"
 PATTERNS_DOC="$SCRIPT_DIR/../../references/wiki-patterns.md"

@@ -70,6 +70,7 @@ _rite_pop_own_stash() {
   ref=$(git stash list --format='%gd %H' | awk -v s="$stash_sha" '$2 == s {print $1; exit}')
   if [ -z "$ref" ]; then
     echo "ERROR: 退避した変更 (stash $stash_sha) が stash に見つかりません。ほかの stash entry には触れずに停止します" >&2
+    echo "  確認: git stash list --format='%gd %H %gs'" >&2
     return 1
   fi
   git stash pop "$ref" || { echo "ERROR: 退避した変更 ($ref) を戻せませんでした — git stash list --format='%gd %H %gs' で確認して手動で復旧してください" >&2; return 1; }
@@ -99,7 +100,7 @@ if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/de
     echo "ERROR: git stash push が新しい entry を作りませんでした" >&2
     # stash は submodule の変更を退避しない。判定を submodule 抜きに狭めると orphan checkout が submodule の編集を消すため、止めたまま原因を示す
     git diff --quiet --ignore-submodules HEAD && git diff --cached --quiet --ignore-submodules HEAD \
-      && echo "  原因: 変更は submodule の中だけです。submodule 側で commit か退避をしてから再実行してください" >&2
+      && echo "  原因: 変更は submodule（中身または参照先の commit）だけです。submodule 内で git stash するか、submodule 内で commit したうえで親でも git add <submodule> && git commit してから再実行してください" >&2
     exit 1
   }
   stash_needed=true
@@ -150,6 +151,7 @@ _rite_pop_own_stash() {
   ref=$(git stash list --format='%gd %H' | awk -v s="$stash_sha" '$2 == s {print $1; exit}')
   if [ -z "$ref" ]; then
     echo "ERROR: 退避した変更 (stash $stash_sha) が stash に見つかりません。ほかの stash entry には触れずに停止します" >&2
+    echo "  確認: git stash list --format='%gd %H %gs'" >&2
     return 1
   fi
   git stash pop "$ref" || { echo "ERROR: 退避した変更 ($ref) を戻せませんでした — git stash list --format='%gd %H %gs' で確認して手動で復旧してください" >&2; return 1; }
