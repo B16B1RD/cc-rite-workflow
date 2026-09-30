@@ -228,8 +228,8 @@ ISSUE_NUMBER=$(printf '%s\n' "$ISSUE_URL" | grep -oE '[0-9]+$' || true)
 
 ```bash
 # here-string `<<<` で echo/printf subprocess を排除
-# bash は here-string を一時ファイル経由で grep に渡すため、
-# grep の早期終了で SIGPIPE を受ける書き込みプロセスが存在しない
+# bash 5.0 以前は一時ファイル、5.1 以降は pipe buffer 未満なら pipe（大きい入力は一時ファイル）で渡す
+# here-string は上流の書き手プロセスを作らないため、grep の早期終了で書き手が SIGPIPE を受ける経路がない
 progress_section=$(sed -n '/### 進捗/,/### /p' <<< "$comment_body")
 incomplete_tasks=$(grep -E '^\s*- \[ \]' <<< "$progress_section" | head -10)
 
