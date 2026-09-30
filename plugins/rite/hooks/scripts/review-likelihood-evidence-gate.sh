@@ -58,11 +58,23 @@ parsed=$(awk -v exception_category="$exception_category" -v reviewer_type="$revi
       if (cut) clause = substr(clause, 1, cut - 1)
       clause = trim(clause)
       # The value ends at the first character outside [A-Za-z0-9_-], so a note may follow
-      # it ("boundary（スコープ外）"). A second classification word before the dash means
-      # the reviewer did not pick one value; the whole clause is then reported.
+      # it ("boundary（スコープ外）"). A second classification word reached across only
+      # separators, decoration and "or"/"and" means the reviewer did not pick one value;
+      # the whole clause is then reported. The same word inside a note is not a value.
       if (match(clause, /[A-Za-z0-9_-]+/) && RSTART == 1) {
         value = substr(clause, 1, RLENGTH)
-        if (substr(clause, RLENGTH + 1) ~ /(actionable|design_confirmation|boundary)/) value = clause
+        rest = substr(clause, RLENGTH + 1)
+        while (rest != "") {
+          if (substr(rest, 1, 1) ~ /[ \t\/,;&+|`*]/) rest = substr(rest, 2)
+          else if (index(rest, "、") == 1) rest = substr(rest, length("、") + 1)
+          else if (index(rest, "・") == 1) rest = substr(rest, length("・") + 1)
+          else if (index(rest, "または") == 1) rest = substr(rest, length("または") + 1)
+          else if (tolower(substr(rest, 1, 3)) == "or ") rest = substr(rest, 4)
+          else if (tolower(substr(rest, 1, 4)) == "and ") rest = substr(rest, 5)
+          else break
+        }
+        rest = tolower(rest)
+        if (index(rest, "actionable") == 1 || index(rest, "design_confirmation") == 1 || index(rest, "boundary") == 1) value = clause
       } else if (clause != "") {
         value = clause
         sub(/[[:space:]].*/, "", value)
