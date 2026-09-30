@@ -560,7 +560,7 @@ rationale: references/rationale.md#remote-delete-markers
 archive より前に実行する（JSON が元の場所にあるうちに読む）。先に orphan 回収が `archive/` へ移した JSON も読む。同定不能は起票せず WARNING。cleanup は止めない。
 rationale: references/rationale.md#follow-up-before-archive
 
-候補は残存 non-blocking 指摘と、元 Issue の Decision Log（Section 9）で本 PR のレビューが先送りした欠陥（行末が `<!-- rite:deferred-defect pr={pr_number} -->` の行。旧い基準で書かれた行も終端にしない）。指摘が 0 件でも先送り欠陥があれば候補にする。指摘も先送り欠陥も 0 件なら判定も起票もしない。起票するかどうかは helper が採否ゲートの出口だけで決め、出口が `file` の判定記録（根因）ごとに 1 件起票する（同じ根因の候補は 1 件に束ね、違う根因は混ぜない）。出口が出ていない候補が 1 件でもあれば何も起票せず `FOLLOW_UP_ISSUE=held` で保留する。元 Issue の本文を取得できなければ `FOLLOW_UP_DEFERRED=unavailable` を出し、ゲートも本文を読めずに保留する。
+候補は残存 non-blocking 指摘（レビューの guardrail が除外した `guardrail_audit_log[]` の行を含む。判定に要る reviewer・description を欠く行があれば `guardrail_row_invalid`、原文を失った旧形式の台帳行（この PR のレビュー結果を出典に持ち、読んだ JSON に同じ位置の指摘が無く（位置の無い guardrail 行は根拠にしない）、出典 JSON が結果ディレクトリにも `archive/` にも無い `recorded` / `rejected` 行）があれば `guardrail_source_missing`、旧形式行とレビュー結果 JSON の照合そのものが失敗すれば `guardrail_source_check_failed` で失敗する。この PR のレビュー結果 JSON が 1 本も無いときは、全指摘を判定できない旨の WARNING が出るため問わない）と、元 Issue の Decision Log（Section 9）で本 PR のレビューが先送りした欠陥（行末が `<!-- rite:deferred-defect pr={pr_number} -->` の行。旧い基準で書かれた行も終端にしない）。指摘が 0 件でも先送り欠陥があれば候補にする。指摘も先送り欠陥も 0 件なら判定も起票もしない。起票するかどうかは helper が採否ゲートの出口だけで決め、出口が `file` の判定記録（根因）ごとに 1 件起票する（同じ根因の候補は 1 件に束ね、違う根因は混ぜない）。出口が出ていない候補が 1 件でもあれば何も起票せず `FOLLOW_UP_ISSUE=held` で保留する。元 Issue の本文を取得できなければ `FOLLOW_UP_DEFERRED=unavailable` を出し、ゲートも本文を読めずに保留する。
 
 iterate の NB sweep と前回の follow-up で起票済み・処分済みの候補（関連 Issue 記録コメントの却下台帳で判定=`issued` / `REJECT` / `RESOLVED` / `LINK`）は helper が台帳を読んで候補から除く（処分を再利用し、同じ意味判定を繰り返さない）。`REJECT` / `RESOLVED` は前提が変わっていないとき（前提の起点から対象 commit までに指摘のファイルが変わっていない）だけ除き、変わった行の指摘は候補に戻して判定し直す。前提の起点は判定文末尾の `@<commit>`（follow-up が判定した commit）、無ければ行の出典 JSON の commit で、出典の無い行は最新のレビュー結果 JSON の commit とする。`issued` / `LINK` は追跡先があるので前提によらず除く。旧形式の `recorded` / `rejected` 行は終端にしない。照合は `[finding_id, file:line]` と、行の出典（sweep が読んだ JSON の basename）と指摘の出典 JSON の一致で行う。出典の無い旧形式の行は最新のレビュー結果 JSON 由来の指摘とだけ照合する。除外した指摘と再掲マーカー（括弧内の NOT_FIXED / 再掲 と、直前の cycle の同じ id・`file:line` を指す F-NN。PARTIAL / REGRESSION を含むものは除く）で結ばれる前後の cycle の指摘、出典と id だけが違う完全一致の指摘も除外する。台帳か最新のレビュー結果 JSON を読めなければ、sweep で Issue 化済みの指摘も候補から除かず、WARNING と `FOLLOW_UP_SWEEP_ISSUED=unavailable` を出す。
 rationale: references/rationale.md#follow-up-sweep-issued-dedup
@@ -589,6 +589,8 @@ bash {plugin_root}/hooks/scripts/cleanup-follow-up-issue.sh \
 | `listed; count=0` | 判定記録を書かずに 6.0.C へ進む（helper は同じ 0 件の結果で終える） |
 | `listed; count=<n>; ...; judge=<j>`（n ≥ 1） | 一覧ファイルを Read し、下の規則で判定記録を書いてから 6.0.C へ進む（`judge=0` なら `reuse` を写すだけで判定しない） |
 | `failed; reason=head_unresolved` | 判定記録を書かずに 6.0.C へ進む（対象 commit を決められないため、起票の実行も保留ではなく同じ reason の `FOLLOW_UP_ISSUE=failed` で止まる） |
+| `failed; reason=guardrail_row_invalid` / `guardrail_source_missing` | 判定記録を書かずに 6.0.C へ進む（判定できない guardrail 行があるため、起票の実行も同じ reason の `FOLLOW_UP_ISSUE=failed` で止まる。ERROR が示す行を直すか出典 JSON を戻して再実行する） |
+| `failed; reason=guardrail_source_check_failed` | 判定記録を書かずに 6.0.C へ進む（却下台帳の旧形式行とレビュー結果 JSON の照合そのものに失敗した。ERROR が `source=`（出典 JSON）と `id=` で示す指摘（`file` が文字列でない）を直して再実行する。jq のエラーの位置は却下台帳本文の行で、指摘の位置ではない。起票の実行も同じ reason の `FOLLOW_UP_ISSUE=failed` で止まる） |
 | `failed; reason=hold_unreadable` | 判定記録を書かずに 6.0.C へ進む（採否ゲートの hold ファイルを読めず再利用する記録を決められない。起票の実行はゲートが同じ hold ファイルを読めずに止まる） |
 | 上記以外の `failed` / marker なし | 判定記録を書かずに 6.0.C へ進む（helper は記録なしとして保留する） |
 
@@ -974,7 +976,7 @@ rationale: references/rationale.md#marker-data-delimiter
   | `FOLLOW_UP_ISSUE=held`（`hold_file=none`） | 未完了 | `⚠️ 採否ゲート自体が失敗したため follow-up を起票せず保留しました（{reason}）。候補は hold ファイルに保存されていません。直前の WARNING の原因を解消して /rite:cleanup {pr_number} を再実行してください（起票済みの根因は増えません）` |
   | `FOLLOW_UP_ISSUE=held` | 未完了 | `⚠️ 採否の出口が出ていない候補があるため follow-up を起票せず保留しました（{reason}）。候補の全文は {hold_file} に保存済みです。{hold_file} の resume（ゲートの WARNING にも出る）に従って再開してください（起票済みの根因は増えません）` |
   | `FOLLOW_UP_ISSUE=failed; reason=preview_write` | 未完了 | `⚠️ follow-up 起票の確認用の本文を書き出せず、起票を試みていません。書き出し先を確認して /rite:cleanup {pr_number} を再実行してください` |
-  | `FOLLOW_UP_ISSUE=failed`（reason 問わず。preview_write 以外。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` / `head_unresolved` を含む） | 未完了 | `⚠️ follow-up Issue の起票に失敗しました（{reason}。`issue=` があればその番号は起票済み）。原因を解消して /rite:cleanup {pr_number} を再実行してください（起票済みの根因は増えず、残りだけを起票します）` |
+  | `FOLLOW_UP_ISSUE=failed`（reason 問わず。preview_write 以外。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` / `head_unresolved` / `guardrail_row_invalid` / `guardrail_source_missing` / `guardrail_source_check_failed` を含む） | 未完了 | `⚠️ follow-up Issue の起票に失敗しました（{reason}。`issue=` があればその番号は起票済み）。原因を解消して /rite:cleanup {pr_number} を再実行してください（起票済みの根因は増えず、残りだけを起票します）` |
   | `skipped; reason=no_json` | 未完了 | 同上（レビュー結果 JSON 不在） |
   | `skipped; reason=jq_missing` | 未完了 | `⚠️ jq が見つからず follow-up 起票を skip しました。jq を導入したうえで /rite:cleanup {pr_number} を再実行してください` |
   | `created` / `skipped; reason=no_findings` / `skipped; reason=already_exists` / `skipped; reason=all_issued` / `skipped; reason=already_processed` / `skipped; reason=all_recorded` | x 相当 | — |

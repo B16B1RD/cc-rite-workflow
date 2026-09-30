@@ -15,7 +15,7 @@ bash {plugin_root}/scripts/fix-step.sh nb-sweep-collect --pr {pr_number}
 
 2. **採否ゲートと起票**（採否は採否判定 helper の出口で決め、重要度・実測で決めない）:
 
-`already_rejected[]` はゲートに掛けず `recorded` として転記する。sweep はコードを変更せず、commit / push を行わない。
+guardrail が除外した行（`guardrail_audit_log[]`）も `candidates[]` に入り、ほかの target と同じくゲートの出口で処分する（除外理由は採否の出口ではない）。collect は、判定に要る本文（reviewer・description）を欠く guardrail 行があれば `reason=guardrail_row_invalid` で止まる。`file_line` は形を問わず、原文のまま候補の `loc` に運ぶ。位置の無い guardrail 行（`file_line` が空か `-`）は別の JSON にある同じ reviewer の位置の無い行と key・位置が同じになるため（同じ JSON の中は `#<n>` で分かれる）、collect は今回の JSON を出典に持つ key の行でしか除外せず `prior` も付けず、旧形式行の原文が今回の JSON にある根拠にもしない。同じ根因・同じ前提の台帳行への紐づけは分類役が `ledger[]` を読んで行う。台帳の旧形式 `recorded` / `rejected` 行（guardrail 行を原文なしで転記したもの）のうち、この PR のレビュー結果を出典に持ち、今回の JSON に同じ `[finding_id, file:line]` の指摘が無い行が指す出典 JSON が結果ディレクトリにも `archive/` にも無ければ、原文を判定できないため reviewer・file_line・出典名を示して `reason=guardrail_source_missing` で止まる（台帳は変えない。出典 JSON を結果ディレクトリへ戻してから再実行する）。sweep はコードを変更せず、commit / push を行わない。
 rationale: design-rationale.md#nb-sweep-routing
 
 **判定記録**: 手順 1 の stdout の `candidates[]` 全件について、本手順を実行する分類役が根因ごとに 1 件の判定記録を Write tool で state root（`state-path-resolve.sh` の出力）の `.rite/state/adoption-{pr_number}-sweep.json` に保存する（形式と欄は `hooks/scripts/review-adoption-gate.sh` と `hooks/scripts/lib/review-adoption.py` の docstring）。`head` は手順 1 の出力のトップレベル `.record`（今回読んだ review JSON。ゲートの `--review-result`）の `commit_sha`（candidate の `record` ではない）、`ids` は candidate の `id`（target は `key`、合流した保留候補は `<record>#<key>`）。起票になる記録（ADOPT で origin=pre_existing、DIAGNOSE で調査として引き受ける記録）には `acceptance`（起票する Issue の受入条件）を書く。target に `prior` があれば記録の `prior` にそのまま写す（prior の違う target を 1 つの記録にまとめない）。手順 1 の出力の `ledger[]`（台帳の `issued` / `LINK` / `REJECT` 行。`issued` と `LINK` の判定文に起票先・追跡先の `#N` がある）と、判定記録ファイルの `tracker` を持つ記録（`head` を問わない）を読み、既存の Issue が今回の候補と同じ根因を追跡していれば、文面・位置・id が変わっていても記録の `tracker` にその番号を入れる（閉じた Issue の番号は入れない）。`REJECT` 行が同じ根因・同じ前提の候補を処分していれば、その行を記録の `prior`（`{finding_id, file_line, disposition, premise}`。行の `id` を `finding_id`、`loc` を `file_line` に写し、`source` は写さない）に写す。collect が写すのは id と位置が一致する行だけなので、id・文面・位置が変わった候補はここで紐づける。同じ `head` の判定記録が既にあればそこから始め、足りない記録を補い、helper の ERROR で止まった記録は直す。起票が書き戻した `tracker` だけは書き換えない（消さない）。
@@ -83,11 +83,11 @@ bash {plugin_root}/scripts/fix-step.sh nb-sweep-file-issue --pr {pr_number} \
   --projects-enabled {projects_enabled} --project-number {project_number} --project-owner {owner}
 ```
 
-起票失敗時は台帳 persist・done ファイル書込・完了通知へ進まない。全件成功後に entries を生成する（手順 3 を再実行するときは、同じ sweep の entries を直して使う。前回の sweep の entries を今回の起票済みとして使わない）。`verdict=record` の記録も `already_rejected` も silent に落とさない。起票の途中で止まったときも再実行は手順 2 の判定記録から続き、書き戻した `tracker` によりゲートは起票済みの記録を LINK にするので、同じ根因を二度起票しない。
+起票失敗時は台帳 persist・done ファイル書込・完了通知へ進まない。全件成功後に entries を生成する（手順 3 を再実行するときは、同じ sweep の entries を直して使う。前回の sweep の entries を今回の起票済みとして使わない）。`verdict=record` の記録を silent に落とさない。起票の途中で止まったときも再実行は手順 2 の判定記録から続き、書き戻した `tracker` によりゲートは起票済みの記録を LINK にするので、同じ根因を二度起票しない。
 
-3. **台帳 persist**（全 target と already_rejected）:
+3. **台帳 persist**（全 target）:
 
-Write tool で entries を手順 1 の `NB_SWEEP_ENTRIES` の `path=`（`.rite/state/nb-sweep-entries-{pr_number}.md`。会話や再起動をまたいで起票済みの記録を残すため一時ディレクトリに置かない）に保存（1 行目は `<!-- nb-sweep-record: {sweep_record} -->`。`{sweep_record}` は手順 1 の stderr に出る `record=` の値の basename で、手順 1 の tally はこの行でどの sweep の entries かを決める。続けて列 0。candidate 1 件に 1 行。行形式 `| {key} | {file}:{line} | {判定} | {判定文} | {record_basename} |`）。`verdict=file` の記録の candidate は判定 `issued`・判定文に起票先 `#N` と URL。`verdict=record` の記録の candidate は判定に出口名（`REJECT` / `RESOLVED` / `LINK`）、判定文に記録の `reason`（RESOLVED で reason が無ければ `evidence`、LINK は `追跡先 #{tracker}`）。hold は書かない（held なら手順 2 で止まっている）。`already_rejected` は判定 `recorded`・判定文 `severity={sev}; measured={bool}`。`{record_basename}` は candidate の `record`（今回の target は手順 1 の stderr に出る `[CONTEXT] NB_SWEEP_COLLECT=ok; ...; record=` の値の basename、合流した保留候補は元の review JSON の basename）、`already_rejected` は `record=` の値の basename。cleanup の follow-up 起票はこの出典で sweep 起票済みの指摘を同定するため、最終列を欠いた行が 1 行でもあれば、append は entries 全体を `reason=entries_source_invalid` で拒否し、台帳を変更しない。`already_rejected` は id=`reviewer`、位置=`file_line`、severity=`original_severity`、measured=false とする。セル内のパイプ・改行はエスケープする。
+Write tool で entries を手順 1 の `NB_SWEEP_ENTRIES` の `path=`（`.rite/state/nb-sweep-entries-{pr_number}.md`。会話や再起動をまたいで起票済みの記録を残すため一時ディレクトリに置かない）に保存（1 行目は `<!-- nb-sweep-record: {sweep_record} -->`。`{sweep_record}` は手順 1 の stderr に出る `record=` の値の basename で、手順 1 の tally はこの行でどの sweep の entries かを決める。続けて列 0。candidate 1 件に 1 行。行形式 `| {key} | {file}:{line} | {判定} | {判定文} | {record_basename} |`）。`verdict=file` の記録の candidate は判定 `issued`・判定文に起票先 `#N` と URL。`verdict=record` の記録の candidate は判定に出口名（`REJECT` / `RESOLVED` / `LINK`）、判定文に記録の `reason`（RESOLVED で reason が無ければ `evidence`、LINK は `追跡先 #{tracker}`）。hold は書かない（held なら手順 2 で止まっている）。`{record_basename}` は candidate の `record`（今回の target は手順 1 の stderr に出る `[CONTEXT] NB_SWEEP_COLLECT=ok; ...; record=` の値の basename、合流した保留候補は元の review JSON の basename）。cleanup の follow-up 起票はこの出典で sweep 起票済みの指摘を同定するため、最終列を欠いた行が 1 行でもあれば、append は entries 全体を `reason=entries_source_invalid` で拒否し、台帳を変更しない。guardrail 行の `{key}` は `guardrail:<reviewer>:<file_line>`（同じ JSON で reviewer・file_line が同じ 2 行目以降は末尾に `#2` 以降を付ける）、`{file}:{line}` 列には candidate の `loc`（元の `file_line` と同じ文字列）を書く。セル内のパイプ・改行はエスケープする。
 
 ```bash
 bash {plugin_root}/scripts/fix-step.sh nb-sweep-persist --pr {pr_number} --owner-repo {owner_repo}
@@ -95,7 +95,7 @@ bash {plugin_root}/scripts/fix-step.sh nb-sweep-persist --pr {pr_number} --owner
 
 台帳の記録が成功すると、同じ bash が sweep の hold ファイルを消す。
 
-手順 3 が `[fix:error]` で止まったときは、手順 2 の起票をやり直さない。起票は済んでいるが台帳に行が無いため、sweep を最初から実行し直すと同じ指摘を再び起票する。起票済みの Issue は entries の issued 行が持つ。entries（`.rite/state/nb-sweep-entries-{pr_number}.md`）を stderr の理由に合わせて直し、手順 3 だけを再実行する。`reason=entries_source_invalid` の診断は不正行の先頭 3 行しか示さないので、entries の全行について最終列がその行の candidate の `record`（`already_rejected` は手順 1 の `record=` の basename）になっているかを確かめ、欠けた行には最終列として足す。別の record を名指す行は書き換えない（手順 1 の `reason=nb_sweep_entries_stale` の戻り方に従う）。成功したら手順 4 へ進む。この会話で続けられないときは entries を直したうえで `/rite:iterate {pr_number}` を再実行する（別の会話からでもよい）。iterate のステップ 0.7 が再レビューを回さずに 5.S へ戻し、手順 1 が `NB_SWEEP_ENTRIES=present` を出すので手順 2 を飛ばして手順 3 から続く。
+手順 3 が `[fix:error]` で止まったときは、手順 2 の起票をやり直さない。起票は済んでいるが台帳に行が無いため、sweep を最初から実行し直すと同じ指摘を再び起票する。起票済みの Issue は entries の issued 行が持つ。entries（`.rite/state/nb-sweep-entries-{pr_number}.md`）を stderr の理由に合わせて直し、手順 3 だけを再実行する。`reason=entries_source_invalid` の診断は不正行の先頭 3 行しか示さないので、entries の全行について最終列がその行の candidate の `record` になっているかを確かめ、欠けた行には最終列として足す。別の record を名指す行は書き換えない（手順 1 の `reason=nb_sweep_entries_stale` の戻り方に従う）。成功したら手順 4 へ進む。この会話で続けられないときは entries を直したうえで `/rite:iterate {pr_number}` を再実行する（別の会話からでもよい）。iterate のステップ 0.7 が再レビューを回さずに 5.S へ戻し、手順 1 が `NB_SWEEP_ENTRIES=present` を出すので手順 2 を飛ばして手順 3 から続く。
 
 4. **完了**:
 
@@ -105,4 +105,4 @@ bash {plugin_root}/scripts/fix-step.sh nb-sweep-persist --pr {pr_number} --owner
 bash {plugin_root}/scripts/fix-step.sh nb-sweep-finish --pr {pr_number}
 ```
 
-fix/SKILL.md のステップ 5.1 が `[fix:sweep-done]` を emit する。`K+M` は collect `count`（already_rejected 転記を含む）と一致する。未消化 0 が正常出口。
+fix/SKILL.md のステップ 5.1 が `[fix:sweep-done]` を emit する。`K+M` は collect `count`（guardrail 行の候補を含む）と一致する。未消化 0 が正常出口。
