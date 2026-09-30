@@ -213,6 +213,8 @@
 
 * **Update**: [語の並びを正規表現で見て「否定」を判定する検査は、見逃しと誤検出のどちらを受け入れるかを選んで書く](pages/anti-patterns/lexical-regex-negation-detection-error-direction.md) — [レビュー記録](raw/reviews/20260930T105901Z-pr-3535.md)を統合
 
+* **Lint incomplete** — 機械検査は stale=64、orphans=0、missing_concept=0、unregistered_raw=620、broken_refs=0、descriptive_number_ref=0。更新した語照合の限界のページは出典と照合済み。全658ページの意味的な矛盾比較は未完了で、Wiki全体の品質検査成功とは扱わない。
+
 ## 2026-09-29
 
 * **Update**: [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) — raw/reviews/20260929T104700Z-pr-3448.md で補強

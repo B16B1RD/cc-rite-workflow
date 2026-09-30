@@ -4,7 +4,7 @@ title: "語の並びを正規表現で見て「否定」を判定する検査は
 domain: "anti-patterns"
 description: "助動詞つきの状態否定に接続詞と stop が続く形と、助動詞と副詞のあとに stop が来る否定形は、語の並びだけでは区別できない。窓を広げると正しい停止文を否定と誤判定し、狭めると否定形を見逃す。どちら向きの誤りを受け入れたかを明示し、判定ロジックのコメントは実装が実際に扱う範囲に限って書く。"
 created: "2026-09-28T05:02:36Z"
-generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-09-30T11:09:00Z" }
+generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-09-30T11:08:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260930T105901Z-pr-3535.md"
@@ -46,12 +46,12 @@ confidence: high
 
 コードフェンス行を置換する sed は件数に効いていなかった。バッククォートは `[[:alpha:]]` にも `[[:space:]]` にも該当しないため、置換しなくても語の連鎖はそこで切れる。空行の置換は連鎖を切るのに必要だった。前処理を足すときは、外して件数が変わるかで効果を確かめる。
 
-## 関連ページ
-
 ### 語の部分一致を停止の意味と名乗らない
 
 `grep -ci 'stop'` は `nonstop` にも一致し、`continue` の照合は `do not continue` にも一致する。こうした検査で自然言語の停止を保証するなら、指定した境界例でその保証を確かめる。受入条件が照合範囲の明示も許しているなら、判定式を維持して、コメントに誤検出・見逃しを明記し、assert 名を語照合のプロファイルへ限定する出口を選べる。既存入力と実際の案内文の結果が変わらないことを別に確認する。
 
+
+## 関連ページ
 
 - [環境依存の断定を是正する編集が、限定された正しい前提をより広い偽の前提へ置き換える](./corrective-assertion-widens-scope-into-new-falsehood.md)
 - [テストが何を kill するかの counterfactual 記述は、変異を当てない限り外れる — 撤去で収束させる](./counterfactual-kill-claim-in-test-comment.md)
