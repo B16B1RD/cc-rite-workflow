@@ -78,7 +78,7 @@ echo "=== cleanup.md ステップ 10/12: 関連 Issue のクローズを読み�
 # チェックリストが無条件 x だと、クローズ失敗が完了報告にも outstanding 件数にも出ない。
 assert_grep "checklist carries the issue-close check" "$CLEANUP" '^- \[\{issue_close_check\}\] 関連 Issue をクローズ$'
 assert_not_grep "checklist no longer hard-codes the issue close as done" "$CLEANUP" '^- \[x\] 関連 Issue をクローズ$'
-assert_grep "issue-close check allows exactly closed / already_closed / not_identified as x" "$CLEANUP" \
+assert_grep "issue-close check allows exactly skipped(pr_not_merged) / closed / already_closed / not_identified as x" "$CLEANUP" \
   '^  - `ISSUE_CLOSE=closed` / `ISSUE_CLOSE=already_closed` / `ISSUE_CLOSE=not_identified` のいずれか: `x`（x とする値は上の skipped とこの 3 つに限る）$'
 assert_grep "issue-close check leaves failed values unchecked with an annotation" "$CLEANUP" \
   '^  - 上記以外（`ISSUE_CLOSE=failed` かつ `reason=` が `close_failed` / .*: ` ` \+ 「⚠️ Issue #\{issue_number\} のクローズを確認できませんでした'
