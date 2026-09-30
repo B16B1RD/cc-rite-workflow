@@ -30,6 +30,66 @@ blocking gate として実行する。
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-09-30
+
+### 追加
+
+- **`/rite:issue-audit` が Open Issue 群を全体として見直す** — レビューの採否判定は 1 つの PR の 1 つの根因ごとに働くため、積み上がった Issue 群の問題（同じ根因への分岐、follow-up の長い系譜、実装とずれた受入条件、長く進まない Issue）を見る仕組みが無かった。helper が既存の記録から系譜・集中・停滞・処分対象を集計する。採否規則で機械的に決まる処分（重複・解消済み・V=C=T=false と記録済み）だけを根拠つきでクローズする。統合・取り下げ・方向修正はレポートの提案に留める。`/rite:batch-run` は完了時に 1 回実行し、完了通知にレポートの参照を載せる。
+- **直さないレビュー候補は、根因ごとに 1 つの出口へ決まる** — non-blocking 指摘・推奨事項・スコープ外指摘を、根因ごとの判定記録（V/C/T・契約・証拠・origin・追跡先・台帳の処分）から `review-adoption-check.sh` が判定する。候補の網羅、対象 HEAD、契約の引用、`origin=pr` の差分位置を検証する。出口は ERROR → RECONCILE → RESOLVED → LINK → ADOPT → DIAGNOSE → REJECT の順で評価し、重要度と class は読まない。同じ契約について過去の PR の処分と矛盾する候補、再違反の候補、逆向きの提案は親の裁定へ渡し、履歴を取得できないときは止まる。
+- **PR 自身の行への推奨事項は、mergeable の後に同じ PR で直す** — `/rite:iterate` に mergeable 判定の後の段を加えた。`/rite:pr-review` が PR の追加行に重なる推奨を登録し、`/rite:fix` が blocking と同じ検証付きの修正対象として扱い、再レビューへ戻る。mergeable でない cycle、`safety.max_review_cycles` に達した cycle、同じ run で既に直した後の cycle では登録しない。完了前確認が PR の追加行に見つけた目的逸脱は、`flow-state.sh review-deviate` で記録して同じ run の修正 → 検証 → 再レビューへ戻す。
+- **レビュー途中で合意した受入条件の改訂は、同じ review run で続けられる** — `flow-state.sh review-reconcile` が合意した改訂を run に記録し、回数・観測・修正履歴を保ったまま改訂後の仕様で再レビューへ進める。記録せずに続けた run は止まり、停止メッセージが記録の手順を案内する。
+- **利用者の求めによる一時停止を、Stop hook が差し戻さない** — `flow-state.sh pause` / `resume` がセッションごとに一時停止を記録する。記録がある間 Stop hook は停止を許可する。review clock の開いた区間は中断として閉じ、停滞診断は一時停止の時間を作業時間に数えない。残った一時停止の記録は SessionStart が起動のたびに知らせる。
+- **`StopFailure` hook が、利用上限で止まっていた時間を停滞診断から外す** — API エラーでターンが終わった時点で `stop-failure.sh` が自セッションの開いた review clock 区間に終了時刻を書くため、上限の解除を待った数時間が見直し（replan）を発動させない。hook は `hooks.json` と `/rite:setup` の legacy 登録表に登録した。このイベントを届けないホストでは、区間は通常の close まで開いたままになる。
+- **回数・予算を理由に品質を妥協しない原則を、プラグインに同梱した** — 原則一覧に `no_budget_quality_tradeoff` を加え、実装・PR レビュー・修正の自己チェックに載せた。発散判定・停滞診断・上限での停止は、この原則に沿う停止として明記した。それらの実装と条件は変えていない。
+- **文書のレビューが、移動・格上げ・削除を確かめる** — reviewer 共通原則の Documentation Fidelity Gate に、規範語の付与・status の格上げ・移動では主張が名指しする実装を読んで照合すること、削除では各項目の行き先を棚卸しすることを加えた。行き先の無い項目は lost instruction として報告する。
+
+### 変更
+
+- **人間への確認は AI で確かめられないものだけにし、内部用語に頼らない説明を添える** — 依頼する前に、AI が実行・観測して確かめられないかを判定する。依頼には、何を確かめるか・なぜ AI では確かめられないか・どう確かめるか・期待する結果を示す。人間が応答しない経路では質問せずに停止し、同じ説明を停止理由に含める。AI で確かめられる確認（品質チェックを実行するか、修正案を適用するか、エラー時に再試行するか）は実行結果で判断する。AI が書いたコードを人間がレビューすることは確認項目にしない。不可逆操作の承認は省かず、残骸ディレクトリの削除は中身を調べた結果を添えて必ず確認する。`/rite:ready` と `/rite:merge` の未検証の受入条件は、分類 → 実行 → 停止 → 人間のみ依頼の順に処理し、AI の実行結果から人間の確認の記録は作らない。
+- **採否の出口が決まるまで、外部へ起票しない** — 直さなかったレビュー候補を Issue にする 4 経路（non-blocking の sweep、スコープ外処分、先送りトークン、cleanup の follow-up）は、書く直前に採否の出口を読む。起票するのは「既存の不具合で受入条件がある」根因と、調査として引き受けた DIAGNOSE だけである。判定記録が無い、または未処分の候補があるときは何も書かず、候補の全文・出典・対象 commit・再開位置を保留ファイルに保存する。決まった処分は PR 内の修正と `/rite:cleanup` がそのまま使う。ADOPT かつ `origin=pr` は同じ PR で直し、回数を理由に先送りしない。事前フィルタで除外された指摘も採否判定を経る。
+- **PR が持ち込んだ実測済みの誤動作は、重要度 MEDIUM 以下でも同じ PR で直す** — `/rite:fix` の fatal は、既存コード由来でない class A の指摘と、降格ゲートが `consequence_exclusion` で blocking に残した class B の指摘を含む。class の無い MEDIUM 以下の実測済み指摘は `class_undetermined` で止まる。散文への指摘でも、記述に従う実行者の誤動作を実行で観測したものは class A とし、不確実を理由に class B へ倒さない。`ac_claim` で受入条件を主張する class B の指摘は blocking に残る。
+- **手動の `/rite:cleanup` は、follow-up Issue を公開する前に確認する** — 単独実行では件数と内訳を示し、起票する / 起票しない / 本文を確認してから決める、を選ぶ。起票しない選択は完了報告に `declined` として残る。`/rite:batch-run --merge` が実行する cleanup は確認せずに起票する。
+- **レビュー中の base 取り込みは、検証済みの 1 経路で行う** — `git merge --no-commit` → 修正計画 → check → verify → commit の順で、`base-intake` 処置が base 側の変えたファイルに限って Non-Target と閉じた対象の制約を外す。コミット前検査は `git merge` にも掛かり、自動で commit する merge はレビュー中は拒否する。マージ直前に PR が base と競合したときは `/rite:merge` が `[CONTEXT] MERGE_NOT_READY=conflicting` を併記し、`/rite:batch-run` は停止せず PR を draft に戻して base を取り込み、iterate へ戻す。
+- **2 回目以降のレビューは、指摘を PR 自身の変更に帰属させる** — fix diff を「cycle の起点からの差分」と「PR 自身の変更」の積に限るため、base の取り込みで入ったファイルで無関係な reviewer が起動しない。context 行や base から取り込んだ行だけに依存する問題は pre-existing とする。PR が足して後の fix が消した行は、base 由来と分類しない。
+- **共有レビュー原則は、絶対パスと読取義務で reviewer に渡す** — named agent 経路と独立子経路の両方で、パスを渡し、着手前の全文読取と先頭行の読取完了申告を課す。親は回収時に申告を照合し（取り直した出力を含む）、欠ければ 1 回再試行する。パスを解決・読取できなければ `[review:error]` で止まる。
+- **レビューの推奨事項は、項目の冒頭に分類を持たなければならない** — `review-likelihood-evidence-gate.sh` が、分類の無い項目と `actionable` / `design_confirmation` / `boundary` 以外の項目を返し、reviewer を 1 回だけ再生成させ、なお不備ならレビューを止める。推奨が無いことだけを書いた行（`なし`、`None`、`N/A`、`-` など）は 0 件として通す。文中で分類に言及しただけのものは分類として受け付けない。分類の無い推奨を `design_confirmation` とみなす規則は削除した。その推奨は、起票も記録もされないまま採否の候補から外れていた。
+- **Bash ガードは、実行場所を確定できない操作と役割外の操作を拒否する** — rite の作業中は、プロジェクトのチェックアウトとその worktree の外のディレクトリからの `git` / `gh` とスクリプト実行を `pre-tool-bash-guard.sh` が拒否する。`if` / `case` / 関数 / ループ内のディレクトリ変更と `git` / `gh` の組合せは、書換え手順付きで拒否する。reviewer の subagent には `git push`、`git commit`、GitHub への書き込み、`gh pr checkout`、`flow-state.sh` の書き込み、ステップ駆動スクリプトを拒否する。読み取りとテスト実行は許可のままである。
+- **`/rite:iterate`、`/rite:pr-review`、`/rite:fix` のシェル処理と `/rite:wiki-lint` の log commit は、helper の 1 行呼び出しになった** — ブロックの本体を `iterate-step.sh`、`pr-review-step.sh`、`fix-step.sh`、`wiki-lint-log-commit.sh` へ移したため、セッション worktree でホストの隔離ガードに拒否されず、退路を通らずに各手順を実行できる。marker・sentinel・分岐表は各 `SKILL.md` に残し、挙動は変えていない。
+- **Stop hook は、完了通知を Stop payload の最終テキストで判定する** — `stop-loop-continuation` は `last_assistant_message`（Grok は `lastAssistantMessage`）を読む。transcript は非同期に書かれるため、出した直後の完了通知を判定できず二度目の通知を求めることがあった。transcript の読み取りは削除した。payload に最終テキストが無いときは transcript へ戻らずに差し戻し、その旨を示す。
+
+### 修正
+
+- **Wiki ブランチの初期化で、submodule の中身・未追跡ファイル・別セッションの stash を失わない** — 別ブランチ方式では、orphan ブランチ上の `git rm -rf` が submodule の作業ツリーを消し、その中が未追跡ファイルだけの変更は検出も退避もされなかった。初期化は何かを変える前に submodule の変更を検出して ERROR で止まり、gitlink は index からだけ外し、元のブランチへ戻ったあと submodule の状態を照合する。stash は退避時に記録した SHA で戻すため、並行セッションの退避を取り出さない。
+- **`/rite:template-reset` は、設定のバックアップに失敗したら止まる** — 既存の設定を失わないよう、`cp` の診断と ERROR を出して非ゼロで終了し、再生成も完了報告もしない。
+- **未マージの PR を強制クリーンアップしても、完了として記録しない** — `/rite:cleanup` で強制クリーンアップを選ぶと、関連 Issue が「PR のマージに伴いクローズ」のコメント付きで閉じられ、Projects の Status は Done、作業メモリは完了、親 Issue の Tasklist も完了になっていた。マージ済みの PR が無いときは Issue を開いたまま残し、これらの記録を書かず、実行しなかったことを完了表示に示して `/rite:issue-cancel` を案内する。
+- **`/rite:cleanup` は、終えられなかったことを報告する** — 関連 Issue のクローズは state の読み直しで確かめる（`[CONTEXT] ISSUE_CLOSE=`）。base が default branch でない PR では `Closes` による自動クローズが働かないためである。作業メモリの最終更新の失敗と Wiki 取り込みのロック喪失は、未完了事項に数える。レビュー結果 JSON が片付け済みの再実行は、follow-up 起票の失敗ではなく `already_processed` として報告する。作業メモリ更新 helper は、必須引数の欠落を `gh` を呼ぶ前に拒否する。
+- **`/exit` のあと resume すると、中断した作業を続けられる** — SessionEnd は作業途中の flow state を消さず、`active=false` と中断の印を付けて残し、resume 時の SessionStart が作業中に戻す。`/rite:batch-run` は Issue を `/rite:open` からやり直さず、`/rite:iterate` は state を見つけられ、batch の watchdog は中断した cleanup を飛ばして次の Issue へ進まない。
+- **利用上限で止まった batch のキューを、他セッションが消さない** — `run-queue-reap.sh` は時刻が 2 時間動かないキューを回収していたため、1 件の Issue に長くかかっているセッションや、上限の解除を待つセッションのキューまで消えていた。回収するのは SessionEnd が置く終了の印があるキューだけで、2 時間規則を適用する。印の無いキューは停止時間によらず残し、起動時にパス・cursor・再開方法・削除方法を案内する。
+- **並行セッションが、互いの作業状態を消さない** — 実行中の reviewer と Ready 検査の一時 worktree は名前に持ち主のセッション ID を持ち、持ち主が生きている間は回収されない。レビュー停止後の再開待ち worktree は liveness TTL 内で保護する。ある Issue の cleanup は、保留中の他 PR のレビュー履歴を残す。Wiki 取り込みのロックは、保持者の flow state ではなく取得時刻（2 時間以内なら生存）で判定するため、取り込み中に別セッションに奪われない。
+- **記録を更新しても、却下台帳が消えない** — `/rite:fix` は非実測指摘の記録コメントを全文で置き換え、既存の台帳を落としていた。台帳を引き継ぎ、抽出や merge に失敗したときは記録を置き換えずに止まる。台帳の読み手はすべて、記録 helper が PATCH する 1 件のコメントを解決して読む。
+- **検査を経ないままレビューを完了できない** — `review-finish` は受入条件欄の無い結果を拒否し、完了済み cycle の受領票の差し替えも拒否する。`skipped` の申告は最新の Issue 本文と照合する。`review-close` は、作業メモリにそのレビューの記録を確保してから閉じる。`/rite:pr-review` は、作業ツリーの HEAD が PR の head と違えば止まる。同じ cycle の中で作り直した reviewer 出力は、出力の検査・読取完了申告の照合・manifest の更新をもう一度通る。
+- **実装コミットが失敗したら、push せずに止まる** — `/rite:issue-implement` は `git-commit-file.sh` の終了コードを見ておらず、変更が staged のまま push と PR 作成へ進んでいた。
+- **コミット前ガードが、検査しないまま commit を通さない** — `git` とサブコマンドの間にリダイレクトや `-c` を挟んだ commit、`pushd` や前置き付きの `cd` の先の commit、実行されないかもしれない `cd` の先の commit を検査する。hook の時間内に検査できない長いコマンドは、時間切れで通さず `commit-guard-uninspectable` として拒否する。行継続は末尾バックスラッシュの偶奇に従う。`-S` 付きの署名 merge と、base が変えたディレクトリ symlink が、レビュー中の検査をすり抜けない。reviewer の状態変更チェックも同じ解析を使う。
+- **Wiki 適用ゲートが、実装と修正のコミットをすべて検査する** — `/rite:open` は実装の前に `phase=implement` を記録する。worktree を記録しないセッション（`multi_session` 無効を含む）もコミット時に検査し、レビュー時に `record_missing` で拒否しない。解析できないコマンドは `wiki-apply-uninspectable` として拒否する。大きな差分は環境変数ではなくファイルで渡す。未知の `--mode` と値の無いフラグは拒否する。`/rite:fix` はコミット後に証跡の head を進めるため、次のレビューが `stale_head` で止まらない。別セッションから再開したレビューが `session_mismatch` で失敗せず、出力をリダイレクトした `git commit` を拒否せず、拒否された raw source の commit は unstage し、`branch.base` の行末コメントで証跡の照合が壊れない。
+- **番号参照チェックの結果どおりに進む** — `/rite:fix` は helper の終了コードで分岐していたが、ヒット時も終了コードは 0 のためコミットへ進んでいた。marker で分岐し、書き直しへ戻る。`number-reference-check.sh --diff` は、移動した行を新規追加として検出せず、`++` で始まる追加行をファイルヘッダと誤読しない。`fix-report-diff-gate` にも同じ修正を入れた。
+- **レビューループが、自分の管理情報で止まったり空転したりしない** — 発散判定は、解決済みの再試行で越えた発散点で再発火しない。再試行権を発行した run は `/rite:iterate` から再試行のレビューへ進める。停滞で止まった run の停止理由は起動時に案内され、batch の watchdog が失敗停止として扱う。未検証の受入条件を確認済みと記録したあとも、Ready・`review-close`・Issue の切替へ進める。レビュー完了と cleanup の後に次の Issue へ切り替えられる。未完了の run の結果ファイルが消えているときは、次の操作と停止理由 `circuit-breaker:receipt-missing` を示して拒否する。再生成された `.pyc` は検証を無効にしない。Issue のコマンド例を、修正計画の対象外パスとして要求しない。
+- **見える本文を挟んだ marker 形の行を、仕様照合が見逃さない** — コメントを閉じたあと見える本文を続ける行まで rite 自身の書き込みとみなしていたため、その行で受入条件を変えても run が止まらず、helper が本文を無音で消していた。
+- **non-blocking の sweep が、重複起票せずに再開・完了する** — 台帳の保存前に止まった sweep を別の会話から再開できる。同じ run の後の cycle で出た指摘も消化する。台帳追記は拒否理由を必ず出す。完了を done ファイルだけで判定した sweep も、完了通知の handoff を残す。
+- **follow-up Issue を重ねず、漏らさない** — 先行 cycle の sweep で起票済みの指摘は、後の cycle が ID を変えて再報告しても除外する。既存の follow-up が 100 件を超えてもページ送りで読む。orphan 回収が先に退避したレビュー結果も読む。Decision Log に先送りした欠陥は、指摘が残っていなくても `rite:deferred-defect` トークンで追跡する。途中で止まったスコープ外処分を再実行しても、Decision Log 行と申し送りコメントを二重に書かない。follow-up ラベルの説明は起票のたびに更新する。
+- **`/rite:fix` が、渡されたレビュー結果を読む** — コメント URL を渡すと、そのコメントを取得元にする。`--review-file` で渡した外部ファイルと会話経路は、保存済みのレビュー JSON をその場で triage するため、完了記録が triage 後の内容を読む。影響範囲検索は一致行を返す。Wiki 記録のメッセージファイルが無いときは `msg_file_missing` と報告する。実測済みの非 fatal 指摘を、記録と follow-up で「非実測」と表示しない。
+- **`rite-config.yml` を、セッション worktree からも、節の中にコメントがあっても正しく読む** — セッション worktree は、自身に設定が無ければ main checkout の設定を使う。`/rite:getting-started`、`/rite:workflow`、`/rite:template-reset` は、そこで未初期化と案内しない。`branch:` / `wiki:` 節の中の列 0 コメント、数字や `_` で始まる後続キー、`branch.base` の行末コメントによって、誤った値を読んだり `develop` へ黙って倒れたりしない。読めない設定では、既定値で続行せずに止まる。
+- **レビュー後の状態検査が、reviewer の drift と他セッションの作業を区別する** — 並行セッションが作ったブランチと stash を drift としない。名前空間の外の `pr-N-cycleX` ブランチを漏出として検出する。ブランチの自動復旧は HEAD を detached のままにせず、元のブランチへ戻す。
+- **edit ガードが、実装を任せた subagent を止めない** — 種別の末尾が `reviewer` のものと `_reviewer-base` だけを reviewer として扱う。種別を報告しない subagent は引き続き拒否し、拒否文に判定の根拠を出す。
+- **reviewer に案内する worktree の作り方が、レビュー中のブランチでも失敗しない** — 共通原則は `mktemp` のあとの 2 段で `git worktree add --detach <path> <ref>` を案内する。ブランチを名指しする形は、head がセッション worktree で checkout 中のため失敗していた。
+- **Wiki の失敗時の案内が、実際の原因と正しい場所を指す** — 手動復旧のヒントは絶対パスか `git -C <main checkout>` を使い、どのディレクトリからでも実行できる。`/rite:wiki-ingest` と `/rite:wiki-lint` は、番号参照の拒否と検査自体の失敗を分けて案内する。取り込みのロックを失った、または確認できなかったときは完了レポートに載る。
+- **日本語ロケールの診断が文字化けしない** — `neutralize_ctrl --keep-newline` は UTF-8 の継続バイトを `?` に置き換えていた。整形式の UTF-8 列は残し、単独の C1 バイトは引き続き置き換える。
+- **`/rite:lint` は、exit 0 で skip した検査の WARNING を表示する** — base 未設定による `wiki-growth-check` の skip は、単独実行で見えなかった。SIGPIPE の検出は、幅指定で出力が膨らむ `printf` も対象にする。
+- **テストが、固定していると名乗る変更を検出する** — 検出すべき変異を当てても通っていた assert を絞り、テスト名とコメントを実際の検査範囲に合わせ、実行環境に依存する失敗（セッションの環境変数、`TMPDIR` の場所、macOS、並列実行、遅い CI runner）を除いた。
+
+### 削除
+
+- **`.claude/rite-config.yml` を、設定ありとみなさなくなった** — `/rite:getting-started`、`/rite:workflow`、`/rite:template-reset` はそこにあるファイルを初期化済みと扱っていたが、設定の解決処理が読むのはプロジェクトルートの `rite-config.yml` だけで、その構成のプロジェクトは既定値で動いていた。ファイルをプロジェクトルートへ移すこと。
+
 ## [0.18.0] - 2026-09-22
 
 ### 追加
@@ -1130,6 +1190,7 @@ v0.4.0 では値は silent に無視されます。機能的な代替はあり�
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.19.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.17.1...v0.18.0
 [0.17.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.16.1...v0.17.0
