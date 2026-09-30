@@ -18,13 +18,16 @@ sources:
     resource: "raw/reviews/20260927T152733Z-pr-3299.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T161451Z-pr-3305.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T165732Z-pr-3561.md"
 tags: ["verification-protocol", "prose-implementation-sync", "regex", "behavioral-test", "attribution"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:16:02Z" }
+generated: { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T17:01:22Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:27:52Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:39:40Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:16:02Z" }
+  - { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T17:01:22Z" }
 ---
 
 # 散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする
@@ -82,6 +85,8 @@ canonical: helper を散文参照するときは「regex 実体ファイル (`.p
 
 実装の挙動を一般化して述べる散文（「引用符なしのリダイレクトは数えない」）は、実装の例外（パイプ分割で数えられる形）より広く言い切っていないかを確かめる。共有パーサの戻り値に印を付けて特定の経路だけ挙動を変える方式は、消費側が等値比較や slice しか使わないことを確かめてから採る。
 
+正規表現に並ぶ語を一つの種別名でまとめると、その種別に入らない語まで同じ種別に読まれる。予約語と builtin が同じ列挙にあるときは、種別名を使わず列挙のまま書く。報告条件を、今回直した分岐だけを見て「だけ」と書くと、差分に無い分岐が同じ条件で報告する場合まで否定する文になる。限定は、報告する分岐をすべて読んでから付ける。
+
 ## 関連ページ
 
 - [Documentation review は対応する実装側 (commands/scripts/templates) の grep verify を必須 step とする](./docs-review-implementation-grep-verification.md)
@@ -97,3 +102,4 @@ canonical: helper を散文参照するときは「regex 実体ファイル (`.p
 - [条件式の説明を helper の実行結果で照合したレビュー](../../raw/reviews/20260927T032116Z-pr-3202.md)
 - [委譲の要約を helper の分岐の全組み合わせと照合したレビュー結果](../../raw/reviews/20260927T152733Z-pr-3299.md)
 - [一般化した散文と実装の例外の境界ずれを指摘したレビュー結果](../../raw/reviews/20260927T161451Z-pr-3305.md)
+- [種別名と限定が列挙と分岐より広かったレビュー結果](../../raw/reviews/20260930T165732Z-pr-3561.md)

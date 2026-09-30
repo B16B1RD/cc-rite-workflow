@@ -12,6 +12,8 @@
 
 * **Lint incomplete** — 機械検査は contradictions=0, stale=64, orphans=0, missing_concept=0, unregistered_raw=638, broken_refs=0。今回はページ本文の変更なし。全ページの意味的な矛盾比較は未完了であり、Wiki 全体の品質検査成功とは扱わない。
 
+* **Update**: [散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする](pages/heuristics/prose-cited-implementation-behavioral-verification.md) — [レビュー結果](raw/reviews/20260930T165732Z-pr-3561.md) を統合
+
 ## 2026-09-30
 
 * **Lint incomplete** — 機械検査は stale=64、orphans=0、missing_concept=0、unregistered_raw=621、broken_refs=0、descriptive_number_ref=0。更新ページは出典と関連ページを照合した。全658ページの意味的な矛盾比較は未完了であり、Wiki 全体の品質検査成功とは扱わない。
