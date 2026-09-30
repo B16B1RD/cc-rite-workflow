@@ -1,14 +1,15 @@
 #!/bin/bash
 # cleanup-follow-up-issue.sh — /rite:cleanup ステップ 6.0
 #
-# マージ済み PR の残存 non-blocking 指摘 (review-results JSON の non_blocking_findings[]) と、元 Issue の
+# マージ済み PR の残存 non-blocking 指摘 (review-results JSON の non_blocking_findings[] と、guardrail が
+# 除外した guardrail_audit_log[] の行) と、元 Issue の
 # Decision Log (Section 9) で本 PR のレビューが先送りした欠陥 (行末が `<!-- rite:deferred-defect pr=<PR> -->`
 # の行。pr-review 7.4.3 が付ける。旧い基準で書かれた行も区別せず候補にし、終端として扱わない) を候補にする。
 # 起票するかどうかは採否ゲート (review-adoption-gate.sh --kind followup) の出口だけで決め、verdict=file の
 # 判定記録ごとに follow-up Issue を 1 件起票する (1 根因 = 1 Issue)。cleanup 全体は止めない (引数不正のみ exit 1)。
 # json_undecidable は先送り欠陥があっても failed のまま止める。
 #
-# 候補の集合は**同一 PR の全 JSON の `non_blocking_findings[]` の和集合**。各 JSON はその cycle の
+# 候補の集合は**同一 PR の全 JSON の `non_blocking_findings[]` と `guardrail_audit_log[]` の和集合**。各 JSON はその cycle の
 # 観測にすぎず、最新 1 本は残存集合ではない (先行 cycle にのみ載る指摘を取りこぼす)。解消済みかどうかは
 # 分類役が判定記録の present で判定する。処分済みの候補は判定し直さない: iterate の NB sweep と前回の
 # follow-up が採否の出口で処分した指摘 (関連 Issue 記録コメントの却下台帳で判定=issued / REJECT /
@@ -87,6 +88,9 @@
 #     (--list-candidates のとき。0 件で終えたときは count=0 の後に reason=<下記 skipped / failed の reason>)
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=list_write; pr=<n>   (一覧を --list-candidates のパスへ書けない)
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=head_unresolved; pr=<n>   (対象 commit を決められない。一覧を書かない)
+#   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_row_invalid|guardrail_source_missing; pr=<n>   (判定できない guardrail 行がある。一覧を書かない)
+#   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_source_check_failed; pr=<n>   (却下台帳の旧形式行とレビュー結果 JSON の
+#     照合そのものに失敗した。ERROR は照合キーを作れない指摘を source (出典 JSON) と id で示し、jq のエラーを添える。一覧を書かない)
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=hold_unreadable; pr=<n>   (採否ゲートの hold ファイルがあるのに読めず、
 #     前回の判定記録を再利用する候補を決められない。一覧を書かない。起票実行ではゲートが同じ hold を読めず
 #     FOLLOW_UP_ISSUE=held; reason=gate_failed_rc1; hold_file=none で止まる)
@@ -121,8 +125,14 @@
 #   書けなくても結果は変えず WARNING を出す。影響は再実行の報告が no_json に戻ることだけ。
 #   [CONTEXT] FOLLOW_UP_DEFERRED=unavailable; reason=issue_body_api; pr=<n>
 #     元 Issue の本文を取得できず先送り欠陥を読めなかった (ゲートが本文を読み直し、読めなければ保留する)
-#   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable|head_unresolved|preview_write; pr=<n>
+#   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable|head_unresolved|guardrail_row_invalid|guardrail_source_missing|guardrail_source_check_failed|preview_write; pr=<n>
 #     head_unresolved: commit_sha を持つレビュー結果 JSON が無く、PR の head も取得できないか <state-root> の git で解決できない
+#     guardrail_row_invalid: guardrail_audit_log の行が reviewer か description を欠き、判定できない
+#     guardrail_source_missing: 却下台帳の recorded / rejected 行 (guardrail 行を原文なしで転記した旧形式) のうち、
+#       この PR のレビュー結果を出典に持ち、読んだ JSON に同じ位置の指摘が無い行の出典 JSON がレビュー結果
+#       (直下と archive/) に無く、原文を判定できない (この PR の JSON が 1 本も無いときは問わない。
+#       位置の無い guardrail 行 (file_line が空か -) は原文がある根拠にしない)
+#     guardrail_source_check_failed: 却下台帳の旧形式行と読んだ JSON の照合自体に失敗し、上の判定ができない
 #   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=create_api; issue=<起票できた番号の CSV>; pr=<n>
 #     根因の一部だけ起票できた。再実行すると起票済みの根因は増やさず残りだけを起票する
 #   [CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=<r>; pr=<n>
@@ -352,10 +362,47 @@ while IFS= read -r f; do
   [ -n "$f" ] || continue
   matched=$((matched + 1))
   : > "$union_err"
+  # guardrail が除外した行 (guardrail_audit_log) も候補にする。除外理由は採否の出口ではない。
+  # 本文を判定できない行 (reviewer・description が空) は
+  # 黙って落とさず、対象 commit を決められないときと同じく一覧を書かずに失敗する。
+  if bad_guardrails=$(jq -c '[(.guardrail_audit_log // [])[]
+      | select(((.reviewer // "") | tostring) == "" or ((.description // "") | tostring) == "")]' "$f" 2>/dev/null) \
+     && [ -n "$bad_guardrails" ] && [ "$bad_guardrails" != "[]" ]; then
+    echo "ERROR: guardrail_audit_log に、判定に要る reviewer・description を欠く行があります。follow-up を判定しません (PR #${PR_NUMBER}): $f" >&2
+    printf '%s' "$bad_guardrails" | jq -r '.[] | "  reviewer=\(.reviewer // "") file_line=\(.file_line // "")"' | neutralize_ctrl --keep-newline >&2
+    if [ -n "$LIST_OUT" ]; then
+      echo "[CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_row_invalid; pr=${PR_NUMBER}" >&2
+    else
+      emit_failed guardrail_row_invalid
+    fi
+    exit 0
+  fi
   # 各 finding に出典 JSON のパス (`_src`) を持たせる。候補の id (basename + id) と、
   # sweep 起票済みの除外 (台帳行の出典 basename との一致、出典の無い行は最新 JSON とのフルパス一致) の両方が使う。
   # 本文の生成は明示したフィールドだけを読むので転記には出ない。
-  if ! part=$(jq -c --arg src "$f" 'if (.non_blocking_findings | type) == "array" then .non_blocking_findings | map(if type == "object" then . + {_src: $src} else . end) else error("non_blocking_findings is not an array") end' "$f" 2>"$union_err"); then
+  # guardrail 行の id と loc は nb-sweep-collect.sh の key と loc と同じ式にし (同じ reviewer・file_line の
+  # n 行目 (n >= 2) は #n を付ける。loc は file_line そのもの)、sweep が台帳に書いた行と
+  # [finding_id, file:line] で照合できるようにする。
+  if ! part=$(jq -c --arg src "$f" '
+      def guardrail($n):
+        ((.file_line // "") | tostring) as $fl
+        | ($fl | capture("^(?<file>.+):(?<line>[^:]+)$") // {file: $fl, line: null}) as $at
+        | {id: ("guardrail:" + (.reviewer | tostring) + ":" + $fl + (if $n > 0 then "#\($n + 1)" else "" end)),
+           reviewer: (.reviewer | tostring),
+           severity: (.original_severity // "UNKNOWN"),
+           loc: $fl,
+           file: $at.file,
+           line: $at.line,
+           description: (.description | tostring),
+           verification: {measured: false},
+           filter_reason: (.filter_reason // "")};
+      if (.non_blocking_findings | type) == "array"
+      then (.non_blocking_findings | map(if type == "object" then . + {_src: $src} else . end))
+        + ((.guardrail_audit_log // []) as $g
+           | [range(0; $g | length) as $i
+               | $g[$i] | guardrail([$g[0:$i][] | select(.reviewer == $g[$i].reviewer and .file_line == $g[$i].file_line)] | length)
+                 + {_src: $src}])
+      else error("non_blocking_findings is not an array") end' "$f" 2>"$union_err"); then
     # 部分的な parse 失敗で全滅させない。健全な側の和集合で続行し、全滅時だけ json_undecidable。
     echo "WARNING: レビュー結果 JSON を読めないため和集合から除外します (PR #${PR_NUMBER}): $f" >&2
     [ -s "$union_err" ] && head -3 "$union_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
@@ -523,6 +570,62 @@ if [ -n "$SOURCE_ISSUE" ] && { [ -n "$LIST_OUT" ] || [ "$deferred_n" -gt 0 ] || 
     ledger_hint='[]'
     ledger_unread=ledger_invalid
   fi
+  # 旧形式の recorded / rejected 行は guardrail 行を原文なしで転記したものを含む。この PR のレビュー結果を
+  # 出典に持ち、読んだ JSON に同じ [finding_id, file:line] の指摘 (guardrail 行は reviewer と file_line) が
+  # 無い行の原文は出典 JSON にしかないので、出典がこの PR のレビュー結果 JSON (直下と archive/) に無ければ、
+  # その行は判定できないまま消える (台帳は Issue 単位なので、別の PR の行はこの PR の候補ではない)。
+  # JSON が 1 本も無いときは上の WARNING (別環境での cleanup) が全指摘について同じことを告げているので問わない。
+  # 位置の無い guardrail 行 (file_line が空か -) は reviewer ごとに同じ組になり行を見分けられないので、
+  # 原文がここにある根拠にしない。セルは空になりうるため、空白でない \x1f で区切って読み戻す
+  if [ -z "$ledger_unread" ] && [ "$matched" -gt 0 ]; then
+    # 和集合は大きくなりうるので引数ではなくファイルで渡す (1 引数の長さ上限で jq が起動できなくなる)
+    rite_tempfile_new cur_file "fu-cur" || exit 1
+    if ! printf '%s' "$findings_json" > "$cur_file" \
+       || ! unmatched_rows=$(printf '%s' "$record_body" | jq -Rsre --slurpfile cur "$cur_file" --arg pfx "${PR_NUMBER}-" '
+      def trim: gsub("^\\s+|\\s+$"; "");
+      ([$cur[0][] | objects | [((.id // "") | tostring), (.loc // ((.file // "") + ":" + (.line | tostring)))]]
+       + [$cur[0][] | objects | select((.id | tostring | startswith("guardrail:")) and .loc != "" and .loc != "-")
+          | [(.reviewer | tostring), .loc]]) as $here
+      | [split("### 却下台帳\n")[1:][]
+        | split("📎 non_blocking_count:")[0] | split("\n### ")[0]
+        | split("\n")[] | select(startswith("|"))
+        | gsub("\\\\\\|"; "\ue000") | split("|") | map(gsub("\ue000"; "\\|") | trim)
+        | select(length >= 7 and (.[3] == "recorded" or .[3] == "rejected") and (.[5] | startswith($pfx)))
+        | select([.[1], .[2]] as $k | $here | index([$k]) | not)
+        | [.[1], .[2], .[5]] | join("\u001f")] | join("\n")' 2>"$comments_err"); then
+      # 台帳は上で解析できているので、ここでの失敗は読んだ JSON との照合の失敗。検査を飛ばして起票へ進まない
+      echo "ERROR: 却下台帳の旧形式行とレビュー結果 JSON を照合できません。原文を失った行を判定できないため follow-up を判定しません (PR #${PR_NUMBER})" >&2
+      # jq のエラーは台帳本文 (stdin) の位置しか示さないので、照合キーを作れない指摘を出典 JSON と id で示す
+      # 照合キーの式 (.loc // (.file + ...)) と同じく loc の null / false を「位置なし」として選ぶ
+      jq -r '.[] | objects | select(.loc | not) | select((.file // "") | type != "string")
+          | "  source=\((._src // "") | split("/") | last) id=\(.id // "" | tostring) file=\(.file | tojson)"' "$cur_file" \
+        | neutralize_ctrl --keep-newline >&2
+      [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  jq: /' >&2
+      if [ -n "$LIST_OUT" ]; then
+        echo "[CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_source_check_failed; pr=${PR_NUMBER}" >&2
+      else
+        emit_failed guardrail_source_check_failed
+      fi
+      exit 0
+    fi
+    source_bases=$(printf '%s\n' "$sources" | awk '{ n = split($0, p, "/"); print p[n] }')
+    lost_rows=""
+    while IFS=$'\x1f' read -r l_id l_loc l_src; do
+      [ -n "$l_src" ] || continue
+      grep -Fxq -- "$l_src" <<< "$source_bases" \
+        || lost_rows="${lost_rows}  reviewer=${l_id:-<empty>} file_line=${l_loc:-<empty>} source=${l_src}"$'\n'
+    done <<< "$unmatched_rows"
+    if [ -n "$lost_rows" ]; then
+      echo "ERROR: 却下台帳の recorded / rejected 行が指す出典 JSON が PR #${PR_NUMBER} のレビュー結果 (直下と archive/) にありません。この guardrail 行の原文を判定できないため follow-up を判定しません:" >&2
+      printf '%s' "$lost_rows" | neutralize_ctrl --keep-newline >&2
+      if [ -n "$LIST_OUT" ]; then
+        echo "[CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=guardrail_source_missing; pr=${PR_NUMBER}" >&2
+      else
+        emit_failed guardrail_source_missing
+      fi
+      exit 0
+    fi
+  fi
   # 前回の follow-up が record の出口で処分した先送り欠陥 (出典 <pr>-deferred の行) は候補に戻さない
   deferred_done=$(jq -c --arg src "${PR_NUMBER}-deferred" '[.[] | select(.source == $src and .disposition != "issued") | .id]' <<< "$ledger_hint")
   ledger_hint=$(jq -c '[.[] | select(.disposition != "RESOLVED")]' <<< "$ledger_hint")
@@ -568,7 +671,7 @@ else
     sweep_issued_unavailable apply_failed "処分の前提を照合できません"
   elif ! issued_split=$(printf '%s' "$findings_json" | jq -c --arg latest "$latest_json" --argjson keys "$issued_keys" \
       --argjson cycles "$cycles_json" '
-    def loc: (.file // "") + ":" + (.line | tostring);
+    def loc: .loc // ((.file // "") + ":" + (.line | tostring));
     def base: (._src // "") | split("/") | last;
     def issued: ._src as $s | base as $b | [(.id // ""), loc] as $k
       | any($keys[]; .[0:2] == $k and (if .[2] == "" then $s == $latest else .[2] == $b end));
@@ -767,7 +870,7 @@ write_ledger() {
        + (if $v.exit == "REJECT" or $v.exit == "RESOLVED" then " @\($head)" else "" end)) as $premise
     | $v.ids[] as $i | $cands[] | select(.id == $i)
     | if .kind == "finding"
-      then "| \(.finding.id // $i | cell) | \(.finding.file // "" | cell):\(.finding.line | cell) | \($v.exit) | \($premise | cell) | \(.source) |"
+      then "| \(.finding.id // $i | cell) | \(.finding.loc // ((.finding.file // "" | tostring) + ":" + (.finding.line | tostring)) | cell) | \($v.exit) | \($premise | cell) | \(.source) |"
       else "| \(.id | cell) | - | \($v.exit) | \($premise | cell) | \($pr)-deferred |" end' <<< "$gate_out" > "$entries" || return 1
   [ -s "$entries" ] || return 0
   # 本文は上で台帳を読んだときの記録コメント (同じ run の中なので読み直さない)
