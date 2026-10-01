@@ -1046,7 +1046,7 @@ rationale: references/rationale.md#review-cleanup-reasons
 
   最終行は marker 不在一般の受け皿。`CLEANUP_WT=unknown` はステップ 9 全体を実行させず sentinel を 1 本も出さないが、ステップ 12 の委譲モード定型ブロックの対象外でもあるため、この行が無いと適用される規則が存在しない。**marker 不在を成功と読んではならない** — 不在は「ステップ 9 が実行されなかった」等、実行結果を確認できていない状態である。照合は `WIKI_INGEST_` の marker family でスコープする。
 
-  push 失敗警告 (`{wiki_branch}` はステップ 9 で解決済。`{wiki_worktree_abs}` は `bash {plugin_root}/hooks/state-path-resolve.sh` の出力 + `/.rite/wiki-worktree` をリテラル置換する):
+  push 失敗警告 (`{wiki_branch}` はステップ 9 で解決済。`{wiki_worktree_abs}` は `bash {plugin_root}/hooks/state-path-resolve.sh` の出力 + `/.rite/wiki-worktree` をリテラル置換する。出力が空で解決できなかったときは、相対パスの案内へ倒さず、解決できなかった旨を警告に出す):
   ```
   ⚠️ Wiki ingest: commit は local wiki branch に landed しましたが origin への push に失敗しました。
     手動回復: git -C {wiki_worktree_abs} push origin {wiki_branch}

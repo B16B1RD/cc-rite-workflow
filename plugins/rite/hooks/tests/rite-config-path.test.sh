@@ -318,14 +318,28 @@ for sk in pr-create issue-implement lint skill-suggest issue-list setup; do
   rc2_stops=$(grep -cE 'rc=2.*(停止|stop)' "$md") || rc2_stops=0
   [[ "$rc2_stops" -ge "$min_rc2" ]] || sk_missing="$sk_missing rc2-stop=$rc2_stops"
   # rc=1 は各スキルの既存の「設定なし」の扱いへ進み、設定ファイルの直接 Read へ倒れない
+  # --or-devnull を使う 2 スキルは、直した節の中だけを見る（他の節の同じ語では通らない）
   case "$sk" in
-    lint|issue-implement)
-      grep -qF -- '--or-devnull' "$md" || sk_missing="$sk_missing or-devnull" ;;
+    lint)
+      site=$(awk '/^#### 2\.2\.1 Get Base Branch/{f=1;next} f&&/^#### 2\.2\.2/{exit} f' "$md")
+      grep -qF -- '--or-devnull' <<< "$site" || sk_missing="$sk_missing or-devnull-site" ;;
+    issue-implement)
+      site=$(awk '/^##### Condition Check/{f=1;next} f&&/^\*\*Skip conditions\*\*/{exit} f' "$md")
+      grep -qF -- '--or-devnull' <<< "$site" || sk_missing="$sk_missing or-devnull-site"
+      grep -qF 'cat "$rite_config"' <<< "$site" || sk_missing="$sk_missing cat-site" ;;
     *)
       rc1_names_file=$(grep -E 'rc=1' "$md" | grep -cF 'rite-config.yml') || rc1_names_file=0
-      rc1_effect=$(grep -E 'rc=1' "$md" | grep -cE '`main`|既定|default|unset|未設定|[Ss]kip|スキップ|新規|new generation|Proceed') || rc1_effect=0
       [[ "$rc1_names_file" = "0" ]] || sk_missing="$sk_missing rc1-names-file=$rc1_names_file"
-      [[ "$rc1_effect" -ge 1 ]] || sk_missing="$sk_missing rc1-effect" ;;
+      # rc=1 の既存の扱いは、スキルごとに決まった行の形で固定する
+      case "$sk" in
+        pr-create) rc1_patterns=('^[0-9]+\. rc=1.*`main`') ;;
+        skill-suggest) rc1_patterns=('rc=1 \(no config\).*unset') ;;
+        issue-list) rc1_patterns=('rc=1: no config, use the default' '^If rc=1 \(no config\), skip Phase 4') ;;
+        setup) rc1_patterns=('resolver rc=1\).*Proceed to 4\.1\.2') ;;
+      esac
+      for p in "${rc1_patterns[@]}"; do
+        grep -qE -- "$p" "$md" || sk_missing="$sk_missing rc1-effect($p)"
+      done ;;
   esac
   if [[ -z "$sk_missing" ]]; then
     pass "T-13 $sk reads the resolved config path"
@@ -342,9 +356,14 @@ for sk in wiki-init recover cleanup wiki-ingest; do
   # 絶対パスの出どころ（定義）と使用箇所を別々に数える
   if [[ "$sk" = wiki-ingest ]]; then
     def=$(grep -cF 'WIKI_WORKTREE_ABS=' "$md") || def=0
-    min_use=2
+    # 案内の 2 行（status / push）をそれぞれ固定する
+    st=$(grep -cF 'git -C {wiki_worktree_abs} status' "$md") || st=0
+    pu=$(grep -cF 'git -C {wiki_worktree_abs} push origin {wiki_branch}' "$md") || pu=0
+    use=$(( st < pu ? st : pu ))
+    min_use=1
   else
-    def=$(grep -F '{wiki_worktree_abs}' "$md" | grep -cF 'state-path-resolve.sh') || def=0
+    # 定義文は state-path-resolve.sh の出力と、解決できなかったときの扱いを持つ
+    def=$(grep -F '{wiki_worktree_abs}' "$md" | grep -F 'state-path-resolve.sh' | grep -cF '解決できなかった') || def=0
     case "$sk" in wiki-init) min_use=2 ;; *) min_use=1 ;; esac
   fi
   if [[ "$rel" = "0" && "$def" -ge 1 && "$use" -ge "$min_use" ]]; then

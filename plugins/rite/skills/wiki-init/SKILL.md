@@ -387,7 +387,7 @@ bash "$plugin_root/hooks/scripts/wiki-branch-init.sh" \
 
 ## ステップ 3.5: Wiki Worktree セットアップ
 
-`separate_branch` のとき、ステップ 3.1 直後に `.rite/wiki-worktree/` を作成する。復旧案内の `{wiki_worktree_abs}` は共有 root 起点の絶対パス（`bash {plugin_root}/hooks/state-path-resolve.sh` の出力 + `/.rite/wiki-worktree`）をリテラル置換する。session worktree の cwd でも同じ worktree を指す。
+`separate_branch` のとき、ステップ 3.1 直後に `.rite/wiki-worktree/` を作成する。復旧案内の `{wiki_worktree_abs}` は共有 root 起点の絶対パス（`bash {plugin_root}/hooks/state-path-resolve.sh` の出力 + `/.rite/wiki-worktree`）をリテラル置換する。出力が空で解決できなかったときは、相対パスの案内へ倒さず、解決できなかった旨を案内に出す。session worktree の cwd でも同じ worktree を指す。
 rationale: references/rationale.md#worktree-setup-nonblocking
 
 ```bash
