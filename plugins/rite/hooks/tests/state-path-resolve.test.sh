@@ -132,6 +132,32 @@ for step in fix iterate; do
   assert_grep "$step NB writer retains root diagnostic" "$PLAIN/writer.err" "state root unresolved"
 done
 if [ ! -e "$PLAIN/.rite/state/nb-sweep-done-9.txt" ]; then pass "NB writers create no completion state"; else fail "NB writers create no completion state"; fi
+# Use the real resolver and valid CLI arguments so argument validation cannot
+# hide an issue-creation side effect before the unresolved-root stop.
+ISSUE_FIXTURE=$(make_plain_sandbox)
+cleanup_dirs+=("$ISSUE_FIXTURE")
+mkdir -p "$ISSUE_FIXTURE/scripts" "$ISSUE_FIXTURE/hooks"
+cp "$HOOKS/../scripts/fix-step.sh" "$ISSUE_FIXTURE/scripts/"
+cp "$RESOLVER" "$HOOKS/control-char-neutralize.sh" "$ISSUE_FIXTURE/hooks/"
+cat > "$ISSUE_FIXTURE/scripts/create-issue-with-projects.sh" <<'MOCK'
+#!/bin/bash
+printf 'issued\n' >> "$ISSUER_LOG"
+printf '{"issue_number":42,"issue_url":"https://example.invalid/issues/42"}\n'
+MOCK
+printf 'Boundary probe\n' > "$ISSUE_FIXTURE/title.md"
+printf '**Type**: fix\n**Complexity**: S\n' > "$ISSUE_FIXTURE/body.md"
+tracker="$PLAIN/.rite/state/adoption-9-sweep.json"
+printf '{"adoption":{"records":[{"ids":["F-01"],"tracker":null}]}}\n' > "$tracker"
+cp "$tracker" "$ISSUE_FIXTURE/tracker-before.json"
+writer_rc=0
+(cd "$PLAIN" && ISSUER_LOG="$ISSUE_FIXTURE/issuer.log" bash "$ISSUE_FIXTURE/scripts/fix-step.sh" nb-sweep-file-issue \
+  --pr 9 --issue-title-file "$ISSUE_FIXTURE/title.md" --issue-body-file "$ISSUE_FIXTURE/body.md" \
+  --record-ids '["F-01"]' --projects-enabled false --project-number 0 --project-owner test) \
+  >"$PLAIN/writer.out" 2>"$PLAIN/writer.err" || writer_rc=$?
+assert "file-issue rejects unresolved root with valid arguments" "1" "$writer_rc"
+assert_grep "file-issue retains root diagnostic" "$PLAIN/writer.err" "state root unresolved"
+if [ ! -e "$ISSUE_FIXTURE/issuer.log" ]; then pass "file-issue never invokes issuer outside Git"; else fail "file-issue never invokes issuer outside Git"; fi
+if cmp -s "$tracker" "$ISSUE_FIXTURE/tracker-before.json" && [ ! -e "$tracker.tmp" ]; then pass "file-issue preserves tracker without temporary writes"; else fail "file-issue preserves tracker without temporary writes"; fi
 # A denied tool request keeps its deny payload without a cwd-relative audit write.
 deny_payload=$(jq -n --arg cwd "$PLAIN" '{cwd:$cwd,tool_name:"Bash",tool_input:{command:"gh pr diff 1 --stat"}}')
 guard_rc=0

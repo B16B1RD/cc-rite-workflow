@@ -243,7 +243,8 @@ _undecidable() {
 }
 
 # ---- results dir の解決 -------------------------------------------------------
-# hooks/review-result-save.sh と同一の解決順 (state-path-resolve.sh → cwd 相対)。
+# resolver 成功時は共有 state root を使う。失敗時は、この読取り専用の検査だけが cwd 相対を参照する。
+# 書込み側の hooks/review-result-save.sh は解決失敗で停止する。
 # セッション worktree 内から呼ばれても main checkout と同一パスへ解決される。
 if [ -z "$results_dir" ]; then
   # git 外や resolver 実行失敗の診断を保持する。

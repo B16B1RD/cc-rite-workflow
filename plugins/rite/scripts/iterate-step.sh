@@ -877,12 +877,11 @@ fi
 source "$plugin_root"/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした（プラグインの破損 / 版 skew）。marker を emit できないため中止します" >&2; exit 1; }
 
 state_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh)
-# 空値を sentinel に置き換える。rc 検査では救えない（resolver は cwd 削除時にも rc=0 で空文字を返す）。
+# 未解決の空値を sentinel に置き換え、手動リセットに空の root を渡さない。
 # 空のまま marker に載せると、ステップ 6.2 の (b) が提示する `RITE_STATE_ROOT=` が flow-state.sh の
 # `[ -n "${RITE_STATE_ROOT:-}" ]` 判定で「未設定」と**完全に同義**へ縮退し、(b) 自身が「省くと空振りする」
-# と警告している当の空振りを、省いていないのに無言で起こす。しかも `flow-state.sh path` は state_root が
-# 空でも rc=0 を返すため session_id は非空のまま残る（2 軸は独立）。sentinel にしておけば 6.2 の
-# pre-fill 表が ROOT 側だけを解決手順へ置き換え、判明している session_id は保ったまま渡せる。
+# と警告している空振りを避ける。sentinel にしておけば 6.2 の pre-fill 表が ROOT 側だけを
+# 解決手順へ置き換え、判明している session_id は保ったまま渡せる。
 if [ -z "$state_root" ]; then
   echo "WARNING: state root を解決できませんでした（手動リセット手順が別ディレクトリを rc=0 のまま対象にする恐れがあるため、ステップ 6.2 は state root を埋め込んだコマンドではなく、人間が自分で state root を解決する代替手順に切り替えます）" >&2
   state_root=unresolved
