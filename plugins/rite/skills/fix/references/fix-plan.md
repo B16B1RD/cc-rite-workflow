@@ -62,8 +62,15 @@ mergeable のレビューの後に手で commit すると、その HEAD には f
 1. `git fetch origin <base>` のあと `git merge --no-commit --no-ff origin/<base>` で取り込み、競合を解消して `git add` する（HEAD はレビュー済み commit のまま）。`<base>` は `rite-config.yml` の `branch.base`（未設定なら取り込めず止まる）。merge が既に進行中（`MERGE_HEAD` がある）なら、取り込み相手が `origin/<base>` のときは競合解消と `git add` から始め、そうでなければ `git merge --abort` してからこの手順 1 に戻る
 2. `git diff --no-renames --name-only HEAD` の全パスを 1 つの `action: "base-intake"` グループの `paths` に並べ、全体検証を対応付ける。`finding_ids` は空でよい。改名は旧パスと新パスの 2 つとして並ぶ
 3. `check` → `verify --kind all` を通し、`git commit` で取り込みを確定する（`git merge --continue` も同じ検査を受ける）
-4. `git push origin HEAD` で取り込み commit を PR に反映する
-5. `/rite:iterate` で次のレビュー cycle を回し、mergeable になってから ready / merge へ進む
+4. 別の Bash 呼び出しで Wiki 適用証跡の head をレビュー済み commit（取り込み commit の第 1 親）から新しい HEAD へ進める。進めないと次のレビューのゲートが `stale_head` で拒否する。`WIKI_APPLY_HEAD=advanced` または `=current` なら手順 5 へ進む。非 0 終了では証跡は変わっていないので、Wiki の capture からやり直して（手順は [fix](../SKILL.md) の 0.5.W、契約は [wiki-apply-contract.md](../../../references/wiki-apply-contract.md)）証跡を書き直してから手順 5 へ進む
+
+   ```bash
+   # base-intake-wiki-apply-head
+   bash {plugin_root}/hooks/scripts/wiki-apply-advance-head.sh --from HEAD^
+   ```
+
+5. `git push origin HEAD` で取り込み commit を PR に反映する
+6. `/rite:iterate` で次のレビュー cycle を回し、mergeable になってから ready / merge へ進む
 
 制約の除外はファイル単位で、base 側が変更したファイル（merge-base から取り込み相手までの差分に出るファイル）だけが Issue の Non-Target / 閉じた対象の検査から外れる。競合を解消したファイルは base 側も変更しているので外れる。base 側が変更した symlink は、指す先が Non-Target でもそのパスの変更として取り込める。base-intake グループにだけ並べた symlink が覆うのはそのパス自体で、指す先は覆わない（他のグループにも並べた symlink は指す先も覆う）。指す先で base 側が変更していないファイルを変えたら、そのパスも `paths` に並べる（手順 2 の後で変えたなら追加し、手順 3 の `check` からやり直す）。並べたファイルは Issue の Non-Target / 閉じた対象の検査を受け、並べていない変更は verify / commit で計画外の変更として拒否される。base 側が変更していないファイル（base の変更に合わせて直した自ブランチのファイル等）は制約を受ける。
 
