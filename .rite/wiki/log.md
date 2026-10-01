@@ -40,6 +40,8 @@
 
 * **Skip**: [20260930T234804Z-pr-3565.md](raw/reviews/20260930T234804Z-pr-3565.md) — 既存の散文と実装の整合確認を適用した指摘なしの検証記録で、新たな独立した経験則はない
 
+* **Lint incomplete** — 機械検査は stale=65, orphans=0, missing_concept=0, unregistered_raw=645, broken_refs=0, descriptive_refs=0。今回の取り込みではページ本文の変更なし。全ページの意味比較は未完了で、contradictions は未確定。Wiki 全体の品質検査成功とは扱わない。
+
 ## 2026-09-30
 
 * **Lint incomplete** — 機械検査は stale=64、orphans=0、missing_concept=0、unregistered_raw=621、broken_refs=0、descriptive_number_ref=0。更新ページは出典と関連ページを照合した。全658ページの意味的な矛盾比較は未完了であり、Wiki 全体の品質検査成功とは扱わない。
