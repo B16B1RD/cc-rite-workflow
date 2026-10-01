@@ -1588,6 +1588,8 @@ cat > "$t17_plugin/hooks/scripts/nb-sweep-ledger.sh" <<SH
 #!/usr/bin/env bash
 printf '%s\n' "\$1" >> "$sandbox/t17-ledger.log"
 [ "\$1" = extract ] && [ "\${T17_EXTRACT_FAIL:-0}" = 1 ] && exit 1
+[ "\$1" = missing ] && [ "\${T26_MISSING_FAIL:-0}" = 1 ] && exit 1
+[ "\$1" = missing ] && [ "\${T26_MISSING_NOMARKER:-0}" = 1 ] && exit 0
 exec bash "$LEDGER" "\$@"
 SH
 chmod +x "$t17_plugin/hooks/scripts/nb-sweep-ledger.sh"
@@ -1942,9 +1944,18 @@ assert "T-23 手順 2 は手順 3 の再実行で同じ sweep の entries を直
 assert "T-23 手順 3 は別の record の出典を今回の record へ書き換えさせない" 0 \
   "$(printf '%s\n' "$t23_step3" | grep -cF '値の違う行はその値に直す')"
 assert "T-23 手順 1 の stale は別の record を名指す行を書き換えずに元の出典で台帳へ載せさせる" 1 \
-  "$(grep -F '1 行目が別の record を名指す entries の行は、前回の sweep が起票したまま台帳に載せられなかった記録であり、1 行目も行の出典も今回の record に書き換えてはならない' "$FIX" | grep -cF '書き換えずに手順 3 の bash だけを実行して元の出典のまま台帳へ載せ、成功したら entries を消して `/rite:iterate {pr_number}` を再実行する')"
-assert "T-23 手順 1 の stale は台帳に既に載っている行で手順 3 を再実行させない" 1 \
-  "$(grep -F '別の record を名指す entries の行は' "$FIX" | grep -F '同じ id・位置・出典の行が既にあれば、手順 3 は成功済みなので再実行しない' | grep -cF 'entries を消して `/rite:iterate {pr_number}` を再実行する。無ければ書き換えずに')"
+  "$(grep -F '1 行目が別の record を名指す entries の行は、前回の sweep が起票したまま台帳に載せられなかった記録であり、1 行目も行の出典も今回の record に書き換えてはならない' "$FIX" | grep -cF '戻り方は次の 1 行を実行する。')"
+assert "T-23 手順 1 の stale は台帳との照合を fix-step.sh nb-sweep-reconcile の 1 行呼び出しに委ねる" 1 \
+  "$(grep -cxF 'bash {plugin_root}/scripts/fix-step.sh nb-sweep-reconcile --pr {pr_number} --owner-repo {owner_repo}' "$FIX")"
+t23_stale_line=$(grep -F '戻り方は次の 1 行を実行する。' "$FIX")
+assert "T-23 手順 1 の stale は entries の全行について同じ id・位置・出典の行が台帳にあるかを照合させる" 1 \
+  "$(printf '%s\n' "$t23_stale_line" | grep -F 'entries の全行について同じ id・位置・出典の行が既にあるかを照合する' | grep -cF '記録コメントの `### 却下台帳` を読み')"
+assert "T-23 手順 1 の stale は全行が台帳にあるときだけ書かずに entries を消し、載っていない行だけを元の出典のまま載せる" 1 \
+  "$(printf '%s\n' "$t23_stale_line" | grep -F '全行が載っていれば台帳へ書かずに entries を消す' | grep -F '載っていない行があれば、その行だけを元の出典のまま台帳へ載せてから entries を消す' | grep -cF '載っている行は二度載せない')"
+assert "T-23 手順 1 の stale は取得・抽出の失敗で entries を残して止まる" 1 \
+  "$(printf '%s\n' "$t23_stale_line" | grep -cF '記録コメントの取得・台帳の抽出に失敗したときは `[fix:error]` で止まり、entries は残る')"
+assert "T-23 手順 1 の stale は旧文面 (手順 3 の bash だけを実行して載せる) を残さない" 0 \
+  "$(grep -cF '書き換えずに手順 3 の bash だけを実行して元の出典のまま台帳へ載せ' "$FIX")"
 assert "T-23 手順 2 は前回の sweep の entries を今回の起票済みとして使わない" 1 \
   "$(grep -cF '前回の sweep の entries を今回の起票済みとして使わない' "$FIX")"
 assert "T-23 手順 1 は entries が残っていれば起票せず手順 3 から続けさせる" 1 \
@@ -2082,6 +2093,167 @@ jq -n '{adoption: {head: "h", records: [{ids: ["F-03"], tracker: null}]}}' > "$t
 run_t25 t25-nomatch
 assert "T-25 一致する記録が無い書き戻しは止まる" 1 "$?"
 assert_grep "T-25 一致する記録が無い書き戻しも理由を出す" "$sandbox/t25-nomatch.err" 'reason=nb_sweep_tracker_write_failed'
+
+# --- T-26: 止まった sweep の戻り方 (missing と nb-sweep-reconcile) ---
+# missing: 台帳に同じ id・位置・出典の行が無い entries 行だけを出す。判定・判定文は照合しない
+t26_src=7-20260101000000.json
+t26_other=7-20260202000000.json
+t26_dir="$sandbox/t26"
+mkdir -p "$t26_dir"
+printf '%s\n' '### 却下台帳' '' '| finding_id | file:line | 判定 | 判定文 | 出典 |' '|------------|-----------|------|--------|------|' \
+  "| E-1 | a.ts:1 | issued | #5 x | $t26_src |" \
+  "| E\\|2 | b.ts:2 | REJECT | p\\|q | $t26_src |" \
+  "| E-4 | d.ts:4 | REJECT | 4 列の旧行 |" > "$t26_dir/ledger.md"
+printf '%s\n' "<!-- nb-sweep-record: $t26_src -->" \
+  "| E-1 | a.ts:1 | LINK | 判定が違っても同じ行 | $t26_src |" \
+  "| E\\|2 | b.ts:2 | REJECT | p\\|q | $t26_src |" \
+  "| E-3 | c.ts:3 | issued | #6 | $t26_src |" \
+  "| E-1 | a.ts:1 | issued | #5 | $t26_other |" \
+  "| E-4 | d.ts:4 | REJECT | 4 列の旧行 | $t26_src |" \
+  "| E-1 | z.ts:9 | issued | #5 | $t26_src |" \
+  "| E-9 | a.ts:1 | issued | #5 | $t26_src |" > "$t26_dir/entries.md"
+t26_missing=$("$LEDGER" missing --ledger-file "$t26_dir/ledger.md" --entries-file "$t26_dir/entries.md" 2> "$t26_dir/missing.err")
+assert "T-26 missing: rc=0" 0 "$?"
+assert_grep "T-26 missing: 全行と未記載行の件数を marker に出す" "$t26_dir/missing.err" '^\[CONTEXT\] NB_SWEEP_LEDGER=ok; op=missing; rows=7; missing=5$'
+assert "T-26 missing: 照合キーの出典・位置・id のどれか 1 つだけが違う行と 4 列の旧行は未記載、判定が違うだけの行とエスケープ済みパイプの行は記載済み" \
+  "E-3,E-1,E-4,E-1,E-9" "$(printf '%s\n' "$t26_missing" | awk -F'|' '{gsub(/ /, "", $2); printf "%s%s", sep, $2; sep=","}')"
+assert "T-26 missing: 出力は entries の行そのまま" "| E-3 | c.ts:3 | issued | #6 | $t26_src |" "$(printf '%s\n' "$t26_missing" | sed -n 1p)"
+: > "$t26_dir/empty.md"
+"$LEDGER" missing --ledger-file "$t26_dir/empty.md" --entries-file "$t26_dir/entries.md" 2> "$t26_dir/empty.err" > /dev/null
+assert_grep "T-26 missing: 空の台帳 (台帳なし) は全行が未記載" "$t26_dir/empty.err" 'rows=7; missing=7$'
+printf '%s\n' "<!-- nb-sweep-record: $t26_src -->" "| E-4 | d.ts:4 | REJECT | p|q | $t26_src |" > "$t26_dir/bad-cells.md"
+t26_bad_out=$("$LEDGER" missing --ledger-file "$t26_dir/ledger.md" --entries-file "$t26_dir/bad-cells.md" 2> "$t26_dir/bad-cells.err")
+assert "T-26 missing: 5 セルでない entries 行 (未エスケープのパイプ) は旧 4 列行と誤一致させずに rc=1" 1 "$?"
+assert_grep "T-26 missing: 5 セルでない entries 行は行を示して止まる" "$t26_dir/bad-cells.err" 'entries row does not have 5 cells'
+assert_grep "T-26 missing: 5 セルでない entries 行は失敗理由を出す" "$t26_dir/bad-cells.err" 'op=missing; reason=compare_failed'
+assert "T-26 missing: 5 セルでない entries 行では件数 marker も出力行も出さない" "00" "$(grep -c 'op=missing; rows=' "$t26_dir/bad-cells.err")$(printf '%s' "$t26_bad_out" | wc -c | tr -d ' ')"
+printf '%s\n' "<!-- nb-sweep-record: $t26_src -->" "| E-4 | d.ts:4 | REJECT | x |  |" > "$t26_dir/empty-src.md"
+t26_empty_out=$("$LEDGER" missing --ledger-file "$t26_dir/ledger.md" --entries-file "$t26_dir/empty-src.md" 2> "$t26_dir/empty-src.err")
+assert "T-26 missing: 出典が空の entries 行は出典の無い旧 4 列行と誤一致させずに rc=1" 1 "$?"
+assert_grep "T-26 missing: 出典が空の entries 行は行を示して止まる" "$t26_dir/empty-src.err" 'non-empty 出典'
+assert "T-26 missing: 出典が空の entries 行では件数 marker も出力行も出さない" "00" "$(grep -c 'op=missing; rows=' "$t26_dir/empty-src.err")$(printf '%s' "$t26_empty_out" | wc -c | tr -d ' ')"
+printf '%s\n' "<!-- nb-sweep-record: $t26_src -->" '| finding_id | file:line | 判定 | 判定文 | 出典 |' '|---|---|---|---|---|' > "$t26_dir/header-only.md"
+"$LEDGER" missing --ledger-file "$t26_dir/ledger.md" --entries-file "$t26_dir/header-only.md" 2> "$t26_dir/rows0.err" > /dev/null
+assert_grep "T-26 missing: 列ヘッダと区切り行だけの entries は rows=0" "$t26_dir/rows0.err" 'rows=0; missing=0$'
+"$LEDGER" missing --ledger-file "$t26_dir/none.md" --entries-file "$t26_dir/entries.md" 2> "$t26_dir/noledger.err" > /dev/null
+assert "T-26 missing: 台帳ファイルが無ければ rc=1" 1 "$?"
+assert_grep "T-26 missing: 台帳ファイルが無ければ理由を出す" "$t26_dir/noledger.err" 'op=missing; reason=ledger_unreadable'
+"$LEDGER" missing --ledger-file "$t26_dir/ledger.md" --entries-file "$t26_dir/none.md" 2> "$t26_dir/noentries.err" > /dev/null
+assert "T-26 missing: entries が無ければ rc=1" 1 "$?"
+before_ledger=$(cksum < "$t26_dir/ledger.md"); before_entries=$(cksum < "$t26_dir/entries.md")
+"$LEDGER" missing --ledger-file "$t26_dir/ledger.md" --entries-file "$t26_dir/entries.md" > /dev/null 2>&1
+assert "T-26 missing: 台帳も entries も書き換えない" "$before_ledger|$before_entries" "$(cksum < "$t26_dir/ledger.md")|$(cksum < "$t26_dir/entries.md")"
+
+# nb-sweep-reconcile: 実 helper と gh stub で、記録コメントの台帳と entries を照合して戻る
+t26_state="$sandbox/t26-state"
+t26_entries="$t26_state/.rite/state/nb-sweep-entries-7.md"
+t26_hold="$t26_state/.rite/state/adoption-hold-7-sweep.json"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "%s"\n' "$t26_state" > "$t17_plugin/hooks/state-path-resolve.sh"
+t26_comment() {  # 記録コメントの本文。引数は台帳の行
+  printf '%s\n' "$MARKER" '' '### 却下台帳' '' '| finding_id | file:line | 判定 | 判定文 | 出典 |' \
+    '|------------|-----------|------|--------|------|' "$@" '' '📎 non_blocking_count: 0' '' "$SENTINEL"
+}
+t26_set_comment() { jq -n --arg b "$(t26_comment "$@")" '[[{id:61,user:{login:"rite-bot"},body:$b}]]' > "$NBR_COMMENTS"; }
+t26_write_entries() {
+  mkdir -p "$t26_state/.rite/state"
+  printf '%s\n' "<!-- nb-sweep-record: $t26_src -->" \
+    "| E-1 | a.ts:1 | issued | #5 https://x/5 | $t26_src |" \
+    "| E-2 | b.ts:2 | REJECT | 前提は不変 | $t26_src |" \
+    "| E-3 | c.ts:3 | issued | #6 https://x/6 | $t26_src |" > "$t26_entries"
+  printf '{}\n' > "$t26_hold"
+}
+t26_row() { printf '| %s | %s | %s | %s | %s |' "$1" "$2" "$3" "$4" "$t26_src"; }
+run_t26() {  # $1=名前 (環境変数は呼び出し側が渡す)
+  : > "$NBR_GH_LOG"; : > "$sandbox/t17-ledger.log"; rm -f "$NBR_POSTED"
+  t26_rc=0
+  TMPDIR="$t20_tmp" PATH="$nbr_bin:$PATH" bash "$t17_plugin/scripts/fix-step.sh" nb-sweep-reconcile --pr 7 --owner-repo test/repo \
+    > "$sandbox/$1.out" 2> "$sandbox/$1.err" || t26_rc=$?
+}
+t26_gone() { [ -e "$1" ] && echo 0 || echo 1; }
+
+# 全行が台帳にある: 書かずに entries を消す
+t26_write_entries
+t26_set_comment "$(t26_row E-1 a.ts:1 issued '#5 https://x/5')" "$(t26_row E-2 b.ts:2 REJECT 前提は不変)" "$(t26_row E-3 c.ts:3 issued '#6 https://x/6')"
+run_t26 t26-all
+assert "T-26 全行記録済み: rc=0" 0 "$t26_rc"
+assert_grep "T-26 全行記録済み: marker は already_recorded で追記 0 件" "$sandbox/t26-all.err" '^\[CONTEXT\] NB_SWEEP_RECONCILE=already_recorded; rows=3; appended=0$'
+assert "T-26 全行記録済み: 台帳へ追記も PATCH もしない" "00" "$(grep -c '^append$' "$sandbox/t17-ledger.log")$(grep -c -- '-X PATCH' "$NBR_GH_LOG")"
+assert "T-26 全行記録済み: entries と保留を消す" "11" "$(t26_gone "$t26_entries")$(t26_gone "$t26_hold")"
+
+# 台帳に 1 行も無い: 元の出典のまま 1 回ずつ載せてから entries を消す
+t26_write_entries
+t26_set_comment "| OLD-1 | o.ts:9 | issued | #1 | 7-20250101000000.json |"
+run_t26 t26-none
+assert "T-26 未記載: rc=0" 0 "$t26_rc"
+assert_grep "T-26 未記載: marker は recorded で 3 件追記" "$sandbox/t26-none.err" '^\[CONTEXT\] NB_SWEEP_RECONCILE=recorded; rows=3; appended=3$'
+assert "T-26 未記載: 元の台帳の行を残す" 1 "$(grep -c '^| OLD-1 ' "$NBR_POSTED")"
+assert "T-26 未記載: 全行がちょうど 1 回ずつ、出典は entries のまま" "3" \
+  "$(grep -cE "^\| E-[123] \| [a-z]\.ts:[123] \| .* \| $t26_src \|\$" "$NBR_POSTED")"
+assert "T-26 未記載: entries と保留を消す" "11" "$(t26_gone "$t26_entries")$(t26_gone "$t26_hold")"
+
+# 一部だけ台帳にある: 記録済みとせず、載っていない行だけを足す (記録済みの行は二重に載せない)
+t26_write_entries
+t26_set_comment "$(t26_row E-2 b.ts:2 REJECT 前提は不変)"
+run_t26 t26-part
+assert "T-26 一部記録済み: rc=0" 0 "$t26_rc"
+assert_grep "T-26 一部記録済み: marker は recorded で 2 件追記" "$sandbox/t26-part.err" '^\[CONTEXT\] NB_SWEEP_RECONCILE=recorded; rows=3; appended=2$'
+assert "T-26 一部記録済み: 記録済みの行は 1 回のまま" 1 "$(grep -c '^| E-2 ' "$NBR_POSTED")"
+assert "T-26 一部記録済み: 載っていない行は 1 回ずつ載る" "11" "$(grep -c '^| E-1 ' "$NBR_POSTED")$(grep -c '^| E-3 ' "$NBR_POSTED")"
+assert "T-26 一部記録済み: entries を消す" 1 "$(t26_gone "$t26_entries")"
+
+# 同じ id・位置でも出典が違う行は別の行
+t26_write_entries
+t26_set_comment "| E-1 | a.ts:1 | issued | #5 | $t26_other |" "$(t26_row E-2 b.ts:2 REJECT 前提は不変)" "$(t26_row E-3 c.ts:3 issued '#6 https://x/6')"
+run_t26 t26-src
+assert_grep "T-26 出典だけ違う行は未記載として 1 件載せる" "$sandbox/t26-src.err" '^\[CONTEXT\] NB_SWEEP_RECONCILE=recorded; rows=3; appended=1$'
+assert "T-26 出典だけ違う行: 元の行と今回の行が 1 回ずつ" "$t26_other|$t26_src" \
+  "$(grep '^| E-1 ' "$NBR_POSTED" | awk -F'|' '{gsub(/ /, "", $6); print $6}' | paste -sd'|' -)"
+
+# 台帳を読めない: entries を残して止まる
+t26_write_entries
+t26_set_comment "$(t26_row E-1 a.ts:1 issued '#5 https://x/5')"
+NBR_GET_FAIL=1 run_t26 t26-fetch
+assert "T-26 記録コメントの取得失敗: rc=1" 1 "$t26_rc"
+assert_grep "T-26 記録コメントの取得失敗: [fix:error] と理由" "$sandbox/t26-fetch.err" 'reason=nb_sweep_ledger_fetch_failed'
+assert "T-26 記録コメントの取得失敗: entries と保留を残し、PATCH しない" "00" "$(t26_gone "$t26_entries")$(t26_gone "$t26_hold")"
+assert "T-26 記録コメントの取得失敗: PATCH しない" 0 "$(grep -c -- '-X PATCH' "$NBR_GH_LOG")"
+T17_EXTRACT_FAIL=1 run_t26 t26-extract
+assert "T-26 台帳の抽出失敗: rc=1" 1 "$t26_rc"
+assert_grep "T-26 台帳の抽出失敗: 理由を出す" "$sandbox/t26-extract.err" 'reason=nb_sweep_ledger_extract_failed'
+assert "T-26 台帳の抽出失敗: entries を残す" 0 "$(t26_gone "$t26_entries")"
+# 照合の失敗 (missing の rc≠0 / marker を読めない / 5 セルでない entries 行): entries と保留を残して止まる
+for t26_case in "T26_MISSING_FAIL=1|t26-mfail" "T26_MISSING_NOMARKER=1|t26-mnomark"; do
+  t26_write_entries
+  t26_set_comment "$(t26_row E-1 a.ts:1 issued '#5 https://x/5')"
+  case "${t26_case%%|*}" in
+    T26_MISSING_FAIL=1) T26_MISSING_FAIL=1 run_t26 "${t26_case##*|}" ;;
+    *) T26_MISSING_NOMARKER=1 run_t26 "${t26_case##*|}" ;;
+  esac
+  assert "T-26 照合の失敗 (${t26_case%%|*}): rc=1" 1 "$t26_rc"
+  assert_grep "T-26 照合の失敗 (${t26_case%%|*}): 理由を出す" "$sandbox/${t26_case##*|}.err" 'reason=nb_sweep_ledger_check_failed'
+  assert "T-26 照合の失敗 (${t26_case%%|*}): entries と保留を残し PATCH しない" "000" "$(t26_gone "$t26_entries")$(t26_gone "$t26_hold")$(grep -c -- '-X PATCH' "$NBR_GH_LOG")"
+done
+t26_write_entries
+printf '%s\n' "| E-4 | d.ts:4 | REJECT | p|q | $t26_src |" >> "$t26_entries"
+t26_set_comment "| E-4 | d.ts:4 | REJECT | 4 列の旧行 |"
+run_t26 t26-badrow
+assert "T-26 5 セルでない entries 行: rc=1" 1 "$t26_rc"
+assert_grep "T-26 5 セルでない entries 行: 理由を出す" "$sandbox/t26-badrow.err" 'reason=nb_sweep_ledger_check_failed'
+assert "T-26 5 セルでない entries 行: entries と保留を残し PATCH しない" "000" "$(t26_gone "$t26_entries")$(t26_gone "$t26_hold")$(grep -c -- '-X PATCH' "$NBR_GH_LOG")"
+
+# entries に載せる行が無い: 異常として止まる
+printf '%s\n' "<!-- nb-sweep-record: $t26_src -->" > "$t26_entries"
+run_t26 t26-norows
+assert "T-26 行の無い entries: rc=1" 1 "$t26_rc"
+assert_grep "T-26 行の無い entries: 理由を出す" "$sandbox/t26-norows.err" 'reason=nb_sweep_entries_no_rows'
+assert "T-26 行の無い entries: entries を残す" 0 "$(t26_gone "$t26_entries")"
+rm -f "$t26_entries"
+run_t26 t26-absent
+assert "T-26 entries が無い: rc=1" 1 "$t26_rc"
+assert_grep "T-26 entries が無い: 理由を出す" "$sandbox/t26-absent.err" 'reason=nb_sweep_entries_missing'
+# 既存の persist は変えない: 台帳に載っている行も含め、entries の全行を append に渡す
+assert "T-26 persist は entries 全体を append へ渡す (reconcile 以外は絞り込まない)" 1 \
+  "$(fix_step_fn step_nb_sweep_persist | grep -c 'persist_rows="\$entries_file"')"
 
 if ! print_summary "$(basename "$0")" "nb-sweep helper contract drift — check iterate SKILL.md / iterate-step.sh 5.S / 6.1.d preserve"; then
   exit 1
