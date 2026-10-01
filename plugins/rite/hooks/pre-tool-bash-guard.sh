@@ -1485,10 +1485,10 @@ if [ -z "$BLOCKED_PATTERN" ] && { [ "$_wiki_surface_rc" -ne 0 ] || [[ "$_wiki_su
   _wiki_fswt=""
   _wiki_unreadable=0
   if [ -n "$_wiki_fs" ] && [ -f "$_wiki_fs" ]; then
-    if ! _wiki_row=$(jq -r '[.phase // "", .worktree // ""] | @tsv' "$_wiki_fs" 2>/dev/null); then
+    if ! _wiki_row=$(jq -r '[.phase // "", .worktree // ""] | join("\u001f")' "$_wiki_fs" 2>/dev/null); then
       _wiki_unreadable=1
     else
-      IFS=$'\t' read -r _wiki_phase _wiki_fswt <<<"$_wiki_row"
+      IFS=$'\x1f' read -r _wiki_phase _wiki_fswt <<<"$_wiki_row"
     fi
   fi
   _wiki_cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || _wiki_cwd=""
