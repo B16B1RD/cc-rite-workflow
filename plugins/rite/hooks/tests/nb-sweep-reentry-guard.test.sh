@@ -758,7 +758,7 @@ t18_err=$(printf '%s\n' "$t18_sec" | grep -E '^\| `\[fix:error\]` / その他 / 
 assert "T-18 [fix:error] 行は停止し nb-sweep-record を呼ばない" 1 \
   "$(printf '%s\n' "$t18_err" | grep -F '`[iterate:nb-sweep-error]` で停止' | grep -vcF 'nb-sweep-record')"
 t18_record=$(printf '%s\n' "$t18_sec" | grep -n 'iterate-step.sh nb-sweep-record' | cut -d: -f1)
-t18_done=$(printf '%s\n' "$t18_sec" | grep -n '^fix が emit した `\[CONTEXT\] NB_SWEEP_RESULT=done' | cut -d: -f1)
+t18_done=$(printf '%s\n' "$t18_sec" | grep -n '^`\[fix:sweep-done\]` の場合だけ、fix が emit した `\[CONTEXT\] NB_SWEEP_RESULT=done' | cut -d: -f1)
 if [ -n "$t18_record" ] && [ -n "$t18_done" ] && [ "$t18_done" -lt "$t18_record" ]; then
   pass "T-18 nb-sweep-record は NB_SWEEP_RESULT=done を読んだ後の段落にある"
 else

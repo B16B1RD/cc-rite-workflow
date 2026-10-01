@@ -9,7 +9,7 @@
 #           Issue's acceptance criterion); without it the decision is held.
 #   record  RESOLVED / REJECT / LINK without pr_blocking, and every LINK of a followup (the
 #           merged PR cannot take the fix, the OPEN tracker does): record the disposition only.
-#   fix     kind=triage only: ADOPT with origin=pr (fix_in_pr) when the caller passes
+#   fix     kind=triage or sweep: ADOPT with origin=pr (fix_in_pr) when the caller passes
 #           --fix-loop yes (a mergeable review inside /rite:iterate, whose registration the same
 #           PR's fix reads) and `review-pr-recommendations.sh capacity` is open. Nothing is written
 #           outside the PR; the caller registers it as an in-PR recommendation for the same PR's
@@ -19,7 +19,7 @@
 #   hold    anything else: pr_blocking decisions (RECONCILE, ADOPT pr/unknown, DIAGNOSE
 #           pr/unknown, LINK pr/unknown outside followup) and DIAGNOSE without investigation.
 # A missing record file, an unreadable context, or a helper ERROR holds every candidate.
-# When anything is held, nothing may be written: every candidate of the run with its full
+# When anything is held, nothing may be written externally: every candidate of the run with its full
 # text (held_ids names the held ones), the source, the reviewed commit and how to resume
 # are saved to the hold file and the gate exits 3. The next run must still carry every
 # candidate the previous hold saved, on any commit (compared by full text without id, since
@@ -49,7 +49,7 @@
 #                   Default: STATE_ROOT/.rite/state/adoption-PR-KIND.json
 #   --issue         related Issue; its body gives the AC ids and issue citations.
 #                   --issue-body / --pr-body / --ac-ids / --ledger replace the gh reads.
-#   --fix-loop      triage only: yes for a mergeable review inside /rite:iterate, no otherwise.
+#   --fix-loop      triage / sweep: yes for a mergeable review inside /rite:iterate, no otherwise.
 #                   Default no.
 #
 # stdout: decided {"held": false, "head", "verdicts": [{"ids", "exit", "origin", "action",
@@ -136,7 +136,11 @@ resume_for() {
     if [ "$kind" = followup ]; then
       ways+=("PR 起因の保留（LINK を除く）はマージ済み PR では同じ PR で直せず、この出口の扱いは仕様で未定義のため、保留のまま止め、人間に報告する（再実行しても同じ保留になる。判定記録を pre_existing や REJECT に書き換えて解除しない。同じ根因を追跡する OPEN の Issue があれば tracker に入れると LINK で決着する）")
     else
-      ways+=("PR 起因の保留は同じ PR で直す。コードを直して push し $cmd で再レビューする（HEAD が変わると新しいレビューで判定し直す）")
+      if [ "$kind" = sweep ] && [ "$fix_loop" = yes ] && jq -e 'any(.[]; .verdict == "hold" and .action == "fix_in_pr")' <<< "$verdicts" >/dev/null; then
+        ways+=("PR 起因の ADOPT は $cmd の NB sweep が PR 内推奨へ自動登録し通常の fix と再レビューへ渡す。capacity=cycle_cap または fix-loop が無効なら保留を維持する。修正を再レビューできる cycle で同コマンドから再開する（手作業の JSON 組み立て・record 呼出しは不要）")
+      else
+        ways+=("PR 起因の保留は同じ PR で直す。コードを直して push し $cmd で再レビューする（HEAD が変わると新しいレビューで判定し直す）")
+      fi
       jq -e 'any(.[]; .verdict == "hold" and .exit == "RECONCILE")' <<< "$verdicts" >/dev/null \
         && ways+=("RECONCILE は矛盾する処分を裁定してから $cmd を再実行する")
     fi
@@ -179,7 +183,9 @@ hold() {
   echo "WARNING: ${n} 件の候補に採否の出口が出ていないため外部へ書きません（${reason}）。${resume}" >&2
   [ -n "$detail" ] && printf '  %s\n' "$detail" >&2
   echo "[CONTEXT] ADOPTION_GATE=held; kind=$kind; reason=$reason; held=$n; hold_file=$hold_file; pr=$pr" >&2
-  jq -n --arg reason "$reason" --arg hf "$hold_file" '{held: true, reason: $reason, hold_file: $hf}'
+  jq -n --arg reason "$reason" --arg hf "$hold_file" --arg kind "$kind" --argjson v "$verdicts" \
+    '{held: true, reason: $reason, hold_file: $hf}
+     + (if $kind == "sweep" and $reason == "undecided" and any($v[]; .verdict == "fix") then {verdicts: $v} else {} end)'
   exit 3
 }
 
@@ -280,11 +286,11 @@ if ! mkdir -p "$state_root/.rite/state" ||
   hold history_write_failed "処分記録を保存できません: $history_file"
 fi
 
-# A triage fix_in_pr (ADOPT, origin=pr) is fixed in the same PR as an in-PR recommendation when the
+# A triage or sweep fix_in_pr (ADOPT, origin=pr) is fixed in the same PR as an in-PR recommendation when the
 # caller says the registration will be read (--fix-loop yes) and the fix can still be re-reviewed;
 # otherwise it is held.
 in_pr_fix=no
-if [ "$kind" = triage ] && [ "$fix_loop" = yes ] && jq -e 'any(.decisions[]; .action == "fix_in_pr")' <<< "$decisions" >/dev/null; then
+if { [ "$kind" = triage ] || [ "$kind" = sweep ]; } && [ "$fix_loop" = yes ] && jq -e 'any(.decisions[]; .action == "fix_in_pr")' <<< "$decisions" >/dev/null; then
   capacity=$(bash "$plugin_root/scripts/review-pr-recommendations.sh" capacity --input "$review_result" 2>"$work/err") \
     || hold adoption_error "PR 内推奨の登録可否を読めません: $(callee_diag)"
   [ "$capacity" = "[CONTEXT] PR_RECOMMENDATIONS_CAPACITY=open" ] && in_pr_fix=yes

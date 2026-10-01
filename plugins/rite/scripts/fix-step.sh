@@ -1750,8 +1750,9 @@ if [ -z "$sweep_root" ] || ! collect_out=$(bash "$plugin_root"/hooks/scripts/nb-
   echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_collect_failed" >&2
   echo "[fix:error]"; exit 1
 fi
-nb_candidates=$(mktemp "${TMPDIR:-/tmp}/rite-nb-candidates-XXXXXX") || { echo "[fix:error]"; exit 1; }
-trap 'rm -f "$nb_candidates"' EXIT
+nb_work=$(mktemp -d "${TMPDIR:-/tmp}/rite-nb-gate-XXXXXX") || { echo "[fix:error]"; exit 1; }
+trap 'rm -rf -- "$nb_work"' EXIT
+nb_candidates="$nb_work/candidates.json"
 printf '%s' "$collect_out" | jq '{candidates: .candidates}' > "$nb_candidates" \
   || { echo "[fix:error]"; exit 1; }
 gate_rc=0
@@ -1760,7 +1761,71 @@ nb_issue=$(git branch --show-current 2>/dev/null | grep -oE 'issue-[0-9]+' | gre
 gate_out=$(bash "$plugin_root"/hooks/scripts/review-adoption-gate.sh --pr "${pr_number}" --kind sweep \
   --state-root "$sweep_root" --candidates "$nb_candidates" \
   --review-result "$(printf '%s' "$collect_out" | jq -r '.record')" \
-  --base "origin/${base_branch}" --owner-repo "${owner_repo}" ${nb_issue:+--issue "$nb_issue"}) || gate_rc=$?
+  --fix-loop yes --base "origin/${base_branch}" --owner-repo "${owner_repo}" ${nb_issue:+--issue "$nb_issue"}) || gate_rc=$?
+if [ "$gate_rc" = 0 ]; then
+# verdict が欠落・未知値なら、起票も台帳 persist も始めない
+if ! printf '%s' "$gate_out" | jq -e '.held == false and (.verdicts | type) == "array"
+    and all(.verdicts[]; .verdict == "file" or .verdict == "record" or .verdict == "fix")' >/dev/null 2>&1; then
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_verdict_invalid" >&2
+  echo "[fix:error] reason=nb_sweep_verdict_invalid"; exit 1
+fi
+fi
+# Register FIX exits even when another candidate remains held; external writes stay gated.
+if [ "$gate_rc" = 0 ] || [ "$gate_rc" = 3 ]; then
+  if printf '%s' "$gate_out" | jq -e 'any(.verdicts[]?; .verdict == "fix")' >/dev/null 2>&1; then
+    nb_hold="$sweep_root/.rite/state/adoption-hold-${pr_number}-sweep.json"
+    nb_review=$(printf '%s' "$collect_out" | jq -r '.record')
+    nb_head=$(jq -r '.commit_sha' "$nb_review")
+    nb_resume="/rite:iterate ${pr_number} の NB sweep で PR 内推奨へ自動登録し、通常の fix → push → 再レビューへ進む。手作業の JSON 組み立て・record 呼出しは不要。再レビューでは持越し候補を現在の HEAD で判定し直す"
+    # Keep every candidate until the new review judges it (FIX is not a ledger disposition).
+    if [ "$gate_rc" = 0 ]; then
+      if ! jq -n --argjson pr "$pr_number" --arg head "$nb_head" --arg rr "$nb_review" --arg resume "$nb_resume" \
+        --slurpfile c "$nb_candidates" '{kind:"sweep",pr:$pr,head:$head,review_result:$rr,
+          reason:"pr_fix_pending",detail:"PR 内推奨の修正と再レビューを待つ",held_ids:[$c[0].candidates[].id],
+          candidates:$c[0].candidates,reconciliation:[],resume:$resume}' > "$nb_hold.tmp" || ! mv "$nb_hold.tmp" "$nb_hold"; then
+        rm -f "$nb_hold.tmp"; echo '[fix:error] reason=nb_sweep_adoption_held'; exit 1
+      fi
+    fi
+    printf '%s' "$gate_out" > "$nb_work/verdicts.json"
+    nb_registered="$sweep_root/.rite/state/pr-recommendations-${pr_number}.json"
+    [ -f "$nb_registered" ] || nb_registered="$nb_work/empty.json"
+    printf '{}\n' > "$nb_work/empty.json"
+    nb_previous="$nb_registered"
+    nb_registered="$nb_work/previous.json"
+    # record rewrites its whole file. Preserve this HEAD's triage registrations first,
+    # then add sweep roots not already registered, with separate synthetic candidate ids.
+    if cp "$nb_previous" "$nb_registered" && jq -n --arg sha "$nb_head" --slurpfile old "$nb_registered" --slurpfile v "$nb_work/verdicts.json" \
+      --slurpfile c "$nb_candidates" '
+      ($c[0].candidates | map(. + {file_line:(.file_line // .loc // ""),content:(.content // .description // "")})) as $cands
+      | (if $old[0].commit_sha == $sha then $old[0].recommendations else [] end) as $old
+      | [$old[] | {id:("registered:"+.id),reviewer:.reviewer,file_line:.file_line,content:.description}] as $saved
+      | [$old[] | {ids:["registered:"+.id],verdict:"fix",record:{contract:.contract,evidence:.evidence}}] as $prior
+      | [$v[0].verdicts[] | select(.verdict == "fix") | . as $d
+          | [$d.ids[] as $id | $cands[] | select(.id == $id)] as $mine
+          | select(any($old[]; .contract == $d.record.contract and .file_line == $mine[0].file_line
+              and .description == ([$mine[].content] | join("\n"))) | not)] as $new
+      | {verdicts:{verdicts:($prior+$new)},candidates:{candidates:($saved+$cands)}}
+      ' > "$nb_work/registration.json" \
+      && jq '.verdicts' "$nb_work/registration.json" > "$nb_work/record-verdicts.json" \
+      && jq '.candidates' "$nb_work/registration.json" > "$nb_work/record-candidates.json" \
+      && bash "$plugin_root/scripts/review-pr-recommendations.sh" record --pr "$pr_number" --state-root "$sweep_root" \
+        --review-result "$nb_review" --verdicts "$nb_work/record-verdicts.json" --candidates "$nb_work/record-candidates.json" >&2 \
+      && jq --slurpfile old "$nb_registered" '
+        (.recommendations[] | select(.candidates[0] | startswith("registered:"))) |=
+          (. as $r | ($r.candidates[0] | ltrimstr("registered:")) as $id
+           | .candidates=([$old[0].recommendations[] | select(.id == $id)][0].candidates))
+        ' "$sweep_root/.rite/state/pr-recommendations-${pr_number}.json" > "$nb_work/registered.json" \
+      && mv "$nb_work/registered.json" "$sweep_root/.rite/state/pr-recommendations-${pr_number}.json"; then
+      echo "[CONTEXT] NB_SWEEP_PR_FIX=pending; pr=$pr_number" >&2
+    else
+      if ! jq --arg resume "$nb_resume" '.reason="registration_failed" | .detail="PR 内推奨の登録に失敗した。直前の診断の原因を解消して再開する" | .resume=$resume' \
+          "$nb_hold" > "$nb_hold.tmp" || ! mv "$nb_hold.tmp" "$nb_hold"; then
+        rm -f "$nb_hold.tmp"; echo "ERROR: 登録失敗の理由を hold に保存できません: $nb_hold" >&2
+      fi
+      echo '[fix:error] reason=nb_sweep_adoption_held'; exit 1
+    fi
+  fi
+fi
 case "$gate_rc" in
   0) ;;
   3)
@@ -1770,12 +1835,6 @@ case "$gate_rc" in
     echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_adoption_gate_failed" >&2
     echo "[fix:error] reason=nb_sweep_adoption_gate_failed"; exit 1 ;;
 esac
-# verdict が欠落・未知値なら、起票も台帳 persist も始めない
-if ! printf '%s' "$gate_out" | jq -e '.held == false and (.verdicts | type) == "array"
-    and all(.verdicts[]; .verdict == "file" or .verdict == "record")' >/dev/null 2>&1; then
-  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_verdict_invalid" >&2
-  echo "[fix:error] reason=nb_sweep_verdict_invalid"; exit 1
-fi
 printf '%s\n' "$gate_out"
 }
 
