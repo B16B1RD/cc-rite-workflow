@@ -1869,7 +1869,7 @@ else
     reconcile_missing=$(sed -n 's/^\[CONTEXT\] NB_SWEEP_LEDGER=ok; op=missing; rows=\([0-9]*\); missing=\([0-9]*\)$/\2/p' "$missing_err" | tail -1)
     rm -f -- "$missing_err"
     case "$reconcile_rows:$reconcile_missing" in
-      ''|:*|*:|*[!0-9:]*)
+      :*|*:|*[!0-9:]*)
         echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_check_failed" >&2
         echo "[fix:error]"; exit 1 ;;
     esac

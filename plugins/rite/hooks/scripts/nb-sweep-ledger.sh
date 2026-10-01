@@ -47,8 +47,9 @@
 #          cells are not compared; escaped pipes do not shift columns). A 4-column
 #          ledger row has no 出典 cell and never holds a row. stderr marker:
 #          `NB_SWEEP_LEDGER=ok; op=missing; rows=N; missing=M`. --ledger-file is
-#          the extract output and may be empty (no ledger yet); a missing file or
-#          unreadable entries fail. It never writes either file. Used to resume a
+#          the extract output and may be empty (no ledger yet); a missing file,
+#          unreadable entries, or an entries row that does not have exactly 5
+#          cells (an unescaped pipe) fail, because its 出典 cannot be trusted. It never writes either file. Used to resume a
 #          sweep whose ledger write may already have happened, so the rows are
 #          appended once and only once.
 #
@@ -336,7 +337,7 @@ case "$cmd" in
     # 行は 照合キー (finding_id, file:line, 出典) で台帳と突き合わせる。セル内のエスケープ済みパイプは区切りにしない
     if ! awk '
         function key(line,   n, c, i) {
-          sub(/\r$/, "", line); gsub(/\\\|/, "", line); n = split(line, c, "|")
+          sub(/\r$/, "", line); gsub(/\\\|/, "", line); n = split(line, c, "|"); ncols = n
           for (i = 2; i <= 6; i++) gsub(/^[ \t]+|[ \t]+$/, "", c[i])
           return c[2] SUBSEP c[3] SUBSEP (n == 7 ? c[6] : "")
         }
@@ -345,8 +346,12 @@ case "$cmd" in
           if (index(line, "| ") != 1 || line ~ /^[|][-: |]+[|]$/ || index(line, "| finding_id ") == 1) next
           held[key(line)] = 1; next
         }
-        { total++; if (!(key($0) in held)) { miss++; line = $0; sub(/\r$/, "", line); print line } }
-        END { printf "[CONTEXT] NB_SWEEP_LEDGER=ok; op=missing; rows=%d; missing=%d\n", total, miss > "/dev/stderr" }
+        {
+          total++; k = key($0)
+          if (ncols != 7) { printf "ERROR: entries row does not have 5 cells (unescaped pipe in a cell?): %s\n", $0 > "/dev/stderr"; bad++; next }
+          if (!(k in held)) { miss++; line = $0; sub(/\r$/, "", line); print line }
+        }
+        END { if (bad) exit 1; printf "[CONTEXT] NB_SWEEP_LEDGER=ok; op=missing; rows=%d; missing=%d\n", total, miss > "/dev/stderr" }
       ' "$ledger_file" "$rows"; then
       echo "ERROR: ledger and entries rows cannot be compared" >&2
       echo "[CONTEXT] NB_SWEEP_LEDGER=failed; op=missing; reason=compare_failed" >&2
