@@ -1023,6 +1023,8 @@ Determine the error type from the completion notification (failure payload or ab
 
 **Note**: Timeout / network / invalid format / missing read declaration は質問せず 1 回だけ自動再試行する。再失敗後は incomplete として停止する。委譲不能をユーザー承認で mergeable に変換しない。
 
+**未選定の専門 reviewer が途中で必要になったとき**: 選定済み全員の raw、完了時刻、SHA256、manifest、`review_context` を保持する。未回収の選定済み reviewer が残るときは不足を明示して `[review:error]` で止まり、一部の結果だけで完了しない。固定名簿の変更、counter reset、偽の completed receipt、偽の circuit-breaker は案内しない。`review-start --stagnation` で名簿を変える操作は exit 1、診断 `cannot change incomplete review selection`。review_run があるとき、保存前の `review-restart` と `set --phase fix` は exit 1、診断 `all reviewers must be collected and saved`。review_run が無いとき、保存前の `set --phase fix` は exit 1、診断 `unverified review transition; run review-start/review-finish before advancing`。保存前の `review-restart` は exit 1、診断 `stagnation-enabled review run required`。いずれも成功と扱わず、証跡と診断を保持して停止する。保存と再開の区別は Persistence contract、restart の受理条件は [review-stagnation.md](../../references/review-stagnation.md) に従う。
+
 ### 4.5 Review Instruction Format
 
 各 reviewer への指示を生成する。
@@ -1949,6 +1951,8 @@ bash {plugin_root}/scripts/pr-review-step.sh review-finish --manifest {reviewer_
 ```
 
 **Persistence contract**: `review-finish` は固定名簿・全員回収・context 一致・保存ファイルの実在を検証して `review_cycle.status=completed` と次工程を返す。失敗時は理由を表示して `[review:error]`、counter を維持し manifest / raw / 入力を保持する。保存 helper が互換性のため rc=0 を返す失敗も成功として扱わない。返却の次工程は候補であり、6.1.b 以降と既存の HEAD・受入条件・measured・Wiki ゲートを完了するまで成功 sentinel / handoff を発行しない。再実行は同じ manifest / content を渡し、保存済みなら二重保存しない。
+
+途中で未選定の専門 reviewer が必要になり CI の失敗が残っているときの保存は、操作者が原結果を書き換えず保存するよう明示したときに限る。そのときだけ、同一 context・同一 manifest・同一結果 JSON で上の `review-finish` を実行する。成功の観測は `REVIEWER_COMPLETION=pass`、`JSON_SAVED=true`、`REVIEW_CYCLE=completed`。この完了は最終 mergeable の宣言でも run の停止でもない。保存後の `review-restart` は exit 1、診断 `review run is not stopped`。保存成功と再開拒否を分け、状態を手編集しない。新しい run への再開を、通った手順として書かない。拒否されたときは実行したコマンド、exit、診断を報告して停止する。選定済み全員を回収済みの通常完了は、直前の Persistence contract のまま実行し、この明示を待たない。
 
 修正へ渡す入力は、この全員回収済み `review_cycle.result_path` と最新 Issue 仕様。指摘の ID・出自・根因の関連・AC の確認結果を保持し、`fix` の[編集前一括計画](../fix/references/fix-plan.md)へ接続する。個別 reviewer の速報だけで編集を始めない。
 
