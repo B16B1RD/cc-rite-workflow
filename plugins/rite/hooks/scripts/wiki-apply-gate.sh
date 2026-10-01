@@ -259,7 +259,7 @@ for line in lines:
         if "=" not in val:
             fail("record_corrupt")
         bpath, oid = val.split("=", 1)
-        if not bpath or bpath in blobs or not re.fullmatch(r"[0-9a-f]{40}", oid):
+        if not bpath or bpath in blobs or not re.fullmatch(r"[0-9a-f]{40}|-", oid):
             fail("record_corrupt")
         blobs[bpath] = oid
         continue
@@ -327,6 +327,13 @@ for path in recorded_paths:
         if path not in blobs:
             fail("blobs_missing")
         fail("record_corrupt")
+    if blobs[path] == "-":
+        # Recorded as deleted: it must be absent from both the index and the work tree.
+        gone = (git("ls-files", "--", path) == ""
+                and not os.path.lexists(os.path.join(worktree, path)))
+        if not gone:
+            fail("stale_content")
+        continue
     if path in staged_set:
         oid = git("rev-parse", ":" + path)
     else:

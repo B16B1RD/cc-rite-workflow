@@ -1739,12 +1739,13 @@ else
 fi
 # base 側の変更の種類ごとに、取り込み前の証跡のままでは commit / review のゲートが拒否し、
 # 手順 3 の取り直しの後は commit → 手順 4 → review まで通ることを確かめる
-rc_case() {
-  local label="$1" change="$2" before_mode="$3" before_reason="$4"
-  local r flow mem changed rc=0
-  r=$(new_repo "rc-$label")
+rc_env() { local flow="$1"; shift; env -u WIKI_APPLY_MEMORY -u RITE_STATE_ROOT WIKI_APPLY_FLOW_STATE="$flow" "$@"; }
+recapture_case() {
+  local change="$1" before_mode="$2" before_reason="$3"
+  local r flow mem changed cap_rc=0 adv_rc=0 merge_rc=0
+  r=$(new_repo "rc-$change")
   write_config "$r" true false
-  flow="$ROOT/rc-$label.flow-state"
+  flow="$ROOT/rc-$change.flow-state"
   write_flow "$flow" fix 7 "$r"
   mem="$r/.rite/work-memory/issue-7.md"
   printf 'keep\n' > "$r/KEEP"
@@ -1755,44 +1756,72 @@ rc_case() {
   case "$change" in
     add) printf 'new\n' > "$r/NEW"; git -C "$r" add NEW ;;
     modify) printf 'changed\n' >> "$r/KEEP"; git -C "$r" add KEEP ;;
+    delete) git -C "$r" rm -q KEEP ;;
+    rename) git -C "$r" mv KEEP MOVED ;;
   esac
   git -C "$r" commit -qm 'chore: upstream'
   git -C "$r" switch -q -
-  write_mem "$mem" "$(fresh_header auto_query_off "rc-$label" "$r" 0 KEEP)"
-  git -C "$r" merge -q --no-commit --no-ff base >/dev/null 2>&1
-  rc_env() { env -u WIKI_APPLY_MEMORY -u RITE_STATE_ROOT WIKI_APPLY_FLOW_STATE="$flow" "$@"; }
+  write_mem "$mem" "$(fresh_header auto_query_off "rc-$change" "$r" 0 KEEP)"
+  git -C "$r" merge -q --no-commit --no-ff base >"$ROOT/rc-$change-merge.out" 2>&1 || merge_rc=$?
+  [ "$merge_rc" -eq 0 ] || fail "$change: merge rc=$merge_rc $(cat "$ROOT/rc-$change-merge.out")"
   GRC=0
-  GOUT=$(cd "$r" && rc_env bash "$GATE" --mode "$before_mode" 2>/dev/null) || GRC=$?
+  GOUT=$(cd "$r" && rc_env "$flow" bash "$GATE" --mode "$before_mode" 2>"$ROOT/rc-$change-before.err") || GRC=$?
   if [ "$GRC" -ne 0 ] && grep -q "reason=$before_reason" <<<"$GOUT"; then
-    pass "$label: the record from before the intake is refused ($before_reason)"
+    pass "$change: the record from before the intake is refused ($before_reason)"
   else
-    fail "$label: before re-capture rc=$GRC out=$GOUT"
+    fail "$change: before re-capture rc=$GRC out=$GOUT err=$(cat "$ROOT/rc-$change-before.err")"
   fi
   changed=$(cd "$r" && git diff --no-renames --name-only HEAD | paste -sd, -)
-  sed "s|__CHANGED__|$changed|" "$cap_block" > "$ROOT/rc-$label-cap.sh"
-  (cd "$r" && rc_env bash "$ROOT/rc-$label-cap.sh") >"$ROOT/rc-$label-cap.out" 2>&1 || rc=$?
+  sed "s|__CHANGED__|$changed|" "$cap_block" > "$ROOT/rc-$change-cap.sh"
+  (cd "$r" && rc_env "$flow" bash "$ROOT/rc-$change-cap.sh") >"$ROOT/rc-$change-cap.out" 2>&1 || cap_rc=$?
   GRC=0
-  GOUT=$(cd "$r" && rc_env bash "$GATE" --mode commit 2>/dev/null) || GRC=$?
-  if [ "$rc" -eq 0 ] && [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
-    pass "$label: the commit gate allows after the re-capture"
+  GOUT=$(cd "$r" && rc_env "$flow" bash "$GATE" --mode commit 2>"$ROOT/rc-$change-commit.err") || GRC=$?
+  if [ "$cap_rc" -eq 0 ] && [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+    pass "$change: the commit gate allows after the re-capture"
   else
-    fail "$label: commit gate after re-capture cap_rc=$rc rc=$GRC out=$GOUT cap=$(cat "$ROOT/rc-$label-cap.out")"
+    fail "$change: commit gate after re-capture cap_rc=$cap_rc rc=$GRC out=$GOUT err=$(cat "$ROOT/rc-$change-commit.err") cap=$(cat "$ROOT/rc-$change-cap.out")"
   fi
   git -C "$r" commit -qm 'merge base'
-  rc=0
-  (cd "$r" && rc_env bash "$bi_block") >"$ROOT/rc-$label-adv.out" 2>&1 || rc=$?
+  (cd "$r" && rc_env "$flow" bash "$bi_block") >"$ROOT/rc-$change-adv.out" 2>&1 || adv_rc=$?
   GRC=0
-  GOUT=$(cd "$r" && rc_env bash "$GATE" --mode review 2>/dev/null) || GRC=$?
-  if [ "$rc" -eq 0 ] && grep -qx 'WIKI_APPLY_HEAD=advanced' "$ROOT/rc-$label-adv.out" \
+  GOUT=$(cd "$r" && rc_env "$flow" bash "$GATE" --mode review 2>"$ROOT/rc-$change-review.err") || GRC=$?
+  if [ "$adv_rc" -eq 0 ] && grep -qx 'WIKI_APPLY_HEAD=advanced' "$ROOT/rc-$change-adv.out" \
     && [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
-    pass "$label: after the commit and step 4 the next review allows"
+    pass "$change: after the commit and step 4 the next review allows"
   else
-    fail "$label: review after intake adv_rc=$rc rc=$GRC out=$GOUT adv=$(cat "$ROOT/rc-$label-adv.out")"
+    fail "$change: review after intake adv_rc=$adv_rc rc=$GRC out=$GOUT err=$(cat "$ROOT/rc-$change-review.err") adv=$(cat "$ROOT/rc-$change-adv.out")"
   fi
 }
-rc_case add add commit paths
-rc_case modify modify review stale_content
-
+recapture_case add commit paths
+recapture_case modify review stale_content
+recapture_case delete commit stale_content
+recapture_case rename commit stale_content
+# 削除として記録できるのは HEAD にあったパスだけで、記録した削除が戻れば一致しない
+r=$(new_repo rc-gone)
+write_config "$r" true false
+write_flow "$ROOT/rc-gone.flow-state" fix 7 "$r"
+printf 'keep\n' > "$r/KEEP"
+git -C "$r" add KEEP
+git -C "$r" commit -qm 'fix: reviewed'
+cap_rc=0
+(cd "$r" && rc_env "$ROOT/rc-gone.flow-state" bash "$CAPTURE" --keywords gone --paths NOPE) >"$ROOT/rc-gone.out" 2>&1 || cap_rc=$?
+if [ "$cap_rc" -ne 0 ] && grep -q 'blob を計算できません: NOPE' "$ROOT/rc-gone.out"; then
+  pass "a path at neither HEAD nor the work tree still stops the capture"
+else
+  fail "capture of a missing path rc=$cap_rc out=$(cat "$ROOT/rc-gone.out")"
+fi
+git -C "$r" rm -q KEEP
+cap_rc=0
+(cd "$r" && rc_env "$ROOT/rc-gone.flow-state" bash "$CAPTURE" --keywords gone --paths KEEP) >"$ROOT/rc-gone.out" 2>&1 || cap_rc=$?
+printf 'back\n' > "$r/KEEP"
+GRC=0
+GOUT=$(cd "$r" && rc_env "$ROOT/rc-gone.flow-state" bash "$GATE" --mode commit 2>"$ROOT/rc-gone.err") || GRC=$?
+if [ "$cap_rc" -eq 0 ] && grep -qx 'blob: KEEP=-' "$r/.rite/work-memory/issue-7.md" \
+  && [ "$GRC" -ne 0 ] && grep -q 'reason=stale_content' <<<"$GOUT"; then
+  pass "a path recorded as deleted that comes back is refused"
+else
+  fail "deleted record cap_rc=$cap_rc rc=$GRC out=$GOUT err=$(cat "$ROOT/rc-gone.err") cap=$(cat "$ROOT/rc-gone.out")"
+fi
 
 echo "=== a record that is not this commit's is left as it is ==="
 adv_case() {

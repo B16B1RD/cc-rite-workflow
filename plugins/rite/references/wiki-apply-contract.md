@@ -26,7 +26,7 @@
 - flow-state の issue、worktree（flow-state に worktree が無いときは capture を実行した作業ツリーの物理パス）。commit では session も
 - query、executed_at（`YYYY-MM-DDTHH:MM:SSZ`）、attempts（ok と none は 1 以上、disabled と auto_query_off は 0）
 - head が `git rev-parse HEAD` と一致
-- paths の各 blob が、そのパスが stage 済みなら index、そうでなければ作業ツリーの `git hash-object` と一致
+- paths の各 blob が、そのパスが stage 済みなら index、そうでなければ作業ツリーの `git hash-object` と一致。capture 時に作業ツリーから消えていて HEAD にあったパスは `blob: <path>=-`（削除）と記録し、index にも作業ツリーにも無いことを一致とする
 - 今回 stage したパスが記録した paths の部分集合
 
 どれかが違えば拒否する。同じ issue、session、worktree、paths でも、HEAD やファイル内容が変わった記録は通さない。commit では別セッションの成功を通さない。review は commit を許可しないため session を照合しない。別セッションから再開したレビューは、実装・修正したセッションの記録を HEAD・blob の一致と「レビューの突合」節の突合で検証する。
