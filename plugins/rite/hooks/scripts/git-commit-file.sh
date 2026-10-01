@@ -12,6 +12,7 @@
 #   0  git commit succeeded
 #   1  argument / path policy error
 #   3  git commit failed (git's stderr is forwarded)
+#   4  git commit succeeded, but Wiki evidence head update failed
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -179,12 +180,12 @@ if [ -n "$old_head" ]; then
   done <<<"$gate_out"
   if [ -z "$mem" ] || [ ! -f "$mem" ]; then
     echo "ERROR: commit 後に Wiki 適用証跡の head を更新できません" >&2
-    exit 1
+    exit 4
   fi
   # The helper's stdout stays out of this output, as the gate's allow line does.
   if ! bash "$advance" --worktree "$tree" --memory "$mem" --from "$old_head" >/dev/null; then
     echo "ERROR: commit 後に Wiki 適用証跡の head を更新できません" >&2
-    exit 1
+    exit 4
   fi
 fi
 exit 0
