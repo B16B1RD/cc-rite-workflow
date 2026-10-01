@@ -334,8 +334,14 @@ for path in recorded_paths:
         if not gone:
             fail("stale_content")
         continue
+    full = os.path.join(worktree, path)
     if path in staged_set:
         oid = git("rev-parse", ":" + path)
+    elif os.path.islink(full):
+        # git stores a symlink as its link text, the same value capture records.
+        link = subprocess.run(["git", "-C", worktree, "hash-object", "--stdin"],
+                              input=os.readlink(full), capture_output=True, text=True)
+        oid = link.stdout.strip() if link.returncode == 0 else ""
     else:
         oid = git("hash-object", "--", path)
     if oid != blobs[path]:

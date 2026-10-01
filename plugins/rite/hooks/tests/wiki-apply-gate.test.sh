@@ -1752,7 +1752,8 @@ recapture_case() {
   write_flow "$flow" fix 7 "$r"
   mem="$r/.rite/work-memory/issue-7.md"
   printf 'keep\n' > "$r/KEEP"
-  git -C "$r" add KEEP rite-config.yml
+  ln -s KEEP "$r/LINK"
+  git -C "$r" add KEEP LINK rite-config.yml
   git -C "$r" commit -qm 'fix: reviewed'
   git -C "$r" branch base
   git -C "$r" switch -q base
@@ -1761,6 +1762,7 @@ recapture_case() {
     modify) printf 'changed\n' >> "$r/KEEP"; git -C "$r" add KEEP ;;
     delete) git -C "$r" rm -q KEEP ;;
     rename) git -C "$r" mv KEEP MOVED ;;
+    symlink) ln -sfn rite-config.yml "$r/LINK"; git -C "$r" add LINK ;;
   esac
   git -C "$r" commit -qm 'chore: upstream'
   git -C "$r" switch -q -
@@ -1797,7 +1799,7 @@ recapture_case() {
   # 手順 4 の回復: commit 後は手順 2 の paths のうち作業ツリーにあるものだけで取り直す
   local kept="" p _cs
   IFS=',' read -r -a _cs <<<"$changed"
-  for p in "${_cs[@]}"; do [ -e "$r/$p" ] && kept="${kept:+$kept,}$p"; done
+  for p in "${_cs[@]}"; do { [ -e "$r/$p" ] || [ -L "$r/$p" ]; } && kept="${kept:+$kept,}$p"; done
   sed "s|__CHANGED__|$kept|" "$cap_block" > "$ROOT/rc-$change-recover.sh"
   # 手順 4 が進められなかった状態（head がレビュー済み commit のまま）から回復する
   sed -i.bak "s/^head: .*/head: $(git -C "$r" rev-parse HEAD^)/" "$mem" && rm -f "$mem.bak"
@@ -1830,6 +1832,7 @@ recapture_case add commit paths
 recapture_case modify review stale_content
 recapture_case delete commit stale_content
 recapture_case rename commit stale_content
+recapture_case symlink commit paths
 # 削除として記録できるのは HEAD にあったパスだけで、記録した削除が戻れば一致しない
 r=$(new_repo rc-gone)
 write_config "$r" true false
