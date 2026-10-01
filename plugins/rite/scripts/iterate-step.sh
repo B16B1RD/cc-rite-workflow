@@ -680,7 +680,7 @@ fi
 
 # --- nb-sweep-record -----------------------------------------------------------
 step_nb_sweep_record() {
-nb_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh) || nb_root=""
+nb_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh) || exit 1
 nb_done_file="$nb_root/.rite/state/nb-sweep-done-$pr_number.txt"
 nb_latest=""
 nb_latest_base=""

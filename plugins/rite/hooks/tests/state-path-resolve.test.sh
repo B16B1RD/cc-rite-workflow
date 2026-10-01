@@ -109,11 +109,36 @@ writer_rc=0
 assert "record rejects unresolved state root" "1" "$writer_rc"
 assert_grep "record diagnostic identifies root failure" "$PLAIN/writer.err" "state root unresolved"
 assert "record does not overwrite existing state" "preserve" "$(cat "$PLAIN/.rite/state/pr-recommendations-9.json")"
-for helper in cleanup-work-memory.sh review-result-save.sh issue-comment-wm-sync.sh wiki-ingest-trigger.sh wiki-query-inject.sh; do
+for helper in cleanup-work-memory.sh review-result-save.sh issue-comment-wm-sync.sh wiki-query-inject.sh; do
   writer_rc=0
   (cd "$PLAIN" && bash "$HOOKS/$helper") >"$PLAIN/writer.out" 2>"$PLAIN/writer.err" || writer_rc=$?
   assert "$helper rejects non-git root" "1" "$writer_rc"
  done
+# Valid arguments must reach root resolution rather than fail in argument parsing.
+content_file=$(mktemp "${TMPDIR:-/tmp}/rite-state-root-content-XXXXXX")
+cleanup_dirs+=("$content_file")
+printf 'outside-Git boundary probe\n' > "$content_file"
+writer_rc=0
+(cd "$PLAIN" && bash "$HOOKS/wiki-ingest-trigger.sh" --type fixes --source-ref boundary-probe --content-file "$content_file") >"$PLAIN/writer.out" 2>"$PLAIN/writer.err" || writer_rc=$?
+assert "Wiki ingest rejects unresolved root with valid arguments" "1" "$writer_rc"
+assert_grep "Wiki ingest diagnostic identifies root failure" "$PLAIN/writer.err" "state root unresolved"
+if [ ! -d "$PLAIN/.rite/wiki" ]; then pass "Wiki ingest creates no raw state"; else fail "Wiki ingest creates no raw state"; fi
+for step in fix iterate; do
+  command=nb-sweep-finish
+  [ "$step" != iterate ] || command=nb-sweep-record
+  writer_rc=0
+  (cd "$PLAIN" && bash "$HOOKS/../scripts/$step-step.sh" "$command" --pr 9) >"$PLAIN/writer.out" 2>"$PLAIN/writer.err" || writer_rc=$?
+  assert "$step NB writer rejects unresolved root" "1" "$writer_rc"
+  assert_grep "$step NB writer retains root diagnostic" "$PLAIN/writer.err" "state root unresolved"
+done
+if [ ! -e "$PLAIN/.rite/state/nb-sweep-done-9.txt" ]; then pass "NB writers create no completion state"; else fail "NB writers create no completion state"; fi
+# A denied tool request keeps its deny payload without a cwd-relative audit write.
+deny_payload=$(jq -n --arg cwd "$PLAIN" '{cwd:$cwd,tool_name:"Bash",tool_input:{command:"gh pr diff 1 --stat"}}')
+guard_rc=0
+(cd "$PLAIN" && printf '%s' "$deny_payload" | env -u RITE_STATE_ROOT bash "$HOOKS/pre-tool-bash-guard.sh") >"$PLAIN/guard.out" 2>"$PLAIN/guard.err" || guard_rc=$?
+assert "outside-Git guard retains normal hook exit" "0" "$guard_rc"
+assert "outside-Git guard retains deny payload" "deny" "$(jq -r '.hookSpecificOutput.permissionDecision' "$PLAIN/guard.out")"
+if [ ! -d "$PLAIN/.rite/logs" ]; then pass "outside-Git deny creates no audit state"; else fail "outside-Git deny creates no audit state"; fi
 writer_rc=0
 (cd "$PLAIN" && bash "$HOOKS/scripts/cleanup-pr-state-purge.sh" --pr 9) >"$PLAIN/writer.out" 2>"$PLAIN/writer.err" || writer_rc=$?
 assert "purge rejects non-git root" "1" "$writer_rc"

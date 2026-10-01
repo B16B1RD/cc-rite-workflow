@@ -1946,7 +1946,7 @@ step_nb_sweep_persist
 # --- nb-sweep-finish ------------------------------------------------------------
 step_nb_sweep_finish() {
 # entries の判定列から件数を数え、done の 1 行目を最新 review JSON の basename で書く
-sweep_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh) || sweep_root=""
+sweep_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh) || exit 1
 if [ -n "$sweep_root" ]; then
   mkdir -p "$sweep_root/.rite/state" || true
   source "$plugin_root"/hooks/gitignore-ensure.sh
