@@ -92,6 +92,9 @@
 * **Update**: [GNU 形式の `sed -i '<expr>' file` は BSD sed で fixture を書き換えないまま失敗する](pages/anti-patterns/gnu-sed-inplace-silently-noop-on-bsd.md) — raw source を統合
 * **Update**: [pathspec 不一致の git diff --quiet は exit 0 を返し「差分なし」ガードを無効化する](pages/anti-patterns/pathspec-miss-exit-zero-defeats-diff-guard.md) — raw source を統合
 * **lint:warning**: Wiki 全体の意味的な全ページ比較は未完了。更新した4ページと関連知見には方針の衝突を観測しなかったが、全体の矛盾0件とは判定しない。機械検査は別ログに記録。
+* **Create**: [照合キーの要素を信頼できない行は空キーにして、呼び出し側の 1 本の検査で止める](pages/heuristics/untrusted-row-yields-empty-match-key-single-fail-loud-check.md) — raw/fixes/20261001T023445Z-pr-3576.md と raw/reviews/20261001T023958Z-pr-3576.md を新規ページ化
+* **Skip**: [20261001T021212Z-pr-3576.md](raw/fixes/20261001T021212Z-pr-3576.md) — 既存ページの「複数キーの一致を比べる検査は、キーごとに 1 つだけ変えた不一致 fixture を置く」節が同じ経験則を持つ
+* **Skip**: [20261001T022024Z-pr-3576.md](raw/reviews/20261001T022024Z-pr-3576.md) — 収束の記録で、独立したドメイン経験則はない
 
 
 ## 2026-09-30
