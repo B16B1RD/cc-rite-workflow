@@ -203,6 +203,8 @@ iterate の完了前確認が PR の追加行に逸脱を見つけたときは�
 | `reason` | 非空。今回の承認理由 |
 | `requested_at` | 今回の要求時刻（ISO 8601） |
 
+途中の `[review:error]` と `next_action` の記録だけでは stopped run にならない。この `review-restart` は、stopped run、許可された停止理由（`circuit-breaker:divergence` または `circuit-breaker:max-cycles`）、completed の観測と receipt、未 close の clock が無いこと、tracked 差分も gitignore 対象外の未追跡ファイルも無いことをすべて要求する。明示承認だけでは受理しない。保存前に名簿を変える `review-start --stagnation` は exit 1、診断 `cannot change incomplete review selection`。保存前の `review-restart` と `set --phase fix` は exit 1、診断 `all reviewers must be collected and saved`。選定済みの原結果をそのまま保存したあとの `review-restart` は exit 1、診断 `review run is not stopped`。保存が返す `REVIEWER_COMPLETION=pass`、`JSON_SAVED=true`、`REVIEW_CYCLE=completed` は、最終 mergeable の宣言でも run の停止でもない。保存は、操作者が原結果を書き換えず保存するよう明示し、同一 context・同一 manifest・同一結果 JSON を渡したときに限って案内する。CI の失敗が残っている保存を、再開できることの案内にしない。拒否されたときはコマンド、exit、診断を報告して停止する。名簿の書換え、counter reset、偽の receipt、偽の breaker は案内しない。新しい run への再開を、通った手順として書かない。証跡を持たない collecting の `review-abandon` は、証跡が無い cycle に限る。
+
 **再試行権で再開する（`circuit-breaker:divergence` のみ）**: `flow-state.sh review-retry --plan <一括修正計画の絶対パス> --issue <最新 Issue JSON の絶対パス>` が、次の条件をすべて満たすときに限り再試行権を 1 つ発行する。
 
 1. `stop_reason` が `circuit-breaker:divergence` である。`circuit-breaker:max-cycles`・`circuit-breaker:receipt-missing`・`stagnation:*` は再開できない

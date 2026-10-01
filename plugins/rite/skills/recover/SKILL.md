@@ -488,6 +488,8 @@ bash {plugin_root}/hooks/flow-state.sh set \
 | `completed`、HEAD 不一致 | 再検証は成立しない（`review-finish` が HEAD 一致を無条件に要求する）。`result_path` の保存結果を読むだけに留め、証跡を保持して停止する。放棄の対象外。**この停止は `/rite:recover` から入った場合の話で**、iterate のループが修正を commit して次の cycle へ進む経路では同じ状態から新しい cycle を始めるのが正常系 |
 | `review_cycle` なし | 既存の iterate の lost 修復と新規開始手順へ。過去の保存 JSON だけを新 cycle の完了証跡にしない |
 
+表の「不足 reviewer だけ同一 cycle で再取得」は、固定名簿のうち未回収の reviewer に限る。名簿に無い専門 reviewer が後から必要になった場合は、その行で追加しない。選定済み全員の raw、完了時刻、SHA256、manifest、`review_context` を保持し、未回収なら不足を明示して停止する。証跡がある collecting を `review-abandon` しない。[pr-review](../pr-review/SKILL.md) の途中停止と [review-stagnation.md](../../references/review-stagnation.md) の restart 受理条件に従う。保存 helper または `review-restart` が拒否したときは、実行したコマンド、exit、診断を報告して停止し、成功と扱わない。状態を手編集しない。
+
 ```bash
 # review-cycle-recover
 review_state=$(bash {plugin_root}/hooks/flow-state.sh get --jq-filter .) || exit 1
