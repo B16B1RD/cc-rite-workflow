@@ -293,7 +293,7 @@ args: "{pr_number} --from-iterate"
 |---------|-----------|
 | `[review:mergeable]` | ステップ 5.S（NB digest sweep。完了通知の前） |
 | `[review:fix-needed:N]` | ステップ 3 (fix invoke) へ |
-| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=ac_unverified; ac={ids}` | 受入条件未検証の停止。先に下記「受入条件未検証の停止での PR 内推奨の修正」を行い、`[fix:pushed]` / `[fix:pushed-wm-stale]` ならステップ 1 へ戻る。それ以外は再試行せず、下記の停止通知を出して終了する（成功 sentinel も新しい sentinel も出さない） |
+| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=ac_unverified; ac={ids}` | 受入条件未検証の停止。先に下記「受入条件未検証の停止での PR 内推奨の修正」を行い、`[fix:pushed]` / `[fix:pushed-wm-stale]` ならステップ 1 へ戻る。fix のその他の戻りは同段落の規則に従う。PR 内推奨が無ければ再試行せず、下記の停止通知を出して終了する（成功 sentinel も新しい sentinel も出さない） |
 | `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=purpose_unaligned` | 5.S 後の目的逸脱。再試行せず終了する（成功 sentinel も新しい sentinel も出さない） |
 | `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=adoption_held; kind={kind}; hold_file={path}` | 採否の出口待ちの保留、またはスコープ外処分の外部への書き込みが途中で失敗した停止（後者は一部が書き込み済み）。再試行せず、`hold_file` と、hold ファイルの resume（出口待ちのときはゲートの WARNING にも出る）に従って再開することを示して終了する。書き込み途中の停止で hold に書けなかったときは、hold の resume ではなく stderr の WARNING と flow-state の次アクションにある再開方法に従う（成功 sentinel も新しい sentinel も出さない） |
 | `[review:error]` | 可逆な再試行を推奨として 1 回だけ自動実行し、work memory の既存決定事項へ理由を記録する。再失敗なら停止 |
@@ -310,11 +310,11 @@ rationale: references/rationale.md#ac-unverified-pr-recommendation
 | `pending` | 「5.S 後の PR 内推奨の修正」の `mark` と flow-state set（`--next "PR 内推奨の修正"`。`--handoff` は付けない）を行ってから `/rite:fix` を invoke する |
 | 非ゼロ終了 / marker 不在 | 停止する。成功 sentinel を出さない |
 
-`pending` で invoke した `/rite:fix` の戻り: `[fix:pushed]` / `[fix:pushed-wm-stale]` はステップ 1 に戻る（修正後の再レビュー）。`[fix:replied-only]` / `[fix:non-fatal-only]` は push が無く受入条件が未検証のままなので、完了前確認へ進まず、fix が張った FINALIZE handoff を下の set（`--handoff` なし）で消してから停止通知を出して終了する。set が失敗したら停止通知にその WARNING を併記する。`[fix:cancelled-by-user]` / `[fix:error]` / sentinel 不在は「5.S 後の PR 内推奨の修正」の表に従う。
+`pending` で invoke した `/rite:fix` の戻り: `[fix:pushed]` / `[fix:pushed-wm-stale]` はステップ 1 に戻る（修正後の再レビュー）。`[fix:replied-only]` / `[fix:non-fatal-only]` は push が無く受入条件が未検証のままなので、完了前確認へ進まず、fix が張った FINALIZE handoff を下の set（`--handoff` なし）で消してから停止通知を出して終了する。set は phase を現在値の `fix` のまま書く（`review` へ移す通常 set は拒否され、handoff が残る）。set が失敗したら停止通知にその WARNING / ERROR を併記する。`[fix:cancelled-by-user]` はループ終了（ステップ 4 と同じ）。`[fix:error]` / sentinel 不在は「5.S 後の PR 内推奨の修正」の表に従って 1 回だけ再試行し、再試行した fix の戻りも本段落の規則で判定する。
 
 ```bash
 bash {plugin_root}/hooks/flow-state.sh set \
-  --phase review --issue {issue_number} --branch {branch_name} --pr {pr_number} \
+  --phase fix --issue {issue_number} --branch {branch_name} --pr {pr_number} \
   --next "受入条件未検証の停止"
 ```
 

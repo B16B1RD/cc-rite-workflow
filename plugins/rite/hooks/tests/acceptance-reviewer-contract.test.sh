@@ -307,6 +307,28 @@ in_order "iterate: FINALIZE を消す set が停止通知の見出しより前" 
 clear_block=$(awk '/^```bash$/{b="";f=1;next} f&&/^```$/{if(b~/--next "受入条件未検証の停止"/)printf "%s",b; f=0; next} f{b=b $0 "\n"}' "$ITERATE")
 assert "iterate: FINALIZE を消す fenced block は flow-state.sh set を 1 回呼ぶ" "1" "$(grep -c 'flow-state.sh set' <<<"$clear_block")"
 assert "iterate: FINALIZE を消す set は --handoff を付けない" "0" "$(grep -c -- '--handoff' <<<"$clear_block")"
+# 文言の pin では set の拒否（phase を review へ移す通常 set）を検出できないため、抽出した set を
+# fix が FINALIZE を張った直後と同じ状態（phase=fix）で実行し、handoff が消えることを確かめる
+for clear_result in replied-only non-fatal-only; do
+  clear_sb="$TMP_ROOT/clear-$clear_result"
+  mkdir -p "$clear_sb"
+  (cd "$clear_sb" && git init -q && echo a > a && git add a \
+    && git -c user.email=t@test.local -c user.name=test commit -q -m init) >/dev/null
+  echo "11111111-2222-3333-4444-555555555555" > "$clear_sb/.rite-session-id"
+  (cd "$clear_sb" && bash "$PLUGIN_ROOT/hooks/flow-state.sh" set --phase fix --issue 1 --branch b --pr 99 \
+    --next n --handoff "FINALIZE:fix:$clear_result:99") >/dev/null 2>&1
+  clear_cmd=${clear_block//\{plugin_root\}/$PLUGIN_ROOT}
+  clear_cmd=${clear_cmd//\{issue_number\}/1}
+  clear_cmd=${clear_cmd//\{branch_name\}/b}
+  clear_cmd=${clear_cmd//\{pr_number\}/99}
+  clear_rc=0
+  (cd "$clear_sb" && bash -c "$clear_cmd") >/dev/null 2>&1 || clear_rc=$?
+  assert "iterate: FINALIZE を消す set が fix の戻り ($clear_result) の状態で成功する" "0" "$clear_rc"
+  assert "iterate: FINALIZE を消す set の後に handoff が残らない ($clear_result)" "" \
+    "$(cd "$clear_sb" && bash "$PLUGIN_ROOT/hooks/flow-state.sh" consume-handoff 2>/dev/null)"
+done
+pin "iterate: ac_unverified の check 失敗は停止" "$ITERATE" '| 非ゼロ終了 / marker 不在 | 停止する。成功 sentinel を出さない |'
+pin "iterate: 再試行した fix の戻りも同じ段落で判定" "$ITERATE" '`[fix:error]` / sentinel 不在は「5.S 後の PR 内推奨の修正」の表に従って 1 回だけ再試行し、再試行した fix の戻りも本段落の規則で判定する。'
 in_order "iterate: ac_unverified の check が停止通知の見出しより前" \
   "$(line_of "$ITERATE" '| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=ac_unverified; ac={ids}` |')" \
   "$(line_of "$ITERATE" '**受入条件未検証の停止での PR 内推奨の修正**: 停止通知の前に、pr-review ステップ 7.2 がこの review で登録した PR 内推奨を、「5.S 後の PR 内推奨の修正」と同じ `review-pr-recommendations.sh check` で確かめる。')" \
@@ -427,7 +449,7 @@ echo "=== TC-10: 実行して確かめる受入条件・fix_loop・ready の分�
 pin "agent: 書き込む When は detached worktree の実験で実行" "$AGENT" 'is run as an experiment in a detached `rite-review-mutation-*` worktree, following "Mutation experiments and verification (worktree-only)" in the shared principles.'
 pin "agent: 参照先の節が shared principles に存在する" "$PLUGIN_ROOT/agents/_reviewer-base.md" '### Mutation experiments and verification (worktree-only)'
 pin "agent: 外への書き込みは機械的に止まらないことを書く" "$AGENT" '`state-path-resolve.sh` returns the main checkout'"'"'s state root even from inside the experiment worktree, and the guard does not see writes made inside a helper.'
-pin "agent: helper は実行前に読み、外へ書く段は実行せず Measurement-Blocked" "$AGENT" 'Read each helper before running it. Do not run a step that resolves the state root, writes through `gh`, or calls `flow-state.sh` beyond `get` / `path` or a `*-step.sh`; the criterion is 未検証 with `Measurement-Blocked: <helper> => writes the state root or GitHub`.'
+pin "agent: helper は実行前に読み、外へ書く段は実行せず Measurement-Blocked" "$AGENT" 'Read each helper before running it. Do not run a step that writes under the state root, writes through `gh`, or calls `flow-state.sh` beyond `get` / `path` or a `*-step.sh`; the criterion is 未検証 with `Measurement-Blocked: <helper> => writes the state root or GitHub`.'
 assert "agent: 機械的な遮断を前提にした旧文言が無い" "0" "$(grep -cF 'a step that needs them is blocked' "$AGENT")"
 pin "agent: 散文だけで充足にしない" "$AGENT" 'never judge 充足 from prose alone.'
 pin "agent: 未検証の理由を限定する" "$AGENT" 'The only allowed reasons are a real-environment requirement — credentials, an external service, a human operation, or a real environment that this machine does not have — or a blocked command;'
