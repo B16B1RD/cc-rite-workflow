@@ -95,6 +95,7 @@
 * **Create**: [照合キーの要素を信頼できない行は空キーにして、呼び出し側の 1 本の検査で止める](pages/heuristics/untrusted-row-yields-empty-match-key-single-fail-loud-check.md) — raw/fixes/20261001T023445Z-pr-3576.md と raw/reviews/20261001T023958Z-pr-3576.md を新規ページ化
 * **Skip**: [20261001T021212Z-pr-3576.md](raw/fixes/20261001T021212Z-pr-3576.md) — 既存ページの「複数キーの一致を比べる検査は、キーごとに 1 つだけ変えた不一致 fixture を置く」節が同じ経験則を持つ
 * **Skip**: [20261001T022024Z-pr-3576.md](raw/reviews/20261001T022024Z-pr-3576.md) — 収束の記録で、独立したドメイン経験則はない
+* **lint:clean** — contradictions=0, stale=65, orphans=0, missing_concept=0, unregistered_raw=671, broken_refs=0（矛盾の意味比較は新規ページと関連ページのみ。全ページ比較は未実施）
 
 
 ## 2026-09-30
