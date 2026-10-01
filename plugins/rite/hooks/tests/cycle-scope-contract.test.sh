@@ -185,7 +185,7 @@ assert_grep "batch-run orchestration comment routes adoption_held to step 8" "$B
   'REVIEW_STOP=adoption_held \(both modes\) -> ステップ 8'
 # 受入条件未検証（ac_unverified）: merge は ready へ、default は停止。行全体で pin し、変数表や本文の別の言及に当たらないようにする
 ACU_PREFIX='| `[review:error]` + `REVIEW_STOP=ac_unverified`'
-acm_line=$(grep -nF "${ACU_PREFIX}（\`merge\`） | 受入条件未検証は失敗ではない。" "$BATCH_RUN" | head -1 | cut -d: -f1)
+acm_line=$(grep -nF "${ACU_PREFIX}（\`merge\`） | → ステップ 4（ready）へ。" "$BATCH_RUN" | head -1 | cut -d: -f1)
 acd_line=$(grep -nF "${ACU_PREFIX}（\`default\`） | ready を実行しない" "$BATCH_RUN" | head -1 | cut -d: -f1)
 assert "batch-run ac_unverified merge row precedes mergeable" "true" \
   "$( [ -n "$acm_line" ] && [ -n "$mg_line" ] && [ "$acm_line" -lt "$mg_line" ] && echo true || echo "false acm=$acm_line mg=$mg_line" )"
