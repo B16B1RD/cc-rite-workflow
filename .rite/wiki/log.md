@@ -4120,3 +4120,5 @@ T02:22:43+09:00 — review ingest (skip pages)
 - 2026-09-26T12:52:40Z lint:clean contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=549, broken_refs=0
 - 2026-09-29T04:16:50Z ingest: pages_created=1 (identifier-ledger-latest-per-key-normalized-json) pages_updated=4 (precision-tightening-pendulum-regression, accept-vs-reject-fixture-design-inversion, generic-contract-table-delegates-path-specific-detail, universal-claim-prose-invalidated-by-path-addition) raw=4
 - 2026-09-29T04:16:50Z lint:clean contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=582, broken_refs=0
+
+* **Skip**: 既存契約との説明の整合確認を記録。独立した新規経験則はない — [レビュー結果](raw/reviews/20261001T002101Z-pr-3569.md)
