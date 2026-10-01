@@ -315,8 +315,13 @@ for clear_result in replied-only non-fatal-only; do
   (cd "$clear_sb" && git init -q && echo a > a && git add a \
     && git -c user.email=t@test.local -c user.name=test commit -q -m init) >/dev/null
   echo "11111111-2222-3333-4444-555555555555" > "$clear_sb/.rite-session-id"
+  setup_rc=0
   (cd "$clear_sb" && bash "$PLUGIN_ROOT/hooks/flow-state.sh" set --phase fix --issue 1 --branch b --pr 99 \
-    --next n --handoff "FINALIZE:fix:$clear_result:99") >/dev/null 2>&1
+    --next n --handoff "FINALIZE:fix:$clear_result:99") >/dev/null 2>&1 || setup_rc=$?
+  # 前提の state が作れていないと、消去 set の成否に関係なく下の assert が通ってしまう
+  assert "iterate: 前提の set が成功する ($clear_result)" "0" "$setup_rc"
+  assert "iterate: 消去前に FINALIZE が張られている ($clear_result)" "FINALIZE:fix:$clear_result:99" \
+    "$(cd "$clear_sb" && bash "$PLUGIN_ROOT/hooks/flow-state.sh" get --field handoff --default "" 2>/dev/null)"
   clear_cmd=${clear_block//\{plugin_root\}/$PLUGIN_ROOT}
   clear_cmd=${clear_cmd//\{issue_number\}/1}
   clear_cmd=${clear_cmd//\{branch_name\}/b}
