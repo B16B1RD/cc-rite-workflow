@@ -470,7 +470,9 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 ### review-cycle の再開
 
-`review_run` がある場合は [停滞診断の回復規則](../../references/review-stagnation.md) を先に適用する。未閉の時計区間は同参照の共有ブロック `review-clock-close` を `clock_close_mode=recover` で実行して中断として閉じ、`ended_at` がある区間（保存済み区間の再送、API エラー終了時に hook が終了時刻を書いた区間）は時刻・種類を変更しない。観測・修正・見直し履歴と counter は保持する。`current_decision.action=stop` は同じ停止理由を返し、再設計・counter reset・`review-restart`・新 run 作成で迂回しない。明示承認の fresh entry は recover の仕事ではない。合意した Issue 改訂の記録（`review-reconcile`）は active な run を同じ run のまま継続する操作であり、この迂回には当たらない（停止した run は拒否される）。recover 自身はこれを呼ばない。保存済み観測がない completed cycle は pr-review の停滞観測保存へ戻る。
+別 session ID の旧未完了 run を検出した場合は、旧 cycle を下表で後処理せず、[別セッションの正式な再開手順](../../references/review-stagnation.md#session-restart) に従う。旧状態・所有権・停止理由を確認し、証跡を保持して新しい全差分レビューを始める。
+
+自セッションの `review_run` がある場合は [停滞診断の回復規則](../../references/review-stagnation.md) を先に適用する。未閉の時計区間は同参照の共有ブロック `review-clock-close` を `clock_close_mode=recover` で実行して中断として閉じ、`ended_at` がある区間（保存済み区間の再送、API エラー終了時に hook が終了時刻を書いた区間）は時刻・種類を変更しない。観測・修正・見直し履歴と counter は保持する。`current_decision.action=stop` は同じ停止理由を返し、再設計・counter reset・`review-restart`・新 run 作成で迂回しない。明示承認の fresh entry は recover の仕事ではない。合意した Issue 改訂の記録（`review-reconcile`）は active な run を同じ run のまま継続する操作であり、この迂回には当たらない（停止した run は拒否される）。recover 自身はこれを呼ばない。保存済み観測がない completed cycle は pr-review の停滞観測保存へ戻る。
 
 `phase=review` では自セッションの `flow-state.sh get --jq-filter .` を読み、`review_cycle.review_context` の PR / HEAD を現在値と照合する。PR 不一致・破損は理由を出して停止し、別 session の結果を流用しない。HEAD 不一致は下表の状態列が行き先を決める（証跡ゼロなら放棄、証跡があれば回収）。
 

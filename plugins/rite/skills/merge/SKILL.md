@@ -304,7 +304,7 @@ else
       echo "[CONTEXT] MERGE_ERROR=behind; pr={pr_number}"
       echo "BEHIND: マージ失敗後も base に遅れています。復旧手順:" >&2
       echo "1. gh pr ready {pr_number} -R {owner_repo} --undo で draft に戻す。" >&2
-      echo "2. fix-plan の base 取り込み手順 1〜4で、対象 worktree の base を取り込み、検証・commit・push する。" >&2
+      echo "2. fix-plan の base 取り込み手順 1〜5で、対象 worktree の base を取り込み、検証・Wiki 適用証跡の取り直し・commit・head 更新・push する。" >&2
       echo "3. /rite:iterate {pr_number} で変更後の HEAD を再レビューする。" >&2
       echo "4. 全 CI job の完了・成功を確認して /rite:ready {pr_number}、/rite:merge {pr_number} の順で再開する。" >&2
     fi
