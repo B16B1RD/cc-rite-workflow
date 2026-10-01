@@ -122,6 +122,7 @@
 * **Update**: [state machine を 2 箇所で記述する場合は動作の文字列レベルで同期する](pages/patterns/state-machine-dual-location-sync.md) — raw/reviews/20261001T064134Z-pr-3594.md を統合
 * **Update**: [state machine を 2 箇所で記述する場合は動作の文字列レベルで同期する](pages/patterns/state-machine-dual-location-sync.md) — raw/fixes/20261001T071604Z-pr-3594.md を統合
 * **Update**: [Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格](pages/heuristics/observed-likelihood-gate-with-evidence-anchors.md) — raw/reviews/20261001T080830Z-pr-3594.md を統合
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=679, broken_refs=0
 
 ## 2026-09-30
 
