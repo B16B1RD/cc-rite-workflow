@@ -143,7 +143,7 @@ if [ "$rc" = 0 ]; then
     if [ "$key" = - ]; then key=$(printf '%s' "$material" | sha256) && key=${key:0:16} || { rc=2; break; }; fi
     [[ "$key" =~ ^[0-9a-f]{16}$ ]] || { rc=2; break; }
     if [ -n "${seen[$key]:-}" ]; then
-      echo "ERROR: 記録 $ids と記録 ${seen[$key]} の候補は前の run で 1 つの記録でした（key $key）。前の run と同じ単位に記録を束ねて書き直す（手順 2）" >&2
+      echo "ERROR: 記録 $ids と記録 ${seen[$key]} の候補は前の run で 1 つの記録でした（key ${key}）。前の run と同じ単位に記録を束ねて書き直す（手順 2）" >&2
       rc=2; break
     fi
     seen[$key]=$ids
