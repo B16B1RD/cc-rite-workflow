@@ -17,14 +17,19 @@ sources:
     resource: "raw/reviews/20260830T013439Z-pr-2470.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T114244Z-pr-3280.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T064134Z-pr-3594.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261001T071604Z-pr-3594.md"
 tags: [ring-pattern, helper-caller-sync, observability]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:54:08Z" }
+generated: { by: "rite-wiki-ingest/grok-4.7", at: "2026-10-01T09:33:36Z" }
 verified:
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-30T11:20:00+09:00"
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:54:08Z" }
+  - { by: "rite-wiki-ingest/grok-4.7", at: "2026-10-01T09:33:36Z" }
 ---
 
 # state machine を 2 箇所で記述する場合は動作の文字列レベルで同期する
@@ -131,6 +136,10 @@ Issue テンプレート (`templates/issue/template-structure.md`) では、` ``
 
 この観測では caller の誤動作は再現しておらず、文書の不整合として記録された。記述の矛盾と実行障害の有無は分けて報告する。
 
+### 拒否診断は状態ごとに helper の文へ合わせ、既に一致している側は書き換えない
+
+手順が拒否の診断を一つの文に固定すると、review run が無いときの helper の拒否文と食い違う。このずれは、手順の文と helper が実際に返す文を読み比べて確認された。直すときは、review run の有無ごとに helper の文へ診断を分ける。すでにその範囲で一致している状態機械と、review run がある停滞手順は、別の状態の文に揃えるために書き換えない。
+
 ## 同じ削除条件を 2 か所で書くときは、実装の削除経路をすべて列挙してから揃える
 
 state ファイルの寿命（どの条件で消えるか）を 2 つの記述が書き写していると、片方だけが古くなる。直すときは実装側の削除箇所（初期化・再起動・cleanup・回収）をすべて列挙し、両方の記述がどの経路を挙げているかを揃える。
@@ -153,3 +162,5 @@ state ファイルの寿命（どの条件で消えるか）を 2 つの記述�
 - [生成テンプレートの fence 内外 sub-pattern](../../raw/reviews/20260802T025011Z-pr-2084.md)
 - [値域 2 箇所記述の sub-pattern](../../raw/reviews/20260830T013439Z-pr-2470.md)
 - [レビュー結果](../../raw/reviews/20260927T114244Z-pr-3280.md)
+- [途中停止の保存と再開拒否を手順に分ける（レビュー結果）](../../raw/reviews/20261001T064134Z-pr-3594.md)
+- [途中停止の保存と再開拒否を手順に分ける（修正結果）](../../raw/fixes/20261001T071604Z-pr-3594.md)

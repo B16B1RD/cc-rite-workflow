@@ -23,9 +23,13 @@ sources:
     resource: "raw/reviews/20260713T223454Z-pr-1852.md"
   - type: "reviews"
     resource: "raw/reviews/20260810T045310Z-pr-2227.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T080830Z-pr-3594.md"
 tags: ["review", "severity", "likelihood-evidence", "cross-validation", "hypothetical", "literal-output-contract", "finding-quality-guardrail"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-10T05:20:00+09:00" }
+generated: { by: "rite-wiki-ingest/grok-4.7", at: "2026-10-01T09:33:36Z" }
+verified:
+  - { by: "rite-wiki-ingest/grok-4.7", at: "2026-10-01T09:33:36Z" }
 ---
 
 # Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格
@@ -152,6 +156,10 @@ self-declared 不要性の実測 (cycle 3) で観測した sub-pattern: reviewer
 
 1 行目と 2 行目の違いは「誰が不要と言ったか」にある。ゲートは severity を機械的に降格するだけで、対応の要否について何も言っていない。reviewer が明示的に不要と述べた場合だけが、対応不要の根拠になる。
 
+### 実行していない読みは、欠陥の証拠にしない
+
+実測アンカーの無い散文が、隣の文が制約を取り消して読めること、同じ状態へ再取得と停止の両方を書くこと、手順が契約に無い保持項目を挙げること、を欠陥として置くことがある。これらは、誤った分岐が実際に選ばれた観測を伴わない。アンカーが無く、誤った分岐の記録も無いあいだは、その読みを欠陥の証拠にしない。降格が決めるのは merge を止めるかどうかであり、読みの真偽は別に残る。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -167,3 +175,4 @@ self-declared 不要性の実測 (cycle 3) で観測した sub-pattern: reviewer
 - [推奨文の self-declared 不要性による第3の orthogonal 降格軸](../../raw/reviews/20260709T104501Z-pr-1812.md)
 - [独立レビュアーの明示的非裏付け + non-blocking worst-case の不整合による第4の orthogonal 降格軸](../../raw/reviews/20260713T051932Z-pr-1847-cycle3.md)
 - [再検証サイクルでの重複降格 — 既 Issue 化済み finding は Decision Log 記録に留める](../../raw/reviews/20260713T223454Z-pr-1852.md)
+- [途中停止の保存と再開拒否を手順に分ける（レビュー結果）](../../raw/reviews/20261001T080830Z-pr-3594.md)

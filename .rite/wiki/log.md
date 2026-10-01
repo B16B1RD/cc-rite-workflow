@@ -119,6 +119,9 @@
 * **Update**: [作業ツリーの内容 hash を証跡にするなら、削除されたパスを表す値を持たせる](pages/heuristics/evidence-hash-needs-deleted-path-representation.md) — raw/reviews/20261001T035359Z-pr-3571.md を統合
 * **Skip**: [20261001T040014Z-pr-3589.md](raw/reviews/20261001T040014Z-pr-3589.md) — 指摘ゼロの検証記録で、経験則として抽出できる内容が無い
 * **lint:clean** — contradictions=0, stale=65, orphans=0, missing_concept=0, unregistered_raw=675, broken_refs=0（矛盾の意味比較は今回書いた 2 ページと関連ページに限る。全ページ比較は未完了であり、全体の矛盾ゼロとは扱わない）
+* **Update**: [state machine を 2 箇所で記述する場合は動作の文字列レベルで同期する](pages/patterns/state-machine-dual-location-sync.md) — raw/reviews/20261001T064134Z-pr-3594.md を統合
+* **Update**: [state machine を 2 箇所で記述する場合は動作の文字列レベルで同期する](pages/patterns/state-machine-dual-location-sync.md) — raw/fixes/20261001T071604Z-pr-3594.md を統合
+* **Update**: [Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格](pages/heuristics/observed-likelihood-gate-with-evidence-anchors.md) — raw/reviews/20261001T080830Z-pr-3594.md を統合
 
 ## 2026-09-30
 
