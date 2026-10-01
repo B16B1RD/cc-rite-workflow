@@ -47,9 +47,9 @@ sources:
     resource: "raw/fixes/20261001T003117Z-pr-3568.md"
 tags: ["pin", "mutation-testing", "static-assert", "producer-consumer-symmetry", "drift-detection"]
 confidence: high
-generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-10-01T00:40:35Z" }
+generated: { by: "rite-wiki-ingest/gpt-6.1-sol", at: "2026-10-01T00:40:35Z" }
 verified:
-  - by: "rite-wiki-ingest/gpt-6"
+  - by: "rite-wiki-ingest/gpt-6.1-sol"
     at: "2026-10-01T00:40:35Z"
   - by: "rite-wiki-ingest/claude-opus-5"
     at: "2026-08-30T05:20:00Z"

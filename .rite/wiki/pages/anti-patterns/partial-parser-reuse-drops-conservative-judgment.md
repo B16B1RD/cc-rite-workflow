@@ -4,9 +4,9 @@ title: "既存パーサの一部だけを再利用すると、保守的に判定
 description: "検出器を作り直すときに既存パーサの一部の関数だけを借りると、直接コマンドでない形（timeout や nice 経由など）を保守的に数えていた判定が抜け、旧検出器が拾っていた対象を 0 件と数える退行になる。"
 domain: "anti-patterns"
 created: "2026-10-01T00:20:00Z"
-generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-10-01T00:40:35Z" }
+generated: { by: "rite-wiki-ingest/gpt-6.1-sol", at: "2026-10-01T00:40:35Z" }
 verified:
-  - by: "rite-wiki-ingest/gpt-6"
+  - by: "rite-wiki-ingest/gpt-6.1-sol"
     at: "2026-10-01T00:40:35Z"
 sources:
   - type: "reviews"
