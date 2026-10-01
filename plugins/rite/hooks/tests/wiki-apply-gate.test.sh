@@ -1717,6 +1717,83 @@ else
   fail "base-intake mismatch rc=$arc err=$(cat "$ROOT/bi2.err")"
 fi
 
+echo "=== a base-intake commit passes the gates after the documented re-capture ==="
+step3=$(awk '/^3\. / { copy=1 } /^4\. / { exit } copy { print }' <<<"$intake")
+if [ "$(grep -c '^   # base-intake-wiki-capture$' <<<"$intake")" -eq 1 ] \
+  && grep -q '^   # base-intake-wiki-capture$' <<<"$step3"; then
+  pass "the re-capture block appears once, in step 3"
+else
+  fail "re-capture block placement step3=$step3"
+fi
+cap_block="$ROOT/base-intake-wiki-capture.sh"
+awk -v root="$PLUGIN_ROOT" '
+  /^   # base-intake-wiki-capture$/ { copy=1; next }
+  copy && /^   ```$/ { exit }
+  copy { sub(/^   /, ""); gsub(/\{plugin_root\}/, root); gsub(/\{keywords\}/, "base-intake"); gsub(/\{changed_paths\}/, "__CHANGED__"); print }
+' "$PLAN_MD" > "$cap_block"
+if [ -s "$cap_block" ] && ! grep -q '{' "$cap_block" && grep -q '__CHANGED__' "$cap_block" \
+  && [ "$(grep -c . "$bi_block")" -eq 1 ] && grep -q 'wiki-apply-advance-head' "$bi_block"; then
+  pass "the extracted re-capture block is complete and the head block stays one line"
+else
+  fail "re-capture block: $(cat "$cap_block") / head block: $(cat "$bi_block")"
+fi
+# base 側の変更の種類ごとに、取り込み前の証跡のままでは commit / review のゲートが拒否し、
+# 手順 3 の取り直しの後は commit → 手順 4 → review まで通ることを確かめる
+rc_case() {
+  local label="$1" change="$2" before_mode="$3" before_reason="$4"
+  local r flow mem changed rc=0
+  r=$(new_repo "rc-$label")
+  write_config "$r" true false
+  flow="$ROOT/rc-$label.flow-state"
+  write_flow "$flow" fix 7 "$r"
+  mem="$r/.rite/work-memory/issue-7.md"
+  printf 'keep\n' > "$r/KEEP"
+  git -C "$r" add KEEP
+  git -C "$r" commit -qm 'fix: reviewed'
+  git -C "$r" branch base
+  git -C "$r" switch -q base
+  case "$change" in
+    add) printf 'new\n' > "$r/NEW"; git -C "$r" add NEW ;;
+    modify) printf 'changed\n' >> "$r/KEEP"; git -C "$r" add KEEP ;;
+  esac
+  git -C "$r" commit -qm 'chore: upstream'
+  git -C "$r" switch -q -
+  write_mem "$mem" "$(fresh_header auto_query_off "rc-$label" "$r" 0 KEEP)"
+  git -C "$r" merge -q --no-commit --no-ff base >/dev/null 2>&1
+  rc_env() { env -u WIKI_APPLY_MEMORY -u RITE_STATE_ROOT WIKI_APPLY_FLOW_STATE="$flow" "$@"; }
+  GRC=0
+  GOUT=$(cd "$r" && rc_env bash "$GATE" --mode "$before_mode" 2>/dev/null) || GRC=$?
+  if [ "$GRC" -ne 0 ] && grep -q "reason=$before_reason" <<<"$GOUT"; then
+    pass "$label: the record from before the intake is refused ($before_reason)"
+  else
+    fail "$label: before re-capture rc=$GRC out=$GOUT"
+  fi
+  changed=$(cd "$r" && git diff --no-renames --name-only HEAD | paste -sd, -)
+  sed "s|__CHANGED__|$changed|" "$cap_block" > "$ROOT/rc-$label-cap.sh"
+  (cd "$r" && rc_env bash "$ROOT/rc-$label-cap.sh") >"$ROOT/rc-$label-cap.out" 2>&1 || rc=$?
+  GRC=0
+  GOUT=$(cd "$r" && rc_env bash "$GATE" --mode commit 2>/dev/null) || GRC=$?
+  if [ "$rc" -eq 0 ] && [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+    pass "$label: the commit gate allows after the re-capture"
+  else
+    fail "$label: commit gate after re-capture cap_rc=$rc rc=$GRC out=$GOUT cap=$(cat "$ROOT/rc-$label-cap.out")"
+  fi
+  git -C "$r" commit -qm 'merge base'
+  rc=0
+  (cd "$r" && rc_env bash "$bi_block") >"$ROOT/rc-$label-adv.out" 2>&1 || rc=$?
+  GRC=0
+  GOUT=$(cd "$r" && rc_env bash "$GATE" --mode review 2>/dev/null) || GRC=$?
+  if [ "$rc" -eq 0 ] && grep -qx 'WIKI_APPLY_HEAD=advanced' "$ROOT/rc-$label-adv.out" \
+    && [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+    pass "$label: after the commit and step 4 the next review allows"
+  else
+    fail "$label: review after intake adv_rc=$rc rc=$GRC out=$GOUT adv=$(cat "$ROOT/rc-$label-adv.out")"
+  fi
+}
+rc_case add add commit paths
+rc_case modify modify review stale_content
+
+
 echo "=== a record that is not this commit's is left as it is ==="
 adv_case() {
   local label="$1" from="$2" body="$3" mem="$ROOT/adv-case.md" rc=0
