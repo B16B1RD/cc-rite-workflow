@@ -320,12 +320,12 @@ assert "TC-13e session unresolved: only the lock-lost marker (check=unknown), no
 assert "TC-13e session unresolved: block rc is the failed release (1)" "1" "$rc"
 assert "TC-13e session unresolved: the lock stays" "$SID_A" "$(cat "$LOCKDIR/session_id" 2>/dev/null)"
 # (f) the remedy names only the command for the configured strategy; an unknown value names both
-remedy_err() {  # <branch_strategy> <wiki_worktree_abs>
+remedy_err() {  # <branch_strategy> <wiki_worktree_abs> [cwd]
   local f; f=$(mktemp)
   mk_step90 "$f" "$1" "$2"
   reset_lock
-  env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$SID_A" RITE_STATE_ROOT="$ROOT" \
-    bash "$f" >/dev/null 2>"$s_err" || true
+  (cd "${3:-$ROOT}" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$SID_A" RITE_STATE_ROOT="$ROOT" \
+    bash "$f") >/dev/null 2>"$s_err" || true
   rm -f "$f"
 }
 SEP_CMD="（git -C \"$WT\" log --oneline -n 20）"
@@ -336,6 +336,15 @@ assert "TC-13f separate_branch: no same_branch command" "0" "$(grep -cF -- '-- .
 remedy_err same_branch "$WT"
 assert "TC-13f same_branch: same_branch command" "1" "$(grep -cF "$SAME_CMD" "$s_err" || true)"
 assert "TC-13f same_branch: no worktree command" "0" "$(grep -cF 'git -C' "$s_err" || true)"
+session_wt="$ROOT/session wt"
+git -C "$ROOT" worktree add -q --detach "$session_wt" HEAD
+remedy_err same_branch "$WT" "$session_wt"
+assert "TC-13f same_branch session: other branch warning" "1" "$(grep -cF 'そのセッションのブランチへ書き込んだ可能性' "$s_err" || true)"
+assert "TC-13f same_branch session: no shared wiki worktree warning" "0" "$(grep -cF '同じ wiki worktree' "$s_err" || true)"
+assert "TC-13f same_branch session: discover other branches" "1" "$(grep -cF 'git worktree list' "$s_err" || true)"
+assert "TC-13f same_branch session: inspect all branch histories" "1" "$(grep -cF 'git log --all --oneline -n 20 -- .rite/wiki/' "$s_err" || true)"
+assert "TC-13f same_branch session: no old branch-only remedy" "0" "$(grep -cF "$SAME_CMD" "$s_err" || true)"
+git -C "$ROOT" worktree remove "$session_wt"
 remedy_err bogus "$WT"
 assert "TC-13f unknown strategy: worktree command" "1" "$(grep -cF "git -C \"$WT\" log --oneline -n 20" "$s_err" || true)"
 assert "TC-13f unknown strategy: same_branch command" "1" "$(grep -cF "$SAME_CMD" "$s_err" || true)"
