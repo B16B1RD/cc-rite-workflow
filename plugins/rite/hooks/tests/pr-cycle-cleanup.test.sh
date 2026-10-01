@@ -135,7 +135,9 @@ make_temp_repo() {
     git config user.name "Test"
     echo "init" > README.md
     git add README.md
-    git commit --quiet -m "init"
+    # Auto maintenance can prune a new worktree before its initializing lock is
+    # written. Fixture setup must not leave that background writer running.
+    git -c maintenance.auto=false commit --quiet -m "init"
   )
   echo "$tmp"
 }
