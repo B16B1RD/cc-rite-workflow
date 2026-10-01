@@ -347,8 +347,8 @@ follow-up 転記・完了通知の残件）だから。推奨事項を混ぜる�
 Decision Log や別 Issue へ流れ、品質を予算で縛ることになる。空転を止めるのは採否の判定そのもの（V=C=T が
 false の候補は REJECT で終端し、登録されない）と `safety.max_review_cycles` である。PR 内推奨は blocking に
 数えないので、発散判定はこの空転を止めない。
-登録するのは本スキル経由（pr-review を `--from-iterate` 付きで呼ぶ）の mergeable の review だけで、受入条件未検証の停止と pr-review の単独実行では
-登録せず採否保留にする（登録を読むのは 5.S 後の check だけで、この 2 つの経路ではそこへ進まない）。`safety.max_review_cycles` に達した cycle でも登録しない。その修正は次のレビューが max-cycles で止まるため、
+登録するのは本スキル経由（pr-review を `--from-iterate` 付きで呼ぶ）の review（mergeable と受入条件未検証の停止）だけで、pr-review の単独実行では
+登録せず採否保留にする（登録を読むのは本スキルの check だけで、単独実行ではそこへ進まない）。`safety.max_review_cycles` に達した cycle でも登録しない。その修正は次のレビューが max-cycles で止まるため、
 未レビューの HEAD を残すことになる。このときの根因は採否保留で止まる（先送りしない）。
 
 5.S の後に置くのは、修正後の差分再レビューが前の JSON の non-blocking を引き継がないため。先に sweep
@@ -357,6 +357,19 @@ false の候補は REJECT で終端し、登録されない）と `safety.max_re
 書くのは、再入（Stop hook / recover）で同じ修正を繰り返さないため。ファイル名ではなく commit で比べるのは、
 fix が同じレビューの複写を別名で保存することがあるから。寿命は nb-sweep-done と同じで、0.6 の
 `fresh || cur_cc == 0`（pin 書換と同条件）で消し、`review-restart` と cleanup でも消す。
+
+## ac-unverified-pr-recommendation
+
+受入条件が未検証のまま止まる review でも、それと関係のない PR 起因の欠陥は同じ PR で直せる。登録を読まずに
+止まると、PR 内の 1 行の修正まで人間への確認に回る。そこでステップ 2 は停止通知の前に登録を確かめ、未着手が
+あれば fix へ渡して再レビューする。受入条件が未検証であることは変わらないので、再レビューが再び未検証で
+終われば、登録が無くなった時点で同じ停止通知に戻る。push の無い戻り（返信のみ・non-fatal のみ）は HEAD が
+変わらず、再レビューしても同じ未検証になるため、完了前確認へは進めず停止通知で終える。
+
+5.S を通さないのは、この修正が `[review:fix-needed:N]` → fix → 再レビューと同じ中間 cycle だから。5.S を先に
+置く規則は、mergeable の JSON がそのループの最後の JSON であるときに、その non-blocking を落とさないための
+もの。中間 cycle の JSON は sweep しない既存の扱いに揃え、ループの最後に到達した mergeable の JSON を 5.S が
+sweep する。
 
 ## purpose-deviation-reopen
 

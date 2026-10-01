@@ -22,6 +22,8 @@
 #   T-12 → TC-1          incremental でも差分 mandate の代わりに acceptance mandate、cap 枠外
 #   T-13 → TC-7          fix 1.2.2 の保持指示 / 保存 JSON を review-findings-maps.sh に通しても acceptance_criteria が残る
 #   T-14 → TC-9          schema / CLAUDE.md / docs の同期 (registry drift は reviewer-registry-drift-check.test.sh)
+#   TC-6 / TC-10         受入条件を実行して確かめる手順と未検証の理由 / iterate 経由の fix_loop=yes と停止前の PR 内推奨の修正 /
+#                        ready で作業ツリー内の書き込みを AI で確かめる分類
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -253,7 +255,7 @@ if [ -n "$anchor_651" ]; then
   ' "$RATIONALE")
   if [ -n "$rationale_651" ]; then
     assert "6.5.1: rationale 本文が終端 2 経路での実行を説明する" "1" "$(grep -cF 'ステップ 7 を `[review:mergeable]` と受入条件未検証の停止で走らせ' <<<"$rationale_651")"
-    assert "6.5.1: rationale 本文が受入条件未検証の停止を終端と説明する" "1" "$(grep -cF '受入条件未検証の停止はループの終端であり' <<<"$rationale_651")"
+    assert "6.5.1: rationale 本文が登録の無い受入条件未検証の停止を終端と説明する" "1" "$(grep -cF '受入条件未検証の停止は、PR 内推奨の登録が無ければループの終端であり' <<<"$rationale_651")"
     assert "6.5.1: rationale 本文に mergeable 限定の旧理由が無い" "0" "$(grep -cF 'のときだけ走らせる理由' <<<"$rationale_651")"
   else
     fail "6.5.1: rationale anchor の節本文を切り出せる"
@@ -292,6 +294,15 @@ pin "iterate: adoption_held は再試行せず hold ファイルと再開方法�
 pin "iterate: 再試行せず sentinel を出さない" "$ITERATE" '再試行せず、下記の停止通知を出して終了する（成功 sentinel も新しい sentinel も出さない）'
 pin "iterate: 行頭 marker だけで判定" "$ITERATE" '`REVIEW_STOP` は行頭 `[CONTEXT] ` の marker だけを判定に使う'
 pin "iterate: 停止通知の見出し" "$ITERATE" '## /rite:iterate 停止（受入条件未検証）'
+# 受入条件未検証の停止でも、登録済みの PR 内推奨は停止通知の前に fix へ渡す
+pin "iterate: ac_unverified 行は先に PR 内推奨の修正を行う" "$ITERATE" '受入条件未検証の停止。先に下記「受入条件未検証の停止での PR 内推奨の修正」を行い、`[fix:pushed]` / `[fix:pushed-wm-stale]` ならステップ 1 へ戻る。'
+pin "iterate: none は停止通知" "$ITERATE" '| `none` | 下記の停止通知を出して終了する |'
+pin "iterate: pending は mark と handoff なしの set の後に fix" "$ITERATE" '| `pending` | 「5.S 後の PR 内推奨の修正」の `mark` と flow-state set（`--next "PR 内推奨の修正"`。`--handoff` は付けない）を行ってから `/rite:fix` を invoke する |'
+pin "iterate: push の無い戻りは停止通知" "$ITERATE" '`[fix:replied-only]` / `[fix:non-fatal-only]` は push が無く受入条件が未検証のままなので、完了前確認へ進まず下記の停止通知を出して終了する。'
+in_order "iterate: ac_unverified の check が停止通知の見出しより前" \
+  "$(line_of "$ITERATE" '| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=ac_unverified; ac={ids}` |')" \
+  "$(line_of "$ITERATE" '**受入条件未検証の停止での PR 内推奨の修正**: 停止通知の前に、pr-review ステップ 7.2 がこの review で登録した PR 内推奨を、「5.S 後の PR 内推奨の修正」と同じ `review-pr-recommendations.sh check` で確かめる。')" \
+  "$(line_of "$ITERATE" '## /rite:iterate 停止（受入条件未検証）')"
 
 echo ""
 echo "=== TC-8: 正典 helper チェーン (T-01 / T-02 / T-03 / T-07 / T-08) ==="
@@ -402,6 +413,23 @@ pin "SPEC: pr-review の並列 spawn 図に acceptance-reviewer" "$REPO_ROOT/doc
 pin "CLAUDE.md: reviewer 数" "$REPO_ROOT/CLAUDE.md" "+ 10 reviewer agent"
 pin "SPEC: agents 一覧" "$REPO_ROOT/docs/SPEC.md" "│ ├── acceptance-reviewer.md"
 pin "CONFIGURATION: Available reviewers 表" "$REPO_ROOT/docs/CONFIGURATION.md" '| `acceptance-reviewer` |'
+
+echo ""
+echo "=== TC-10: 実行して確かめる受入条件・fix_loop・ready の分類 ==="
+pin "agent: 書き込む When は detached worktree の実験で実行" "$AGENT" 'is run as an experiment in a detached `rite-review-mutation-*` worktree, following "Mutation experiments and verification (worktree-only)" in the shared principles.'
+pin "agent: 参照先の節が shared principles に存在する" "$PLUGIN_ROOT/agents/_reviewer-base.md" '### Mutation experiments and verification (worktree-only)'
+pin "agent: 実験 worktree の外への書き込みは Measurement-Blocked" "$AGENT" 'a step that needs them is blocked, and the criterion is 未検証 with `Measurement-Blocked:`.'
+pin "agent: 散文だけで充足にしない" "$AGENT" 'never judge 充足 from prose alone.'
+pin "agent: 未検証の理由を限定する" "$AGENT" 'The only allowed reasons are a real-environment requirement — credentials, an external service, a human operation, or a real environment that this machine does not have — or a blocked command;'
+pin "agent: 理由の無い条件は実行する" "$AGENT" 'A criterion that needs none of these is run, not left 未検証.'
+pin "scope-triage: iterate 経由なら fix_loop=yes" "$SCOPE_TRIAGE" '`{fix_loop}` は、`PR_REVIEW_FROM_ITERATE == true`（ステップ 1.0。`/rite:iterate` が `--from-iterate` を付けて呼んだ review）なら `yes`。ステップ 8.1 の出力表で `[review:mergeable]` に一致する review も、受入条件未検証の停止も同じである'
+pin "scope-triage: 単独実行は fix_loop=no" "$SCOPE_TRIAGE" '単独実行、marker が見当たらないときは `no`'
+assert "scope-triage: 受入条件未検証の停止で no にする旧条件が無い" "0" "$(grep -cF '受入条件未検証の停止、単独実行、marker が見当たらないときは `no`' "$SCOPE_TRIAGE")"
+assert "pr-review 7.1: 受入条件未検証の停止で hold にする旧条件が無い" "0" "$(grep -cF '（受入条件未検証の停止・単独実行・cycle が' "$PR_REVIEW")"
+READY="$PLUGIN_ROOT/skills/ready/SKILL.md"
+pin "ready: 作業ツリー内で完結する書き込みは AI で確かめる" "$READY" '書き込みが作業ツリーの中で完結するコマンド（スキルの helper を実行して作業ツリーにファイルが書かれる等）を挙げる行も「AI で確かめる」とし、'
+pin "ready: リモート・state を変えるコマンドは人間のみを維持" "$READY" 'リモート・GitHub・main checkout・state（`state-path-resolve.sh` が返す state root 配下）を変えるコマンドを挙げる行は、`Measurement-Blocked` と書かれていても「人間のみ」とし、手順 2 で実行しない（不可逆操作の承認は省かない）。'
+assert "ready: 作業ツリーを変えるコマンドを一律人間のみにする旧規則が無い" "0" "$(grep -cF '作業ツリー・リモート・state を変えるコマンドを挙げる行は' "$READY")"
 
 if ! print_summary "$(basename "$0")" "drift: acceptance reviewer の配線 (agent / reviewers SKILL / pr-review 1.3.1・3.2.2・5.1.0.AC・5.3.0.A・6.5.1・E2E 表・8.0・8.0.2・8.1 / scope-triage 7.7 / design-rationale / iterate ステップ 2 / fix 1.2.2 / review-result-schema) のいずれかが変更された可能性"; then
   exit 1

@@ -293,13 +293,26 @@ args: "{pr_number} --from-iterate"
 |---------|-----------|
 | `[review:mergeable]` | ステップ 5.S（NB digest sweep。完了通知の前） |
 | `[review:fix-needed:N]` | ステップ 3 (fix invoke) へ |
-| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=ac_unverified; ac={ids}` | 受入条件未検証の停止。再試行せず、下記の停止通知を出して終了する（成功 sentinel も新しい sentinel も出さない） |
+| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=ac_unverified; ac={ids}` | 受入条件未検証の停止。先に下記「受入条件未検証の停止での PR 内推奨の修正」を行い、`[fix:pushed]` / `[fix:pushed-wm-stale]` ならステップ 1 へ戻る。それ以外は再試行せず、下記の停止通知を出して終了する（成功 sentinel も新しい sentinel も出さない） |
 | `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=purpose_unaligned` | 5.S 後の目的逸脱。再試行せず終了する（成功 sentinel も新しい sentinel も出さない） |
 | `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=adoption_held; kind={kind}; hold_file={path}` | 採否の出口待ちの保留、またはスコープ外処分の外部への書き込みが途中で失敗した停止（後者は一部が書き込み済み）。再試行せず、`hold_file` と、hold ファイルの resume（出口待ちのときはゲートの WARNING にも出る）に従って再開することを示して終了する。書き込み途中の停止で hold に書けなかったときは、hold の resume ではなく stderr の WARNING と flow-state の次アクションにある再開方法に従う（成功 sentinel も新しい sentinel も出さない） |
 | `[review:error]` | 可逆な再試行を推奨として 1 回だけ自動実行し、work memory の既存決定事項へ理由を記録する。再失敗なら停止 |
 | sentinel 不在 | 可逆な再試行を推奨として 1 回だけ自動実行し、期待 sentinel と直近出力を既存 work memory へ記録する。再度不在なら停止 |
 
-`REVIEW_STOP` は行頭 `[CONTEXT] ` の marker だけを判定に使う（診断文や引用の中の文字列では分岐しない）。同じ HEAD を再レビューしても観測できない AC は変わらないため再試行しない。停止通知は `state-path-resolve.sh` 基準の `.rite/review-results/{pr_number}-*.json` のうち最新のファイルの `acceptance_criteria` から `status == "unverified"` の行を読み、[ready の unverified 手順 1](../ready/SKILL.md) で分類して作る。人間のみの行は [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) 規則 6 の 4 要素で書く（人間が応答しない停止なので規則 7）:
+`REVIEW_STOP` は行頭 `[CONTEXT] ` の marker だけを判定に使う（診断文や引用の中の文字列では分岐しない）。同じ HEAD を再レビューしても観測できない AC は変わらないため再試行しない（下記の PR 内推奨の修正で HEAD が変わったときだけステップ 1 へ戻る）。
+
+**受入条件未検証の停止での PR 内推奨の修正**: 停止通知の前に、pr-review ステップ 7.2 がこの review で登録した PR 内推奨を、「5.S 後の PR 内推奨の修正」と同じ `review-pr-recommendations.sh check` で確かめる。5.S は通らない。
+rationale: references/rationale.md#ac-unverified-pr-recommendation
+
+| `PR_RECOMMENDATIONS_CHECK` | アクション |
+|---|---|
+| `none` | 下記の停止通知を出して終了する |
+| `pending` | 「5.S 後の PR 内推奨の修正」の `mark` と flow-state set（`--next "PR 内推奨の修正"`。`--handoff` は付けない）を行ってから `/rite:fix` を invoke する |
+| 非ゼロ終了 / marker 不在 | 停止する。成功 sentinel を出さない |
+
+`pending` で invoke した `/rite:fix` の戻り: `[fix:pushed]` / `[fix:pushed-wm-stale]` はステップ 1 に戻る（修正後の再レビュー）。`[fix:replied-only]` / `[fix:non-fatal-only]` は push が無く受入条件が未検証のままなので、完了前確認へ進まず下記の停止通知を出して終了する。`[fix:cancelled-by-user]` / `[fix:error]` / sentinel 不在は「5.S 後の PR 内推奨の修正」の表に従う。
+
+停止通知は `state-path-resolve.sh` 基準の `.rite/review-results/{pr_number}-*.json` のうち最新のファイルの `acceptance_criteria` から `status == "unverified"` の行を読み、[ready の unverified 手順 1](../ready/SKILL.md) で分類して作る。人間のみの行は [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) 規則 6 の 4 要素で書く（人間が応答しない停止なので規則 7）:
 
 ```
 ## /rite:iterate 停止（受入条件未検証）

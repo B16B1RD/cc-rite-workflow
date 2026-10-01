@@ -53,7 +53,7 @@ assert_rc2 bash scripts/a.sh &&
 
 ## mergeable の後の修正
 
-mergeable のレビューの後に手で commit すると、その HEAD には fix の検証記録が無いため、次のレビューは「変更された HEAD には完了した fix 検証が要る」で開始できない。PR が持ち込んだ根因（採否の出口 ADOPT・`origin=pr`）は、`/rite:iterate` 経由の mergeable の review では pr-review ステップ 7.2 が PR 内推奨として登録し、本計画を通して修正する（それ以外の review では採否保留で止まる）。完了前確認が PR の追加行に見つけた逸脱は、iterate が `review-deviate` で `D-NN` として記録し、同じく本計画を通して修正する。手で commit してしまったときの回復は、その commit を取り消してレビュー済み commit へ戻すことだけである。
+mergeable のレビューの後に手で commit すると、その HEAD には fix の検証記録が無いため、次のレビューは「変更された HEAD には完了した fix 検証が要る」で開始できない。PR が持ち込んだ根因（採否の出口 ADOPT・`origin=pr`）は、`/rite:iterate` 経由の review（mergeable と受入条件未検証の停止）では pr-review ステップ 7.2 が PR 内推奨として登録し、本計画を通して修正する（単独実行の review では採否保留で止まる）。完了前確認が PR の追加行に見つけた逸脱は、iterate が `review-deviate` で `D-NN` として記録し、同じく本計画を通して修正する。手で commit してしまったときの回復は、その commit を取り消してレビュー済み commit へ戻すことだけである。
 
 ## base 取り込み
 

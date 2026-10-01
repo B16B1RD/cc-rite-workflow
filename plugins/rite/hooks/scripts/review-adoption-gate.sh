@@ -10,12 +10,11 @@
 #   record  RESOLVED / REJECT / LINK without pr_blocking, and every LINK of a followup (the
 #           merged PR cannot take the fix, the OPEN tracker does): record the disposition only.
 #   fix     kind=triage or sweep: ADOPT with origin=pr (fix_in_pr) when the caller passes
-#           --fix-loop yes (a mergeable review inside /rite:iterate, whose registration the same
-#           PR's fix reads) and `review-pr-recommendations.sh capacity` is open. Nothing is written
+#           --fix-loop yes (a review inside /rite:iterate, whose registration the same PR's fix
+#           reads) and `review-pr-recommendations.sh capacity` is open. Nothing is written
 #           outside the PR; the caller registers it as an in-PR recommendation for the same PR's
-#           fix. Nothing reads the registration at the stop on unverified acceptance criteria or
-#           in a standalone review, and at safety.max_review_cycles the fix could not be
-#           re-reviewed, so all three hold the candidate.
+#           fix. Nothing reads the registration in a standalone review, and at
+#           safety.max_review_cycles the fix could not be re-reviewed, so both hold the candidate.
 #   hold    anything else: pr_blocking decisions (RECONCILE, ADOPT pr/unknown, DIAGNOSE
 #           pr/unknown, LINK pr/unknown outside followup) and DIAGNOSE without investigation.
 # A missing record file, an unreadable context, or a helper ERROR holds every candidate.
@@ -49,7 +48,7 @@
 #                   Default: STATE_ROOT/.rite/state/adoption-PR-KIND.json
 #   --issue         related Issue; its body gives the AC ids and issue citations.
 #                   --issue-body / --pr-body / --ac-ids / --ledger replace the gh reads.
-#   --fix-loop      triage / sweep: yes for a mergeable review inside /rite:iterate, no otherwise.
+#   --fix-loop      triage / sweep: yes for a review inside /rite:iterate, no otherwise.
 #                   Default no.
 #
 # stdout: decided {"held": false, "head", "verdicts": [{"ids", "exit", "origin", "action",
