@@ -4221,3 +4221,7 @@ T02:22:43+09:00 — review ingest (skip pages)
 
 * **Update**: [CI 完了ゲートの判定](pages/heuristics/ci-pending-at-review-close-reroll-finder-after-completion.md) — 初期スナップショットと最終待機を分け、consumer テストと選定済み結果の保存を同期する
 * **Update**: [順序 assert の保護範囲](pages/anti-patterns/test-pin-protection-theater.md) — helper の対応要素数を超える呼出しで後段ガードが消える経路を、独立した順序検査と mutation で確かめる
+
+### 2026-10-01T05:48:05+00:00
+
+* **Lint (partial)**: 機械検査は孤児 0、壊れた相互参照 0、陳腐化 66。欠落 raw 0、意図的な未登録 raw 676。全 Wiki の semantic 矛盾検査は未完了で件数未測定。今回統合した raw の欠落はなく、対象ページの追記は既存方針を補強する。検査 helper の stderr に Broken pipe 診断があり、全項目成功とは報告しない。
