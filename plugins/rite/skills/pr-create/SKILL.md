@@ -155,14 +155,15 @@ esac
 
 ### 1.1 Retrieve Base Branch
 
-Read `rite-config.yml` at the project root using the Read tool, and get the `branch.base` value:
+セッション worktree では設定が main checkout にしか無いことがある。相対パスで読まず、resolver でパスを解決してから `branch.base` を取る:
 
-```
-Read: rite-config.yml
+```bash
+bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh
 ```
 
-1. `rite-config.yml` に `branch.base` があればその値を `{base_branch}` にする
-2. ファイル不在 / キー不在 / `null` / 空文字 / `branch` 節不在 → `main`
+1. rc=0: stdout のパスを `{rite_config}` として Read し、`branch.base` があればその値を `{base_branch}` にする
+2. rc=1（設定ファイルなし）/ キー不在 / `null` / 空文字 / `branch` 節不在 → `main`
+3. rc=2（読めない・解決不能）: stderr を表示して停止する。既定値へは倒さない
 
 ### 1.2 Branch Verification
 
@@ -274,7 +275,7 @@ gh api repos/{owner}/{repo}/issues/{issue_number}/comments --jq '.[] | select(.b
 
 ### 2.1 Verify Auto-Detected Commands
 
-`rite-config.yml` から build/lint コマンドを取る:
+1.1 で解決した `{rite_config}` から build/lint コマンドを取る:
 
 ```yaml
 commands:
@@ -476,10 +477,10 @@ heredoc の `{placeholder}` はスクリプト生成前に実値へ置換（シ�
 
 | Placeholder | Source | Example |
 |-------------|--------|---------|
-| `{projects_enabled}` | `rite-config.yml` → `github.projects.enabled` | `true` |
-| `{project_number}` | `rite-config.yml` → `github.projects.project_number` | `6` |
-| `{owner}` | `rite-config.yml` → `github.projects.owner` | `{owner}` |
-| `{iteration_mode}` | `rite-config.yml` → `iteration.enabled` が `true` かつ `iteration.auto_assign` が `true` なら `"auto"`、それ以外は `"none"` | `"none"` |
+| `{projects_enabled}` | `{rite_config}` → `github.projects.enabled` | `true` |
+| `{project_number}` | `{rite_config}` → `github.projects.project_number` | `6` |
+| `{owner}` | `{rite_config}` → `github.projects.owner` | `{owner}` |
+| `{iteration_mode}` | `{rite_config}` → `iteration.enabled` が `true` かつ `iteration.auto_assign` が `true` なら `"auto"`、それ以外は `"none"` | `"none"` |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) | `/home/user/.claude/plugins/rite` |
 
 ```bash
@@ -599,7 +600,7 @@ rationale: references/rationale.md#issue-accountability-never-skip
 
 ### 3.1 Generate PR Title
 
-Conventional Commits。言語は `rite-config.yml` の `language`:
+Conventional Commits。言語は `{rite_config}` の `language`:
 
 | Setting | Behavior |
 |--------|------|
@@ -898,7 +899,7 @@ URL: {pr_url}
 | Issue not found | Choose: create without Issue / specify different Issue / cancel |
 ## Language Support
 
-Follow `language` in `rite-config.yml` (`auto`: detect input language, `ja`: Japanese, `en`: English). Title and body are unified in the same language. Priority for `auto` mode: user input language -> Issue body language -> Japanese.
+Follow `language` in `{rite_config}` (`auto`: detect input language, `ja`: Japanese, `en`: English). Title and body are unified in the same language. Priority for `auto` mode: user input language -> Issue body language -> Japanese.
 
 ---
 

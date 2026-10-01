@@ -1,7 +1,8 @@
 #!/bin/bash
 # Loop-skill entry: resume only this session's recorded pause before other work.
 # flow-state path is the canonical session/root resolver; resume retains the
-# existing clock behavior. No phase, review-run, handoff or queue is rewritten.
+# existing clock behavior without restarting or reinitializing the review run.
+# No phase, handoff or queue is rewritten.
 # stdout: LOOP_ENTRY_RESUME=none|resumed. Nonzero resolution/removal errors stop entry.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

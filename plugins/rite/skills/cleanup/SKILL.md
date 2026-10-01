@@ -1046,10 +1046,10 @@ rationale: references/rationale.md#review-cleanup-reasons
 
   最終行は marker 不在一般の受け皿。`CLEANUP_WT=unknown` はステップ 9 全体を実行させず sentinel を 1 本も出さないが、ステップ 12 の委譲モード定型ブロックの対象外でもあるため、この行が無いと適用される規則が存在しない。**marker 不在を成功と読んではならない** — 不在は「ステップ 9 が実行されなかった」等、実行結果を確認できていない状態である。照合は `WIKI_INGEST_` の marker family でスコープする。
 
-  push 失敗警告 (`{wiki_branch}` はステップ 9 で解決済):
+  push 失敗警告 (`{wiki_branch}` はステップ 9 で解決済。`{wiki_worktree_abs}` は `bash {plugin_root}/hooks/state-path-resolve.sh` の出力 + `/.rite/wiki-worktree` をリテラル置換する。出力が空で解決できなかったときは、相対パスの案内へ倒さず、解決できなかった旨を警告に出す):
   ```
   ⚠️ Wiki ingest: commit は local wiki branch に landed しましたが origin への push に失敗しました。
-    手動回復: git -C .rite/wiki-worktree push origin {wiki_branch}
+    手動回復: git -C {wiki_worktree_abs} push origin {wiki_branch}
   ```
 
   ロック喪失は上の表と独立に評価する（DONE / PUSH_FAILED と併存しうるため、表の一致判定にも最終行（marker 不在）の判定にも数えない）。`[CONTEXT] ` 行頭一致 + `WIKI_INGEST_LOCK_LOST=1` + `source=cleanup_step9; pr={pr_number}`（値の直後が `;` または行末）に該当する行があれば、表の判定に関わらず check を ` ` にし、表の付記の**後ろに**ロック喪失の付記を続ける（`/rite:batch-run --merge` では先行 Issue の marker が文脈に残るため `pr=` で絞る。wiki-ingest 自身が出す `check=` 付きの行は判定に使わない）。LOCK_LOST しか無いとき（DONE 等の発火漏れ）は最終行を適用したうえでロック喪失の付記を続ける。

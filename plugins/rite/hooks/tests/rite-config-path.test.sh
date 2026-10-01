@@ -303,5 +303,75 @@ else
   fail "T-12 template-reset detects, backs up and regenerates the resolved path (missing:$reset_missing)"
 fi
 
+# 設定を読む skill は相対パスの Read ではなく resolver の出力を読む。
+# resolver 行が最初の設定参照より前にあり、rc=2 は止める文言を持つ
+for sk in pr-create issue-implement lint skill-suggest issue-list setup; do
+  md="$PLUGIN_ROOT/skills/$sk/SKILL.md"
+  resolver_at=$(grep -nF 'rite-config-path.sh' "$md" | head -n 1 | cut -d: -f1) || resolver_at=""
+  use_at=$(grep -nE '\{rite_config\}|\$rite_config' "$md" | head -n 1 | cut -d: -f1) || use_at=""
+  relative_reads=$(grep -cE 'Read: rite-config\.yml|[Rr]ead `rite-config\.yml`|`rite-config\.yml` (at|in) the project root|`rite-config\.yml` using the Read tool' "$md") || relative_reads=0
+  sk_missing=""
+  [[ -n "$resolver_at" && -n "$use_at" && "$resolver_at" -le "$use_at" ]] || sk_missing="$sk_missing resolver-before-use"
+  [[ "$relative_reads" = "0" ]] || sk_missing="$sk_missing relative-reads=$relative_reads"
+  # rc=2 は停止の語と同じ行で数える（無関係な rc=2 の記述では通らない）
+  case "$sk" in issue-list) min_rc2=2 ;; *) min_rc2=1 ;; esac
+  rc2_stops=$(grep -cE 'rc=2.*(停止|stop)' "$md") || rc2_stops=0
+  [[ "$rc2_stops" -ge "$min_rc2" ]] || sk_missing="$sk_missing rc2-stop=$rc2_stops"
+  # rc=1 は各スキルの既存の「設定なし」の扱いへ進み、設定ファイルの直接 Read へ倒れない
+  # --or-devnull を使う 2 スキルは、直した節の中だけを見る（他の節の同じ語では通らない）
+  case "$sk" in
+    lint)
+      site=$(awk '/^#### 2\.2\.1 Get Base Branch/{f=1;next} f&&/^#### 2\.2\.2/{exit} f' "$md")
+      grep -qF -- '--or-devnull' <<< "$site" || sk_missing="$sk_missing or-devnull-site" ;;
+    issue-implement)
+      site=$(awk '/^##### Condition Check/{f=1;next} f&&/^\*\*Skip conditions\*\*/{exit} f' "$md")
+      grep -qF -- '--or-devnull' <<< "$site" || sk_missing="$sk_missing or-devnull-site"
+      grep -qF 'cat "$rite_config"' <<< "$site" || sk_missing="$sk_missing cat-site" ;;
+    *)
+      rc1_names_file=$(grep -E 'rc=1' "$md" | grep -cF 'rite-config.yml') || rc1_names_file=0
+      [[ "$rc1_names_file" = "0" ]] || sk_missing="$sk_missing rc1-names-file=$rc1_names_file"
+      # rc=1 の既存の扱いは、スキルごとに決まった行の形で固定する
+      case "$sk" in
+        pr-create) rc1_patterns=('^[0-9]+\. rc=1.*`main`') ;;
+        skill-suggest) rc1_patterns=('rc=1 \(no config\).*unset') ;;
+        issue-list) rc1_patterns=('rc=1: no config, use the default' '^If rc=1 \(no config\), skip Phase 4') ;;
+        setup) rc1_patterns=('resolver rc=1\).*Proceed to 4\.1\.2') ;;
+      esac
+      for p in "${rc1_patterns[@]}"; do
+        grep -qE -- "$p" "$md" || sk_missing="$sk_missing rc1-effect($p)"
+      done ;;
+  esac
+  if [[ -z "$sk_missing" ]]; then
+    pass "T-13 $sk reads the resolved config path"
+  else
+    fail "T-13 $sk reads the resolved config path (missing:$sk_missing)"
+  fi
+done
+
+# Wiki 復旧案内は cwd 非依存の絶対パスで示す
+for sk in wiki-init recover cleanup wiki-ingest; do
+  md="$PLUGIN_ROOT/skills/$sk/SKILL.md"
+  rel=$(grep -cF 'git -C .rite/wiki-worktree' "$md") || rel=0
+  use=$(grep -cF 'git -C {wiki_worktree_abs}' "$md") || use=0
+  # 絶対パスの出どころ（定義）と使用箇所を別々に数える
+  if [[ "$sk" = wiki-ingest ]]; then
+    def=$(grep -cF 'WIKI_WORKTREE_ABS=' "$md") || def=0
+    # 案内の 2 行（status / push）をそれぞれ固定する
+    st=$(grep -cF 'git -C {wiki_worktree_abs} status' "$md") || st=0
+    pu=$(grep -cF 'git -C {wiki_worktree_abs} push origin {wiki_branch}' "$md") || pu=0
+    use=$(( st < pu ? st : pu ))
+    min_use=1
+  else
+    # 定義文は state-path-resolve.sh の出力と、解決できなかったときの扱いを持つ
+    def=$(grep -F '{wiki_worktree_abs}' "$md" | grep -F 'state-path-resolve.sh' | grep -cF '解決できなかった') || def=0
+    case "$sk" in wiki-init) min_use=2 ;; *) min_use=1 ;; esac
+  fi
+  if [[ "$rel" = "0" && "$def" -ge 1 && "$use" -ge "$min_use" ]]; then
+    pass "T-14 $sk wiki guidance uses the absolute worktree path"
+  else
+    fail "T-14 $sk wiki guidance uses the absolute worktree path (relative=$rel def=$def use=$use)"
+  fi
+done
+
 print_summary "$(basename "$0")" \
   "Drift hint: rite-config-path.sh — worktree toplevel first, then main checkout root; rc=1 lists tried paths, rc=2 never falls through."
