@@ -46,9 +46,10 @@ status: ok
 attempts: 1
 diagnostic: -
 head: <40 hex>
-paths: a,b
+paths: a,b,c
 blob: a=<40 hex>
 blob: b=<40 hex>
+blob: c=-
 page: pages/a.md
 rev: <blob>
 excerpt: <rev の本文にある 1 行>

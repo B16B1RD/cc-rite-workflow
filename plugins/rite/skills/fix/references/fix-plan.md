@@ -68,7 +68,7 @@ mergeable のレビューの後に手で commit すると、その HEAD には f
    bash {plugin_root}/scripts/fix-step.sh wiki-capture --keywords '{keywords}' --changed-paths '{changed_paths}'
    ```
 
-4. 別の Bash 呼び出しで Wiki 適用証跡の head をレビュー済み commit（取り込み commit の第 1 親）から新しい HEAD へ進める。進めないと次のレビューのゲートが `stale_head` で拒否する。`WIKI_APPLY_HEAD=advanced` または `=current` なら手順 5 へ進む。非 0 終了では証跡は変わっていないので、手順 3 の `base-intake-wiki-capture` で capture からやり直して（契約は [wiki-apply-contract.md](../../../references/wiki-apply-contract.md)）証跡を書き直してから手順 5 へ進む
+4. 別の Bash 呼び出しで Wiki 適用証跡の head をレビュー済み commit（取り込み commit の第 1 親）から新しい HEAD へ進める。進めないと次のレビューのゲートが `stale_head` で拒否する。`WIKI_APPLY_HEAD=advanced` または `=current` なら手順 5 へ進む。非 0 終了では証跡は変わっていないので、手順 3 の `base-intake-wiki-capture` で capture からやり直して（`{changed_paths}` は手順 2 の paths のうち作業ツリーにあるもの。取り込み commit の後では base 側が削除したパスはどこにも無い。契約は [wiki-apply-contract.md](../../../references/wiki-apply-contract.md)）証跡を書き直してから手順 5 へ進む
 
    ```bash
    # base-intake-wiki-apply-head

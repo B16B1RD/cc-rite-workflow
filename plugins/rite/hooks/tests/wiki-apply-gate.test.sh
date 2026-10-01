@@ -1744,6 +1744,8 @@ recapture_case() {
   local change="$1" before_mode="$2" before_reason="$3"
   local r flow mem changed cap_rc=0 adv_rc=0 merge_rc=0
   r=$(new_repo "rc-$change")
+  # 実リポジトリと同じく .rite/ は追跡外（空の paths で capture が作業ツリーの変更一覧を使う回復で拾わない）
+  printf '.rite/\n' >> "$r/.git/info/exclude"
   write_config "$r" true false
   flow="$ROOT/rc-$change.flow-state"
   write_flow "$flow" fix 7 "$r"
@@ -1791,7 +1793,27 @@ recapture_case() {
   else
     fail "$change: review after intake adv_rc=$adv_rc rc=$GRC out=$GOUT err=$(cat "$ROOT/rc-$change-review.err") adv=$(cat "$ROOT/rc-$change-adv.out")"
   fi
+  # 手順 4 の回復: commit 後は手順 2 の paths のうち作業ツリーにあるものだけで取り直す
+  local kept="" p
+  for p in ${changed//,/ }; do [ -e "$r/$p" ] && kept="${kept:+$kept,}$p"; done
+  sed "s|__CHANGED__|$kept|" "$cap_block" > "$ROOT/rc-$change-recover.sh"
+  cap_rc=0
+  (cd "$r" && rc_env "$flow" bash "$ROOT/rc-$change-recover.sh") >"$ROOT/rc-$change-recover.out" 2>&1 || cap_rc=$?
+  GRC=0
+  GOUT=$(cd "$r" && rc_env "$flow" bash "$GATE" --mode review 2>"$ROOT/rc-$change-recover.err") || GRC=$?
+  if [ "$cap_rc" -eq 0 ] && [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+    pass "$change: the step 4 recovery re-capture lets the next review allow"
+  else
+    fail "$change: step 4 recovery cap_rc=$cap_rc rc=$GRC out=$GOUT err=$(cat "$ROOT/rc-$change-recover.err") cap=$(cat "$ROOT/rc-$change-recover.out")"
+  fi
 }
+step2=$(awk '/^2\. / { copy=1 } /^3\. / { exit } copy { print }' <<<"$intake")
+if grep -qF '`git diff --no-renames --name-only HEAD`' <<<"$step2" \
+  && grep -q '作業ツリーにあるもの' <<<"$(awk '/^4\. / { copy=1 } /^5\. / { exit } copy { print }' <<<"$intake")"; then
+  pass "step 2 lists paths as the test does and step 4 narrows the recovery to existing paths"
+else
+  fail "step 2 / step 4 wording step2=$step2"
+fi
 recapture_case add commit paths
 recapture_case modify review stale_content
 recapture_case delete commit stale_content
@@ -1821,6 +1843,25 @@ if [ "$cap_rc" -eq 0 ] && grep -qx 'blob: KEEP=-' "$r/.rite/work-memory/issue-7.
   pass "a path recorded as deleted that comes back is refused"
 else
   fail "deleted record cap_rc=$cap_rc rc=$GRC out=$GOUT err=$(cat "$ROOT/rc-gone.err") cap=$(cat "$ROOT/rc-gone.out")"
+fi
+# 作業ツリーから消えても index に残るパスは削除と一致しない
+git -C "$r" reset -q -- KEEP
+rm -f "$r/KEEP"
+GRC=0
+GOUT=$(cd "$r" && rc_env "$ROOT/rc-gone.flow-state" bash "$GATE" --mode review 2>"$ROOT/rc-gone.err") || GRC=$?
+if [ "$GRC" -ne 0 ] && grep -q 'reason=stale_content' <<<"$GOUT"; then
+  pass "a path recorded as deleted that is still in the index is refused"
+else
+  fail "deleted record still indexed rc=$GRC out=$GOUT err=$(cat "$ROOT/rc-gone.err")"
+fi
+# blob の値は 40 桁の oid か削除の - だけを受け付ける
+sed -i 's/^blob: KEEP=-$/blob: KEEP=-x/' "$r/.rite/work-memory/issue-7.md"
+GRC=0
+GOUT=$(cd "$r" && rc_env "$ROOT/rc-gone.flow-state" bash "$GATE" --mode review 2>"$ROOT/rc-gone.err") || GRC=$?
+if [ "$GRC" -ne 0 ] && grep -q 'reason=record_corrupt' <<<"$GOUT"; then
+  pass "a blob value that is neither an oid nor - is refused as corrupt"
+else
+  fail "malformed blob rc=$GRC out=$GOUT err=$(cat "$ROOT/rc-gone.err")"
 fi
 
 echo "=== a record that is not this commit's is left as it is ==="
