@@ -89,7 +89,7 @@ echo "wiki_enabled=$wiki_enabled auto_query=$auto_query"
 
 設定が false でも capture は呼ぶ。呼ばないと証跡が無く、コミット前ゲートが拒否する。
 
-**Step 2**: `{keywords}` は計画の対象パスと変更目的。`{changed_paths}` は存在する対象パスと HEAD から削除した対象パスのカンマ区切りで、空なら `--paths` を省く。未置換のリテラルは渡さない。契約は [wiki-apply-contract.md](../../references/wiki-apply-contract.md)。
+**Step 2**: `{keywords}` は計画の対象パスと変更目的。`{changed_paths}` は存在する対象パスのカンマ区切りで、空なら `--paths` を省く。未置換のリテラルは渡さない。契約は [wiki-apply-contract.md](../../references/wiki-apply-contract.md)。
 
 ```bash
 wiki_context=$(bash {plugin_root}/hooks/scripts/wiki-apply-capture.sh \
