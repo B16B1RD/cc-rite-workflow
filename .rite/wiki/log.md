@@ -91,6 +91,7 @@
 * **Update**: [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) — raw source を統合
 * **Update**: [GNU 形式の `sed -i '<expr>' file` は BSD sed で fixture を書き換えないまま失敗する](pages/anti-patterns/gnu-sed-inplace-silently-noop-on-bsd.md) — raw source を統合
 * **Update**: [pathspec 不一致の git diff --quiet は exit 0 を返し「差分なし」ガードを無効化する](pages/anti-patterns/pathspec-miss-exit-zero-defeats-diff-guard.md) — raw source を統合
+* **lint:warning**: Wiki 全体の意味的な全ページ比較は未完了。更新した4ページと関連知見には方針の衝突を観測しなかったが、全体の矛盾0件とは判定しない。機械検査は別ログに記録。
 
 
 ## 2026-09-30
