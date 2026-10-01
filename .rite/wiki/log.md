@@ -2,6 +2,8 @@
 
 ## 2026-10-01
 
+* **lint:warning** — cleanup の機械検査: 665 ページ、stale 65、orphan 0、broken refs 0、番号参照 0、欠落候補 0。ページから未参照の ingested raw は 672 件（skip 記録を含む）。今回更新した 3 ページを確認したが、全ページ間の意味比較は未完了であり、全体の矛盾件数は未判定。全体意味検査の完了・矛盾ゼロとして扱わない。
+
 * **Create**: [手順書の bash 文は期待文字列で固定せず、抽出して実行するテストで固定する](pages/patterns/procedure-bash-extracted-and-executed-by-test.md) — raw/reviews/20261001T004716Z-pr-3567.md ほか 3 件を新規ページ化
 
 * **Create**: [作業ツリーの内容 hash を証跡にするなら、削除されたパスを表す値を持たせる](pages/heuristics/evidence-hash-needs-deleted-path-representation.md) — raw/fixes/20261001T010038Z-pr-3571.md ほか 2 件を新規ページ化
