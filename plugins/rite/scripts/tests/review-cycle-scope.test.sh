@@ -705,6 +705,44 @@ assert_not_contains "TC-25.22: incremental を出さない" "$SCOPE_STDERR" "REV
 assert_not_contains "TC-25.23: files= を出さない" "$SCOPE_STDERR" "files="
 assert_rc "TC-25.24: full へ倒れたら前 cycle の一覧を残さない" 1 "$([ -e "$comm_stale_list" ]; echo $?)"
 
+# 各 sort の失敗も積の計算失敗として扱う。stdin を読み切ってから失敗し、
+# 他方は実 sort へ渡すので、どちらの入力が失敗しても同じ契約を確かめられる。
+SORT_SHIM="$TEST_DIR/sort-shim"
+mkdir -p "$SORT_SHIM"
+REAL_SORT=$(command -v sort)
+cat > "$SORT_SHIM/sort" <<'SHIM'
+#!/bin/bash
+[ "${1:-}" = -u ] || exec "$REAL_SORT" "$@"
+count=0
+[ ! -f "$SORT_CALLS" ] || read -r count < "$SORT_CALLS"
+count=$((count + 1))
+printf '%s\n' "$count" > "$SORT_CALLS"
+if [ "$count" -eq "$SORT_FAIL_AT" ]; then
+  cat >/dev/null
+  echo "sort: injected failure $count" >&2
+  exit 2
+fi
+exec "$REAL_SORT" "$@"
+SHIM
+chmod +x "$SORT_SHIM/sort"
+for sort_input in 1 2; do
+  sort_calls="$TEST_DIR/sort-calls"
+  rm -f "$sort_calls"
+  printf 'stale\n' > "$comm_stale_list"
+  SCOPE_STDERR=$(PATH="$SORT_SHIM:$PATH" REAL_SORT="$REAL_SORT" SORT_CALLS="$sort_calls" \
+    SORT_FAIL_AT="$sort_input" bash "$TARGET" --pr 42 --results-dir "$MRESULTS" 2>&1) || true
+  assert_contains "TC-25.25.$sort_input: sort 失敗は diff_failed で full" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=full; reason=diff_failed"
+  sort_cause=$(printf '%s\n' "$SCOPE_STDERR" | LC_ALL=C grep -a -A1 'fix diff の積を計算できません' | sed -n '2p')
+  if [ "$sort_cause" = "  sort: injected failure $sort_input" ]; then
+    pass "TC-25.26.$sort_input: sort の原因行は WARNING の直後に字下げされる"
+  else
+    fail "TC-25.26.$sort_input: sort の原因行"; echo "     実際: '$sort_cause'"
+  fi
+  assert_not_contains "TC-25.27.$sort_input: sort 失敗を base 取り込みだけと報告しない" "$SCOPE_STDERR" "差分は base の取り込みだけです"
+  assert_not_contains "TC-25.28.$sort_input: sort 失敗で incremental を出さない" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
+  assert_rc "TC-25.29.$sort_input: sort 失敗で前 cycle の一覧を残さない" 1 "$([ -e "$comm_stale_list" ]; echo $?)"
+done
+
 echo "=== TC-26: fix commit の改名は元パスと新パスの両方を一覧に入れる ==="
 # --name-only は検出した改名の移動先しか出さないため、rename 検出が有効だと元パスが一覧から落ち、
 # reviewer に新パスが新規ファイルとして渡る
