@@ -68,6 +68,20 @@ rationale: references/rationale.md#session-scoped-queue
 
 ---
 
+## 入口: 一時停止の解除
+
+状態の復元・変更より先に実行する。非 0 なら診断を表示して停止し、後続へ進まない。
+
+```bash
+# loop-entry-resume
+bash {plugin_root}/hooks/scripts/loop-entry-resume.sh || exit 1
+```
+
+`LOOP_ENTRY_RESUME=resumed` のときは「同じセッションからの再入により一時停止を解除し、継続ガードを再開しました」と利用者へ表示して続行する。`none` なら通常手順へ進む。
+rationale: ../../references/stop-loop-continuation-contract.md#loop-skill-reentry
+
+---
+
 ## ステップ 0: キュー初期化 / 再開判定
 
 `.rite/state/run-queue-{session_id}.json`（`{issues, cursor, mode, failed, outstanding, active, updated_at}`。session_id は `flow-state.sh path` の basename。解決できなければ fail-loud — global 名へフォールバックしない）を SoT とする。突き合わせ対象は自セッションのキューのみ。`mode` 欠落は `default`、`failed` / `outstanding` 欠落は `[]`、`active` 欠落は `false`、`updated_at` 欠落は stale。`failed` は `[iterate:max-cycles-reached]` の未解消記録（再開後のステップ 6 前進時に当該 Issue を除去）。`outstanding` は `[cleanup:outstanding:N]` で `n > 0` だった Issue。`active` はステップ 0 で `true`、ステップ 8 で `false`。`updated_at` は cursor 前進 / active 設定のたびに更新（ステップ 1 の skip-closed は対象外。[recover Phase 5.5](../recover/SKILL.md)）。

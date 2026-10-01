@@ -57,6 +57,20 @@ argument-hint: ""
 
 ---
 
+## 入口: 一時停止の解除
+
+状態の復元・変更より先に実行する。非 0 なら診断を表示して停止し、後続へ進まない。
+
+```bash
+# loop-entry-resume
+bash {plugin_root}/hooks/scripts/loop-entry-resume.sh || exit 1
+```
+
+`LOOP_ENTRY_RESUME=resumed` のときは「同じセッションからの再入により一時停止を解除し、継続ガードを再開しました」と利用者へ表示して続行する。`none` なら通常手順へ進む。
+rationale: ../../references/stop-loop-continuation-contract.md#loop-skill-reentry
+
+---
+
 ## Phase 1: Issue 番号確定
 
 ### 1.1 引数優先
