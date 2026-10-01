@@ -2,6 +2,12 @@
 
 `stop-loop-continuation.sh`(Stop hook)と flow-state `handoff` フィールドによる「turn 早期終了の構造的差し戻し」機構の設計解説。**本ファイルが機構解説の単一の置き場**であり、各スキル(iterate / pr-review / fix / cleanup / ready)は操作指示 + 本ファイルへの 1 行ポインタのみを持つ(rationale 退避規約: CLAUDE.md スキル行数原則)。
 
+## loop-skill-reentry
+
+同じセッションから iterate / batch-run / recover を呼び直すときは、入口で `loop-entry-resume.sh` が正規の `flow-state.sh path` により session と共有 root を解決し、一時停止の記録があれば既存 `resume` を呼ぶ。結果は stdout と skill の利用者向け表示で伝える。解決・解除に失敗したら後続へ進まない。記録がない入口と、再入しない一時停止は従来どおり。Stop hook の許可時 stderr は実ホスト表示を保証する通知としては扱わない。
+
+解除するのは一時停止の記録であり、停止済み review run を再開・初期化しない。review clock は既存 `resume` の処理で開き直し、run 停止後の裁定は既存の停滞診断へ委ねる。
+
 ## mechanism
 
 ステップ遷移の「次のコマンドへ進む」(継続点)と完了通知(終了点)は本来 LLM が prose 指示 ("Do NOT stop") に従って自走するが、LLM が sentinel を出した直後に turn を終了する中断が観測された (継続点では次コマンドへ進まず停止し、終了点では `[review:mergeable]` 到達後に完了通知を出さず停止)。これを防ぐため、prose に依存しない **構造的な層** を `Stop` hook で実装している。継続点と終了点で **対称** に handoff をセットする:

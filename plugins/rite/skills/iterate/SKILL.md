@@ -87,6 +87,20 @@ rationale: references/rationale.md#circuit-breaker-conditions
 
 ---
 
+## 入口: 一時停止の解除
+
+状態の復元・変更より先に実行する。非 0 なら診断を表示して停止し、後続へ進まない。
+
+```bash
+# loop-entry-resume
+bash {plugin_root}/hooks/scripts/loop-entry-resume.sh || exit 1
+```
+
+`LOOP_ENTRY_RESUME=resumed` のときは「同じセッションからの再入により一時停止を解除し、継続ガードを再開しました」と利用者へ表示して続行する。`none` なら通常手順へ進む。
+rationale: ../../references/stop-loop-continuation-contract.md#loop-skill-reentry
+
+---
+
 ## ステップ 0: flow-state から issue_number / branch_name を復元
 
 `{issue_number}` / `{branch_name}` は standalone 起動でも flow-state set 呼び出しで必須のため、本コマンド冒頭で flow-state から復元する。

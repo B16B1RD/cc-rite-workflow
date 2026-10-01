@@ -156,10 +156,11 @@ else
 fi
 view_n=$(grep -c 'gh pr view {pr_number}' "$MERGE" || true)
 field_n=$(grep -c -- '--json mergeable,mergeStateStatus,isDraft,headRefName,statusCheckRollup' "$MERGE" || true)
-if [ "$view_n" -gt 0 ] && [ "$view_n" = "$field_n" ]; then
-  pass "every gh pr view carries the full CI-gate --json field set (n=$view_n)"
+failure_state_n=$(grep -c 'failed_pr_json=$(gh pr view {pr_number}.*--json state,mergeStateStatus)' "$MERGE" || true)
+if [ "$view_n" -gt 0 ] && [ "$failure_state_n" = 1 ] && [ "$view_n" = "$((field_n + failure_state_n))" ]; then
+  pass "CI queries keep the full field set; the failure-only query reads PR state"
 else
-  fail "gh pr view count ($view_n) must equal full --json field-set count ($field_n)"
+  fail "gh pr view queries must be CI inputs ($field_n) plus one failure-state query ($failure_state_n); got $view_n"
 fi
 
 # --- extracted step-1 execution against gh/sleep stubs ---
@@ -206,6 +207,9 @@ if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
   case "$mode" in
     pending2)
       printf '%s\n' '{"mergeable":"MERGEABLE","mergeStateStatus":"BLOCKED","isDraft":false,"headRefName":"fix/x","statusCheckRollup":[{"__typename":"CheckRun","name":"tests","status":"IN_PROGRESS","conclusion":null},{"__typename":"CheckRun","name":"lint","status":"QUEUED","conclusion":null}]}'
+      ;;
+    behind)
+      printf '%s\n' '{"mergeable":"MERGEABLE","mergeStateStatus":"BEHIND","isDraft":false,"headRefName":"fix/x","statusCheckRollup":[]}'
       ;;
     healthy2)
       printf '%s\n' '{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isDraft":false,"headRefName":"fix/x","statusCheckRollup":[{"__typename":"CheckRun","name":"tests","status":"COMPLETED","conclusion":"SUCCESS"},{"__typename":"CheckRun","name":"lint","status":"COMPLETED","conclusion":"SUCCESS"}]}'
@@ -375,7 +379,7 @@ extract_step2_bash() {
 
 run_step2() {
   # args: reviewed_sha, head_at_gate, head_at_merge
-  local reviewed="$1" head_at_gate="$2" head_at_merge="$3"
+  local reviewed="$1" head_at_gate="$2" head_at_merge="$3" failure_state="${4:-CLEAN}"
   local sandbox
   sandbox=$(mktemp -d "${TMPDIR:-/tmp}/merge-head-pin-XXXXXX") || { echo "ERROR: mktemp failed" >&2; return 1; }
   mkdir -p "$sandbox/bin" "$sandbox/plugin/hooks/scripts" "$sandbox/state/.rite/review-results"
@@ -388,7 +392,19 @@ run_step2() {
   cat > "$sandbox/bin/gh" <<'STUB'
 #!/bin/bash
 echo "$*" >> "$MERGE_PIN_SANDBOX/gh.log"
-if [ "$1 $2" = "pr view" ]; then printf '%s\n' "$MERGE_PIN_HEAD_AT_GATE"; exit 0; fi
+if [ "$1 $2" = "pr view" ]; then
+  case "$*" in
+    *--json\ state,mergeStateStatus*)
+      case "$MERGE_PIN_FAILURE_STATE" in
+        api-failure) echo "state unavailable" >&2; exit 1 ;;
+        merged-behind) printf '%s\n' '{"state":"MERGED","mergeStateStatus":"BEHIND"}' ;;
+        unknown-behind) printf '%s\n' '{"mergeStateStatus":"BEHIND"}' ;;
+        *) printf '{"state":"OPEN","mergeStateStatus":"%s"}\n' "$MERGE_PIN_FAILURE_STATE" ;;
+      esac ;;
+    *) printf '%s\n' "$MERGE_PIN_HEAD_AT_GATE" ;;
+  esac
+  exit 0
+fi
 if [ "$1 $2" = "pr merge" ]; then
   pinned=""
   while [ "$#" -gt 0 ]; do [ "$1" = "--match-head-commit" ] && pinned="${2:-}"; shift; done
@@ -405,10 +421,11 @@ STUB
     | sed -e "s|{pr_number}|1|g" -e "s|{owner_repo}|owner/repo|g" -e "s|{plugin_root}|$sandbox/plugin|g" \
       -e "s|{squash_subject_file}|$sandbox/squash-subject.txt|g" \
     > "$sandbox/step2.sh"
-  MERGE_PIN_SANDBOX="$sandbox" MERGE_PIN_HEAD_AT_GATE="$head_at_gate" MERGE_PIN_HEAD_AT_MERGE="$head_at_merge" \
+  MERGE_PIN_SANDBOX="$sandbox" MERGE_PIN_HEAD_AT_GATE="$head_at_gate" MERGE_PIN_HEAD_AT_MERGE="$head_at_merge" MERGE_PIN_FAILURE_STATE="$failure_state" \
     PATH="$sandbox/bin:$PATH" _timeout 8 bash "$sandbox/step2.sh" > "$sandbox/stdout" 2>"$sandbox/stderr"
   STEP2_RC=$?
   STEP2_OUT=$(cat "$sandbox/stdout")
+  STEP2_ERR=$(cat "$sandbox/stderr")
   STEP2_MERGE_ARGV=$(grep '^pr merge ' "$sandbox/gh.log" || true)
   rm -rf "$sandbox"
 }
@@ -440,6 +457,45 @@ if [ "$STEP2_RC" -ne 0 ] && printf '%s\n' "$STEP2_OUT" | grep -c >/dev/null '^\[
 else
   fail "unreviewed PR head must stop with [merge:not-ready] (rc=$STEP2_RC out=$STEP2_OUT)"
 fi
+
+echo "=== BEHIND failure and recovery ==="
+run_step1 "behind" "1"
+assert "BEHIND step 1 remains successful" "0" "$STEP1_RC"
+assert "BEHIND with no CI retains the existing classification" "none" "$(last_state)"
+if [[ "$STEP1_OUT" == *'MERGE_BASE_STATE=behind; pr=1'* && "$STEP1_OUT" != *'[merge:not-ready]'* ]]; then
+  pass "BEHIND is observed without blocking an unprotected merge"
+else
+  fail "step 1 must distinguish BEHIND and leave normal merge eligible (out=$STEP1_OUT)"
+fi
+rm -rf "$STEP1_SANDBOX"
+run_step2 "$PIN_A" "$PIN_A" "$PIN_B" BEHIND
+if [[ "$STEP2_OUT" == *'[merge:error]'* && "$STEP2_OUT" == *'MERGE_ERROR=behind; pr=1'* ]] \
+  && [[ "$STEP2_ERR" == *'BEHIND:'* && "$STEP2_ERR" == *'gh pr ready 1'* && "$STEP2_ERR" == *'base 取り込み手順 1〜4'* && "$STEP2_ERR" == *'/rite:iterate 1'* && "$STEP2_ERR" == *'全 CI job'* ]]; then
+  pass "BEHIND rejection provides base intake, review and CI recovery"
+else
+  fail "BEHIND rejection must expose its state and concrete recovery (out=$STEP2_OUT err=$STEP2_ERR)"
+fi
+# The intake advances the reviewed head as well as the PR head before retrying.
+run_step2 "$PIN_B" "$PIN_B" "$PIN_B"
+if [[ "$STEP2_OUT" == *'[merge:returned-to-caller]'* && "$STEP2_OUT" != *'MERGE_ERROR=behind'* ]]; then
+  pass "reviewed head after intake merges without repeating the BEHIND stop"
+else
+  fail "reviewed updated head must merge (out=$STEP2_OUT)"
+fi
+run_step2 "$PIN_A" "$PIN_A" "$PIN_A" BEHIND
+if [[ "$STEP2_OUT" == *'[merge:returned-to-caller]'* && "$STEP2_OUT" != *'MERGE_ERROR=behind'* ]]; then
+  pass "unprotected BEHIND keeps the successful merge path"
+else
+  fail "BEHIND alone must not stop a successful merge (out=$STEP2_OUT)"
+fi
+for state in CLEAN api-failure merged-behind unknown-behind; do
+  run_step2 "$PIN_A" "$PIN_A" "$PIN_B" "$state"
+  if [[ "$STEP2_OUT" == *'[merge:error]'* && "$STEP2_OUT" != *'MERGE_ERROR=behind'* && "$STEP2_ERR" != *'復旧手順:'* ]]; then
+    pass "$state after failure keeps the generic error without BEHIND recovery"
+  else
+    fail "$state must not enter the OPEN/BEHIND recovery (out=$STEP2_OUT err=$STEP2_ERR)"
+  fi
+done
 
 if ! print_summary "$(basename "$0")" "mergeStateStatus の CI gate・pending wait loop・jobs API 分類・明示 override contract (T-01〜T-09)"; then
   exit 1

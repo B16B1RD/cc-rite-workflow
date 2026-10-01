@@ -57,6 +57,20 @@ argument-hint: ""
 
 ---
 
+## 入口: 一時停止の解除
+
+状態の復元・変更より先に実行する。非 0 なら診断を表示して停止し、後続へ進まない。
+
+```bash
+# loop-entry-resume
+bash {plugin_root}/hooks/scripts/loop-entry-resume.sh || exit 1
+```
+
+`LOOP_ENTRY_RESUME=resumed` のときは「同じセッションからの再入により一時停止を解除し、継続ガードを再開しました」と利用者へ表示して続行する。`none` なら通常手順へ進む。
+rationale: ../../references/stop-loop-continuation-contract.md#loop-skill-reentry
+
+---
+
 ## Phase 1: Issue 番号確定
 
 ### 1.1 引数優先
@@ -345,11 +359,11 @@ if [ "{resolved_phase}" = "cleanup" ] || [ "{resolved_phase}" = "completed" ]; t
 fi
 ```
 
-`[CONTEXT] RECOVER_OUTSTANDING_WIKI=` / `RECOVER_OUTSTANDING_BRANCH=` marker のいずれかがあれば、Phase 4.1 の状態サマリに以下を追記する（無ければ追記しない — silent、未完了事項「なし」を明示するのは cleanup 自身の完了報告の責務であり、本節は検出のみ）:
+`[CONTEXT] RECOVER_OUTSTANDING_WIKI=` / `RECOVER_OUTSTANDING_BRANCH=` marker のいずれかがあれば、Phase 4.1 の状態サマリに以下を追記する（`{wiki_worktree_abs}` は `bash {plugin_root}/hooks/state-path-resolve.sh` の出力 + `/.rite/wiki-worktree` をリテラル置換する。出力が空で解決できなかったときは、相対パスの案内へ倒さず、解決できなかった旨を案内に出す。無ければ追記しない — silent、未完了事項「なし」を明示するのは cleanup 自身の完了報告の責務であり、本節は検出のみ）:
 
 ```
 ⚠️ 未完了事項を検出しました:
-  - (RECOVER_OUTSTANDING_WIKI=1 のとき) Wiki commit が origin へ未 push です。手動回復: git -C .rite/wiki-worktree push origin {branch}
+  - (RECOVER_OUTSTANDING_WIKI=1 のとき) Wiki commit が origin へ未 push です。手動回復: git -C {wiki_worktree_abs} push origin {branch}
   - (RECOVER_OUTSTANDING_BRANCH=1 のとき) ローカルブランチ {branch} が残っています（対応する PR は OPEN ではありません）。不要なら削除: git branch -D {branch}
 ```
 
