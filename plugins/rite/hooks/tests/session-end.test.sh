@@ -808,7 +808,7 @@ RESOLVER_EOF
   # injection isn't tractable, so use a focused runtime assert: assert that
   # the script's resolver block reads `_resolve_err_total` and computes
   # `_resolve_err_dropped` arithmetically using subtraction.
-  if grep -qE '_resolve_err_dropped[[:space:]]*=[[:space:]]*\$\(\(\s*\$?_resolve_err_total[[:space:]]*-[[:space:]]*\$?_resolve_err_kept\s*\)\)' "$SESSION_END_SCRIPT" \
+  if grep -qE '_resolve_err_dropped[[:space:]]*=[[:space:]]*\$\(\([[:space:]]*\$?_resolve_err_total[[:space:]]*-[[:space:]]*\$?_resolve_err_kept[[:space:]]*\)\)' "$SESSION_END_SCRIPT" \
     || awk '
         /_resolve_err_total/ { saw_total=1 }
         /_resolve_err_kept/ { saw_kept=1 }

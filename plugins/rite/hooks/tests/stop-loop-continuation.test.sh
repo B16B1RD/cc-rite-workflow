@@ -56,7 +56,9 @@ else
 fi
 # Symmetric to TC-7 (AC-3 bidirectional): the continuation branch must NOT use the
 # FINALIZE completion-notice phrasing — pins both sides of the prefix split.
-if _gq_out=$(jq -r '.reason // ""' <<< "$out") && grep -q "完了通知" <<< "$_gq_out"; then
+if ! _gq_out=$(jq -r '.reason // ""' <<< "$out"); then
+  fail "TC-1: could not parse continuation reason: $out"
+elif grep -q "完了通知" <<< "$_gq_out"; then
   fail "TC-1: continuation reason wrongly used the FINALIZE completion-notice phrasing: $out"
 else
   pass "TC-1: continuation reason is distinct from the FINALIZE branch"
@@ -110,7 +112,9 @@ else
 fi
 # Symmetric to TC-7 (AC-3 bidirectional): the fix→review continuation branch must NOT
 # use the FINALIZE completion-notice phrasing.
-if _gq_out=$(jq -r '.reason // ""' <<< "$out") && grep -q "完了通知" <<< "$_gq_out"; then
+if ! _gq_out=$(jq -r '.reason // ""' <<< "$out"); then
+  fail "TC-6: could not parse continuation reason: $out"
+elif grep -q "完了通知" <<< "$_gq_out"; then
   fail "TC-6: continuation reason wrongly used the FINALIZE completion-notice phrasing: $out"
 else
   pass "TC-6: continuation reason is distinct from the FINALIZE branch"
@@ -277,7 +281,9 @@ else
   fail "TC-13: missing unknown-prefix WARNING on stderr: $(cat "$err13")"
 fi
 # The unknown-prefix branch must not claim the review↔fix loop identity.
-if _gq_out=$(jq -r '.reason // ""' <<< "$out") && grep -q "review↔fix" <<< "$_gq_out"; then
+if ! _gq_out=$(jq -r '.reason // ""' <<< "$out"); then
+  fail "TC-13: could not parse unknown-prefix reason: $out"
+elif grep -q "review↔fix" <<< "$_gq_out"; then
   fail "TC-13: unknown-prefix reason wrongly claimed the review↔fix loop identity: $out"
 else
   pass "TC-13: unknown-prefix reason avoids the review↔fix loop phrasing"

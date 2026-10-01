@@ -33,7 +33,7 @@
 #   [CONTEXT] ACCEPTANCE_CHECK_FAILED=1; mode={mode}; reason={reason}[; detail]
 #
 # Reason SoT:
-#   extract: input_missing / input_parse_failed / unsupported_ac_section / no_ac_ids / malformed_ac_item / duplicate_ac_id
+#   extract: input_missing / input_parse_failed / unsupported_ac_section / ac_item_outside_section / no_ac_ids / malformed_ac_item / duplicate_ac_id
 #   table:   input_missing / expected_invalid / jq_missing / table_missing / table_malformed /
 #            table_empty / id_set_mismatch / status_invalid / evidence_missing /
 #            unmet_finding_missing / jq_transform_failed
@@ -145,6 +145,9 @@ case "$mode" in
           if (exact || level <= 2) other = other (other == "" ? "" : ",") heading
         }
       }
+      !in_ac && (/^###[[:space:]]+AC-[0-9]/ || /^[-*+][[:space:]]+\[[ xX]\][[:space:]]+AC-[0-9]/) {
+        if (!outside) outside = NR
+      }
       in_ac {
         item = $0
         if (item ~ /^###[[:space:]]+AC-/) sub(/^###[[:space:]]+/, "", item)
@@ -165,6 +168,7 @@ case "$mode" in
         end_section()
         print "FOUND " (found ? 1 : 0); print "OTHER " other
         print "EMPTY " (empty ? 1 : 0); print "MALFORMED " malformed
+        print "OUTSIDE " outside
       }
     '); then
       _fail input_parse_failed "Issue 本文の受入条件を解析できません"
@@ -174,6 +178,8 @@ case "$mode" in
     [ -z "$malformed" ] || _fail malformed_ac_item "受入条件の形式が不正です（行 ${malformed}）。フェンスも閉じてください。$format_hint"
     other=$(printf '%s\n' "$parsed" | sed -n 's/^OTHER //p')
     [ -z "$other" ] || _fail unsupported_ac_section "未対応の受入条件見出し: ${other}。$format_hint"
+    outside=$(printf '%s\n' "$parsed" | sed -n 's/^OUTSIDE //p')
+    [ -z "$outside" ] || _fail ac_item_outside_section "受入条件の節の外に AC 項目があります（行 ${outside}）。節は次のレベル 1/2 見出しで閉じます。$format_hint"
     found=$(printf '%s\n' "$parsed" | sed -n 's/^FOUND //p')
     if [ "$found" != "1" ]; then
       echo "[CONTEXT] ACCEPTANCE_SCOPE=skipped; reason=no_ac_section" >&2

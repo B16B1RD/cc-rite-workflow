@@ -252,7 +252,11 @@ if grep -q '件名は日本語' "$repo/CLAUDE.md" && ! grep -q 'must be English'
 else
   fail "T-09 rewrite did not stick: $(cat "$repo/CLAUDE.md")"
 fi
-if _gq_out=$(find "$repo/.rite" -name '*.flow-state' 2>/dev/null) && grep -q . <<< "$_gq_out"; then
+if [ ! -e "$repo/.rite" ]; then
+  pass "T-09 no flow-state convention cache"
+elif ! _gq_out=$(find "$repo/.rite" -name '*.flow-state'); then
+  fail "T-09 could not inspect the fixture for flow-state cache"
+elif grep -q . <<< "$_gq_out"; then
   fail "T-09 flow-state cache appeared under the fixture"
 else
   pass "T-09 no flow-state convention cache"
