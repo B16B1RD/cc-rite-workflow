@@ -4233,3 +4233,5 @@ T02:22:43+09:00 — review ingest (skip pages)
 * **Skip**: NB sweep の接続と文書参照の回帰修正は実装・検証へ反映済み。プラグインの一時的なレビュー記録をドメイン経験則として重複登録しない。 — [レビュー・修正結果](raw/fixes/20261001T060538Z-pr-3593.md)
 
 * **Lint incomplete**: 全ページの意味比較は未実施、矛盾数は未確定。機械検査の実測: {"stale": ["n_stale=66", "[CONTEXT] WIKI_LINT_STALE=66"], "orphans": ["n_orphans=0", "[CONTEXT] WIKI_LINT_ORPHANS=0"], "source-refs": ["all_source_refs_read_ok=true", "all_source_refs_read_errors=0"], "skipped-refs": ["log_read_ok=true"], "broken-refs": ["n_broken_refs=0", "broken_refs_read_ok=true", "[CONTEXT] WIKI_LINT_BROKEN_REFS=0"], "descriptive-refs": ["descriptive_refs_read_errors=0", "[CONTEXT] WIKI_DESCRIPTIVE_REFS=0", "descriptive_refs_read_ok=true"]}; missing_concept=0, unregistered_raw=679。全体 lint 成功は主張しない。
+
+- 2026-10-01T07:31:00Z | Ingest | raw 8件を既存 patterns 2ページへ統合。有効CLI・副作用境界の変異検査と、Git fixture の実体パス正規化の観測を追加。検出器化候補: 有効入力で拒否guardの副作用停止を検査する。別レーンの raw は対象外。

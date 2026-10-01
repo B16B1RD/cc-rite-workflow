@@ -47,9 +47,21 @@ sources:
     resource: "raw/reviews/20260929T033128Z-pr-3422.md"
   - type: "reviews"
     resource: "raw/reviews/20260929T055012Z-pr-3438.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261001T045434Z-pr-3590.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261001T062115Z-pr-3590.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T043249Z-pr-3590.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T051830Z-pr-3590.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T055711Z-pr-3590.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T063656Z-pr-3590.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-09-29T05:53:09Z" }
+generated: { by: "rite-wiki-ingest/gpt-6.1-sol", at: "2026-10-01T07:31:00Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T04:58:47Z" }
@@ -119,6 +131,12 @@ assert "Step 12 wiki_ingest_check has an unchecked marker-absence row" "1" \
 
 **修正が穴を塞いだかは、前に生き残った変異が今は落ちることで確かめる**: 前 cycle で生存した変異を修正後のテストへ同じ形で当て直し、当該ケースだけが赤くなることを見る。修正後にスイートが green であることは、修正が穴を塞いだ根拠にならない。
 
+### 失敗経路のテストは有効入力で副作用の境界まで到達させる
+
+CLI の引数不足で先に失敗するテストは、後段の root 解決失敗や書込み停止を検査できない。有効な入力と実 resolver を使い、起票 mock の呼出し0回、既存 tracker の不変、新規 state 不在を直接確かめる。終了コードだけでは、起票後の別の失敗を副作用前の停止と誤認する。
+
+root 拒否 guard を丸ごと外す隔離変異が従来スイートを通過した事例では、新しい副作用 assert によりその変異だけを検出できた。writer は非0停止、lifecycle hook は状態を作らず正常終了という異なる契約を、それぞれの観測点で検査する。
+
 ## 関連ページ
 
 - [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](./absence-pin-base-present-head-absent-single-line.md)
@@ -147,3 +165,10 @@ assert "Step 12 wiki_ingest_check has an unchecked marker-absence row" "1" \
 - [拒否条件の片方の phase を固定するケースを足した fix 結果](../../raw/fixes/20260929T032053Z-pr-3422.md)
 - [生き残った変異を当て直して修正を確かめたレビュー結果](../../raw/reviews/20260929T033128Z-pr-3422.md)
 - [失敗経路を含む追加テストの検出力を再レビューで確認した結果](../../raw/reviews/20260929T055012Z-pr-3438.md)
+
+- [追加観測](../../raw/fixes/20261001T045434Z-pr-3590.md)
+- [追加観測](../../raw/fixes/20261001T062115Z-pr-3590.md)
+- [追加観測](../../raw/reviews/20261001T043249Z-pr-3590.md)
+- [追加観測](../../raw/reviews/20261001T051830Z-pr-3590.md)
+- [追加観測](../../raw/reviews/20261001T055711Z-pr-3590.md)
+- [追加観測](../../raw/reviews/20261001T063656Z-pr-3590.md)

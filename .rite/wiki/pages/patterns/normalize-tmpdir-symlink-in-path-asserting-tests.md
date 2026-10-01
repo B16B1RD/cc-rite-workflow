@@ -4,7 +4,7 @@ title: "git のパス出力を assert するテストは fixture の mktemp 値�
 domain: "patterns"
 description: "macOS の `$TMPDIR` は `/var/folders/...` という symlink で、git は `rev-parse --show-toplevel` でも `worktree list` でも実体側 `/private/var/folders/...` を返す。mktemp の値をそのまま期待値に使うと Linux では緑・macOS CI だけ赤になる。"
 created: "2026-09-01T20:29:00+09:00"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
+generated: { by: "rite-wiki-ingest/gpt-6.1-sol", at: "2026-10-01T07:31:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260908T090455Z-pr-2628.md"
@@ -24,6 +24,10 @@ sources:
     resource: "raw/fixes/20260929T013237Z-pr-3421.md"
   - type: "fixes"
     resource: "raw/fixes/20260929T011536Z-pr-3416.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261001T070446Z-pr-3590.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T072228Z-pr-3590.md"
 tags: []
 confidence: high
 verified:
@@ -87,6 +91,12 @@ fixture の一時ディレクトリだけでなく、テストが被テストス
 
 片辺が `pwd -P` の実パスで、もう片辺が git 管理外で論理パスの `$(pwd)` を返す helper の出力であるときも、同じ不一致が起きる。helper の出力も、比べる前に `cd … && pwd -P` で実パスへ直す。helper の解決に失敗したときは結果が空になるようにして、比較が偽のまま止まる形を保つ。修正前に落ちることと修正後に通ることの両方を、symlink にした `TMPDIR` で確かめる。
 
+### Git fixture を追加すると既存の期待パスに正規化差が現れる
+
+従来の一時ディレクトリへ Git fixture を足すと、helper が Git の実体パスを返すようになり、論理パスの変数を使った既存の診断・パス比較だけが macOS で失敗しうる。最新 base の同じ suite の成功と PR の失敗を比較し、symlink TMPDIR の隔離コピーで修正前失敗・修正後成功を確認すると原因を絞れる。
+
+fixture の root を生成直後に `pwd -P` で揃え、派生パスと payload をその後に作る。runtime の解決規則や assert を緩めずに期待値の表記を合わせる。Linux 上の再現で原因を確かめても、最終的な移植性の確認には実際の macOS CI job の成功を使う。
+
 ## 関連ページ
 
 - [エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する](../anti-patterns/locale-dependent-error-message-grep-assertion.md)
@@ -104,3 +114,6 @@ fixture の一時ディレクトリだけでなく、テストが被テストス
 - [追加観測（スクリプト位置から組み立てる期待パス）](../../raw/reviews/20260929T012747Z-pr-3421.md)
 - [fix 結果（期待パスの解決方式を実装に揃える）](../../raw/fixes/20260929T013237Z-pr-3421.md)
 - [fix 結果（git を介さない helper の出力側も実パスへそろえる）](../../raw/fixes/20260929T011536Z-pr-3416.md)
+
+- [追加観測](../../raw/fixes/20261001T070446Z-pr-3590.md)
+- [追加観測](../../raw/reviews/20261001T072228Z-pr-3590.md)
