@@ -275,7 +275,7 @@ gh api repos/{owner}/{repo}/issues/{issue_number}/comments --jq '.[] | select(.b
 
 ### 2.1 Verify Auto-Detected Commands
 
-`rite-config.yml` から build/lint コマンドを取る:
+1.1 で解決した `{rite_config}` から build/lint コマンドを取る:
 
 ```yaml
 commands:
@@ -477,10 +477,10 @@ heredoc の `{placeholder}` はスクリプト生成前に実値へ置換（シ�
 
 | Placeholder | Source | Example |
 |-------------|--------|---------|
-| `{projects_enabled}` | `rite-config.yml` → `github.projects.enabled` | `true` |
-| `{project_number}` | `rite-config.yml` → `github.projects.project_number` | `6` |
-| `{owner}` | `rite-config.yml` → `github.projects.owner` | `{owner}` |
-| `{iteration_mode}` | `rite-config.yml` → `iteration.enabled` が `true` かつ `iteration.auto_assign` が `true` なら `"auto"`、それ以外は `"none"` | `"none"` |
+| `{projects_enabled}` | `{rite_config}` → `github.projects.enabled` | `true` |
+| `{project_number}` | `{rite_config}` → `github.projects.project_number` | `6` |
+| `{owner}` | `{rite_config}` → `github.projects.owner` | `{owner}` |
+| `{iteration_mode}` | `{rite_config}` → `iteration.enabled` が `true` かつ `iteration.auto_assign` が `true` なら `"auto"`、それ以外は `"none"` | `"none"` |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) | `/home/user/.claude/plugins/rite` |
 
 ```bash
@@ -600,7 +600,7 @@ rationale: references/rationale.md#issue-accountability-never-skip
 
 ### 3.1 Generate PR Title
 
-Conventional Commits。言語は `rite-config.yml` の `language`:
+Conventional Commits。言語は `{rite_config}` の `language`:
 
 | Setting | Behavior |
 |--------|------|
@@ -899,7 +899,7 @@ URL: {pr_url}
 | Issue not found | Choose: create without Issue / specify different Issue / cancel |
 ## Language Support
 
-Follow `language` in `rite-config.yml` (`auto`: detect input language, `ja`: Japanese, `en`: English). Title and body are unified in the same language. Priority for `auto` mode: user input language -> Issue body language -> Japanese.
+Follow `language` in `{rite_config}` (`auto`: detect input language, `ja`: Japanese, `en`: English). Title and body are unified in the same language. Priority for `auto` mode: user input language -> Issue body language -> Japanese.
 
 ---
 
