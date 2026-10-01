@@ -143,7 +143,7 @@ assert_grep "BEHIND stops at step 8" "$STEP5" 'MERGE_ERROR=behind.*\*\*失敗\*\
 STOP="$TMP_ROOT/stop.md"
 awk '/^## ステップ 8: /{s=1} s' "$BATCH" > "$STOP"
 assert_grep "BEHIND replaces generic recover/retry instructions" "$STOP" 'MERGE_ERROR=behind.*汎用復旧 2 行.*置き換える'
-assert_grep "BEHIND draft and base intake precede review" "$STOP" '^> 1\..*draft 戻し → phase=fix.*base 取り込み.*検証・commit・push'
+assert_grep "BEHIND draft and base intake precede review" "$STOP" '^> 1\..*draft 戻し → phase=fix.*base 取り込み.*検証・Wiki 適用証跡の取り直し・commit・head 更新・push'
 assert_grep "BEHIND reviewed head and CI are required before ready" "$STOP" '^> 2\..*/rite:iterate.*全 CI job.*完了・成功.*rite:ready'
 assert_grep "BEHIND resumes queue only after recovery" "$STOP" '^> 3\..*取り込み・再レビュー・CI 確認・ready.*完了した後.*rite:batch-run --merge'
 assert_grep "failed recovery does not restart the queue" "$STOP" '未完のままキューを再開しない'
