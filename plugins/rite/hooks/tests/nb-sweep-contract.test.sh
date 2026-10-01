@@ -691,8 +691,26 @@ fence=$(awk '
   }
   a { blk = blk $0 "\n" }
 ' "$TRIAGE_MD")
-expected='bash {plugin_root}/hooks/scripts/triage-adoption-run.sh --pr {pr_number} --base origin/{base_branch} --fix-loop {fix_loop} --records-file <作業ツリー外の records> --candidates-file <作業ツリー外の candidates>'
+expected="bash {plugin_root}/hooks/scripts/triage-adoption-run.sh --pr {pr_number} --base origin/{base_branch} --fix-loop {fix_loop} --records-file '{records_file}' --candidates-file '{candidates_file}'"
 assert "T-07 procedure 3 fence is one helper call" "$expected" "$fence"
+# 保存済み review JSON の無い番号なら helper は状態を書く前に ADOPTION_GATE_RC を出して止まる。
+# 構文エラーで helper に届かない文は、この印が無いので失敗する。
+records_file=$(mktemp)
+candidates_file=$(mktemp)
+printf '[]\n' > "$records_file"
+printf '{"candidates":[]}\n' > "$candidates_file"
+run_line=$fence
+run_line=${run_line//\{plugin_root\}/$PLUGIN_ROOT}
+run_line=${run_line//\{pr_number\}/9999993508}
+run_line=${run_line//\{base_branch\}/develop}
+run_line=${run_line//\{fix_loop\}/no}
+run_line=${run_line//\{records_file\}/$records_file}
+run_line=${run_line//\{candidates_file\}/$candidates_file}
+exec_out=$(mktemp)
+exec_err=$(mktemp)
+bash -c "$run_line" >"$exec_out" 2>"$exec_err" || true
+assert "T-07 procedure 3 starts the helper" 1 "$(grep -c '\[CONTEXT\] ADOPTION_GATE_RC=' "$exec_out" || true)"
+rm -f "$records_file" "$candidates_file" "$exec_out" "$exec_err"
 repo_root=$(cd "$PLUGIN_ROOT/../.." && pwd)
 heaviness_err=$(mktemp)
 heaviness_rc=0
