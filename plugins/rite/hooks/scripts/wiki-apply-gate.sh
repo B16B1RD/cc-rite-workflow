@@ -329,7 +329,7 @@ for path in recorded_paths:
         fail("record_corrupt")
     if blobs[path] == "-":
         # Recorded as deleted: it must be absent from both the index and the work tree.
-        gone = (git("ls-files", "--", path) == ""
+        gone = (git("ls-files", "--", ":(literal)" + path) == ""
                 and not os.path.lexists(os.path.join(worktree, path)))
         if not gone:
             fail("stale_content")

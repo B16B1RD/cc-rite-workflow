@@ -1798,7 +1798,14 @@ recapture_case() {
   for p in ${changed//,/ }; do [ -e "$r/$p" ] && kept="${kept:+$kept,}$p"; done
   sed "s|__CHANGED__|$kept|" "$cap_block" > "$ROOT/rc-$change-recover.sh"
   # 手順 4 が進められなかった状態（head がレビュー済み commit のまま）から回復する
-  sed -i "s/^head: .*/head: $(git -C "$r" rev-parse HEAD^)/" "$mem"
+  sed -i.bak "s/^head: .*/head: $(git -C "$r" rev-parse HEAD^)/" "$mem" && rm -f "$mem.bak"
+  GRC=0
+  GOUT=$(cd "$r" && rc_env "$flow" bash "$GATE" --mode review 2>/dev/null) || GRC=$?
+  if [ "$GRC" -ne 0 ] && grep -q 'reason=stale_head' <<<"$GOUT"; then
+    pass "$change: before the step 4 recovery the review is refused (stale_head)"
+  else
+    fail "$change: recovery precondition rc=$GRC out=$GOUT"
+  fi
   cap_rc=0
   (cd "$r" && rc_env "$flow" bash "$ROOT/rc-$change-recover.sh") >"$ROOT/rc-$change-recover.out" 2>&1 || cap_rc=$?
   GRC=0
@@ -1858,13 +1865,33 @@ else
   fail "deleted record still indexed rc=$GRC out=$GOUT err=$(cat "$ROOT/rc-gone.err")"
 fi
 # blob の値は 40 桁の oid か削除の - だけを受け付ける
-sed -i 's/^blob: KEEP=-$/blob: KEEP=-x/' "$r/.rite/work-memory/issue-7.md"
+sed -i.bak 's/^blob: KEEP=-$/blob: KEEP=-x/' "$r/.rite/work-memory/issue-7.md" && rm -f "$r/.rite/work-memory/issue-7.md.bak"
+grep -qx 'blob: KEEP=-x' "$r/.rite/work-memory/issue-7.md" || fail "malformed blob was not written"
 GRC=0
 GOUT=$(cd "$r" && rc_env "$ROOT/rc-gone.flow-state" bash "$GATE" --mode review 2>"$ROOT/rc-gone.err") || GRC=$?
 if [ "$GRC" -ne 0 ] && grep -q 'reason=record_corrupt' <<<"$GOUT"; then
   pass "a blob value that is neither an oid nor - is refused as corrupt"
 else
   fail "malformed blob rc=$GRC out=$GOUT err=$(cat "$ROOT/rc-gone.err")"
+fi
+# 削除の照合はパス名を字義どおりに扱う（glob 文字が兄弟のパスに一致しない）
+r=$(new_repo rc-glob)
+printf '.rite/\n' >> "$r/.git/info/exclude"
+write_config "$r" true false
+write_flow "$ROOT/rc-glob.flow-state" fix 7 "$r"
+printf 'a\n' > "$r/p[1]"
+printf 'b\n' > "$r/p1"
+git -C "$r" add 'p[1]' p1
+git -C "$r" commit -qm 'fix: reviewed'
+git -C "$r" rm -q -- ':(literal)p[1]'
+cap_rc=0
+(cd "$r" && rc_env "$ROOT/rc-glob.flow-state" bash "$CAPTURE" --keywords glob --paths 'p[1]') >"$ROOT/rc-glob.out" 2>&1 || cap_rc=$?
+GRC=0
+GOUT=$(cd "$r" && rc_env "$ROOT/rc-glob.flow-state" bash "$GATE" --mode commit 2>"$ROOT/rc-glob.err") || GRC=$?
+if [ "$cap_rc" -eq 0 ] && [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+  pass "a deleted path with glob characters matches its record, not a sibling"
+else
+  fail "glob deletion cap_rc=$cap_rc rc=$GRC out=$GOUT err=$(cat "$ROOT/rc-glob.err") cap=$(cat "$ROOT/rc-glob.out")"
 fi
 
 echo "=== a record that is not this commit's is left as it is ==="
