@@ -59,7 +59,7 @@ rationale: references/rationale.md#session-scoped-queue
 | `{breaker_failed}` | ステップ 8: `[iterate:max-cycles-reached]` 受領なら `true`、それ以外は `false` |
 | `{failed_issues}` | ステップ 7 bash の `failed=`（サーキットブレーカー `[iterate:max-cycles-reached]` で非収束となった Issue 一覧。空 `[]` のとき完了通知の該当行を省略） |
 | `{outstanding_n}` | ステップ 6 で cleanup 完了報告から読む `[cleanup:outstanding:N]` sentinel の `N` に実際に埋め込まれた数値 |
-| `{action_items}` | 本 run の bash 出力に残った、ユーザーの操作が必要な WARNING / ERROR。ステップ 7 完了通知 / ステップ 8 停止報告の `要対応:` 欄へ転記する（0 件なら欄ごと省略） |
+| `{action_items}` | 本 run の bash 出力に残った、ユーザーの操作が必要な WARNING / ERROR（ステップ 8 では、`失敗理由:` に 4 要素で書いた人間にしか確認できない事項の 1 行要約を含む）。ステップ 7 完了通知 / ステップ 8 停止報告の `要対応:` 欄へ転記する（0 件なら欄ごと省略） |
 | `{audit_report}` | ステップ 7 の `/rite:issue-audit` 完了報告の `監査レポート:` 行の path |
 | `{outstanding_issues}` | ステップ 7 bash の `outstanding=`（未完了事項が残った Issue 一覧。空 `[]` のとき完了通知の該当行を省略） |
 | `{done_issues}` / `{remaining_issues}` | ステップ 8 bash の `done=` / `remaining=`（停止時の処理済み / 未処理 Issue） |
@@ -499,7 +499,7 @@ skill: rite:issue-audit
 
 `mode=`（`{run_mode}`）に応じて、`processed=` の Issue 一覧を `{processed_issues}`、`failed=` の非収束 Issue 一覧を `{failed_issues}` として完了通知を出し分ける。`failed=` が空配列 `[]` でない場合は、完了通知にサーキットブレーカーで failed 扱いとなった Issue を明示する（`[]` のときは該当行を省略する）。`outstanding=` の Issue 一覧を `{outstanding_issues}` として使う（cleanup 完了報告の「未完了事項」をロールアップする。`mode=merge` のときのみ意味を持つ — デフォルトモードは cleanup を invoke しないため `outstanding` は常に空）。
 
-`{action_items}`（ステップ 7 の 2 テンプレとステップ 8 停止報告に共通）: 本 run の bash 出力に残った WARNING / ERROR のうち、ユーザーが操作しない限り残り続ける行を 1 行ずつ列挙する。最終試行と重複の判定は [Autonomous Execution](../rite-workflow/references/autonomous-execution.md) に従う。成功した迂回・リトライは載せない。**0 件なら `要対応:` 行ごと省略する**。cleanup 由来の非ブロッキング失敗をロールアップする `未完了事項:` 行とは別欄で、0 件時の扱いも異なる（`未完了事項:` は常に出す）。
+`{action_items}`（ステップ 7 の 2 テンプレとステップ 8 停止報告に共通）: 本 run の bash 出力に残った WARNING / ERROR のうち、ユーザーが操作しない限り残り続ける行を 1 行ずつ列挙する。最終試行と重複の判定は [Autonomous Execution](../rite-workflow/references/autonomous-execution.md) に従う。成功した迂回・リトライは載せない。ステップ 8 の停止報告では、`失敗理由:` に 4 要素で書いた人間にしか確認できない事項の 1 行要約も同じ欄に列挙する。**0 件なら `要対応:` 行ごと省略する**。cleanup 由来の非ブロッキング失敗をロールアップする `未完了事項:` 行とは別欄で、0 件時の扱いも異なる（`未完了事項:` は常に出す）。
 
 **デフォルト（`mode=default`）**: 各 Issue は draft PR で停止しており **merge していない**:
 
@@ -593,6 +593,8 @@ echo "[CONTEXT] RUN_STOP; cursor=$cursor; done=$done_issues; remaining=$remainin
 <!-- [run:stopped] -->
 ```
 
+> **停止報告の欄**: 上のテンプレートの欄だけで構成し、独自の見出し・欄（「決めてほしいこと」等）を足さない。人間への依頼は `要対応:` に限る。推奨案があり元に戻せる判断（PR 内で直せる修正の実行など）は「〜してよいか」と質問せず、`復旧:` に推奨手順として書く。人間にしか確認できない事項だけを、[question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) 規則 6 の 4 要素（何を・なぜ AI では確かめられないか・どう確かめるか・期待する結果）で `失敗理由:` に書き、同じ事項を `要対応:` に 1 行ずつ要約して載せる。
+>
 > 復旧行の `/rite:batch-run` には、`{run_mode}=merge` のときのみ `--merge` を併記する（引数省略再開でも自セッションの run-queue の `mode` が維持されるため必須ではないが、明示再開する場合の指針として示す）。
 > `[merge:error]` + `MERGE_ERROR=behind` の停止では、上の汎用復旧 2 行を以下で**置き換える**。base を取り込む前に recover / batch-run で同じ merge を再試行させない:
 >
