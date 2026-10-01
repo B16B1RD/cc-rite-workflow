@@ -34,10 +34,10 @@
 # Unscannable files are an error, not a clean bill
 # ------------------------------------------------
 #   A file this script could not scan (unbalanced fences, unreadable, missing
-#   --target path) exits 2, not 0. The exit code is the only channel the caller
-#   reads: `/rite:lint` Phase 3.5 maps rc=0 to `success` and shows the script's
-#   output only for `warning`/`error`, and its summary is skipped entirely in
-#   E2E flow — so a WARNING on stderr paired with rc=0 reaches nobody. Folding
+#   --target path) exits 2, not 0. Standalone `/rite:lint` shows leading
+#   WARNING lines in Phase 4.3 even with rc=0, but the status stays `success`.
+#   E2E flow skips Phase 4.3 and includes output in its appendix only for
+#   `warning`/`error`, so rc=0 would leave the WARNING undisplayed there. Folding
 #   "scanned everything, found nothing" together with "could not scan" would
 #   reproduce, inside the guard, the exact defect class the guard exists to
 #   prevent.
