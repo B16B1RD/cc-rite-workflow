@@ -1592,8 +1592,9 @@ If reviewers have written items in the "仕様への疑問" section, first settl
 2. **5.3.0.M 実測必須ゲート** — **`scripts/review-measured-gate.sh` を実行する**。分類は helper。Claude は判定しない。SoT: [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) / [assessment-rules.md §5.3.0.M](../fix/references/assessment-rules.md)。
 3. **5.3.0.C 帰結クラス降格政策** — 分類 map の Write と `scripts/review-class-demotion-gate.sh`。`blocking=0` なら本ゲート全体を skip。A=0 で exclusion なし B を降格し、exclusion 付き B は blocking 維持。SoT: [severity-levels.md §帰結クラス軸](../../references/severity-levels.md#帰結クラス軸-consequence-class) / [assessment-rules.md §5.3.0.C](../fix/references/assessment-rules.md)。
 4. **5.3.0.A 受入条件の最終整合検査** — `scripts/acceptance-criteria-check.sh final` を実行する。判定行の AC-ID 集合・対象判定と reviewers[] の整合、未充足行の finding が降格後も blocking に残ることを検査し、未検証 AC を 8.0 / 8.1 へ渡す。
-5. **5.3.1-5.3.7** を降格後の `全指摘事項` に適用。件数は marker とゲート後 JSON から読む（再分類しない）。
-5.3.0 / 5.3.0.M / 5.3.0.C / 5.3.0.A を 5.3.1 の前に飛ばすことは **禁止**。
+5. **5.3.0.CI 確定前の全 CI job 確認** — 暫定 mergeable は同一 reviewed commit の全 job 完了・非失敗を確認してから確定する。fix-needed は取得・待機しない。
+6. **5.3.1-5.3.7** を降格後の `全指摘事項` に適用。件数は marker とゲート後 JSON から読む（再分類しない）。
+5.3.0 / 5.3.0.M / 5.3.0.C / 5.3.0.A / 5.3.0.CI を 5.3.1 の前に飛ばすことは **禁止**。
 rationale: references/design-rationale.md#5.3-execution-order-why
 
 #### Number-reference `--diff` (every cycle)
@@ -1685,7 +1686,7 @@ bash {plugin_root}/scripts/pr-review-step.sh measured-gate --input {review_tmp_d
 
 
 **`measured_gate_retry_count`** (retained flag、conversation context に保持): int、初期値 `0`。step 2 再実行の直前に +1 する。上記 3 reason で共通の上限を使い、本 step 全体で再試行は **1 回まで**。再発したら `[review:error]` で停止する。
-`findings[]` が元から空の場合、helper は移送 0 件・`assessment=mergeable` を返す (現行動作維持)。
+`findings[]` が元から空の場合、helper は移送 0 件・`assessment=mergeable` を返す。この値は CI 確認前の暫定分類であり、5.3.0.CI が通るまで確定結果として報告・保存しない。
 
 #### 5.3.0.C 帰結クラス降格政策実行手順 (helper 委譲)
 
@@ -1767,7 +1768,7 @@ bash {plugin_root}/scripts/review-class-demotion-gate.sh \
 
 #### 5.3.0.A 受入条件の最終整合検査
 
-5.3.0 / 5.3.0.M / 5.3.0.C のすべての後・5.3.1 とステップ 6.1.a の前に、毎 cycle 実行する（5.3.0.C を skip した cycle も含む）:
+5.3.0 / 5.3.0.M / 5.3.0.C のすべての後・5.3.0.CI とステップ 6.1.a の前に、毎 cycle 実行する（5.3.0.C を skip した cycle も含む）:
 
 ```bash
 bash {plugin_root}/scripts/acceptance-criteria-check.sh final \
@@ -1776,13 +1777,41 @@ bash {plugin_root}/scripts/acceptance-criteria-check.sh final \
 
 | Result | Action |
 |---|---|
-| rc=0 + `ACCEPTANCE_FINAL=ok; unmet={ids}; unverified={ids}` | `unverified=` の値を `{acceptance_unverified}` として retain し 5.3.1 以降へ進む（ステップ 8.0 / 8.1 が使う） |
-| rc=0 + `ACCEPTANCE_FINAL=skipped` | `{acceptance_unverified}` を空として 5.3.1 以降へ進む |
+| rc=0 + `ACCEPTANCE_FINAL=ok; unmet={ids}; unverified={ids}` | `unverified=` の値を `{acceptance_unverified}` として retain し 5.3.0.CI へ進む（ステップ 8.0 / 8.1 が使う） |
+| rc=0 + `ACCEPTANCE_FINAL=skipped` | `{acceptance_unverified}` を空として 5.3.0.CI へ進む |
 | rc=1 + `reason=unmet_finding_not_blocking`, first occurrence | reviewer 契約違反。acceptance reviewer を 1 回だけ reroll し（元 prompt + 診断 + 未充足の指摘に `[AC-N]` 接頭辞と正規形の `Verification:` アンカーを付ける要求）、5.1 の回収完了ゲート → 5.1.0.L → 5.1.0.AC → 5.1.2.A → 5.2 → 5.2.1 → 5.2.2 → Fact-Checking → 5.3.0 → 5.3.0.M step 1 → step 2 → step 3 → 5.3.0.C → 本検査を同 cycle 内で再実行する。`acceptance_criteria[].status` を `unverified` に書き換えて通してはならない。再実行する 5.2 / 5.2.1 / 5.2.2 / Fact-Checking の対象は reroll で置き換わった acceptance の finding（既存 finding との矛盾検出を含む）とし、他 reviewer の finding、初回に決まった矛盾の disposition、fact-check 判定は保持する。5.2.2 不採用は Verification 追加だけで再採用しない。再実行 5.2.2 は初回の不採用行を破棄しない。`evidence_claim_rejected_count` はマージ後の件数（skip 時は 0 は本 cycle で 5.2.2 が未判定のときに限る） |
 | rc=1 after the one reroll、その他の reason、rc=2 | `[review:error]` を stdout に出力して停止する |
 
 `acceptance_final_retry_count` は int、初期 0。reroll を始める直前に +1 する。reroll 内で再実行する 5.3.0.M / 5.3.0.C は、それぞれ既存の `measured_gate_retry_count` / `class_gate_retry_count` を引き継ぐ。
 rationale: references/design-rationale.md#acceptance-reviewer
+
+#### 5.3.0.CI 確定前の全 CI job 確認
+
+5.3.0.A の後、統合レポート（5.4）・保存（6.1.a / `review-finish`）・最終 `[review:mergeable]` の前に毎 cycle 実行する。5.3.0.M / 5.3.0.C の `mergeable` は候補分類であり、本ゲート成功前に確定として公開しない。開始時の 1.2.5.C snapshot は reviewer の初期情報のまま維持し、完了判定には再利用しない。
+
+```bash
+bash {plugin_root}/scripts/pr-review-step.sh ci-completion-check \
+  --owner-repo {owner_repo} --pr {pr_number} \
+  --input {review_tmp_dir}/rite-review-result-{pr_number}.json
+```
+
+helper はレビュー JSON の commit と毎回取得した PR HEAD を照合し、`pr-checks-classify.sh` で job ごとの結果を読む。workflow 全体の成功表示や必須 check の subset で代用しない。`continue-on-error` の job も失敗なら止める。pending は 15 秒間隔・上限 540 秒（merge と同じ）で再取得し、失敗 job と実行中 job が混在する場合も全 job の完了まで待つ。wait/poll の明示引数は通常省略し、上限を超えた確認を成功へ切り替える用途には使わない。
+
+呼び出し前に現在の work 計測区間を閉じ、待機を `external_wait` として開始する。終了コードにかかわらず区間を閉じ、後続作業で work を開く。Bash の実行上限は待機上限を含む 600000ms とし、途中 yield 後も完了を回収する。fix-needed は helper が取得・待機せず skip する。取得・分類不明、HEAD 不一致、上限到達は未確認の停止であり、CI を成功扱いしない。
+
+| 観測 | Action |
+|---|---|
+| rc=0 + `REVIEW_CI_FINAL=passed; state=healthy` または `state=none` | 全 job 完了・非失敗、または check 0 件。stdout の最新 JSON を `{ci_status}`、その `.state` を `{ci_state}` に保持し、5.3.8 → 5.4 → 6.1.a へ進む |
+| rc=0 + `REVIEW_CI_FINAL=skipped; reason=fix_needed` | 修正が必要なので CI を待たず、既存の fix-needed の報告・保存へ進む |
+| rc=1 + `REVIEW_CI_FINAL=failed; reason=unhealthy` | 最終 mergeable を出力せず、下記の CI 失敗回収へ進む。report/save は実行しない |
+| その他の非ゼロ、`REVIEW_CI_FINAL=error`、成功 marker 不在 | 診断を保持し `[review:error]` で停止。report/save は実行しない。取得不能・期限超過を再生成で迂回しない |
+
+**CI 失敗回収**（`ci_failure_retry_count` 初期 0、再生成開始前に 1。1 の状態で再び失敗なら停止）:
+
+1. stdout の failed job 証跡（対象 SHA・job 名・結論・詳細 URL）を保持する。GitHub の同じ owner/repo の Actions 詳細 URL から確認した run ID / job ID で `gh run view {run_id} -R {owner_repo} --job {job_id} --log-failed` を取得する。ログを取得できない場合は `[review:error]` で停止する。CI の自動 rerun は行わない。
+2. テスト失敗は Test、workflow / 実行基盤は DevOps の選定済み担当 reviewer を再生成する。未選定担当が必要なら `[review:error]` で停止し、selection / manifest は変更せず保持する。cycle 開始後の名簿は固定であり、担当の追加は承認を得た正規 `review-restart` の再選定へ委ねる。元 prompt に最新 `{ci_status}` と失敗ログを添え、job の失敗を根拠に原因・実差分への帰属を独立検証し、実測アンカー付きの指摘として返すよう依頼する。一律 blocking や親による finding 創作はしない。原 raw を保持し、新 raw の別ファイルを回収する。再生成不能なら `[review:error]` で停止する。
+3. 再回収した担当について completion → likelihood → AC 検証を行い、通常の統合・単一 JSON authoring → measured-gate → class gate → AC 最終整合 → CI 再確認へ戻る。他 reviewer の raw / disposition は保持する。検証失敗なら `[review:error]` で停止し、report/save は実行しない。CI を理由とする再生成は producer 形式エラーの再試行回数とは別に管理する。
+4. 実測付き指摘が blocking となれば fix-needed で既存修正経路へ進む。CI 失敗が継続し blocking 0 の場合は、最終 mergeable を出力せず `[review:error]` で停止し、report/save は実行しない。変更に帰属しない失敗も、解消を確認できるまで mergeable の例外にしない。
 
 ### 5.3.8 Fix-Introduced Finding Attribution
 
