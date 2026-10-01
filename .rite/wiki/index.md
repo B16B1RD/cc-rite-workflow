@@ -677,9 +677,10 @@ okf_version: "0.2"
 | [照合キーの要素を信頼できない行は空キーにして、呼び出し側の 1 本の検査で止める](pages/heuristics/untrusted-row-yields-empty-match-key-single-fail-loud-check.md) | heuristics | 列数が想定外の行や、キー要素のセルが空の行を、既定値で寄せて照合に使うと旧形式の行と誤一致して「記録済み」と判定される。要素を信頼できない行は空キーにし、呼び出し側が空キーで fail-loud に止める 1 本の検査にすると、別変数と別検査を足さずに閉じられる。 | 2026-10-01T12:05:00+09:00 | medium |
 | [手順の要約を直すときは、その文言を固定しているテストも同時に直す](pages/heuristics/summary-phrase-edit-updates-pinning-tests.md) | heuristics | 手順が掲げる要約の文言を直すときは、その文言を正規表現で固定しているテストも同じ変更に含める。直す前にその文言でテストを検索し、検証の最後で初めて欠落に気づいて範囲を取り直す手戻りを避ける。 | 2026-10-01T04:06:42Z | medium |
 | [停止で終える分岐から sub-skill を呼ぶときは、sub-skill が張った完了 handoff を phase を変えずに消してから止まる](pages/patterns/stop-path-clears-subskill-completion-handoff.md) | patterns | 停止で終える分岐の手前に sub-skill を呼ぶ経路を足すと、sub-skill が戻りで張る完了 handoff が残り、Stop hook が停止を完了経路へ差し戻す。停止通知の前に handoff なしの set で消し、その set は phase を現在値のまま書く。 | 2026-10-01T16:55:00Z | high |
+| [手順書の分岐行に書く理由欄は参照先 skill の停止規則を読み直してから書き、対になる記述を同時に揃える](pages/heuristics/branch-row-rationale-must-match-referenced-skill-behavior.md) | heuristics | 手順書の分岐表に行を足すとき、行き先が正しくても理由欄の断定（失敗ではない・条件が残ったときに限って止まる等）が参照先 skill の実挙動より広いと、実行者が誤読して転記や停止報告を省く。理由欄は参照先の停止規則を読み直して限定し、同じ節で対になる記述（default 行と失敗理由欄など）は片側だけ直さず同時に開いて揃える。 | 2026-10-02T03:10:00+09:00 | high |
 ## 統計
 
-- 総ページ数: 667
-- ドメイン別: patterns=142, heuristics=333, anti-patterns=192
-- 最終更新: 2026-10-01T16:55:00Z
+- 総ページ数: 668
+- ドメイン別: patterns=142, heuristics=334, anti-patterns=192
+- 最終更新: 2026-10-02T03:10:00+09:00
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
