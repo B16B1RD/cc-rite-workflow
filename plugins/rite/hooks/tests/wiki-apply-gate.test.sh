@@ -1797,11 +1797,14 @@ recapture_case() {
   local kept="" p
   for p in ${changed//,/ }; do [ -e "$r/$p" ] && kept="${kept:+$kept,}$p"; done
   sed "s|__CHANGED__|$kept|" "$cap_block" > "$ROOT/rc-$change-recover.sh"
+  # 手順 4 が進められなかった状態（head がレビュー済み commit のまま）から回復する
+  sed -i "s/^head: .*/head: $(git -C "$r" rev-parse HEAD^)/" "$mem"
   cap_rc=0
   (cd "$r" && rc_env "$flow" bash "$ROOT/rc-$change-recover.sh") >"$ROOT/rc-$change-recover.out" 2>&1 || cap_rc=$?
   GRC=0
   GOUT=$(cd "$r" && rc_env "$flow" bash "$GATE" --mode review 2>"$ROOT/rc-$change-recover.err") || GRC=$?
-  if [ "$cap_rc" -eq 0 ] && [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+  if [ "$cap_rc" -eq 0 ] && grep -qx "head: $(git -C "$r" rev-parse HEAD)" "$mem" \
+    && [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
     pass "$change: the step 4 recovery re-capture lets the next review allow"
   else
     fail "$change: step 4 recovery cap_rc=$cap_rc rc=$GRC out=$GOUT err=$(cat "$ROOT/rc-$change-recover.err") cap=$(cat "$ROOT/rc-$change-recover.out")"

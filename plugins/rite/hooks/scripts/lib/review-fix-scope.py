@@ -207,12 +207,12 @@ def validate(plan, issue, state, session, root, allow_replan=False):
 # The one supported way to take the base branch into a reviewed PR branch.
 BASE_INTAKE_STEPS = ("git fetch origin <base>, take it in with git merge --no-commit --no-ff origin/<base>, "
                      "resolve and stage it, add a base-intake group to the fix plan, run check and "
-                     "verify --kind all, re-capture the wiki apply record, commit, advance its head, "
+                     "verify --kind all, re-capture the wiki apply record, commit, advance the record's head, "
                      "push, then re-run /rite:iterate "
                      "(skills/fix/references/fix-plan.md, section: base 取り込み)")
 # The same route, entered with a merge already in progress.
 BASE_INTAKE_CONCLUDE = ("if it takes in origin/<base>, resolve and stage it, add a base-intake group to the fix plan, "
-                        "run check and verify --kind all, re-capture the wiki apply record, commit, advance its head, "
+                        "run check and verify --kind all, re-capture the wiki apply record, commit, advance the record's head, "
                         "push, then re-run /rite:iterate; otherwise "
                         "git merge --abort and start over (skills/fix/references/fix-plan.md, section: base 取り込み)")
 
