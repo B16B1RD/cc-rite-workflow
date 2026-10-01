@@ -18,6 +18,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
 HOOK="$SCRIPT_DIR/../session-end.sh"
 TEST_DIR="$(mktemp -d)"
+# Match Git's physical root spelling in path and diagnostic assertions.
+TEST_DIR=$(cd "$TEST_DIR" && pwd -P)
 LAST_STDERR_FILE=""
 PASS=0
 FAIL=0

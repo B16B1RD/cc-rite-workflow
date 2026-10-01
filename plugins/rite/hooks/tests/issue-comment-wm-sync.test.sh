@@ -17,6 +17,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
 HOOK="$SCRIPT_DIR/../issue-comment-wm-sync.sh"
 TEST_DIR="$(mktemp -d)"
+# Git reports physical roots, including macOS /var -> /private/var.
+TEST_DIR=$(cd "$TEST_DIR" && pwd -P)
 PASS=0
 FAIL=0
 

@@ -233,6 +233,8 @@ negative_control "T-06: removing PIN_RECOVER breaks T-02" \
 HOOK="$PLUGIN_ROOT/hooks/stop-failure.sh"
 HOOKS_JSON="$PLUGIN_ROOT/hooks/hooks.json"
 SF_DIR=$(mktemp -d)
+# Match Git's physical root spelling in path and diagnostic assertions.
+SF_DIR=$(cd "$SF_DIR" && pwd -P)
 trap 'chmod -R u+w "$SF_DIR" 2>/dev/null || true; rm -rf "$SF_DIR"' EXIT
 SF_STDERR="$SF_DIR/stderr"
 SID="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
