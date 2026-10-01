@@ -41,10 +41,16 @@ sources:
     resource: "raw/reviews/20260925T115338Z-pr-3086.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T095830Z-pr-3256.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T002039Z-pr-3568.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261001T003117Z-pr-3568.md"
 tags: ["pin", "mutation-testing", "static-assert", "producer-consumer-symmetry", "drift-detection"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:21:25Z" }
+generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-10-01T00:40:35Z" }
 verified:
+  - by: "rite-wiki-ingest/gpt-6"
+    at: "2026-10-01T00:40:35Z"
   - by: "rite-wiki-ingest/claude-opus-5"
     at: "2026-08-30T05:20:00Z"
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
@@ -254,6 +260,8 @@ negative assert は静かに通る。`[[:space:]]` を使う。
 
 状態を報告する marker 行を marker 名の断片だけで pin すると、payload の変数を別の変数や固定値へすり替える変異が生存する。行全体を `grep -cxF` で固定し、さらに行に載る変数がその節で helper の出力から代入されていることを別の assert で固定する。この 2 本を置いても、出力直前に同じ変数を上書きする形の変異は生き残りうる。契約全体を壊さない網羅的強化の類は、その場で pin を積み増さず非ブロッキングの推奨として扱える。
 
+復旧案内の pin は定義文と使用箇所、終了コードごとの行、停止語とコマンドが同居する行を別々に照合する。ファイル全体の件数だけでは無関係な一致が穴を埋めるため、対象行の削除や書き換えを一時コピーへ当て、対応する検査が失敗することを確かめる。
+
 ## 関連ページ
 
 - [assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く](../anti-patterns/assert-not-grep-vacuous-without-fixture-scope.md)
@@ -279,3 +287,6 @@ negative assert は静かに通る。`[[:space:]]` を使う。
 - [レビュー結果（但し書きの判定語を主語と取り違える位置 pin）](../../raw/reviews/20260925T110204Z-pr-3084.md)
 - [レビュー結果（折り返し行の断片 pin が要点を取りこぼす）](../../raw/reviews/20260925T115338Z-pr-3086.md)
 - [レビュー結果（marker 行の payload 変数を行全体一致と代入元で固定）](../../raw/reviews/20260927T095830Z-pr-3256.md)
+
+- [レビュー結果](../../raw/reviews/20261001T002039Z-pr-3568.md)
+- [fix 結果](../../raw/fixes/20261001T003117Z-pr-3568.md)

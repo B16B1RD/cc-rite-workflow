@@ -4,10 +4,15 @@ title: "既存パーサの一部だけを再利用すると、保守的に判定
 description: "検出器を作り直すときに既存パーサの一部の関数だけを借りると、直接コマンドでない形（timeout や nice 経由など）を保守的に数えていた判定が抜け、旧検出器が拾っていた対象を 0 件と数える退行になる。"
 domain: "anti-patterns"
 created: "2026-10-01T00:20:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-01T00:20:00Z" }
+generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-10-01T00:40:35Z" }
+verified:
+  - by: "rite-wiki-ingest/gpt-6"
+    at: "2026-10-01T00:40:35Z"
 sources:
   - type: "reviews"
     resource: "raw/reviews/20261001T000445Z-pr-3551.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T002819Z-pr-3551.md"
 tags: []
 confidence: medium
 ---
@@ -24,6 +29,8 @@ confidence: medium
 
 新しい検出器では、パーサ全体の判定を再利用する。正常系・既存の検出対象・新しく足す対象の 3 種の対照入力をテストに保持し、旧検出器が数えていた形を新検出器も数えることを確かめる。
 
+保守的な suffix 判定を再利用すると、timeout や nice 経由の呼び出しも既存の検出対象として残せる。禁止された呼び出しを個別に注入して同じ不在検査が落ちることと、旧実装へ戻すと新しいラッパー対照入力が落ちることを確かめれば、検査の空振りを避けられる。レビューの合格と CI の成功は別々に確認する。
+
 ## 関連ページ
 
 - （関連ページなし）
@@ -31,3 +38,5 @@ confidence: medium
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20261001T000445Z-pr-3551.md)
+
+- [レビュー結果](../../raw/reviews/20261001T002819Z-pr-3551.md)

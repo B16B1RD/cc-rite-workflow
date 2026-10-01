@@ -5,6 +5,9 @@ description: "bash block 内でシェル変数として計算した値を、別�
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/bash-cross-boundary-emit-explicit-context.md"
 created: "2026-04-30T01:58:00+00:00"
+verified:
+  - by: "rite-wiki-ingest/gpt-6"
+    at: "2026-10-01T00:40:35Z"
 sources:
   - type: "fixes"
     resource: "raw/fixes/20260430T014425Z-pr-688.md"
@@ -16,9 +19,13 @@ sources:
     resource: "raw/reviews/20260519T114404Z-pr-1062.md"
   - type: "reviews"
     resource: "raw/reviews/20260519T122133Z-pr-1062.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T002039Z-pr-3568.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261001T003117Z-pr-3568.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-19T12:30:00Z" }
+generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-10-01T00:40:35Z" }
 ---
 
 # Bash tool 境界を跨ぐ値は [CONTEXT] sentinel として明示 emit する
@@ -63,6 +70,8 @@ cross-Bash-call shell var の構造的回避策には [CONTEXT] sentinel emit (c
 
 新規実装で「Step を分割するべきか」判断する際は、cross-call shell var transport が本質的に必要かを最初に問うこと。不要なら物理統合を default 選択肢として、boundary 自体を作らない方向が構造的に堅牢。
 
+手順書の置換元が別の Bash 呼び出しの変数を指すと、出力のない代入だけでは次の実行者が値を観測できない。値を同じ呼び出しで出力するか、既存の resolver を実行して出力を使う定義にそろえる。既存の受け渡し規約で足りるなら、専用の状態や marker を増やす必要はない。
+
 ## 関連ページ
 
 - [散文で宣言した設計は対応する実装契約がなければ機能しない](../anti-patterns/prose-design-without-backing-implementation.md)
@@ -74,3 +83,6 @@ cross-Bash-call shell var の構造的回避策には [CONTEXT] sentinel emit (c
 - [sub-skill 内 bash 変数 guard が常に false の CRITICAL 検出](../../raw/reviews/20260514T082816Z-pr-953.md)
 - [per-finding loop 内で Step 2/Step 3 が独立 Bash invocation だった結果 shell var cross-call 消失 + 重複 emit が CRITICAL として検出](../../raw/reviews/20260519T114404Z-pr-1062.md)
 - [mergeable (cycle 4 で Step 2/3 物理統合により cross-call boundary を消去、per-finding loop の単一 invocation invariant 依拠で重複 emit も構造的解消、4 cycle (18→6→3→3→0) 構造的収束)](../../raw/reviews/20260519T122133Z-pr-1062.md)
+
+- [レビュー結果](../../raw/reviews/20261001T002039Z-pr-3568.md)
+- [fix 結果](../../raw/fixes/20261001T003117Z-pr-3568.md)

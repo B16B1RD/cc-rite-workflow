@@ -58,6 +58,14 @@
 
 * **Lint incomplete** — 機械検査は stale=65, orphans=0, missing_concept=0, unregistered_raw=645, broken_refs=0, descriptive_refs=0。今回の取り込みではページ本文の変更なし。全ページの意味比較は未完了で、contradictions は未確定。Wiki 全体の品質検査成功とは扱わない。
 
+* **Skip**: [レビュー結果](raw/reviews/20261001T002300Z-pr-3566.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
+
+* **Update**: [既存パーサの一部だけを再利用すると、保守的に判定していた入力の扱いが抜け落ちる](pages/anti-patterns/partial-parser-reuse-drops-conservative-judgment.md) — [レビュー結果](raw/reviews/20261001T002819Z-pr-3551.md) を統合
+
+* **Update**: [Bash tool 境界を跨ぐ値は [CONTEXT] sentinel として明示 emit する](pages/patterns/bash-cross-boundary-emit-explicit-context.md) と [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) — [レビュー結果](raw/reviews/20261001T002039Z-pr-3568.md) を統合
+
+* **Update**: [Bash tool 境界を跨ぐ値は [CONTEXT] sentinel として明示 emit する](pages/patterns/bash-cross-boundary-emit-explicit-context.md) と [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) — [fix 結果](raw/fixes/20261001T003117Z-pr-3568.md) を統合
+
 ## 2026-09-30
 
 * **Lint incomplete** — 機械検査は stale=64、orphans=0、missing_concept=0、unregistered_raw=621、broken_refs=0、descriptive_number_ref=0。更新ページは出典と関連ページを照合した。全658ページの意味的な矛盾比較は未完了であり、Wiki 全体の品質検査成功とは扱わない。
