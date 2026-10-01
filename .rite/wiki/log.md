@@ -2,6 +2,10 @@
 
 ## 2026-10-02
 
+* **Skip**: [20261001T212605Z-pr-3604.md](raw/reviews/20261001T212605Z-pr-3604.md) — rite workflow のスキル記述法に関する知見でプロジェクトドメインの経験則ではないため Wiki に置かない
+* **Skip**: [20261001T221801Z-pr-3604-c2.md](raw/reviews/20261001T221801Z-pr-3604-c2.md) — 同上
+* **Skip**: [20261001T213132Z-pr-3604-fix.md](raw/fixes/20261001T213132Z-pr-3604-fix.md) — 同上
+
 * **Create**: [手順書の分岐行に書く理由欄は参照先 skill の停止規則を読み直してから書き、対になる記述を同時に揃える](pages/heuristics/branch-row-rationale-must-match-referenced-skill-behavior.md) — raw/reviews/20261001T172952Z-pr-3603.md ほか 4 件を新規ページ化
 
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=679, broken_refs=0（矛盾の意味比較は今回新規作成した 1 ページと関連ページに限定。全ページ間の意味比較は未実施で、全体の矛盾ゼロとして扱わない）
