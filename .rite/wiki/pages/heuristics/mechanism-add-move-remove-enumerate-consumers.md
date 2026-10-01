@@ -4,15 +4,24 @@ title: "機構の新設・移設・撤去では、全ての停止経路と文書
 domain: "heuristics"
 description: "出口や登録処理を新設・移設すると、その出口を読む消費者がいない停止経路で登録が消費されずに消える。機構を撤去すると、仕様書・設定説明・reference・再開案内に撤去前の記述が残る。変更のたびに機構名と帰結語で全文検索し、全ての出口と文書で消費者を列挙する。自分で書いた記録の失効判定は、書いた時点を起点にする。"
 created: "2026-09-29T12:40:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T12:40:00Z" }
+generated: { by: "rite-wiki-ingest/gpt-6.1-sol", at: "2026-10-01T03:17:07Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260929T112830Z-pr-3452.md"
   - type: "fixes"
     resource: "raw/fixes/20260929T121639Z-pr-3452.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T020838Z-pr-3571.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T030537Z-pr-3571.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261001T021748Z-pr-3571.md"
 tags: ["refactoring", "exit-paths", "documentation-drift", "ledger", "grep"]
 confidence: high
 promote: rite-plugin
+verified:
+  - by: "rite-wiki-ingest/gpt-6.1-sol"
+    at: "2026-10-01T03:17:07Z"
 ---
 
 # 機構の新設・移設・撤去では、全ての停止経路と文書から消費者を列挙して確かめる
@@ -47,6 +56,12 @@ promote: rite-plugin
 
 dogfooding では commit 前の hook が main checkout の版で動く。検査記録のハッシュ計算を変えた PR では、hook と同じ版で検査と検証を取り直す。
 
+### 記録契約の値と入力側の手順
+
+記録契約に新しい値を足したら、同じ helper に入力を渡す手順書をすべて列挙する。commit を伴う経路と commit しない経路では、入力が staged パスの部分集合かという照合条件が違う。存在するパスだけを前提にした旧入力指示が残っていないかを、契約の値と照合条件の両方で確認する。
+
+工程の範囲を要約する写しは、復旧案内やバッチ処理の停止案内にも存在する。工程を足したら 1 か所ずつ直さず、特徴的な手順名と範囲を grep で一度に列挙する。base の取り込みによって新しい写しが増える場合もあるため、取り込み後にも対象集合を確認する。
+
 ## 関連ページ
 
 - [fail-loud ガードは同じ帰結を持つ全出口に張る（症状側から出口を網羅する）](./fail-loud-guard-covers-all-sibling-exits.md)
@@ -56,3 +71,9 @@ dogfooding では commit 前の hook が main checkout の版で動く。検査�
 
 - [撤去後の文書取り残しと停止経路での登録消失を指摘したレビュー結果](../../raw/reviews/20260929T112830Z-pr-3452.md)
 - [出口の条件を消費者の有無で決め直した fix 結果](../../raw/fixes/20260929T121639Z-pr-3452.md)
+
+- [契約と手順の同期を確認した記録](../../raw/reviews/20261001T020838Z-pr-3571.md)
+
+- [契約と手順の同期を確認した記録](../../raw/reviews/20261001T030537Z-pr-3571.md)
+
+- [契約と手順の同期を確認した記録](../../raw/fixes/20261001T021748Z-pr-3571.md)

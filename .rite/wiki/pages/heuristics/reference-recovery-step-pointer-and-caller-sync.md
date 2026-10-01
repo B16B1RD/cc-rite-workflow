@@ -4,14 +4,19 @@ title: "他スキルから直接読まれる手順に工程を足すときは、
 domain: "heuristics"
 description: "節アンカーで複数スキルから直接参照される手順書に工程を挿入すると、スキル内でしか解決しない所在指示は読み手に届かず、番号で範囲を引く呼び出し側や一律の失敗規定を持つ呼び出し側と食い違う。"
 created: "2026-10-01T00:20:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-01T00:20:00Z" }
+generated: { by: "rite-wiki-ingest/gpt-6.1-sol", at: "2026-10-01T03:17:07Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260930T233640Z-pr-3564.md"
   - type: "fixes"
     resource: "raw/fixes/20260930T235110Z-pr-3564.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261001T025526Z-pr-3571.md"
 tags: []
 confidence: medium
+verified:
+  - by: "rite-wiki-ingest/gpt-6.1-sol"
+    at: "2026-10-01T03:17:07Z"
 ---
 
 # 他スキルから直接読まれる手順に工程を足すときは、回復手順の所在と呼び出し側の規定を合わせる
@@ -30,6 +35,10 @@ confidence: medium
 
 テストが文言の部分一致で手順を固定している場合は、参照を挿入する括弧の位置で固定された句を分断しない。
 
+### 項目全体を実行順に並べ直す
+
+手順の 1 項目へ文を継ぎ足すと、証跡を書いた後に必要な停止条件が先に置かれるなど、記述順と実行順がずれる。工程を追加するときは項目全体を読み、入力の確保、検査、停止または回復、次工程の順へ並べ直す。失敗時に止まるか回復するかも、同じ節の他工程と対称に明記する。
+
 ## 関連ページ
 
 - [Step 番号参照は relative (Step N + 1) ではなく absolute (heading title 名 + Step 番号) で書く](../patterns/step-reference-absolute-heading-over-relative.md)
@@ -38,3 +47,5 @@ confidence: medium
 
 - [レビュー結果](../../raw/reviews/20260930T233640Z-pr-3564.md)
 - [fix 結果](../../raw/fixes/20260930T235110Z-pr-3564.md)
+
+- [契約と手順の同期を確認した記録](../../raw/fixes/20261001T025526Z-pr-3571.md)

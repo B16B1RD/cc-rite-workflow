@@ -98,6 +98,19 @@
 * **lint:clean** — contradictions=0, stale=65, orphans=0, missing_concept=0, unregistered_raw=671, broken_refs=0（矛盾の意味比較は新規ページと関連ページのみ。全ページ比較は未実施）
 
 
+
+* **Skip**: [20261001T020549Z-pr-3567.md](raw/reviews/20261001T020549Z-pr-3567.md) — 検証済みの収束・推奨候補の一時記録で、新規の経験則なし
+* **Skip**: [20261001T025945Z-pr-3579.md](raw/reviews/20261001T025945Z-pr-3579.md) — 検証済みの収束・推奨候補の一時記録で、新規の経験則なし
+* **Skip**: [20261001T022530Z-pr-3571.md](raw/reviews/20261001T022530Z-pr-3571.md) — 検証済みの収束・推奨候補の一時記録で、新規の経験則なし
+* **Update**: [機構の新設・移設・撤去では、全ての停止経路と文書から消費者を列挙して確かめる](pages/heuristics/mechanism-add-move-remove-enumerate-consumers.md) — raw/reviews/20261001T020838Z-pr-3571.md を統合
+* **Skip**: [20261001T023407Z-pr-3579.md](raw/reviews/20261001T023407Z-pr-3579.md) — 検証済みの収束・推奨候補の一時記録で、新規の経験則なし
+* **Skip**: [20261001T030039Z-pr-3583.md](raw/reviews/20261001T030039Z-pr-3583.md) — 検証済みの収束・推奨候補の一時記録で、新規の経験則なし
+* **Update**: [機構の新設・移設・撤去では、全ての停止経路と文書から消費者を列挙して確かめる](pages/heuristics/mechanism-add-move-remove-enumerate-consumers.md) — raw/reviews/20261001T030537Z-pr-3571.md を統合
+* **Update**: [同じ本文を比べる 2 つの比較は「無視してよい書き込み」を 1 つの集合に揃える](pages/heuristics/align-ignored-writes-across-comparisons.md) — raw/reviews/20261001T024711Z-pr-3571.md を統合
+* **Skip**: [20261001T024411Z-pr-3567.md](raw/fixes/20261001T024411Z-pr-3567.md) — detector-candidate: 未ブレース変数と全角文字の隣接は既存の静的検査で強制できる
+* **Update**: [他スキルから直接読まれる手順に工程を足すときは、回復手順の所在と呼び出し側の規定を合わせる](pages/heuristics/reference-recovery-step-pointer-and-caller-sync.md) — raw/fixes/20261001T025526Z-pr-3571.md を統合
+* **Update**: [機構の新設・移設・撤去では、全ての停止経路と文書から消費者を列挙して確かめる](pages/heuristics/mechanism-add-move-remove-enumerate-consumers.md) — raw/fixes/20261001T021748Z-pr-3571.md を統合
+
 ## 2026-09-30
 
 * **Lint incomplete** — 機械検査は stale=64、orphans=0、missing_concept=0、unregistered_raw=621、broken_refs=0、descriptive_number_ref=0。更新ページは出典と関連ページを照合した。全658ページの意味的な矛盾比較は未完了であり、Wiki 全体の品質検査成功とは扱わない。
