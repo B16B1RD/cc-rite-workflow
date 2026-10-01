@@ -173,10 +173,11 @@ pin "5.2: acceptance の指摘は dedup で統合しない" "$PR_REVIEW" '`accep
 
 echo ""
 echo "=== TC-4: 5.3.0.A 最終整合検査 (T-07) ==="
-in_order "5.3 実行順: 5.3.0.C → 5.3.0.A → 5.3.1-5.3.7" \
+in_order "5.3 実行順: 5.3.0.C → 5.3.0.A → 5.3.0.CI → 5.3.1-5.3.7" \
   "$(line_of "$PR_REVIEW" '3. **5.3.0.C 帰結クラス降格政策**')" \
   "$(line_of "$PR_REVIEW" '4. **5.3.0.A 受入条件の最終整合検査**')" \
-  "$(line_of "$PR_REVIEW" '5. **5.3.1-5.3.7**')"
+  "$(line_of "$PR_REVIEW" '5. **5.3.0.CI 確定前の全 CI job 確認**')" \
+  "$(line_of "$PR_REVIEW" '6. **5.3.1-5.3.7**')"
 in_order "5.3.0.A 節は 5.3.0.C の後・5.3.8 の前" \
   "$(line_of "$PR_REVIEW" '#### 5.3.0.C 帰結クラス降格政策実行手順')" \
   "$(line_of "$PR_REVIEW" '#### 5.3.0.A 受入条件の最終整合検査')" \

@@ -181,6 +181,14 @@ iterate の完了前確認が PR の追加行に逸脱を見つけたときは�
 
 この保持と復元はセッションの flow-state に載る。別セッション（別 `session_id`）では退避記録が見えないため、復元も再試行権の消費判定も効かない。`cycle_count` をはじめとする既存の counter と同じ性質である。
 
+<a id="session-restart"></a>
+
+**別セッションで未完了 run を再開する**: 旧セッション終了と、claim の引継ぎ承認または正規の所有権確認が成立した場合だけ、旧 session の state/run・raw・manifest・保存結果・履歴を読み、停止理由と未処理候補を確認する。旧 run が停止済み（`status=stopped` / `current_decision.action=stop`）、同じ PR の停止が履歴に残って未解決、または旧状態・所有権を確認できない場合は、この経路で新 run を作らず理由と証跡を報告する。停止の回復は以下の既存の明示承認規則に従う。
+
+停止していない旧 run の証跡はそのまま残す。旧 session ID を使った操作、旧 state/run の新 session へのコピー、別 session の cycle の `review-finish` / `review-close` / 時計の後処理は行わない。旧 session の未閉時計も中断の証跡として保持する。[recover](../skills/recover/SKILL.md) の worktree 再入場と cross-check で現在の session と Issue / PR / branch / worktree を照合し、自セッションにこの PR の run（履歴も含む）がまだ無い場合だけ、自セッション固有 state を通常の `flow-state.sh set` で `phase=pr` と実際の Issue / PR / branch / worktree に設定して `/rite:iterate {pr_number}` を最初から実行する。既に自セッションの run がある場合は、それを通常の recover で再開し、reset しない。
+
+新 run は現 HEAD の新しい session/run context・cycle 1 で、全 reviewer・全 diff を再取得する。旧 raw・保存結果を新 cycle の完了証跡にしない。マージ前と cleanup では旧分を含む PR の全 cycle の保存結果と未処理候補を確認し、候補を新 run の開始で隠さない。
+
 **明示承認で新しい run を始める（`circuit-breaker:divergence` と `circuit-breaker:max-cycles`）**: `flow-state.sh review-restart --selection <名簿 JSON の絶対パス> --expected-run-id <停止した run_id> --approval <今回の承認 JSON の絶対パス>` が、completed の観測・receipt が揃い、未 close の clock が無く、承認がこの停止 run / context / PR に結び付いていて、作業ツリーに tracked 差分も gitignore 対象外の未追跡ファイルも無いときに限り、旧 run を保管して cycle 1 の新しい run を作る。通常の iterate / recover / 自動再試行 / `review-start` はこれを呼ばない。`review-retry` とは別操作で、同じ run を reopen しない。同一承認の再実行は新予算を付けない。承認の reason・要求時刻・対象 context は parked 履歴に残す。superseded した archived run は同じ PR への往復で復元しない。
 
 承認 JSON の必須フィールド（参照元が消えても履歴だけで説明できる実体）:
