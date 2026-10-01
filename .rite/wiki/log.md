@@ -2,6 +2,18 @@
 
 ## 2026-10-01
 
+* **Create**: [手順書の bash 文は期待文字列で固定せず、抽出して実行するテストで固定する](pages/patterns/procedure-bash-extracted-and-executed-by-test.md) — raw/reviews/20261001T004716Z-pr-3567.md ほか 3 件を新規ページ化
+
+* **Create**: [作業ツリーの内容 hash を証跡にするなら、削除されたパスを表す値を持たせる](pages/heuristics/evidence-hash-needs-deleted-path-representation.md) — raw/fixes/20261001T010038Z-pr-3571.md ほか 2 件を新規ページ化
+
+* **Create**: [受入条件の範囲を実装側の都合で黙って狭めると、書かれたとおりに未充足と判定される](pages/heuristics/ac-scope-narrowed-by-helper-constraint-reads-as-unmet.md) — raw/reviews/20261001T005011Z-pr-3571.md と raw/fixes/20261001T010038Z-pr-3571.md を新規ページ化
+
+* **Update**: [テストで「同じ行」を固定するなら行単位で判定し、否定条件は肯定側と同じ述語の否定で書く](pages/patterns/test-pin-same-line-and-negation-by-positive-predicate.md) — raw/fixes/20261001T005417Z-pr-3568.md ほか 2 件を統合
+
+* **Skip**: [20261001T011228Z-pr-3574.md](raw/reviews/20261001T011228Z-pr-3574.md) — 指摘ゼロの収束確認で、経験則として抽出できる内容が無い
+
+* **Skip**: [20261001T011440Z-pr-3552.md](raw/reviews/20261001T011440Z-pr-3552.md) — 指摘ゼロの収束確認で、経験則として抽出できる内容が無い
+
 * **Create**: [他スキルから直接読まれる手順に工程を足すときは、回復手順の所在と呼び出し側の規定を合わせる](pages/heuristics/reference-recovery-step-pointer-and-caller-sync.md) — raw/reviews/20260930T233640Z-pr-3564.md と raw/fixes/20260930T235110Z-pr-3564.md を新規ページ化
 
 * **Create**: [既存パーサの一部だけを再利用すると、保守的に判定していた入力の扱いが抜け落ちる](pages/anti-patterns/partial-parser-reuse-drops-conservative-judgment.md) — raw/reviews/20261001T000445Z-pr-3551.md を新規ページ化

@@ -608,7 +608,7 @@ okf_version: "0.2"
 | [同じ本文を比べる 2 つの比較は「無視してよい書き込み」を 1 つの集合に揃える](pages/heuristics/align-ignored-writes-across-comparisons.md) | heuristics | 仕様の照合と受入条件の本文比較のように同じ本文を別々に比べる処理で、無視する書き込みの集合がずれると、片方へ揃えるたびに逆方向の誤りが出る。照合より緩いと記録のないすり抜けになり、照合より厳しいとワークフロー自身の書き込みで誤停止する。無視するのは「ワークフロー自身が書く行」という 1 つの集合だけにし、それ以外の行はどちらの比較にも残す。 | 2026-09-28T11:07:18Z | medium |
 | [解析しない部分の近似判定は shell が読む語に正規化してから行い、上限超過は超えた部分だけを判定不能として扱う](pages/heuristics/approximate-parse-normalize-to-shell-words.md) | heuristics | コマンド検査で parser が解析しない部分を部分文字列で近似判定すると、引用やバックスラッシュで語を分割した綴りがそのまま素通りする。近似判定は shell が実際に読む語へ正規化してから行う。処理時間や入れ子の深さに上限を設けるときも、上限を超えたら全体を拒否するのではなく、超えた部分だけを判定できないものとして扱い、そこに隠れうる危険な操作だけを拒否する。 | 2026-09-29T18:04:11Z | medium |
 | [exit 0 で終わる hook の stderr はモデルに届かない — 行動を促す失敗通知は stdout にも出す](pages/heuristics/exit0-hook-stderr-not-seen-notify-on-stdout.md) | heuristics | SessionStart のように exit 0 で終わる hook では、stderr はデバッグログにしか残らず、モデルやユーザーに届くのは stdout だけである。state の再有効化の失敗のように、読んだ側に次の行動（recover の実行など）を促したい通知は、stdout にも 1 行出し、テストで固定する。 | 2026-09-28T12:36:22Z | high |
-| [テストで「同じ行」を固定するなら行単位で判定し、否定条件は肯定側と同じ述語の否定で書く](pages/patterns/test-pin-same-line-and-negation-by-positive-predicate.md) | patterns | bash の [[ \\"$out\\" == *A*B* ]] は glob の * が改行をまたぐため、A と B が同じ行にあることを固定しない。行単位の判定は awk の index で書く。失敗時だけ出す通知は、成功経路のテストで stdout を受け取り、肯定側と同じ述語の否定を条件にして「出ていない」ことを固定する。否定条件を文言リテラルで書くと、文言の変更で黙って空振りになる。 | 2026-09-30T05:37:00Z | high |
+| [テストで「同じ行」を固定するなら行単位で判定し、否定条件は肯定側と同じ述語の否定で書く](pages/patterns/test-pin-same-line-and-negation-by-positive-predicate.md) | patterns | bash の [[ "$out" == *A*B* ]] は glob の * が改行をまたぐため、A と B が同じ行にあることを固定しない。行単位の判定は awk の index で書く。失敗時だけ出す通知は、成功経路のテストで stdout を受け取り、肯定側と同じ述語の否定を条件にして「出ていない」ことを固定する。検査の範囲は対象の行・節に絞り、pin の強化は契約が名指しする挙動の検出で収束させる。 | 2026-10-01 | high |
 | [state の書き込み失敗は別ディレクトリに state のバイト複製として記録し、読み手が cmp で照合する](pages/patterns/state-write-failure-record-as-byte-copy.md) | patterns | 書き込みに失敗した state を中断として扱わない要件は、state を書く全経路（終了時だけでなく後片付けの回収も）に及ぶ。書き込み自体が失敗する経路では、別ディレクトリに失敗時点の state のバイト単位の複製を残し、読み手が現在の state と cmp で比べる。以後の書き込みで state が変われば自動的に一致しなくなるので、記録を消す処理が要らず、正当な中断も妨げない。 | 2026-09-28T12:36:22Z | medium |
 | [コメントや文書の根拠は、実装が名指す範囲と測定の条件まで確かめて書く](pages/heuristics/claim-evidence-scope-and-measurement-conditions.md) | heuristics | コメントに「別ファイルのテストが書式を固定している」「実測の最大は 17.7 分」と書くとき、固定しているのが consumer の依存する範囲の一部だけだったり、数値が成功した run だけの最大で打ち切られた run を含まなかったりすると、次に読む保守者が誤った前提で判断する。根拠は、実装やテストが実際に名指す範囲と、測定の条件（どの run を数えたか）まで確かめて書く。定義を別の言い方に置き換えるときは、元の言い方が暗に含んでいた付随の規則を実装と突き合わせる。 | 2026-09-29T19:21:37Z | medium |
 | [比較が満たすべき不変条件をレビュー依頼に明示し、その反例を探させると、場当たりの指摘の連鎖が収束する](pages/heuristics/state-invariants-in-review-request-converge.md) | heuristics | 2 つの比較や判定の整合を扱う変更で、レビューのたびに新しい変種が見つかり続けるときは、両者が満たすべき不変条件（照合で同じなら受入条件も同じ、無視してよいのは自分自身の書き込みだけ）をレビュー依頼に明示し、その反例を探すよう頼む。探索の軸が固定され、場当たりの探索で新しい変種が出続ける状態から収束する。 | 2026-09-28T12:36:22Z | medium |
@@ -671,9 +671,12 @@ okf_version: "0.2"
 | [照合を位置で狭めたら、診断に位置の基準になる受理集合も挙げる](pages/heuristics/narrowed-match-position-diagnostic-lists-accepted-set.md) | heuristics | 照合を「項目の冒頭」のような位置で狭めると、受け付けない記号で始まる入力が受理から拒否へ変わる。診断が位置しか言わないと、書き手は診断だけでは直せない。 | 2026-09-30T22:06:00+09:00 | medium |
 | [他スキルから直接読まれる手順に工程を足すときは、回復手順の所在と呼び出し側の規定を合わせる](pages/heuristics/reference-recovery-step-pointer-and-caller-sync.md) | heuristics | 節アンカーで複数スキルから直接参照される手順書に工程を挿入すると、スキル内でしか解決しない所在指示は読み手に届かず、番号で範囲を引く呼び出し側や一律の失敗規定を持つ呼び出し側と食い違う。 | 2026-10-01T00:20:00Z | medium |
 | [既存パーサの一部だけを再利用すると、保守的に判定していた入力の扱いが抜け落ちる](pages/anti-patterns/partial-parser-reuse-drops-conservative-judgment.md) | anti-patterns | 検出器を作り直すときに既存パーサの一部の関数だけを借りると、直接コマンドでない形（timeout や nice 経由など）を保守的に数えていた判定が抜け、旧検出器が拾っていた対象を 0 件と数える退行になる。 | 2026-10-01T00:40:35Z | medium |
+| [手順書の bash 文は期待文字列で固定せず、抽出して実行するテストで固定する](pages/patterns/procedure-bash-extracted-and-executed-by-test.md) | patterns | 手順書に書いた 1 文を期待文字列として固定するだけのテストは、その文が実行すると構文エラーになることを検出できない。手順書から実行ブロックを抽出し、プレースホルダーを置換して実際に走らせる形にすると、手順と挙動のずれが変異で落ちる。 | 2026-10-01 | medium |
+| [作業ツリーの内容 hash を証跡にするなら、削除されたパスを表す値を持たせる](pages/heuristics/evidence-hash-needs-deleted-path-representation.md) | heuristics | 作業ツリーのファイルを hash して記録し index と比べる型の証跡は、削除・改名で消えたパスに hash を取れず、取り込みを表現できない。削除は「HEAD にあって作業ツリーに無い」ときだけ専用の値で記録し、どちらにも無いパスは誤りとして止める。 | 2026-10-01 | medium |
+| [受入条件の範囲を実装側の都合で黙って狭めると、書かれたとおりに未充足と判定される](pages/heuristics/ac-scope-narrowed-by-helper-constraint-reads-as-unmet.md) | heuristics | 受入条件の本文が範囲を限定していないのに、実装が helper の制約を理由に一部を範囲外とすると、acceptance レビューは条件を書かれたとおりに読んで未充足とする。範囲を絞るなら条件を先に改訂し、絞らないなら helper を直す。 | 2026-10-01 | medium |
 ## 統計
 
-- 総ページ数: 661
-- ドメイン別: patterns=140, heuristics=329, anti-patterns=192
-- 最終更新: 2026-10-01T00:40:35Z
+- 総ページ数: 664
+- ドメイン別: patterns=141, heuristics=331, anti-patterns=192
+- 最終更新: 2026-10-01
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
