@@ -61,8 +61,8 @@ if [ -z "$OWN_SID" ]; then
   exit 0
 fi
 if [ -z "$STATE_ROOT" ] || [ ! -d "$STATE_ROOT" ]; then
-  echo "WARNING: run-queue-reap: state root unresolved; skip" >&2
-  exit 0
+  echo "ERROR: run-queue-reap: state root unresolved; queues are not modified" >&2
+  exit 1
 fi
 
 queue_dir="$STATE_ROOT/.rite/state"

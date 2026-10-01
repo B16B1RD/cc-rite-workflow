@@ -24,6 +24,7 @@
 #   bash pr-review-step.sh prev-review-comment --owner-repo OWNER_REPO --pr PR_NUMBER
 #   bash pr-review-step.sh head-sha
 #   bash pr-review-step.sh ci-snapshot --owner-repo OWNER_REPO --pr PR_NUMBER --commit-sha COMMIT_SHA
+#   bash pr-review-step.sh ci-completion-check --owner-repo OWNER_REPO --pr PR_NUMBER --input INPUT [--wait-seconds 540 --poll-seconds 15]
 #   bash pr-review-step.sh numstat --base BASE_BRANCH
 #   bash pr-review-step.sh issue-spec --owner-repo OWNER_REPO --issue ISSUE_NUMBER
 #   bash pr-review-step.sh e2e-detect
@@ -315,6 +316,79 @@ ci_failed=$(printf '%s' "$ci_result" | jq -r '[.failed[] | (.name // "(unnamed)"
 printf '[CONTEXT] REVIEW_CI_STATE=%s; failed=%s\n' "$ci_state" "$ci_failed"
 }
 
+# --- ci-completion-check ----------------------------------------------------------
+step_ci_completion_check() {
+  local ci_sha ci_verdict ci_pr ci_head ci_classified ci_state ci_failed
+  local waited=0 delay
+  # The measured result is provisional until this check passes. Read its SHA,
+  # rather than accepting an independent caller SHA that could check another head.
+  if ! ci_sha=$(jq -er --argjson pr "$pr_number" '
+      select(.pr_number == $pr and
+        (.commit_sha | type == "string" and test("^[0-9a-fA-F]{40}$")) and
+        .measured_gate.commit_sha == .commit_sha and
+        (.verdict == "mergeable" or .verdict == "fix-needed") and
+        .overall_assessment == .verdict) | .commit_sha' "$input"); then
+    echo "ERROR: CI completion check requires the measured result for this PR" >&2
+    echo "[CONTEXT] REVIEW_CI_FINAL=error; reason=review_result_invalid"
+    return 1
+  fi
+  ci_verdict=$(jq -er '.verdict' "$input") || return 1
+  if [ "$ci_verdict" = fix-needed ]; then
+    echo "[CONTEXT] REVIEW_CI_FINAL=skipped; reason=fix_needed"
+    return 0
+  fi
+  while :; do
+    if ! ci_pr=$(gh pr view "$pr_number" -R "$owner_repo" --json headRefOid,statusCheckRollup); then
+      echo "ERROR: CI completion check could not fetch PR checks" >&2
+      echo "[CONTEXT] REVIEW_CI_FINAL=error; reason=fetch_failed"
+      return 1
+    fi
+    if ! ci_head=$(printf '%s' "$ci_pr" | jq -er '.headRefOid | select(type == "string")') || [ "$ci_head" != "$ci_sha" ]; then
+      echo "ERROR: CI completion check PR HEAD differs from the reviewed commit" >&2
+      echo "[CONTEXT] REVIEW_CI_FINAL=error; reason=head_mismatch"
+      return 1
+    fi
+    if ! ci_classified=$(printf '%s' "$ci_pr" | bash "$plugin_root"/hooks/scripts/pr-checks-classify.sh) ||
+       ! ci_state=$(printf '%s' "$ci_classified" | jq -er '.state'); then
+      echo "ERROR: CI completion check could not classify PR checks" >&2
+      echo "[CONTEXT] REVIEW_CI_FINAL=error; reason=classification_failed"
+      return 1
+    fi
+    case "$ci_state" in
+      healthy|none)
+        printf '%s' "$ci_classified" | jq -c --arg sha "$ci_sha" '. + {commit_sha:$sha}' || return 1
+        printf '[CONTEXT] REVIEW_CI_FINAL=passed; state=%s; waited=%s\n' "$ci_state" "$waited"
+        return 0 ;;
+      unhealthy)
+        printf '%s' "$ci_classified" | jq -c --arg sha "$ci_sha" '. + {commit_sha:$sha}' || return 1
+        ci_failed=$(printf '%s' "$ci_classified" | jq -r '[.failed[] | (.name // "(unnamed)") | gsub("[\u0000-\u001f\u007f-\u009f]"; " ")] | @csv') || return 1
+        printf 'ERROR: CI jobs failed for the reviewed commit: %s\n' "$ci_failed" >&2
+        printf '[CONTEXT] REVIEW_CI_FINAL=failed; reason=unhealthy; failed=%s\n' "$ci_failed"
+        return 1 ;;
+      pending)
+        if [ "$waited" -ge "$ci_wait_seconds" ]; then
+          printf '%s' "$ci_classified" | jq -c --arg sha "$ci_sha" '. + {commit_sha:$sha}' || return 1
+          echo "ERROR: CI completion check timed out; jobs remain unverified" >&2
+          echo "[CONTEXT] REVIEW_CI_FINAL=error; reason=timeout"
+          return 1
+        fi
+        delay=$ci_poll_seconds
+        [ "$delay" -le "$((ci_wait_seconds - waited))" ] || delay=$((ci_wait_seconds - waited))
+        printf '[CONTEXT] REVIEW_CI_WAIT=pending; waited=%s\n' "$waited"
+        if ! sleep "$delay"; then
+          echo "ERROR: CI completion check wait was interrupted" >&2
+          echo "[CONTEXT] REVIEW_CI_FINAL=error; reason=wait_failed"
+          return 1
+        fi
+        waited=$((waited + delay)) ;;
+      *)
+        echo "ERROR: CI completion check has unknown check state" >&2
+        echo "[CONTEXT] REVIEW_CI_FINAL=error; reason=state_unknown"
+        return 1 ;;
+    esac
+  done
+}
+
 # --- numstat ---------------------------------------------------------------------
 step_numstat() {
 git diff "${base_branch}"...HEAD --numstat
@@ -566,9 +640,9 @@ case "$pr_number" in
  ;;
  *)
  # state ファイルはリポジトリ共通の state ルート基準 (state-path-resolve.sh)。セッション
- # worktree / main checkout のどちらから実行しても同一パスに解決される (解決失敗時は cwd fallback)
+ # worktree / main checkout のどちらから実行しても同一パスに解決される (解決失敗時は状態を変更せず停止)
  _state_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
- [ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+ [ -n "$_state_root" ] || { echo "ERROR: state root unresolved; state is not modified" >&2; exit 1; }
  state_file="$_state_root/.rite/state/accepted-fingerprints-${pr_number}.txt"
  if [ -f "$state_file" ] && [ -s "$state_file" ]; then
  accepted_fingerprints=$(cat "$state_file" 2>/dev/null || echo "")
@@ -622,7 +696,7 @@ f_category=$(jq -r '.category' "$finding_file") || exit 1
 f_description=$(jq -r '.description' "$finding_file") || exit 1
 
 _state_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
-[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+[ -n "$_state_root" ] || { echo "ERROR: state root unresolved; state is not modified" >&2; exit 1; }
 state_file="$_state_root/.rite/state/accepted-fingerprints-${pr_number}.txt"
 if [ -f "$state_file" ] && [ -s "$state_file" ]; then
  accepted_fingerprints=$(cat "$state_file" 2>/dev/null || echo "")
@@ -801,7 +875,7 @@ printf '[CONTEXT] ATTRIBUTION original_files=%d fix_files=%d\n' \
 step_attribution_write() {
 # fix-cycle-state もリポジトリ共通 state ルート基準 (fix.md ステップ 3.3.1 の書込側と同一解決)
 _state_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
-[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+[ -n "$_state_root" ] || { echo "ERROR: state root unresolved; state is not modified" >&2; exit 1; }
 state_file="$_state_root/.rite/fix-cycle-state/${pr_number}.json"
 total_findings="${total}"
 fix_introduced_count="${fix_introduced}"
@@ -1203,6 +1277,8 @@ reviewers=""
 gap=""
 spawn_file=""
 input=""
+ci_wait_seconds=540
+ci_poll_seconds=15
 total=""
 fix_introduced=""
 critical=""
@@ -1257,6 +1333,12 @@ while [ "$#" -gt 0 ]; do
     --gap) gap=$2 ;;
     --file) spawn_file=$2 ;;
     --input) input=$2 ;;
+    --wait-seconds)
+      [[ "$2" =~ ^(0|[1-9][0-9]{0,8})$ ]] || usage_error "$1 must be a non-negative integer"
+      ci_wait_seconds=$2 ;;
+    --poll-seconds)
+      [[ "$2" =~ ^[1-9][0-9]{0,8}$ ]] || usage_error "$1 must be a positive integer"
+      ci_poll_seconds=$2 ;;
     --total) total=$2 ;;
     --fix-introduced) fix_introduced=$2 ;;
     --critical) critical=$2 ;;
@@ -1356,6 +1438,7 @@ case "$subcommand" in
   prev-review-comment) require owner_repo pr_number; step_prev_review_comment ;;
   head-sha) step_head_sha ;;
   ci-snapshot) require pr_number owner_repo commit_sha; step_ci_snapshot ;;
+  ci-completion-check) require pr_number owner_repo input; step_ci_completion_check ;;
   numstat) require base_branch; step_numstat ;;
   issue-spec) require issue_number owner_repo; step_issue_spec ;;
   e2e-detect) step_e2e_detect ;;

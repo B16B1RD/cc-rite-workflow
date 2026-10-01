@@ -56,7 +56,9 @@ else
 fi
 # Symmetric to TC-7 (AC-3 bidirectional): the continuation branch must NOT use the
 # FINALIZE completion-notice phrasing — pins both sides of the prefix split.
-if _gq_out=$(jq -r '.reason // ""' <<< "$out") && grep -q "完了通知" <<< "$_gq_out"; then
+if ! _gq_out=$(jq -r '.reason // ""' <<< "$out"); then
+  fail "TC-1: could not parse continuation reason: $out"
+elif grep -q "完了通知" <<< "$_gq_out"; then
   fail "TC-1: continuation reason wrongly used the FINALIZE completion-notice phrasing: $out"
 else
   pass "TC-1: continuation reason is distinct from the FINALIZE branch"
@@ -110,7 +112,9 @@ else
 fi
 # Symmetric to TC-7 (AC-3 bidirectional): the fix→review continuation branch must NOT
 # use the FINALIZE completion-notice phrasing.
-if _gq_out=$(jq -r '.reason // ""' <<< "$out") && grep -q "完了通知" <<< "$_gq_out"; then
+if ! _gq_out=$(jq -r '.reason // ""' <<< "$out"); then
+  fail "TC-6: could not parse continuation reason: $out"
+elif grep -q "完了通知" <<< "$_gq_out"; then
   fail "TC-6: continuation reason wrongly used the FINALIZE completion-notice phrasing: $out"
 else
   pass "TC-6: continuation reason is distinct from the FINALIZE branch"
@@ -277,7 +281,9 @@ else
   fail "TC-13: missing unknown-prefix WARNING on stderr: $(cat "$err13")"
 fi
 # The unknown-prefix branch must not claim the review↔fix loop identity.
-if _gq_out=$(jq -r '.reason // ""' <<< "$out") && grep -q "review↔fix" <<< "$_gq_out"; then
+if ! _gq_out=$(jq -r '.reason // ""' <<< "$out"); then
+  fail "TC-13: could not parse unknown-prefix reason: $out"
+elif grep -q "review↔fix" <<< "$_gq_out"; then
   fail "TC-13: unknown-prefix reason wrongly claimed the review↔fix loop identity: $out"
 else
   pass "TC-13: unknown-prefix reason avoids the review↔fix loop phrasing"
@@ -1211,6 +1217,111 @@ pause_for "$d" "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
 assert "P-04: the other session's pause record exists" "present" "$([ -e "$d/.rite/state/pause-bbbbbbbb-cccc-dddd-eeee-ffffffffffff.json" ] && echo present || echo absent)"
 out=$(run_stop "$d") || true
 assert "P-04: the watchdog still blocks this session" "block" "$(block_of "$out")"
+
+
+# --- Explicit loop-skill reentry restores the same session Stop guard ---
+ENTRY="$PLUGIN_ROOT/hooks/scripts/loop-entry-resume.sh"
+STOP="$PLUGIN_ROOT/hooks/stop-loop-continuation.sh"
+ENTRY_TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/rite-loop-entry-XXXXXX")
+trap 'rm -rf "$ENTRY_TMP_ROOT"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+SID=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
+OTHER=bbbbbbbb-cccc-dddd-eeee-ffffffffffff
+new_case() {
+  local d
+  d=$(mktemp -d "$ENTRY_TMP_ROOT/case-XXXXXX")
+  (cd "$d" && git init -q)
+  RITE_STATE_ROOT="$d" bash "$FS" set --phase review --issue 1 --branch b --pr 1 \
+    --next n --handoff '/rite:fix 1' --session "$SID" >/dev/null
+  local sf="$d/.rite/sessions/$SID.flow-state"
+  jq '.review_run = {status:"stopped", cycle_count:3, stop_reason:"fixture"}' "$sf" > "$d/state.tmp"
+  mv "$d/state.tmp" "$sf"
+  echo "$d"
+}
+pause_case() { RITE_STATE_ROOT="$1" bash "$FS" pause --session "$SID"; }
+run_entry() { (cd "$1" && RITE_HOST=codex CODEX_THREAD_ID="$SID" bash "$2"); }
+stop_case() { jq -nc --arg c "$1" --arg s "$SID" '{cwd:$c,session_id:$s}' | bash "$STOP"; }
+
+for skill in iterate batch-run recover; do
+  file="$PLUGIN_ROOT/skills/$skill/SKILL.md"
+  block="$ENTRY_TMP_ROOT/$skill.sh"
+  python3 - "$file" "$block" "$PLUGIN_ROOT" <<'PY'
+import re,sys
+from pathlib import Path
+s=Path(sys.argv[1]).read_text()
+blocks=re.findall(r'```bash\n(.*?)```',s,re.S)
+assert blocks and blocks[0].startswith('# loop-entry-resume\n'), 'entry must precede every existing bash block'
+b=blocks[0].replace('{plugin_root}',sys.argv[3])
+assert b == '# loop-entry-resume\nbash '+sys.argv[3]+'/hooks/scripts/loop-entry-resume.sh || exit 1\n'
+assert '利用者へ表示して続行する' in s[:s.index('```bash',s.index('```bash')+1)]
+Path(sys.argv[2]).write_text(b+'echo AFTER_ENTRY\n')
+PY
+  pass "$skill: real entry precedes state/queue recovery and displays result"
+  for kind in normal empty corrupt; do
+    d=$(new_case)
+    pause_case "$d"
+    rec="$d/.rite/state/pause-$SID.json"
+    case "$kind" in empty) : > "$rec" ;; corrupt) printf '{broken' > "$rec" ;; esac
+    sf="$d/.rite/sessions/$SID.flow-state"
+    cp "$sf" "$d/before.json"
+    out=$(run_entry "$d" "$block")
+    assert "$skill/$kind: pause removed" absent "$([ -e "$rec" ] && echo present || echo absent)"
+    assert "$skill/$kind: workflow state preserved" same "$(cmp -s "$sf" "$d/before.json" && echo same || echo changed)"
+    assert "$skill/$kind: resume result and following step" $'[CONTEXT] LOOP_ENTRY_RESUME=resumed\nrite: 同じセッションからの再入により一時停止を解除し、継続ガードを再開しました。\nAFTER_ENTRY' "$out"
+    out=$(stop_case "$d")
+    assert "$skill/$kind: Stop guard restored" block "$(jq -r '.decision' <<< "$out")"
+  done
+  d=$(new_case)
+  RITE_STATE_ROOT="$d" bash "$FS" pause --session "$OTHER"
+  sf="$d/.rite/sessions/$SID.flow-state"
+  cp "$sf" "$d/before.json"
+  out=$(run_entry "$d" "$block")
+  assert "$skill: no pause passes without resume notification" $'[CONTEXT] LOOP_ENTRY_RESUME=none\nAFTER_ENTRY' "$out"
+  assert "$skill: other session still paused" present "$([ -e "$d/.rite/state/pause-$OTHER.json" ] && echo present || echo absent)"
+  assert "$skill: unpaused state unchanged" same "$(cmp -s "$sf" "$d/before.json" && echo same || echo changed)"
+  assert "$skill: unpaused Stop still blocks" block "$(stop_case "$d" | jq -r '.decision')"
+  rc=0
+  out=$(cd "$d" && RITE_HOST=codex CODEX_THREAD_ID='' bash "$block" 2>"$d/error") || rc=$?
+  if [ "$rc" -ne 0 ]; then pass "$skill: unresolved identity stops"; else fail "$skill: unresolved identity stops"; fi
+  assert "$skill: unresolved identity cannot enter following step" '' "$out"
+done
+
+d=$(new_case)
+pause_case "$d"
+out=$(stop_case "$d" 2>"$d/pause-error")
+assert 'no reentry: pause still allows Stop' '' "$out"
+assert 'no reentry: pause record retained' present "$([ -e "$d/.rite/state/pause-$SID.json" ] && echo present || echo absent)"
+
+# Exercise removal failures without relying on permissions (the test may run as root).
+mkdir -p "$d/stub/scripts"
+cp "$ENTRY" "$d/stub/scripts/loop-entry-resume.sh"
+cat > "$d/stub/flow-state.sh" <<'STUB'
+case "$1" in
+  path) printf '%s/.rite/sessions/%s.flow-state\n' "$TEST_ROOT" "$TEST_SID" ;;
+  resume) echo 'ERROR: fixture resume failed' >&2; exit 7 ;;
+esac
+STUB
+block="$ENTRY_TMP_ROOT/failure.sh"
+printf 'bash "%s/stub/scripts/loop-entry-resume.sh" || exit $?\necho AFTER_ENTRY\n' "$d" > "$block"
+rc=0
+out=$(TEST_ROOT="$d" TEST_SID="$SID" bash "$block" 2>"$d/error") || rc=$?
+assert 'resume failure preserves rc' 7 "$rc"
+assert 'resume failure cannot reach following step' '' "$out"
+assert 'resume failure retains pause' present "$([ -e "$d/.rite/state/pause-$SID.json" ] && echo present || echo absent)"
+cat > "$d/stub/flow-state.sh" <<'STUB'
+case "$1" in
+  path) printf '%s/.rite/sessions/%s.flow-state\n' "$TEST_ROOT" "$TEST_SID" ;;
+  resume) exit 0 ;;
+esac
+STUB
+rc=0
+out=$(TEST_ROOT="$d" TEST_SID="$SID" bash "$block" 2>"$d/error") || rc=$?
+if [ "$rc" -ne 0 ]; then pass 'successful resume with residual record stops'; else fail 'successful resume with residual record stops'; fi
+assert 'residual record cannot reach following step' '' "$out"
+assert_not_grep 'helper never overrides target session or review run' "$ENTRY" 'resume --session|review-restart|review-start|--phase|cycle_count'
+
 
 if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (pause record allows stop without re-injection or watchdog + review↔fix loop continuation + FINALIZE terminal backstop + skip bounce when iterate notice already present + remaining-field inspect on mergeable + WIKICHAIN cleanup-chain gate + C1 8-bit coverage via shared neutralize_ctrl + JSON emit fallback C0 neutralization + neutralize-failure placeholder degradation + notice missing/inspect-fail isolation + SIGPIPE-safe heading scan + batch run-queue watchdog)"; then
   exit 1

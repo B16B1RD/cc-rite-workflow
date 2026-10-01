@@ -18,7 +18,7 @@ argument-hint: "[--force-ci] <pr_number>"
 ## Contract
 
 **Input**: `[--force-ci]` + PR number (required)
-**Output**: `[merge:returned-to-caller]` / `[merge:not-ready]` / `[merge:error]`（競合による not-ready だけ `[CONTEXT] MERGE_NOT_READY=conflicting` を併記）
+**Output**: `[merge:returned-to-caller]` / `[merge:not-ready]` / `[merge:error]`（競合による not-ready は `[CONTEXT] MERGE_NOT_READY=conflicting`、マージ失敗後も OPEN / BEHIND のときは `[CONTEXT] MERGE_ERROR=behind` を併記）
 
 `gh pr merge --squash` を叩いて PR をマージするだけ。**cleanup は走らせない**。マージ後の cleanup は `/rite:cleanup` を別途実行する。
 
@@ -80,6 +80,11 @@ pr_json=$(_rite_fetch_pr_json) \
 checks_state=$(_rite_classify_checks "$pr_json") || checks_state=unknown
 [ -n "$checks_state" ] || checks_state=unknown
 echo "[CONTEXT] MERGE_CHECKS_STATE=$checks_state"
+
+# BEHIND だけではマージを止めない。最新化必須の保護が無ければ従来どおり進める。
+if [ "$(printf '%s' "$pr_json" | jq -r '.mergeStateStatus // ""')" = BEHIND ]; then
+  echo "[CONTEXT] MERGE_BASE_STATE=behind; pr={pr_number}"
+fi
 
 # pending + force_ci == false だけ待つ。混在 pending+FAILURE は fail-fast せず != pending まで。
 if [ "$checks_state" = "pending" ] && [ "$force_ci" = "false" ]; then
@@ -292,13 +297,27 @@ else
     echo "  詳細 (stderr):" >&2
     head -10 "$gh_err" | sed 's/^/    /' >&2
   fi
-  # 失敗時の扱いは下の表に従う（先に stderr から原因を分類し、判定できないときだけ AskUserQuestion）
+  # 失敗後も開いた PR が BEHIND なら、base を変えずに再試行する案内を出さない。
+  # この状態は拒否原因の確定ではない。gh stderr は上で保持する。
+  if failed_pr_json=$(gh pr view {pr_number} -R {owner_repo} --json state,mergeStateStatus); then
+    if printf '%s' "$failed_pr_json" | jq -e '.state == "OPEN" and .mergeStateStatus == "BEHIND"' >/dev/null; then
+      echo "[CONTEXT] MERGE_ERROR=behind; pr={pr_number}"
+      echo "BEHIND: マージ失敗後も base に遅れています。復旧手順:" >&2
+      echo "1. gh pr ready {pr_number} -R {owner_repo} --undo で draft に戻す。" >&2
+      echo "2. fix-plan の base 取り込み手順 1〜5で、対象 worktree の base を取り込み、検証・Wiki 適用証跡の取り直し・commit・head 更新・push する。" >&2
+      echo "3. /rite:iterate {pr_number} で変更後の HEAD を再レビューする。" >&2
+      echo "4. 全 CI job の完了・成功を確認して /rite:ready {pr_number}、/rite:merge {pr_number} の順で再開する。" >&2
+    fi
+  else
+    echo "WARNING: マージ失敗後の PR 状態を取得できません。gh stderr の原因と対処を確認してください" >&2
+  fi
 fi
 ```
 
 | 終了 status | アクション |
 |------------|-----------|
 | `[merge:returned-to-caller]` emit | ステップ 3 完了通知へ |
+| `[merge:error]` + `[CONTEXT] MERGE_ERROR=behind` | 停止し、上の復旧手順を案内する。手順 2 は [fix-plan の base 取り込み](../fix/references/fix-plan.md#base-取り込み) を使用する（対象 Issue・branch・worktree を照合して fix phase へ記録してから実施する）。reviewed HEAD が変わるため、再レビューと全 CI job の完了・成功確認を飛ばさない。base を取り込む前の merge 再試行・`/rite:recover` だけの再開・「再試行 / 中止」の質問へ合流しない。保護設定や ruleset は変更しない |
 | `[merge:error]` emit | bash block が stderr に gh error 詳細を出力済み。LLM は先に stderr から原因を分類する。ネットワーク・API の一時障害なら承認済みの merge を 1 回だけ再実行し、conflict・必須チェック未通過・権限不足なら原因と対処を示して停止する。どれとも判定できないときだけ、原因を question_resolution 規則 6 の 4 要素で示して AskUserQuestion で「再試行 / 中止」を提示 |
 
 ## ステップ 3: 完了通知

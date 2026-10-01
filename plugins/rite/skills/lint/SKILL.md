@@ -253,12 +253,14 @@ If the path does not exist:
 
 #### 2.2.1 Get Base Branch
 
-```
-Read: rite-config.yml
+```bash
+rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+cat "$rite_config"
 ```
 
 1. `branch.base` があれば `{base_branch}`
-2. ファイル不在 / キー不在 / `null` / 空文字 / `branch` 節不在 → `main`
+2. ファイル不在（resolver が `/dev/null` を返す）/ キー不在 / `null` / 空文字 / `branch` 節不在 → `main`
+3. rc=2（読めない・解決不能）: resolver の stderr を表示して停止する（`|| exit 1`）。既定値へは倒さない
 
 #### 2.2.2 Detect Changed Files
 

@@ -181,8 +181,8 @@ else
 fi
 echo ""
 
-# ─── TC-5: state-path-resolve 解決失敗時は cwd 相対へフォールバック ───
-echo "TC-5: falls back to cwd-relative dir when resolver is unavailable"
+# ─── TC-5: state-path-resolve 解決失敗時は保存せず停止 ───
+echo "TC-5: rejects unresolved root without saving"
 nogit_dir="$TEST_DIR/nogit"
 mkdir -p "$nogit_dir/hooks"
 cp "$HOOKS_DIR/review-result-save.sh" "$nogit_dir/hooks/"
@@ -191,12 +191,13 @@ cp "$HOOKS_DIR/gitignore-ensure.sh" "$nogit_dir/hooks/"
 # state-path-resolve.sh を意図的に置かない (解決失敗経路)
 content5="$TEST_DIR/body5.json"
 json_body > "$content5"
-out5=$( cd "$nogit_dir" && bash "$nogit_dir/hooks/review-result-save.sh" --pr 99 --content-file "$content5" 2>&1 ) || true
+rc5=0
+out5=$( cd "$nogit_dir" && bash "$nogit_dir/hooks/review-result-save.sh" --pr 99 --content-file "$content5" 2>&1 ) || rc5=$?
 cwd_hits=$({ find "$nogit_dir/.rite/review-results" -maxdepth 1 -name '99-*.json' 2>/dev/null || true; } | wc -l | tr -d ' ')
-if [ "$cwd_hits" -eq 1 ] && printf '%s' "$out5" | grep -c >/dev/null 'state-path-resolve.sh の解決に失敗'; then
-  pass "TC-5: cwd fallback + WARNING emitted"
+if [ "$rc5" -eq 1 ] && [ "$cwd_hits" -eq 0 ] && printf '%s' "$out5" | grep -c >/dev/null 'state root unresolved'; then
+  pass "TC-5: nonzero and no save on unresolved root"
 else
-  fail "TC-5: expected cwd save + WARNING. hits=$cwd_hits warning=$(printf '%s' "$out5" | grep -c '解決に失敗' || true)"
+  fail "TC-5: expected failure and no save. rc=$rc5 hits=$cwd_hits"
 fi
 echo ""
 

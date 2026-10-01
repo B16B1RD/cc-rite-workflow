@@ -57,6 +57,20 @@ argument-hint: ""
 
 ---
 
+## 入口: 一時停止の解除
+
+状態の復元・変更より先に実行する。非 0 なら診断を表示して停止し、後続へ進まない。
+
+```bash
+# loop-entry-resume
+bash {plugin_root}/hooks/scripts/loop-entry-resume.sh || exit 1
+```
+
+`LOOP_ENTRY_RESUME=resumed` のときは「同じセッションからの再入により一時停止を解除し、継続ガードを再開しました」と利用者へ表示して続行する。`none` なら通常手順へ進む。
+rationale: ../../references/stop-loop-continuation-contract.md#loop-skill-reentry
+
+---
+
 ## Phase 1: Issue 番号確定
 
 ### 1.1 引数優先
@@ -345,11 +359,11 @@ if [ "{resolved_phase}" = "cleanup" ] || [ "{resolved_phase}" = "completed" ]; t
 fi
 ```
 
-`[CONTEXT] RECOVER_OUTSTANDING_WIKI=` / `RECOVER_OUTSTANDING_BRANCH=` marker のいずれかがあれば、Phase 4.1 の状態サマリに以下を追記する（無ければ追記しない — silent、未完了事項「なし」を明示するのは cleanup 自身の完了報告の責務であり、本節は検出のみ）:
+`[CONTEXT] RECOVER_OUTSTANDING_WIKI=` / `RECOVER_OUTSTANDING_BRANCH=` marker のいずれかがあれば、Phase 4.1 の状態サマリに以下を追記する（`{wiki_worktree_abs}` は `bash {plugin_root}/hooks/state-path-resolve.sh` の出力 + `/.rite/wiki-worktree` をリテラル置換する。出力が空で解決できなかったときは、相対パスの案内へ倒さず、解決できなかった旨を案内に出す。無ければ追記しない — silent、未完了事項「なし」を明示するのは cleanup 自身の完了報告の責務であり、本節は検出のみ）:
 
 ```
 ⚠️ 未完了事項を検出しました:
-  - (RECOVER_OUTSTANDING_WIKI=1 のとき) Wiki commit が origin へ未 push です。手動回復: git -C .rite/wiki-worktree push origin {branch}
+  - (RECOVER_OUTSTANDING_WIKI=1 のとき) Wiki commit が origin へ未 push です。手動回復: git -C {wiki_worktree_abs} push origin {branch}
   - (RECOVER_OUTSTANDING_BRANCH=1 のとき) ローカルブランチ {branch} が残っています（対応する PR は OPEN ではありません）。不要なら削除: git branch -D {branch}
 ```
 
@@ -456,7 +470,9 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 ### review-cycle の再開
 
-`review_run` がある場合は [停滞診断の回復規則](../../references/review-stagnation.md) を先に適用する。未閉の時計区間は同参照の共有ブロック `review-clock-close` を `clock_close_mode=recover` で実行して中断として閉じ、`ended_at` がある区間（保存済み区間の再送、API エラー終了時に hook が終了時刻を書いた区間）は時刻・種類を変更しない。観測・修正・見直し履歴と counter は保持する。`current_decision.action=stop` は同じ停止理由を返し、再設計・counter reset・`review-restart`・新 run 作成で迂回しない。明示承認の fresh entry は recover の仕事ではない。合意した Issue 改訂の記録（`review-reconcile`）は active な run を同じ run のまま継続する操作であり、この迂回には当たらない（停止した run は拒否される）。recover 自身はこれを呼ばない。保存済み観測がない completed cycle は pr-review の停滞観測保存へ戻る。
+別 session ID の旧未完了 run を検出した場合は、旧 cycle を下表で後処理せず、[別セッションの正式な再開手順](../../references/review-stagnation.md#session-restart) に従う。旧状態・所有権・停止理由を確認し、証跡を保持して新しい全差分レビューを始める。
+
+自セッションの `review_run` がある場合は [停滞診断の回復規則](../../references/review-stagnation.md) を先に適用する。未閉の時計区間は同参照の共有ブロック `review-clock-close` を `clock_close_mode=recover` で実行して中断として閉じ、`ended_at` がある区間（保存済み区間の再送、API エラー終了時に hook が終了時刻を書いた区間）は時刻・種類を変更しない。観測・修正・見直し履歴と counter は保持する。`current_decision.action=stop` は同じ停止理由を返し、再設計・counter reset・`review-restart`・新 run 作成で迂回しない。明示承認の fresh entry は recover の仕事ではない。合意した Issue 改訂の記録（`review-reconcile`）は active な run を同じ run のまま継続する操作であり、この迂回には当たらない（停止した run は拒否される）。recover 自身はこれを呼ばない。保存済み観測がない completed cycle は pr-review の停滞観測保存へ戻る。
 
 `phase=review` では自セッションの `flow-state.sh get --jq-filter .` を読み、`review_cycle.review_context` の PR / HEAD を現在値と照合する。PR 不一致・破損は理由を出して停止し、別 session の結果を流用しない。HEAD 不一致は下表の状態列が行き先を決める（証跡ゼロなら放棄、証跡があれば回収）。
 
@@ -471,6 +487,8 @@ bash {plugin_root}/hooks/flow-state.sh set \
 | `completed`、最終 gate 未完了、HEAD 一致 | `result_path` を読み、同じ `review-finish` で保存結果を再検証してから pr-review ステップ 6 の残作業〜8 の全 gate へ戻る。新 cycle や fix / ready を直接始めない |
 | `completed`、HEAD 不一致 | 再検証は成立しない（`review-finish` が HEAD 一致を無条件に要求する）。`result_path` の保存結果を読むだけに留め、証跡を保持して停止する。放棄の対象外。**この停止は `/rite:recover` から入った場合の話で**、iterate のループが修正を commit して次の cycle へ進む経路では同じ状態から新しい cycle を始めるのが正常系 |
 | `review_cycle` なし | 既存の iterate の lost 修復と新規開始手順へ。過去の保存 JSON だけを新 cycle の完了証跡にしない |
+
+表の「不足 reviewer だけ同一 cycle で再取得」は、固定名簿のうち未回収の reviewer に限る。名簿に無い専門 reviewer が後から必要になった場合は、その行で追加しない。選定済み全員の raw、完了時刻、SHA256、manifest、`review_context` を保持し、未回収なら不足を明示して停止する。証跡がある collecting を `review-abandon` しない。[pr-review](../pr-review/SKILL.md) の途中停止と [review-stagnation.md](../../references/review-stagnation.md) の restart 受理条件に従う。保存 helper または `review-restart` が拒否したときは、実行したコマンド、exit、診断を報告して停止し、成功と扱わない。状態を手編集しない。
 
 ```bash
 # review-cycle-recover

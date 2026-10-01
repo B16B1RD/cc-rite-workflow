@@ -25,7 +25,7 @@ assert_file_exists_or_fail "fix-step.sh exists" "$STEP" || exit 1
 
 # fix が読む reference と、それぞれの ```bash ブロック数（移設時点の数。抽出の空振りと削除を fail にする）。
 REF_DIR="$PLUGIN_ROOT/skills/fix/references"
-REF_BLOCKS="target-comment.md:3 nb-sweep.md:5 wiki-recording.md:4 accept-finding.md:1 non-fatal-record.md:1"
+REF_BLOCKS="target-comment.md:3 nb-sweep.md:7 wiki-recording.md:4 accept-finding.md:1 non-fatal-record.md:1"
 for entry in $REF_BLOCKS; do
   assert_file_exists_or_fail "${entry%%:*} exists" "$REF_DIR/${entry%%:*}" || exit 1
 done
@@ -91,7 +91,33 @@ step_subcommands() {
 
 # helper の中の commit / merge は PreToolUse の commit ガードから見えない。コメント行を除いて数える。
 helper_commit_calls() {
-  grep -vE '^[[:space:]]*#' "$1" | grep -cE '(^|[;&|({[:space:]])git[[:space:]]+(commit|merge)([[:space:]]|$)' || true
+  python3 - "$PLUGIN_ROOT/hooks/scripts/lib" "$1" <<'PY'
+import importlib
+from pathlib import Path
+import sys
+
+sys.path.insert(0, sys.argv[1])
+scope = importlib.import_module("review-fix-scope")
+count = 0
+for words, *_ in scope.shell_segments(Path(sys.argv[2]).read_text()):
+    words, _ = scope.peel_commit_prefixes(words)
+    if not words:
+        continue
+    if Path(words[0]).name != "git":
+        # guard と同じ非 direct git 判定で、従来拾っていた wrapper 内の禁止呼出しも数える。
+        if Path(words[0]).name in {"echo", "printf"}:
+            continue
+        names = [Path(word).name for word in words]
+        if "git" in names:
+            index = scope.git_subcommand_index(words, names.index("git"))
+            if index is not None and any(name in words[index:] for name in ("commit", "merge")):
+                count += 1
+        continue
+    index, _, _ = scope.git_global_options(words)
+    if index is not None and index < len(words) and words[index] in ("commit", "merge"):
+        count += 1
+print(count)
+PY
 }
 
 # helper が emit する `[fix:…]` sentinel のうち、sentinel-contract.md の一覧に宣言されていないもの。
@@ -240,6 +266,22 @@ if [ -n "$MUT_DIR" ]; then
   if assert_mutant_changed "helper with a commit" "$STEP" "$MUT_DIR/step-commit.sh"; then
     assert "a git commit in fix-step.sh is reported" "1" "$(helper_commit_calls "$MUT_DIR/step-commit.sh")"
   fi
+
+  for command in 'git -C "$wt" commit -F "$m"' 'git -c user.name=x commit -F "$m"' 'git --no-pager merge x' \
+    'timeout 10 git commit -F "$m"' 'nice git commit -F "$m"'; do
+    awk -v command="$command" '{ print } /^step_push\(\) \{$/ { print command }' \
+      "$STEP" > "$MUT_DIR/step-global-option.sh"
+    if assert_mutant_changed "helper with $command" "$STEP" "$MUT_DIR/step-global-option.sh"; then
+      assert "a global-option call in fix-step.sh is reported: $command" "1" \
+        "$(helper_commit_calls "$MUT_DIR/step-global-option.sh")"
+    fi
+  done
+
+  printf '%s\n' 'command git commit -F "$m"' '/usr/bin/git --no-pager merge x' \
+    'git status' 'timeout 10 git status' '# git commit -F "$m"' \
+    'echo "git -c user.name=x commit"' 'printf "%s\n" "nice git commit"' > "$MUT_DIR/git-controls.sh"
+  assert "command and absolute-path git calls are counted without counting data or status" "2" \
+    "$(helper_commit_calls "$MUT_DIR/git-controls.sh")"
 
   # 宣言されていない sentinel を helper に足すと検出される。
   sed 's#^echo "\[fix:cancelled-by-user\]"$#echo "[fix:cancelled-by-typo]"#' "$STEP" > "$MUT_DIR/step-sentinel.sh"

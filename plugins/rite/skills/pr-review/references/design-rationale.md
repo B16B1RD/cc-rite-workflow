@@ -26,7 +26,7 @@
 ステップ 2.2.1 の fenced code block スキャン bash の設計理由。
 
 - **pipefail を維持する理由**: 現行実装は pipeline を廃止し `diff_out=$(git diff ...)` 独立実行 + here-string 構成に移行したため、pipefail が直接必要な pipeline は存在しない。将来の pipeline 追加時の防御として維持している。
-- **`printf | grep -m 1` ではなく here-string `<<<` を使う理由**: pipeline では printf が上流 (writer)、grep が下流 (reader) となり、`grep -m 1` の 1 件マッチ早期終了で上流の printf に SIGPIPE が届く経路が存在する。pipefail 有効時、`$diff_out` が pipe buffer (Linux デフォルト 64KB) を超えるサイズだと printf が rc=141 を返し、case 文の `*)` (IO error 扱い) で `__FAIL_SAFE_ADD__` sentinel が誤発火する (大きな diff の Doc-Heavy PR で silent false positive)。`<<<` は bash が入力を一時ファイル経由で渡すため SIGPIPE を受ける相手がおらず、grep の exit 0/1/2 をそのまま捕捉できる。
+- **`printf | grep -m 1` ではなく here-string `<<<` を使う理由**: pipeline では printf が上流 (writer)、grep が下流 (reader) となり、`grep -m 1` の 1 件マッチ早期終了で上流の printf に SIGPIPE が届く経路が存在する。pipefail 有効時、`$diff_out` が pipe buffer (Linux デフォルト 64KB) を超えるサイズだと printf が rc=141 を返し、case 文の `*)` (IO error 扱い) で `__FAIL_SAFE_ADD__` sentinel が誤発火する (大きな diff の Doc-Heavy PR で silent false positive)。`<<<` は bash 5.0 以前では一時ファイル、5.1 以降では pipe buffer 未満の入力に pipe（大きい入力は一時ファイル）を使う。どちらの経路も上流の書き手プロセスを作らないため、grep の早期終了で書き手が SIGPIPE を受ける経路がなく、grep の exit 0/1/2 をそのまま捕捉できる。
 - **iteration_id を付与する理由**: 同一 session 内で同じ review が複数回実行されると `[CONTEXT] code_quality_coreviewer_add_reason=` 行が会話履歴に複数残り、後続 phase が「最新値」を決定論的に判別できない。`pr_number-{epoch_seconds}` suffix により「最大の iteration_id を持つ行が最新」と判定できる (M-7 修正。ステップ 7.2 / 7.7 の sentinel 規約と同型)。
 - **`[CONTEXT]` 3 状態 emit の理由**: bash block 内で `:` no-op だけだと後続 phase が判定結果を機械的に読み取れない (会話文脈に何も残らない)。
 

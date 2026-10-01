@@ -992,7 +992,8 @@ for f in "$pr_review_skill" "$PLUGIN_ROOT/skills/fix/references/assessment-rules
   fi
   # 規則文の後ろに「不確実を理由に class B へ倒さない」が同じ行で続く (一般の B 倒し既定より優先する)。
   # 但し書きの直後は、assessment-rules.md では tail で行末まで完全一致、SKILL.md / severity-levels.md では
-  # tail の後ろに本文が続くため tail の前方一致で照合し、否定化や優先関係の反転を検出する
+  # tail の後ろに本文が続くため tail の前方一致で照合し、優先句の中の否定化を検出する。
+  # SKILL.md / severity-levels.md の tail より後ろに足した反転文は検査しない
   case "$rest" in
     *"$doc_follower_exemption"*)
       exemption_after=${rest#*"$doc_follower_exemption"}
@@ -1024,7 +1025,7 @@ else
   fail "uncertainty exemption missing:$doc_follower_exemption_missing"
 fi
 if [ -z "$doc_follower_exemption_tail_drift" ]; then
-  pass "uncertainty exemption ends with the expected precedence in all three sites"
+  pass "uncertainty exemption has the expected precedence prefix or assessment-rules closing parenthesis at line end"
 else
   fail "uncertainty exemption tail drift:$doc_follower_exemption_tail_drift"
 fi

@@ -83,12 +83,13 @@ for reason in max-cycles divergence; do
     for write_result in success failure; do
       case_dir="$state_dir/$reason-$mode-$write_result"
       mkdir -p "$case_dir/.rite/state"
+      git -C "$case_dir" init -q
       sid=breaker-contract
       flow="$ROOT/plugins/rite/hooks/flow-state.sh"
       # The breaker runs after fix; an unfinished review cannot reset its counter.
-      env RITE_STATE_ROOT="$case_dir" CLAUDE_CODE_SESSION_ID="$sid" bash "$flow" set \
+      (cd "$case_dir" && env RITE_HOST=claude RITE_STATE_ROOT="$case_dir" CLAUDE_CODE_SESSION_ID="$sid" bash "$flow" set \
         --phase fix --issue 2567 --branch issue-2567 --pr 2600 --next pending \
-        --cycle-count 4 --handoff '/rite:pr-review 2600' >/dev/null
+        --cycle-count 4 --handoff '/rite:pr-review 2600' >/dev/null)
       if [ "$mode" = batch ]; then active=true; else active=false; fi
       jq -n --argjson active "$active" '{issues:[2567],cursor:0,active:$active}' \
         > "$case_dir/.rite/state/run-queue-$sid.json"
@@ -97,7 +98,7 @@ for reason in max-cycles divergence; do
         cat "$state_dir/step6.template"; } > "$case_dir/step6.sh"
       cat "$state_dir/wrapper.sh" "$case_dir/step6.sh" > "$case_dir/run.sh"
       if [ "$write_result" = failure ]; then fail_set=1; else fail_set=0; fi
-      output=$(cd "$case_dir" && env RITE_STATE_ROOT="$case_dir" CLAUDE_CODE_SESSION_ID="$sid" \
+      output=$(cd "$case_dir" && env RITE_HOST=claude RITE_STATE_ROOT="$case_dir" CLAUDE_CODE_SESSION_ID="$sid" \
         BREAKER_CALL_LOG="$case_dir/calls" BREAKER_FAIL_SET="$fail_set" bash "$case_dir/run.sh" 2>&1)
       label="$reason/$mode/$write_result"
       assert_eq "$label keeps terminal mode" "$mode" "$(printf '%s\n' "$output" | marker_get ITERATE_CB_MODE)"
@@ -124,7 +125,7 @@ for reason in max-cycles divergence; do
 done
 # The resolver can return an empty root with rc=0: retain a stop marker and
 # an explicit unresolved value rather than emitting an empty recovery target.
-output=$(cd "$case_dir" && env RITE_STATE_ROOT="$case_dir" CLAUDE_CODE_SESSION_ID="$sid" \
+output=$(cd "$case_dir" && env RITE_HOST=claude RITE_STATE_ROOT="$case_dir" CLAUDE_CODE_SESSION_ID="$sid" \
   BREAKER_CALL_LOG="$case_dir/calls" BREAKER_EMPTY_ROOT=1 bash "$case_dir/run.sh" 2>&1)
 assert_eq 'unresolved root retains terminal interactive route' interactive "$(printf '%s\n' "$output" | marker_get ITERATE_CB_MODE)"
 assert_eq 'unresolved root is explicit in marker' unresolved "$(printf '%s\n' "$output" | marker_get ITERATE_CB_MODE --field STATE_ROOT)"
@@ -284,10 +285,8 @@ assert_grep 'any other gate result stops with review error' "$review" '| それ�
 # commit, pass the triage arguments and surface the gate's exit code.
 triage_dir="$state_dir/triage"
 mkdir -p "$triage_dir/plugin/hooks/scripts" "$triage_dir/plugin/scripts" "$triage_dir/root/.rite/review-results"
-awk '/^### 7\.2-7\.3 / { s=1 } s && /^```bash$/ { a=1; blk=""; next }
-  a && /^```$/ { a=0; if (index(blk, "--kind triage")) { printf "%s", blk; exit } next }
-  a { blk = blk $0 "\n" }' "$review" > "$triage_dir/block.sh"
-assert_grep 'gate block calls the triage gate' "$triage_dir/block.sh" 'review-adoption-gate.sh --pr {pr_number} --kind triage'
+cp "$ROOT/plugins/rite/hooks/scripts/triage-adoption-run.sh" "$triage_dir/plugin/hooks/scripts/triage-adoption-run.sh"
+assert_grep 'gate block calls the triage gate' "$triage_dir/plugin/hooks/scripts/triage-adoption-run.sh" 'review-adoption-gate.sh --pr "$pr" --kind triage'
 printf '#!/bin/bash\nprintf "%%s\\n" "$TRIAGE_ROOT"\n' > "$triage_dir/plugin/hooks/state-path-resolve.sh"
 cat > "$triage_dir/plugin/hooks/scripts/review-adoption-gate.sh" <<'STUB'
 #!/bin/bash
@@ -306,18 +305,26 @@ printf '{"commit_sha": "c0ffee"}\n' > "$triage_dir/root/.rite/review-results/5-2
 triage_records='[{"ids": ["C-1"]}]'
 triage_candidates='{"candidates": [{"id": "C-1", "content": "full text"}]}'
 run_triage_block() {
-  local issue=$1 code
-  code=$(cat "$triage_dir/block.sh")
-  code=${code//\{plugin_root\}/$triage_dir/plugin}
-  code=${code//\{pr_number\}/5}
-  code=${code//\{base_branch\}/develop}
-  code=${code//\{fix_loop\}/yes}
-  code=${code//\{source_issue_number\}/$issue}
-  code=${code//\{records\}/$triage_records}
-  code=${code//\{candidates\}/$triage_candidates}
+  local issue=$1 rec cand
+  rec=$(mktemp)
+  cand=$(mktemp)
+  printf '%s\n' "$triage_records" > "$rec"
+  printf '%s\n' "$triage_candidates" > "$cand"
   rm -f "$triage_dir/args" "$triage_dir/args.record" "$triage_dir/args.verdicts"
-  TRIAGE_ROOT="$triage_dir/root" TRIAGE_ARGS="$triage_dir/args" TRIAGE_GATE_RC="$TRIAGE_GATE_RC" \
-    PATH="${TRIAGE_PATH_PREFIX:+$TRIAGE_PATH_PREFIX:}$PATH" bash -c "$code" 2>&1 || true
+  if [ -n "$issue" ]; then
+    TRIAGE_ROOT="$triage_dir/root" TRIAGE_ARGS="$triage_dir/args" TRIAGE_GATE_RC="$TRIAGE_GATE_RC" \
+      PATH="${TRIAGE_PATH_PREFIX:+$TRIAGE_PATH_PREFIX:}$PATH" \
+      bash "$triage_dir/plugin/hooks/scripts/triage-adoption-run.sh" \
+      --pr 5 --base origin/develop --fix-loop yes \
+      --records-file "$rec" --candidates-file "$cand" --issue "$issue" 2>&1 || true
+  else
+    TRIAGE_ROOT="$triage_dir/root" TRIAGE_ARGS="$triage_dir/args" TRIAGE_GATE_RC="$TRIAGE_GATE_RC" \
+      PATH="${TRIAGE_PATH_PREFIX:+$TRIAGE_PATH_PREFIX:}$PATH" \
+      bash "$triage_dir/plugin/hooks/scripts/triage-adoption-run.sh" \
+      --pr 5 --base origin/develop --fix-loop yes \
+      --records-file "$rec" --candidates-file "$cand" 2>&1 || true
+  fi
+  rm -f "$rec" "$cand"
 }
 out=$(TRIAGE_GATE_RC=3 run_triage_block 7)
 assert_eq 'gate block surfaces the held exit code' '[CONTEXT] ADOPTION_GATE_RC=3' "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"

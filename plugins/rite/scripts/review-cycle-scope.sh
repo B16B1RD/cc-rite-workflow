@@ -307,8 +307,12 @@ own_names=$( {
   emit_full diff_failed
 }
 # comm は入力と同じ照合順で動かす。ロケールが違うと片側を読み切って共通要素を落とす。
-scope_names=$(LC_ALL=C comm -12 <(printf '%s\n' "$diff_names" | LC_ALL=C sort -u) \
-                                <(printf '%s\n' "$own_names" | LC_ALL=C sort -u) 2>"$probe_err") || {
+scope_names=$( {
+  sorted_diff_names=$(printf '%s\n' "$diff_names" | LC_ALL=C sort -u) || exit 1
+  sorted_own_names=$(printf '%s\n' "$own_names" | LC_ALL=C sort -u) || exit 1
+  LC_ALL=C comm -12 <(printf '%s\n' "$sorted_diff_names") \
+                   <(printf '%s\n' "$sorted_own_names")
+} 2>"$probe_err") || {
   echo "WARNING: review-cycle-scope: fix diff の積を計算できません (${base_sha}..HEAD)" >&2
   head -3 "$probe_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   emit_full diff_failed

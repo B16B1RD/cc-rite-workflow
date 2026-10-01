@@ -100,7 +100,7 @@ wiki_context=$(bash {plugin_root}/hooks/scripts/wiki-apply-capture.sh \
 printf '%s\n' "$wiki_context"
 ```
 
-**Step 3**: status が ok の各ページは rev の本文を読み、本文中の 1 行を excerpt に書く。applied は evidence と、実行した検証コマンドおよび結果を result に書く。out は reason に理由を書く。`body: read` だけでは次へ進まない。ゲートが deny なら commit しない。`git-commit-file.sh` は成功後に head を更新する。それ以外の commit のあとは、証跡の head を新しい HEAD に更新する。blob が現在のファイルと違うときは capture からやり直す。
+**Step 3**: status が ok の各ページは rev の本文を読み、本文中の 1 行を excerpt に書く。applied は evidence と、実行した検証コマンドおよび結果を result に書く。out は reason に理由を書く。`body: read` だけでは次へ進まない。ゲートが deny なら commit しない。`git-commit-file.sh` は成功後に head を更新する。それ以外の commit のあとは、`bash {plugin_root}/hooks/scripts/wiki-apply-advance-head.sh --from HEAD^` を呼ぶ。非 0 終了なら capture からやり直す。blob が現在のファイルと違うときは capture からやり直す。
 
 ### 5.0.T Canon TDD Cycle (Conditional)
 
@@ -394,12 +394,17 @@ Execute test verification before committing when conditions are met.
 
 ##### Condition Check
 
-Read `rite-config.yml` and check:
+設定は 5.0.W と同じ resolver で解決し、同じブロックで内容を表示して確認する。rc=2 は stderr を表示して停止し（`|| exit 1`）、既定値へ倒さない:
+
+```bash
+rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+cat "$rite_config"
+```
 
 | Condition | Check Method |
 |-----------|-------------|
-| `commands.test` is set | Non-null value in `rite-config.yml` |
-| `verification.run_tests_before_pr` is `true` | From `rite-config.yml` (default: `true`) |
+| `commands.test` is set | Non-null value in the resolved config |
+| `verification.run_tests_before_pr` is `true` | From the resolved config (default: `true`) |
 
 **Skip conditions** (any match → skip to 5.1.0.7, then 5.1.0.8, then 5.1.1):
 - `commands.test` is `null` or not set
@@ -452,7 +457,7 @@ E2E では結果を context に残す（`/rite:lint` Phase 3.4 が再利用で�
 
 **Check procedure:**
 
-1. Save the retrieved body unchanged to a temporary `{issue_body_file}` and run `bash {plugin_root}/scripts/acceptance-criteria-check.sh extract --body-file "{issue_body_file}"`; remove the temporary file after reading the result. `target` supplies the IDs to check; only `skipped; reason=no_ac_section` skips to 5.1.0.7. Any nonzero exit stops implementation with the helper diagnostic and format guidance, including unsupported AC headings, malformed/empty sections and duplicate IDs. Do not downgrade these errors to advisory warnings.
+1. Save the retrieved body unchanged to a temporary `{issue_body_file}` and run `bash {plugin_root}/scripts/acceptance-criteria-check.sh extract --body-file "{issue_body_file}"`; remove the temporary file after reading the result. `target` supplies the IDs to check; only `skipped; reason=no_ac_section` skips to 5.1.0.7. Any nonzero exit stops implementation with the helper diagnostic and format guidance, including unsupported AC headings, AC items outside the section, malformed/empty sections and duplicate IDs. Do not downgrade these errors to advisory warnings.
 2. For each criterion, evaluate whether the current implementation satisfies it based on:
    - Changed files and their content
    - Test results (if tests were run)
@@ -576,8 +581,14 @@ if grep -qx '[{].*[}]' "$commit_msg_file"; then
   echo "ERROR: コミットメッセージが未置換です" >&2
   exit 1
 fi
-if ! bash {plugin_root}/hooks/scripts/git-commit-file.sh --file "$commit_msg_file"; then
-  echo "ERROR: コミットに失敗したため push しません" >&2
+commit_rc=0
+bash {plugin_root}/hooks/scripts/git-commit-file.sh --file "$commit_msg_file" || commit_rc=$?
+if [ "$commit_rc" -ne 0 ]; then
+  if [ "$commit_rc" -eq 4 ]; then
+    echo "ERROR: コミット済みですが、後処理（Wiki 適用証跡の head 更新）に失敗したため push しません" >&2
+  else
+    echo "ERROR: コミットに失敗したため push しません" >&2
+  fi
   exit 1
 fi
 git push origin {branch_name}

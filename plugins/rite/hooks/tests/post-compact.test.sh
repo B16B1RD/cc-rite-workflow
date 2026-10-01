@@ -47,9 +47,8 @@ fail() {
 
 setup_test() {
   local test_cwd="$TEST_DIR/$1"
+  git init -q "$test_cwd"
   mkdir -p "$test_cwd"
-  # Create minimal state-path-resolve.sh mock
-  mkdir -p "$test_cwd/.git"
   echo "$test_cwd"
 }
 
@@ -64,6 +63,7 @@ write_per_session_state() {
   local dir="$1"
   local content="$2"
   local sid="${3:-test-sid-$(basename "$dir")}"
+  git init -q "$dir"
   mkdir -p "$dir/.rite/sessions"
   printf '%s' "$sid" > "$dir/.rite-session-id"
   local merged
@@ -309,6 +309,7 @@ chmod +x "$sbx_749/flow-state.sh"
 # post-compact.sh exits early when no flow_state — the TC only validates stderr
 # pass-through, not the legacy fallback (which was removed in PR 2a / Phase F-3).
 dir_749="$TEST_DIR/tc749-passthrough"
+git init -q "$dir_749"
 mkdir -p "$dir_749"
 
 stderr_file="$(mktemp "$TEST_DIR/stderr.749.XXXXXX")"
@@ -390,13 +391,13 @@ _mock_gh_pr_view() {
 MOCKLIB_EOF
   } > "$dir/bin/gh-mock-lib.sh"
   if [ -n "$git_remote_url" ]; then
-    # Real git repo (not the `mkdir -p .git` non-repo stub below) so
+    # A repository with origin configured so
     # resolve_owner_repo() can actually parse `origin` — used by TC-RECON-09
     # to exercise the git-remote fast path's *success* case at the caller
     # level, instead of always falling through to the gh repo view mock.
     ( cd "$dir" && git init -q && git remote add origin "$git_remote_url" )
   else
-    mkdir -p "$dir/.git"
+    git init -q "$dir"
   fi
   # flow-state with pr_number=42 → reconciliation block enters
   write_per_session_state "$dir" \
@@ -416,7 +417,7 @@ YAML
       cat > "$dir/bin/gh" <<'EOF'
 #!/bin/bash
 case "$1 $2" in
-  "pr view") echo "could not resolve to a PullRequest with the number of 42" >&2; exit 1 ;;  # no-jq-dispatch: fail-fast error fixture
+  "pr view") echo "${MOCK_PR_VIEW_ERROR:-could not resolve to a PullRequest with the number of 42}" >&2; exit 1 ;;  # no-jq-dispatch: fail-fast error fixture
   "repo view") echo '{"owner":{"login":"o"},"name":"r"}' ;;
   "api graphql") echo "Todo" ;;
   *) exit 0 ;;
@@ -604,22 +605,29 @@ EOF
   echo "$dir"
 }
 
-# TC-RECON-02: pr_deleted_or_inaccessible classification (false-positive guard)
-echo "TC-RECON-02: gh pr view 'could not resolve PullRequest' → pr_deleted_or_inaccessible classification"
-recon_dir=$(_setup_recon_env "pr-deleted" "pr_view_404")
-recon_stderr="$(mktemp "$TEST_DIR/recon-pr-deleted-stderr.XXXXXX")"
-echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
-  | env PATH="$recon_dir/bin:$PATH" bash "$HOOK" >/dev/null 2>"$recon_stderr" || true
-if grep -qE 'pr_deleted_or_inaccessible' "$recon_stderr"; then
-  pass "pr_deleted_or_inaccessible root cause hint set (not gh_pr_view_failed)"
-else
-  fail "expected pr_deleted_or_inaccessible hint; got: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
-fi
-if grep -qE 'post_compact_gh_pr_view_failed' "$recon_stderr"; then
-  fail "post_compact_gh_pr_view_failed wrongly emitted for closed-PR case"
-else
-  pass "post_compact_gh_pr_view_failed NOT emitted for closed-PR case"
-fi
+# TC-RECON-02: PR absence messages share the same classification.
+for pr_case in camel singular plural; do
+  case "$pr_case" in
+    camel) pr_error="could not resolve to a PullRequest with the number of 42" ;;
+    singular) pr_error='no pull request found for branch "fixture"' ;;
+    plural) pr_error='no pull requests found for branch "fixture"' ;;
+  esac
+  echo "TC-RECON-02 ($pr_case): gh pr view absence → pr_deleted_or_inaccessible classification"
+  recon_dir=$(_setup_recon_env "pr-deleted-$pr_case" "pr_view_404")
+  recon_stderr="$(mktemp "$TEST_DIR/recon-pr-deleted-stderr.XXXXXX")"
+  echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
+    | env PATH="$recon_dir/bin:$PATH" MOCK_PR_VIEW_ERROR="$pr_error" bash "$HOOK" >/dev/null 2>"$recon_stderr" || true
+  if grep -qE 'pr_deleted_or_inaccessible' "$recon_stderr"; then
+    pass "pr_deleted_or_inaccessible root cause hint set ($pr_case)"
+  else
+    fail "expected pr_deleted_or_inaccessible hint ($pr_case); got: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+  fi
+  if grep -qE 'post_compact_gh_pr_view_failed' "$recon_stderr"; then
+    fail "post_compact_gh_pr_view_failed wrongly emitted for PR absence ($pr_case)"
+  else
+    pass "post_compact_gh_pr_view_failed NOT emitted for PR absence ($pr_case)"
+  fi
+done
 
 # TC-RECON-03: distinguish gh_pr_view_failed (HTTP 403) from pr_deleted
 echo "TC-RECON-03: gh pr view 'HTTP 403 rate limit' → post_compact_gh_pr_view_failed classification"
@@ -1074,8 +1082,8 @@ else
 fi
 
 # TC-RECON-09: SSH Host alias origin → git-remote fast path bypasses a broken
-# gh repo view (the actual scenario). Every fixture above uses a fake
-# `mkdir -p .git` non-repo, so all of them fail to parse via git-remote and
+# gh repo view (the actual scenario). The fixtures above use repositories
+# without origin, so they fail to parse via git-remote and
 # fall through to (and exercise) the gh repo view fallback — none exercises
 # the git-remote fast path's *success* case at the caller level.
 echo "TC-RECON-09: SSH Host alias origin → git-remote fast path bypasses broken gh repo view"

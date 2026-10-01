@@ -24,8 +24,8 @@ if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
   exit 0
 fi
 
-# Resolve state root (git root or CWD)
-STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
+# Resolve the shared git state root
+STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD") || exit 0
 
 # Resolve the active flow-state file: always the per-session file (the legacy
 # single-file selection path was removed). Stderr is captured via the
@@ -362,7 +362,7 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
         # PR が close/merge/delete された legitimate な終了状態 (gh CLI の
         # `Could not resolve to a PullRequest` CamelCase 連結 stderr) と
         # auth/network/permission 失敗を区別して WARNING に出す。前者は false positive。
-        if grep -qiE 'could not resolve.*pull[[:space:]]*request|no.*pull[[:space:]]*request found' <<< "$pr_view_err_oneline"; then
+        if grep -qiE 'could not resolve.*pull[[:space:]]*request|no.*pull[[:space:]]*requests? found' <<< "$pr_view_err_oneline"; then
           pr_root_cause_hint="pr_deleted_or_inaccessible"
         else
           pr_root_cause_hint="post_compact_gh_pr_view_failed"

@@ -2,6 +2,7 @@
 set -u
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 HELPER="$ROOT/hooks/scripts/ready-pr-head-gate.sh"
+FIXTURE_PATH="$PATH"
 SB=$(mktemp -d)
 trap 'rm -rf "$SB"' EXIT
 mkdir -p "$SB/bin" "$SB/plugin/hooks/scripts"
@@ -105,9 +106,10 @@ done
 grep -q 'ambiguous runtime session identity' "$SB/err" && ok || bad "owner-name-fallback: ambiguous identity reason not shown"
 
 # T-06: work-memory overrides are sanitized and written under the helper lock.
-wm_repo="$SB/wm-repo"; mkdir -p "$wm_repo"; git -C "$wm_repo" init -q
+wm_repo="$SB/wm-repo"; mkdir -p "$wm_repo"; PATH="$FIXTURE_PATH" git -C "$wm_repo" init -q
 (
   cd "$wm_repo" || exit 1
+  export PATH="$FIXTURE_PATH"
   WM_SOURCE=ready WM_PHASE=ready WM_PHASE_DETAIL=done WM_NEXT_ACTION=next \
     WM_BODY_TEXT=body WM_ISSUE_NUMBER=42 WM_PLUGIN_ROOT="$ROOT" \
     WM_BRANCH_OVERRIDE='feature/"quoted"' WM_LAST_COMMIT_OVERRIDE=0123456789abcdef \

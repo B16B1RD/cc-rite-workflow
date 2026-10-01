@@ -35,9 +35,9 @@ if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
   exit 0
 fi
 
-# Resolve state root (git root or CWD)
+# Resolve the shared git state root
 # SCRIPT_DIR already set in preamble block above
-STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
+STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD") || exit 0
 
 # Resolve active flow-state file path.
 # Always returns the per-session file (the legacy single-file selection path was

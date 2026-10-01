@@ -677,10 +677,51 @@ rec_order=$(awk -v s="$REC_START" -v e="$REC_END" '
 assert "T-07 iterate recommendation order check → mark → set → fix" "check|mark|set|fix|" "$rec_order"
 
 TRIAGE_MD="$PLUGIN_ROOT/skills/pr-review/references/scope-triage.md"
-assert_grep "T-07 pr-review 7.2 registers the adoption verdict fix after the gate decided" "$TRIAGE_MD" \
-  '^  bash \{plugin_root\}/scripts/review-pr-recommendations\.sh record --pr \{pr_number\} --review-result "\$review_json" \\$'
-assert_grep "T-07 pr-review 7.2 stops when the registration fails" "$TRIAGE_MD" \
+HELPER="$PLUGIN_ROOT/hooks/scripts/triage-adoption-run.sh"
+assert_grep "T-07 pr-review 7.2 registers the adoption verdict fix after the gate decided" "$HELPER" \
+  '^  bash "\$plugin_root/scripts/review-pr-recommendations\.sh" record --pr "\$pr" --review-result "\$review_json" \\$'
+assert_grep "T-07 pr-review 7.2 stops when the registration fails" "$HELPER" \
   '\|\| \{ echo "ERROR: PR 内推奨を登録できません（原因は直前の出力）" >&2; rc=2; \}'
+fence=$(awk '
+  /^```bash$/ { a=1; blk=""; next }
+  a && /^```$/ {
+    a=0
+    if (index(blk, "triage-adoption-run.sh")) { printf "%s", blk; exit }
+    next
+  }
+  a { blk = blk $0 "\n" }
+' "$TRIAGE_MD")
+expected="bash {plugin_root}/hooks/scripts/triage-adoption-run.sh --pr {pr_number} --base origin/{base_branch} --fix-loop {fix_loop} --records-file '{records_file}' --candidates-file '{candidates_file}'"
+assert "T-07 procedure 3 fence is one helper call" "$expected" "$fence"
+# 保存済み review JSON の無い番号なら helper は状態を書く前に ADOPTION_GATE_RC を出して止まる。
+# 構文エラーで helper に届かない文は、この印が無いので失敗する。
+records_file=$(mktemp)
+candidates_file=$(mktemp)
+printf '[]\n' > "$records_file"
+printf '{"candidates":[]}\n' > "$candidates_file"
+run_line=$fence
+run_line=${run_line//\{plugin_root\}/$PLUGIN_ROOT}
+run_line=${run_line//\{pr_number\}/9999993508}
+run_line=${run_line//\{base_branch\}/develop}
+run_line=${run_line//\{fix_loop\}/no}
+run_line=${run_line//\{records_file\}/$records_file}
+run_line=${run_line//\{candidates_file\}/$candidates_file}
+exec_out=$(mktemp)
+exec_err=$(mktemp)
+bash -c "$run_line" >"$exec_out" 2>"$exec_err" || true
+assert "T-07 procedure 3 starts the helper" 1 "$(grep -c '\[CONTEXT\] ADOPTION_GATE_RC=' "$exec_out" || true)"
+rm -f "$records_file" "$candidates_file" "$exec_out" "$exec_err"
+repo_root=$(cd "$PLUGIN_ROOT/../.." && pwd)
+heaviness_err=$(mktemp)
+heaviness_rc=0
+heaviness_out=$(cd "$repo_root" && bash plugins/rite/hooks/scripts/bash-heaviness-check.sh --target plugins/rite/skills/pr-review/references/scope-triage.md 2>"$heaviness_err") || heaviness_rc=$?
+assert "T-07 scope-triage heaviness exits 0" 0 "$heaviness_rc"
+assert "T-07 scope-triage heaviness stdout has no heavy block" 0 "$(printf '%s\n' "$heaviness_out" | grep -c 'heavy operational bash block' || true)"
+assert "T-07 scope-triage heaviness stderr has no target not found" 0 "$(grep -c 'target not found' "$heaviness_err" || true)"
+rm -f "$heaviness_err"
+miss_rc=0
+bash "$HELPER" >/dev/null 2>/dev/null || miss_rc=$?
+assert "T-07 helper without required arguments exits 2" 2 "$miss_rc"
 assert "T-07 pr-review no longer registers by position" "0" "$(grep -c '5\.3\.0\.R\|recommendations-register\|registered_recommendation_positions' "$REVIEW" "$REVIEW_STEP" | awk -F: '{ n += $2 } END { print n }')"
 assert_grep_in_section "T-07 fix 2.1 routes R-NN to the normal fix" "$FIX_SKILL" \
   '^### 2\.1 Confirm Fix Approach$' '^### 2\.1\.A ' \
@@ -1588,6 +1629,8 @@ cat > "$t17_plugin/hooks/scripts/nb-sweep-ledger.sh" <<SH
 #!/usr/bin/env bash
 printf '%s\n' "\$1" >> "$sandbox/t17-ledger.log"
 [ "\$1" = extract ] && [ "\${T17_EXTRACT_FAIL:-0}" = 1 ] && exit 1
+[ "\$1" = missing ] && [ "\${T26_MISSING_FAIL:-0}" = 1 ] && exit 1
+[ "\$1" = missing ] && [ "\${T26_MISSING_NOMARKER:-0}" = 1 ] && exit 0
 exec bash "$LEDGER" "\$@"
 SH
 chmod +x "$t17_plugin/hooks/scripts/nb-sweep-ledger.sh"
@@ -1942,9 +1985,18 @@ assert "T-23 手順 2 は手順 3 の再実行で同じ sweep の entries を直
 assert "T-23 手順 3 は別の record の出典を今回の record へ書き換えさせない" 0 \
   "$(printf '%s\n' "$t23_step3" | grep -cF '値の違う行はその値に直す')"
 assert "T-23 手順 1 の stale は別の record を名指す行を書き換えずに元の出典で台帳へ載せさせる" 1 \
-  "$(grep -F '1 行目が別の record を名指す entries の行は、前回の sweep が起票したまま台帳に載せられなかった記録であり、1 行目も行の出典も今回の record に書き換えてはならない' "$FIX" | grep -cF '書き換えずに手順 3 の bash だけを実行して元の出典のまま台帳へ載せ、成功したら entries を消して `/rite:iterate {pr_number}` を再実行する')"
-assert "T-23 手順 1 の stale は台帳に既に載っている行で手順 3 を再実行させない" 1 \
-  "$(grep -F '別の record を名指す entries の行は' "$FIX" | grep -F '同じ id・位置・出典の行が既にあれば、手順 3 は成功済みなので再実行しない' | grep -cF 'entries を消して `/rite:iterate {pr_number}` を再実行する。無ければ書き換えずに')"
+  "$(grep -F '1 行目が別の record を名指す entries の行は、前回の sweep が起票したまま台帳に載せられなかった記録であり、1 行目も行の出典も今回の record に書き換えてはならない' "$FIX" | grep -cF '戻り方は次の 1 行を実行する。')"
+assert "T-23 手順 1 の stale は台帳との照合を fix-step.sh nb-sweep-reconcile の 1 行呼び出しに委ねる" 1 \
+  "$(grep -cxF 'bash {plugin_root}/scripts/fix-step.sh nb-sweep-reconcile --pr {pr_number} --owner-repo {owner_repo}' "$FIX")"
+t23_stale_line=$(grep -F '戻り方は次の 1 行を実行する。' "$FIX")
+assert "T-23 手順 1 の stale は entries の全行について同じ id・位置・出典の行が台帳にあるかを照合させる" 1 \
+  "$(printf '%s\n' "$t23_stale_line" | grep -F 'entries の全行について同じ id・位置・出典の行が既にあるかを照合する' | grep -cF '記録コメントの `### 却下台帳` を読み')"
+assert "T-23 手順 1 の stale は全行が台帳にあるときだけ書かずに entries を消し、載っていない行だけを元の出典のまま載せる" 1 \
+  "$(printf '%s\n' "$t23_stale_line" | grep -F '全行が載っていれば台帳へ書かずに entries を消す' | grep -F '載っていない行があれば、その行だけを元の出典のまま台帳へ載せてから entries を消す' | grep -cF '載っている行は二度載せない')"
+assert "T-23 手順 1 の stale は取得・抽出の失敗で entries を残して止まる" 1 \
+  "$(printf '%s\n' "$t23_stale_line" | grep -cF '記録コメントの取得・台帳の抽出に失敗したときは `[fix:error]` で止まり、entries は残る')"
+assert "T-23 手順 1 の stale は旧文面 (手順 3 の bash だけを実行して載せる) を残さない" 0 \
+  "$(grep -cF '書き換えずに手順 3 の bash だけを実行して元の出典のまま台帳へ載せ' "$FIX")"
 assert "T-23 手順 2 は前回の sweep の entries を今回の起票済みとして使わない" 1 \
   "$(grep -cF '前回の sweep の entries を今回の起票済みとして使わない' "$FIX")"
 assert "T-23 手順 1 は entries が残っていれば起票せず手順 3 から続けさせる" 1 \
@@ -2082,6 +2134,270 @@ jq -n '{adoption: {head: "h", records: [{ids: ["F-03"], tracker: null}]}}' > "$t
 run_t25 t25-nomatch
 assert "T-25 一致する記録が無い書き戻しは止まる" 1 "$?"
 assert_grep "T-25 一致する記録が無い書き戻しも理由を出す" "$sandbox/t25-nomatch.err" 'reason=nb_sweep_tracker_write_failed'
+
+# --- T-26: 止まった sweep の戻り方 (missing と nb-sweep-reconcile) ---
+# missing: 台帳に同じ id・位置・出典の行が無い entries 行だけを出す。判定・判定文は照合しない
+t26_src=7-20260101000000.json
+t26_other=7-20260202000000.json
+t26_dir="$sandbox/t26"
+mkdir -p "$t26_dir"
+printf '%s\n' '### 却下台帳' '' '| finding_id | file:line | 判定 | 判定文 | 出典 |' '|------------|-----------|------|--------|------|' \
+  "| E-1 | a.ts:1 | issued | #5 x | $t26_src |" \
+  "| E\\|2 | b.ts:2 | REJECT | p\\|q | $t26_src |" \
+  "| E-4 | d.ts:4 | REJECT | 4 列の旧行 |" > "$t26_dir/ledger.md"
+printf '%s\n' "<!-- nb-sweep-record: $t26_src -->" \
+  "| E-1 | a.ts:1 | LINK | 判定が違っても同じ行 | $t26_src |" \
+  "| E\\|2 | b.ts:2 | REJECT | p\\|q | $t26_src |" \
+  "| E-3 | c.ts:3 | issued | #6 | $t26_src |" \
+  "| E-1 | a.ts:1 | issued | #5 | $t26_other |" \
+  "| E-4 | d.ts:4 | REJECT | 4 列の旧行 | $t26_src |" \
+  "| E-1 | z.ts:9 | issued | #5 | $t26_src |" \
+  "| E-9 | a.ts:1 | issued | #5 | $t26_src |" > "$t26_dir/entries.md"
+t26_missing=$("$LEDGER" missing --ledger-file "$t26_dir/ledger.md" --entries-file "$t26_dir/entries.md" 2> "$t26_dir/missing.err")
+assert "T-26 missing: rc=0" 0 "$?"
+assert_grep "T-26 missing: 全行と未記載行の件数を marker に出す" "$t26_dir/missing.err" '^\[CONTEXT\] NB_SWEEP_LEDGER=ok; op=missing; rows=7; missing=5$'
+assert "T-26 missing: 照合キーの出典・位置・id のどれか 1 つだけが違う行と 4 列の旧行は未記載、判定が違うだけの行とエスケープ済みパイプの行は記載済み" \
+  "E-3,E-1,E-4,E-1,E-9" "$(printf '%s\n' "$t26_missing" | awk -F'|' '{gsub(/ /, "", $2); printf "%s%s", sep, $2; sep=","}')"
+assert "T-26 missing: 出力は entries の行そのまま" "| E-3 | c.ts:3 | issued | #6 | $t26_src |" "$(printf '%s\n' "$t26_missing" | sed -n 1p)"
+: > "$t26_dir/empty.md"
+"$LEDGER" missing --ledger-file "$t26_dir/empty.md" --entries-file "$t26_dir/entries.md" 2> "$t26_dir/empty.err" > /dev/null
+assert_grep "T-26 missing: 空の台帳 (台帳なし) は全行が未記載" "$t26_dir/empty.err" 'rows=7; missing=7$'
+printf '%s\n' "<!-- nb-sweep-record: $t26_src -->" "| E-4 | d.ts:4 | REJECT | p|q | $t26_src |" > "$t26_dir/bad-cells.md"
+t26_bad_out=$("$LEDGER" missing --ledger-file "$t26_dir/ledger.md" --entries-file "$t26_dir/bad-cells.md" 2> "$t26_dir/bad-cells.err")
+assert "T-26 missing: 5 セルでない entries 行 (未エスケープのパイプ) は旧 4 列行と誤一致させずに rc=1" 1 "$?"
+assert_grep "T-26 missing: 5 セルでない entries 行は行を示して止まる" "$t26_dir/bad-cells.err" 'entries row does not have 5 cells'
+assert_grep "T-26 missing: 5 セルでない entries 行は失敗理由を出す" "$t26_dir/bad-cells.err" 'op=missing; reason=compare_failed'
+assert "T-26 missing: 5 セルでない entries 行では件数 marker も出力行も出さない" "00" "$(grep -c 'op=missing; rows=' "$t26_dir/bad-cells.err")$(printf '%s' "$t26_bad_out" | wc -c | tr -d ' ')"
+printf '%s\n' "<!-- nb-sweep-record: $t26_src -->" "| E-4 | d.ts:4 | REJECT | x |  |" > "$t26_dir/empty-src.md"
+t26_empty_out=$("$LEDGER" missing --ledger-file "$t26_dir/ledger.md" --entries-file "$t26_dir/empty-src.md" 2> "$t26_dir/empty-src.err")
+assert "T-26 missing: 出典が空の entries 行は出典の無い旧 4 列行と誤一致させずに rc=1" 1 "$?"
+assert_grep "T-26 missing: 出典が空の entries 行は行を示して止まる" "$t26_dir/empty-src.err" 'non-empty 出典'
+assert "T-26 missing: 出典が空の entries 行では件数 marker も出力行も出さない" "00" "$(grep -c 'op=missing; rows=' "$t26_dir/empty-src.err")$(printf '%s' "$t26_empty_out" | wc -c | tr -d ' ')"
+printf '%s\n' "<!-- nb-sweep-record: $t26_src -->" '| finding_id | file:line | 判定 | 判定文 | 出典 |' '|---|---|---|---|---|' > "$t26_dir/header-only.md"
+"$LEDGER" missing --ledger-file "$t26_dir/ledger.md" --entries-file "$t26_dir/header-only.md" 2> "$t26_dir/rows0.err" > /dev/null
+assert_grep "T-26 missing: 列ヘッダと区切り行だけの entries は rows=0" "$t26_dir/rows0.err" 'rows=0; missing=0$'
+"$LEDGER" missing --ledger-file "$t26_dir/none.md" --entries-file "$t26_dir/entries.md" 2> "$t26_dir/noledger.err" > /dev/null
+assert "T-26 missing: 台帳ファイルが無ければ rc=1" 1 "$?"
+assert_grep "T-26 missing: 台帳ファイルが無ければ理由を出す" "$t26_dir/noledger.err" 'op=missing; reason=ledger_unreadable'
+"$LEDGER" missing --ledger-file "$t26_dir/ledger.md" --entries-file "$t26_dir/none.md" 2> "$t26_dir/noentries.err" > /dev/null
+assert "T-26 missing: entries が無ければ rc=1" 1 "$?"
+before_ledger=$(cksum < "$t26_dir/ledger.md"); before_entries=$(cksum < "$t26_dir/entries.md")
+"$LEDGER" missing --ledger-file "$t26_dir/ledger.md" --entries-file "$t26_dir/entries.md" > /dev/null 2>&1
+assert "T-26 missing: 台帳も entries も書き換えない" "$before_ledger|$before_entries" "$(cksum < "$t26_dir/ledger.md")|$(cksum < "$t26_dir/entries.md")"
+
+# nb-sweep-reconcile: 実 helper と gh stub で、記録コメントの台帳と entries を照合して戻る
+t26_state="$sandbox/t26-state"
+t26_entries="$t26_state/.rite/state/nb-sweep-entries-7.md"
+t26_hold="$t26_state/.rite/state/adoption-hold-7-sweep.json"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "%s"\n' "$t26_state" > "$t17_plugin/hooks/state-path-resolve.sh"
+t26_comment() {  # 記録コメントの本文。引数は台帳の行
+  printf '%s\n' "$MARKER" '' '### 却下台帳' '' '| finding_id | file:line | 判定 | 判定文 | 出典 |' \
+    '|------------|-----------|------|--------|------|' "$@" '' '📎 non_blocking_count: 0' '' "$SENTINEL"
+}
+t26_set_comment() { jq -n --arg b "$(t26_comment "$@")" '[[{id:61,user:{login:"rite-bot"},body:$b}]]' > "$NBR_COMMENTS"; }
+t26_write_entries() {
+  mkdir -p "$t26_state/.rite/state"
+  printf '%s\n' "<!-- nb-sweep-record: $t26_src -->" \
+    "| E-1 | a.ts:1 | issued | #5 https://x/5 | $t26_src |" \
+    "| E-2 | b.ts:2 | REJECT | 前提は不変 | $t26_src |" \
+    "| E-3 | c.ts:3 | issued | #6 https://x/6 | $t26_src |" > "$t26_entries"
+  printf '{}\n' > "$t26_hold"
+}
+t26_row() { printf '| %s | %s | %s | %s | %s |' "$1" "$2" "$3" "$4" "$t26_src"; }
+run_t26() {  # $1=名前 (環境変数は呼び出し側が渡す)
+  : > "$NBR_GH_LOG"; : > "$sandbox/t17-ledger.log"; rm -f "$NBR_POSTED"
+  t26_rc=0
+  TMPDIR="$t20_tmp" PATH="$nbr_bin:$PATH" bash "$t17_plugin/scripts/fix-step.sh" nb-sweep-reconcile --pr 7 --owner-repo test/repo \
+    > "$sandbox/$1.out" 2> "$sandbox/$1.err" || t26_rc=$?
+}
+t26_gone() { [ -e "$1" ] && echo 0 || echo 1; }
+
+# 全行が台帳にある: 書かずに entries を消す
+t26_write_entries
+t26_set_comment "$(t26_row E-1 a.ts:1 issued '#5 https://x/5')" "$(t26_row E-2 b.ts:2 REJECT 前提は不変)" "$(t26_row E-3 c.ts:3 issued '#6 https://x/6')"
+run_t26 t26-all
+assert "T-26 全行記録済み: rc=0" 0 "$t26_rc"
+assert_grep "T-26 全行記録済み: marker は already_recorded で追記 0 件" "$sandbox/t26-all.err" '^\[CONTEXT\] NB_SWEEP_RECONCILE=already_recorded; rows=3; appended=0$'
+assert "T-26 全行記録済み: 台帳へ追記も PATCH もしない" "00" "$(grep -c '^append$' "$sandbox/t17-ledger.log")$(grep -c -- '-X PATCH' "$NBR_GH_LOG")"
+assert "T-26 全行記録済み: entries と保留を消す" "11" "$(t26_gone "$t26_entries")$(t26_gone "$t26_hold")"
+
+# 台帳に 1 行も無い: 元の出典のまま 1 回ずつ載せてから entries を消す
+t26_write_entries
+t26_set_comment "| OLD-1 | o.ts:9 | issued | #1 | 7-20250101000000.json |"
+run_t26 t26-none
+assert "T-26 未記載: rc=0" 0 "$t26_rc"
+assert_grep "T-26 未記載: marker は recorded で 3 件追記" "$sandbox/t26-none.err" '^\[CONTEXT\] NB_SWEEP_RECONCILE=recorded; rows=3; appended=3$'
+assert "T-26 未記載: 元の台帳の行を残す" 1 "$(grep -c '^| OLD-1 ' "$NBR_POSTED")"
+assert "T-26 未記載: 全行がちょうど 1 回ずつ、出典は entries のまま" "3" \
+  "$(grep -cE "^\| E-[123] \| [a-z]\.ts:[123] \| .* \| $t26_src \|\$" "$NBR_POSTED")"
+assert "T-26 未記載: entries と保留を消す" "11" "$(t26_gone "$t26_entries")$(t26_gone "$t26_hold")"
+
+# 一部だけ台帳にある: 記録済みとせず、載っていない行だけを足す (記録済みの行は二重に載せない)
+t26_write_entries
+t26_set_comment "$(t26_row E-2 b.ts:2 REJECT 前提は不変)"
+run_t26 t26-part
+assert "T-26 一部記録済み: rc=0" 0 "$t26_rc"
+assert_grep "T-26 一部記録済み: marker は recorded で 2 件追記" "$sandbox/t26-part.err" '^\[CONTEXT\] NB_SWEEP_RECONCILE=recorded; rows=3; appended=2$'
+assert "T-26 一部記録済み: 記録済みの行は 1 回のまま" 1 "$(grep -c '^| E-2 ' "$NBR_POSTED")"
+assert "T-26 一部記録済み: 載っていない行は 1 回ずつ載る" "11" "$(grep -c '^| E-1 ' "$NBR_POSTED")$(grep -c '^| E-3 ' "$NBR_POSTED")"
+assert "T-26 一部記録済み: entries を消す" 1 "$(t26_gone "$t26_entries")"
+
+# 同じ id・位置でも出典が違う行は別の行
+t26_write_entries
+t26_set_comment "| E-1 | a.ts:1 | issued | #5 | $t26_other |" "$(t26_row E-2 b.ts:2 REJECT 前提は不変)" "$(t26_row E-3 c.ts:3 issued '#6 https://x/6')"
+run_t26 t26-src
+assert_grep "T-26 出典だけ違う行は未記載として 1 件載せる" "$sandbox/t26-src.err" '^\[CONTEXT\] NB_SWEEP_RECONCILE=recorded; rows=3; appended=1$'
+assert "T-26 出典だけ違う行: 元の行と今回の行が 1 回ずつ" "$t26_other|$t26_src" \
+  "$(grep '^| E-1 ' "$NBR_POSTED" | awk -F'|' '{gsub(/ /, "", $6); print $6}' | paste -sd'|' -)"
+
+# 台帳を読めない: entries を残して止まる
+t26_write_entries
+t26_set_comment "$(t26_row E-1 a.ts:1 issued '#5 https://x/5')"
+NBR_GET_FAIL=1 run_t26 t26-fetch
+assert "T-26 記録コメントの取得失敗: rc=1" 1 "$t26_rc"
+assert_grep "T-26 記録コメントの取得失敗: [fix:error] と理由" "$sandbox/t26-fetch.err" 'reason=nb_sweep_ledger_fetch_failed'
+assert "T-26 記録コメントの取得失敗: entries と保留を残し、PATCH しない" "00" "$(t26_gone "$t26_entries")$(t26_gone "$t26_hold")"
+assert "T-26 記録コメントの取得失敗: PATCH しない" 0 "$(grep -c -- '-X PATCH' "$NBR_GH_LOG")"
+T17_EXTRACT_FAIL=1 run_t26 t26-extract
+assert "T-26 台帳の抽出失敗: rc=1" 1 "$t26_rc"
+assert_grep "T-26 台帳の抽出失敗: 理由を出す" "$sandbox/t26-extract.err" 'reason=nb_sweep_ledger_extract_failed'
+assert "T-26 台帳の抽出失敗: entries を残す" 0 "$(t26_gone "$t26_entries")"
+# 照合の失敗 (missing の rc≠0 / marker を読めない / 5 セルでない entries 行): entries と保留を残して止まる
+for t26_case in "T26_MISSING_FAIL=1|t26-mfail" "T26_MISSING_NOMARKER=1|t26-mnomark"; do
+  t26_write_entries
+  t26_set_comment "$(t26_row E-1 a.ts:1 issued '#5 https://x/5')"
+  case "${t26_case%%|*}" in
+    T26_MISSING_FAIL=1) T26_MISSING_FAIL=1 run_t26 "${t26_case##*|}" ;;
+    *) T26_MISSING_NOMARKER=1 run_t26 "${t26_case##*|}" ;;
+  esac
+  assert "T-26 照合の失敗 (${t26_case%%|*}): rc=1" 1 "$t26_rc"
+  assert_grep "T-26 照合の失敗 (${t26_case%%|*}): 理由を出す" "$sandbox/${t26_case##*|}.err" 'reason=nb_sweep_ledger_check_failed'
+  assert "T-26 照合の失敗 (${t26_case%%|*}): entries と保留を残し PATCH しない" "000" "$(t26_gone "$t26_entries")$(t26_gone "$t26_hold")$(grep -c -- '-X PATCH' "$NBR_GH_LOG")"
+done
+t26_write_entries
+printf '%s\n' "| E-4 | d.ts:4 | REJECT | p|q | $t26_src |" >> "$t26_entries"
+t26_set_comment "| E-4 | d.ts:4 | REJECT | 4 列の旧行 |"
+run_t26 t26-badrow
+assert "T-26 5 セルでない entries 行: rc=1" 1 "$t26_rc"
+assert_grep "T-26 5 セルでない entries 行: 理由を出す" "$sandbox/t26-badrow.err" 'reason=nb_sweep_ledger_check_failed'
+assert "T-26 5 セルでない entries 行: entries と保留を残し PATCH しない" "000" "$(t26_gone "$t26_entries")$(t26_gone "$t26_hold")$(grep -c -- '-X PATCH' "$NBR_GH_LOG")"
+
+# entries に載せる行が無い: 異常として止まる
+printf '%s\n' "<!-- nb-sweep-record: $t26_src -->" > "$t26_entries"
+run_t26 t26-norows
+assert "T-26 行の無い entries: rc=1" 1 "$t26_rc"
+assert_grep "T-26 行の無い entries: 理由を出す" "$sandbox/t26-norows.err" 'reason=nb_sweep_entries_no_rows'
+assert "T-26 行の無い entries: entries を残す" 0 "$(t26_gone "$t26_entries")"
+rm -f "$t26_entries"
+run_t26 t26-absent
+assert "T-26 entries が無い: rc=1" 1 "$t26_rc"
+assert_grep "T-26 entries が無い: 理由を出す" "$sandbox/t26-absent.err" 'reason=nb_sweep_entries_missing'
+# 既存の persist は変えない: 台帳に載っている行も含め、entries の全行を append に渡す
+assert "T-26 persist は entries 全体を append へ渡す (reconcile 以外は絞り込まない)" 1 \
+  "$(fix_step_fn step_nb_sweep_persist | grep -c 'persist_rows="\$entries_file"')"
+
+# --- T-27: sweep FIX registration, holds, retry and fresh RESOLVED judgment ---
+if python3 - "$PLUGIN_ROOT" <<'PY_SWEEP_REGISTRATION'
+import atexit, json, os, shutil, subprocess, sys, tempfile
+from pathlib import Path
+plugin = Path(sys.argv[1]).resolve()
+w = Path(tempfile.mkdtemp(prefix='rite-sweep-registration-'))
+atexit.register(shutil.rmtree, w)
+p = w/'plugin'
+shutil.copytree(plugin, p, ignore=shutil.ignore_patterns('tests','.git'))
+r = w/'repo'; r.mkdir()
+def git(*args):
+    return subprocess.run(['git',*args],cwd=r,text=True,capture_output=True,check=True).stdout.strip()
+def run(*args):
+    return subprocess.run(['bash',str(p/'scripts/fix-step.sh'),'nb-sweep-gate','--pr','5',
+                           '--base-branch','develop','--owner-repo','o/r',*args],cwd=r,env=env,text=True,capture_output=True,timeout=60)
+def check(value, why):
+    global checks
+    assert value, why
+    checks += 1
+checks=0
+git('init','-q');git('config','user.email','test@example.invalid');git('config','user.name','test')
+(r/'tool.sh').write_text('#!/bin/bash\n[ -n "$1" ] || exit 1\necho "ok: $1"\n')
+git('add','tool.sh');git('commit','-qm','base');base=git('rev-parse','HEAD');git('update-ref','refs/remotes/origin/develop',base)
+(r/'tool.sh').write_text('#!/bin/bash\necho "ok: $1"\n');git('commit','-qam','remove guard');head=git('rev-parse','HEAD');git('switch','-qc','fix/issue-7-test')
+(r/'rite-config.yml').write_text('safety:\n  max_review_cycles: 3\n')
+state=r/'.rite/state';state.mkdir(parents=True);results=r/'.rite/review-results';results.mkdir()
+review=results/'5-20261001000000.json';hold=state/'adoption-hold-5-sweep.json';registered=state/'pr-recommendations-5.json';adoption=state/'adoption-5-sweep.json'
+issue=w/'issue.md';issue.write_text('## 受入条件\n- [ ] AC-1: reject empty NAME\n')
+pr=w/'pr.md';pr.write_text('Guard empty NAME\n')
+bin_dir=w/'bin';bin_dir.mkdir();gh=bin_dir/'gh'
+gh.write_text('#!/bin/bash\nprintf "%s\\n" "$*" >> "$CALLS"\ncase "$1 $2" in\n"repo view") echo o/r;;\n"pr view") cat "$PR_BODY";;\n"issue view") cat "$ISSUE_BODY";;\n*) echo "unexpected gh call" >&2; exit 1;;\nesac\n');gh.chmod(0o755)
+# The read-only record boundary is isolated; collection, adoption, capacity and registration are real.
+(p/'hooks/review-nonblocking-record.sh').write_text('#!/bin/bash\n[ "$1" = --print-record-body ] || exit 1\n')
+rec=p/'scripts/review-pr-recommendations.sh';rec.rename(rec.with_suffix('.real.sh'))
+rec.write_text('#!/bin/bash\nprintf "%s\\n" "$*" >> "$REC_CALLS"\nif [ "$1" = record ] && [ "${FAIL_RECORD:-0}" = 1 ]; then echo "registration fixture failure" >&2; exit 1; fi\nexec bash "$(dirname "$0")/review-pr-recommendations.real.sh" "$@"\n')
+env=dict(os.environ,PATH=str(bin_dir)+':'+os.environ['PATH'],CALLS=str(w/'gh.log'),REC_CALLS=str(w/'rec.log'),ISSUE_BODY=str(issue),PR_BODY=str(pr))
+for key in ['RITE_FLOW_STATE','RITE_STATE_ROOT','RITE_WORKTREE_ROOT']:env.pop(key,None)
+def row(n=1):return {'reviewer':'test-reviewer','file_line':'tool.sh:2','description':f'empty NAME passes ({n})','filter_reason':'excluded','verification':'なし'}
+def write_review(cycle=1,rows=None,sha=head):
+    review.write_text(json.dumps({'commit_sha':sha,'pr_number':5,'overall_assessment':'mergeable','review_context':{'cycle_count':cycle},'findings':[],'non_blocking_findings':[],'guardrail_audit_log':rows if rows is not None else [row()]}))
+def record(ids,origin='pr',**changes):
+    d={'ids':ids,'V':True,'C':False,'T':False,'contract':{'ref':'AC-1'},'evidence':'bash tool.sh "" exits 0','origin':origin,'present':True,'tracker':None,'prior':None,'reason':'','proposition':None,'acceptance':'reject empty NAME'}
+    if origin=='pr':d['origin_cause']={'contract':{'ref':'AC-1'}}
+    d.update(changes);return d
+def collect():
+    out=subprocess.run(['bash',str(p/'hooks/scripts/nb-sweep-collect.sh'),'--pr','5','--state-root',str(r)],cwd=r,env=env,text=True,capture_output=True,check=True)
+    return json.loads(out.stdout)
+def classify(records,sha=head):adoption.write_text(json.dumps({'adoption':{'head':sha,'records':records}}))
+def pending():
+    return subprocess.run(['bash',str(rec),'check','--pr','5','--state-root',str(r)],cwd=r,env=env,text=True,capture_output=True,check=True).stdout
+def reset():
+    for f in [hold,registered,state/'adoption-history-5-sweep.json',state/'pr-recommendations-done-5.txt']:f.unlink(missing_ok=True)
+    (w/'rec.log').write_text('');(w/'gh.log').write_text('')
+write_review();ids=[c['id'] for c in collect()['candidates']];classify([record(ids)])
+check(subprocess.run(['bash','tool.sh',''],cwd=r,capture_output=True).returncode==0,'real removed guard reproduces defect')
+out=run();check(out.returncode==0,out.stdout+out.stderr)
+check('NB_SWEEP_PR_FIX=pending' in out.stderr,out.stderr)
+data=json.loads(registered.read_text());check(len(data['recommendations'])==1 and data['recommendations'][0]['id']=='R-01',data)
+check(data['recommendations'][0]['file_line']=='tool.sh:2',data)
+check('PR_RECOMMENDATIONS_CHECK=pending' in pending(),pending())
+check(hold.exists() and len(json.loads(hold.read_text())['candidates'])==1,'candidate retained for next review')
+check(not (state/'nb-sweep-done-5.txt').exists() and not (state/'nb-sweep-entries-5.md').exists(),'pending is not sweep done')
+before=registered.read_bytes();out=run();check(out.returncode==0,out.stdout+out.stderr);check(registered.read_bytes()==before,'same HEAD registration is byte-identical')
+# A previous triage recommendation must survive the full-file sweep record.
+d=json.loads(registered.read_text());d['recommendations'][0].update(candidates=['TRIAGE-1'],description='existing triage root');registered.write_text(json.dumps(d));out=run();check(out.returncode==0,out.stdout+out.stderr)
+check([x['id'] for x in json.loads(registered.read_text())['recommendations']]==['R-01','R-02'],'triage preserved before sweep')
+check(json.loads(registered.read_text())['recommendations'][0]['description']=='existing triage root','triage text preserved')
+# Mixed holds register only PR-origin FIX, while the hold still blocks completion.
+reset();write_review(rows=[row(1),row(2)]);ids=[c['id'] for c in collect()['candidates']];classify([record(ids[:1]),record(ids[1:],'pre_existing',acceptance='')]);out=run()
+check(out.returncode==1 and 'reason=nb_sweep_adoption_held' in out.stdout,out.stdout+out.stderr)
+check(len(json.loads(registered.read_text())['recommendations'])==1,'only PR FIX registered')
+check(json.loads(hold.read_text())['held_ids']==ids[1:],'other hold preserved')
+# Capacity stop keeps the original hold and writes no recommendation.
+reset();write_review(cycle=3);ids=[c['id'] for c in collect()['candidates']];classify([record(ids)]);out=run()
+check(out.returncode==1 and 'nb_sweep_adoption_held' in out.stdout,out.stdout+out.stderr);check(not registered.exists(),'cycle cap unregistered');check('cycle_cap' in json.loads(hold.read_text())['resume'],'capacity reason in resume')
+# Bulk record failure on two FIX roots retains every candidate, and retry registers both once.
+reset();write_review(rows=[row(1),row(2)]);ids=[c['id'] for c in collect()['candidates']];classify([record(ids[:1]),record(ids[1:])]);env['FAIL_RECORD']='1';out=run()
+check(out.returncode==1 and 'nb_sweep_adoption_held' in out.stdout,out.stdout+out.stderr);check(not registered.exists(),'failed record never claims registered')
+saved=json.loads(hold.read_text());check(saved['reason']=='registration_failed' and len(saved['candidates'])==2,saved);check('/rite:iterate 5' in saved['resume'] and '手作業' in saved['resume'],saved)
+env.pop('FAIL_RECORD');out=run();check(out.returncode==0,out.stdout+out.stderr);before=registered.read_bytes();check(len(json.loads(before)['recommendations'])==2,'retry carries both roots');out=run();check(out.returncode==0 and registered.read_bytes()==before,'retry no duplicates')
+# RECORD-only and empty paths neither call capacity nor overwrite registrations.
+reset();write_review();ids=[c['id'] for c in collect()['candidates']];classify([record(ids,V=False,contract=None,evidence='',reason='documented; reconsider on contract change')]);out=run();check(out.returncode==0,out.stdout+out.stderr);check(not registered.exists(),'RECORD-only no registration');check((w/'rec.log').read_text()=='','RECORD-only no capacity/record')
+reset();write_review(rows=[]);classify([]);out=run();check(out.returncode==0,out.stdout+out.stderr);check((w/'rec.log').read_text()=='','empty no capacity/record')
+# Fix + new review keeps old candidates for a fresh RESOLVED judgment, with no new registration.
+reset();write_review();ids=[c['id'] for c in collect()['candidates']];classify([record(ids)]);check(run().returncode==0,'initial registration')
+(r/'tool.sh').write_text('#!/bin/bash\n[ -n "$1" ] || exit 1\necho "ok: $1"\n');git('commit','-qam','restore guard');new=git('rev-parse','HEAD');review=results/'5-20261001000001.json';write_review(rows=[],sha=new)
+carried=collect()['candidates'];check(len(carried)==1 and carried[0]['record']=='5-20261001000000.json','old source survives new review')
+classify([record([carried[0]['id']],present=False,evidence='restored guard now exits 1')],sha=new);before=registered.read_bytes();out=run();check(out.returncode==0,out.stdout+out.stderr)
+check(json.loads(out.stdout)['verdicts'][0]['exit']=='RESOLVED',out.stdout);check(registered.read_bytes()==before,'RESOLVED does not re-register');check('PR_RECOMMENDATIONS_CHECK=none' in pending(),pending());check('issue create' not in (w/'gh.log').read_text(),'never files PR defects')
+# The skill's machine route must precede sweep done/persist, preserving the original sentinel.
+nb=(plugin/'skills/fix/references/nb-sweep.md').read_text();it=(plugin/'skills/iterate/SKILL.md').read_text()
+check(nb.index('NB_SWEEP_PR_FIX=pending') < nb.index('**起票**'),'FIX branch before external filing')
+check('output-handoff --pr {pr_number} --result non-fatal-only' in nb,'existing return handoff used')
+check('| `[fix:non-fatal-only]` | PR 内推奨の修正。' in it,'iterate routes to normal fix without sweep error')
+check('PR 内推奨へ登録しただけでは sweep は完了していない' in nb,'pending never marks sweep done')
+print(f'sweep automatic registration: {checks} checks passed')
+PY_SWEEP_REGISTRATION
+then
+  pass "T-27 real sweep dispatcher registers and routes PR-origin roots"
+else
+  fail "T-27 sweep automatic registration"
+fi
 
 if ! print_summary "$(basename "$0")" "nb-sweep helper contract drift — check iterate SKILL.md / iterate-step.sh 5.S / 6.1.d preserve"; then
   exit 1

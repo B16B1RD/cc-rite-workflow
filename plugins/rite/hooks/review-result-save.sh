@@ -25,7 +25,7 @@
 #   --content-file  JSON body tmpfile path (required)
 #   --results-dir   保存先ディレクトリ (default: $(state-path-resolve.sh)/.rite/review-results —
 #                   セッション worktree からも main checkout と同一パスに解決。解決失敗時は
-#                   cwd 相対 .rite/review-results へフォールバック)
+#                   非 0 で停止。明示 --results-dir は優先)
 #   --pending-id    本 review cycle の save-pending marker の id token (任意、`{pr}-{epoch}` 形式)。
 #                   marker path は本 helper が `${TMPDIR:-/tmp}/rite-p61a-pending-<id>` として
 #                   **内部導出**する (sibling の review-nonblocking-record.sh --iteration-id と同形)。
@@ -78,7 +78,7 @@
 #
 # Exit codes:
 #   0: success / 非ブロッキング失敗。caller は LOCAL_SAVE_FAILED / JSON_SAVED で判定。
-#   1: caller 契約違反（引数不正、および gate/timestamp provenance 不成立）。
+#   1: state root 解決失敗、または caller 契約違反（引数不正、gate/timestamp provenance 不成立）。
 #      注: --pr 欠落 / 非数値 と --content-file 不在 は trap 設置後の exit 0 (非ブロッキング)。
 #   130/143/129: signal 中断 (INT / TERM / HUP)。
 set -uo pipefail
@@ -91,18 +91,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/gitignore-ensure.sh"
 PR_NUMBER=""
 CONTENT_FILE=""
 PENDING_ID=""
-# 保存先の既定はリポジトリ共通の state ルート (state-path-resolve.sh)。セッション worktree 内から
-# 実行しても main checkout と同一パスに解決され、書込 (本 helper) / 読取 (review-source-resolve.sh
-# Priority 2) / 削除 (cleanup ステップ 6) が一貫する。wiki-ingest-trigger.sh の STATE_ROOT anchor と
-# 同一方式。解決失敗時は従来の cwd 相対へフォールバック (non-blocking 契約、単一 checkout では
-# state-path-resolve が同一パスを返すため挙動不変)。--results-dir 明示指定はこの既定を上書きする。
-_save_script_dir="$(dirname "${BASH_SOURCE[0]}")"
-if _state_root=$("$_save_script_dir/state-path-resolve.sh" "$PWD" 2>/dev/null) && [ -n "$_state_root" ]; then
-  REVIEW_RESULTS_DIR="$_state_root/.rite/review-results"
-else
-  echo "WARNING: review-result-save: state-path-resolve.sh の解決に失敗。cwd 相対の .rite/review-results へフォールバックします" >&2
-  REVIEW_RESULTS_DIR=".rite/review-results"
-fi
+# 明示 --results-dir を優先し、未指定時だけ共有 git state root を解決する。
+REVIEW_RESULTS_DIR=""
 
 # 各値付きフラグは `shift; shift` で消費する。値なしフラグが末尾に来た場合 ($#=1)、
 # `shift 2` は $# を減らせず set -e 非設定 + `${2:-}` (nounset 非発火) の下で無限ループに
@@ -117,12 +107,21 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [ -z "$REVIEW_RESULTS_DIR" ]; then
+  _save_script_dir="$(dirname "${BASH_SOURCE[0]}")"
+  _state_root=$("$_save_script_dir/state-path-resolve.sh" "$PWD") || {
+    echo "ERROR: review-result-save: state root unresolved; nothing saved" >&2
+    exit 1
+  }
+  REVIEW_RESULTS_DIR="$_state_root/.rite/review-results"
+fi
+
 if [ -z "$CONTENT_FILE" ]; then
   echo "ERROR: review-result-save: --content-file is required" >&2
   exit 1
 fi
 # 注: --content-file の存在チェック (`! -f`) は trap 登録 + pr_number gate の後ろ (下記) に移動した。
-# D-04 非ブロッキング契約 (signal 中断を除く全失敗で exit 0 + EXIT trap での FILE_TIMESTAMP/ISO_TIMESTAMP/JSON_SAVED
+# root 解決後の非ブロッキング契約 (signal 中断を除く保存失敗で exit 0 + EXIT trap での FILE_TIMESTAMP/ISO_TIMESTAMP/JSON_SAVED
 # 必須 emit) を満たすため。引数自体の未指定 (上記 -z) は caller bug の fail-fast として exit 1 を維持する。
 
 # --- save-pending marker path の内部導出 ---

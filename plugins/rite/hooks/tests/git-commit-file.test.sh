@@ -106,9 +106,29 @@ fi
 rm -f "$outside"
 
 # relative --file rejected
+head_before=$(git -C "$repo" rev-parse HEAD)
 rel_rc=0
 rel_err=$(bash "$COMMIT" --file msg.txt --worktree "$repo" 2>&1) || rel_rc=$?
 assert "relative --file exits 1" "1" "$rel_rc"
+assert "argument error leaves HEAD unchanged" "$head_before" "$(git -C "$repo" rev-parse HEAD)"
+
+# A real pre-commit failure must stay distinct from post-commit processing.
+printf 'not committed\n' >> "$repo/README"
+git -C "$repo" add README
+printf '#!/bin/sh\nexit 1\n' > "$repo/.git/hooks/pre-commit"
+chmod +x "$repo/.git/hooks/pre-commit"
+failed_msg=$(mktemp "${TMPDIR:-/tmp}/rite-commit-fail-XXXXXX")
+printf 'fix: rejected\n' > "$failed_msg"
+failed_rc=0
+bash "$COMMIT" --file "$failed_msg" --worktree "$repo" >"$repo/git-fail.out" 2>"$repo/git-fail.err" || failed_rc=$?
+assert "git commit failure exits 3" "3" "$failed_rc"
+assert "git commit failure leaves HEAD unchanged" "$head_before" "$(git -C "$repo" rev-parse HEAD)"
+if grep -q 'git commit -F failed' "$repo/git-fail.err"; then
+  pass "git commit failure keeps its diagnostic"
+else
+  fail "git commit failure diagnostic: $(cat "$repo/git-fail.err")"
+fi
+rm -f "$failed_msg"
 
 # --- overflow write/read and failure (T-06 / T-08) ---
 store=$(mktemp "${TMPDIR:-/tmp}/rite-overflow-store-XXXXXX")

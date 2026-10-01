@@ -64,9 +64,9 @@ while : ; do
 done
 [ "$_rite_gate_found" = "1" ] || exit 0
 
-# Resolve state root (git root or CWD)
+# Resolve the shared git state root
 # SCRIPT_DIR already set in preamble block above
-STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
+STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD") || exit 0
 
 # Per-session state path resolution (v3 SoT): flow-state.sh path always
 # returns the per-session file (`<root>/.rite/sessions/<session_id>.flow-state`)

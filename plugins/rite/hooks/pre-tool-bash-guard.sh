@@ -1485,10 +1485,10 @@ if [ -z "$BLOCKED_PATTERN" ] && { [ "$_wiki_surface_rc" -ne 0 ] || [[ "$_wiki_su
   _wiki_fswt=""
   _wiki_unreadable=0
   if [ -n "$_wiki_fs" ] && [ -f "$_wiki_fs" ]; then
-    if ! _wiki_row=$(jq -r '[.phase // "", .worktree // ""] | @tsv' "$_wiki_fs" 2>/dev/null); then
+    if ! _wiki_row=$(jq -r '[.phase // "", .worktree // ""] | join("\u001f")' "$_wiki_fs" 2>/dev/null); then
       _wiki_unreadable=1
     else
-      IFS=$'\t' read -r _wiki_phase _wiki_fswt <<<"$_wiki_row"
+      IFS=$'\x1f' read -r _wiki_phase _wiki_fswt <<<"$_wiki_row"
     fi
   fi
   _wiki_cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || _wiki_cwd=""
@@ -1671,9 +1671,11 @@ _audit_root="${RITE_STATE_ROOT:-}"
 if [ -z "$_audit_root" ]; then
   _audit_root=$(bash "$SCRIPT_DIR/state-path-resolve.sh" 2>/dev/null) || _audit_root=""
 fi
-_audit_log="${_audit_root:+$_audit_root/}.rite/logs/bash-guard.log"
-if ! { mkdir -p "$(dirname "$_audit_log")" && printf '%s\n' "$BLOCK_EVENT" >> "$_audit_log"; } 2>/dev/null; then
-  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] bash-guard: WARNING: unable to append deny audit log: $_audit_log" >&2
+if [ -n "$_audit_root" ]; then
+  _audit_log="$_audit_root/.rite/logs/bash-guard.log"
+  if ! { mkdir -p "$(dirname "$_audit_log")" && printf '%s\n' "$BLOCK_EVENT" >> "$_audit_log"; } 2>/dev/null; then
+    echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] bash-guard: WARNING: unable to append deny audit log: $_audit_log" >&2
+  fi
 fi
 
 # Deny with reason and alternative. jq is required to emit the final permission

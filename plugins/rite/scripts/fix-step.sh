@@ -81,6 +81,7 @@
 #                    --record-ids JSON --projects-enabled true|false --project-number N
 #                    --project-owner O
 #   bash fix-step.sh nb-sweep-persist --pr N --owner-repo O/R
+#   bash fix-step.sh nb-sweep-reconcile --pr N --owner-repo O/R
 #   bash fix-step.sh nb-sweep-finish --pr N
 #   bash fix-step.sh wiki-trigger --pr N --content-file F --title-file F
 #   bash fix-step.sh wiki-trigger-result --content-write-failed 0|1 --trigger-exit N
@@ -1028,7 +1029,7 @@ step_skip_cycle_state() {
 # JSON は single-quote に直接埋めず、ファイル + --rawfile で渡す（ステップ 2.4 の reply と同じ形）。
 # trap + cleanup パターンの canonical 説明は references/bash-trap-patterns.md#signal-specific-trap-template 参照
 _state_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
-[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+[ -n "$_state_root" ] || { echo "ERROR: state root unresolved; state is not modified" >&2; exit 1; }
 mkdir -p "$_state_root/.rite/fix-cycle-state"
 state_file="$_state_root/.rite/fix-cycle-state/${pr_number}.json"
 head_sha=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
@@ -1160,7 +1161,7 @@ printf '[CONTEXT] PRE_COMMIT_DRIFT_CHECK exit=%d\n' "$drift_exit"
 step_cycle_state() {
 # fix-cycle-state もリポジトリ共通 state ルート基準 (pr-review.md ステップ 5.3.8 の読取側と同一解決)
 _state_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
-[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+[ -n "$_state_root" ] || { echo "ERROR: state root unresolved; state is not modified" >&2; exit 1; }
 mkdir -p "$_state_root/.rite/fix-cycle-state"
 
 state_file="$_state_root/.rite/fix-cycle-state/${pr_number}.json"
@@ -1309,7 +1310,7 @@ exit "$wm_update_rc"
 # --- accept-count ---------------------------------------------------------------
 step_accept_count() {
 _state_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
-[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+[ -n "$_state_root" ] || { echo "ERROR: state root unresolved; state is not modified" >&2; exit 1; }
 accept_count=$(wc -l < "$_state_root/.rite/state/accepted-fingerprints-${pr_number}.txt" 2>/dev/null | tr -d '[:space:]')
 case "$accept_count" in ''|*[!0-9]*) accept_count=0 ;; esac
 echo "accept_count=$accept_count"
@@ -1506,9 +1507,9 @@ esac
 tmpfile=""
 # state ファイルはリポジトリ共通の state ルート基準 (state-path-resolve.sh)。セッション worktree /
 # main checkout のどちらから実行しても同一パスに解決される (pr-review ステップ 5.1.2.A の
-# 読取側と同一解決。解決失敗時は cwd fallback)
+# 読取側と同一解決。解決失敗時は状態を変更せず停止)
 _state_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
-[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+[ -n "$_state_root" ] || { echo "ERROR: state root unresolved; state is not modified" >&2; exit 1; }
 state_dir="$_state_root/.rite/state"
 state_file="${state_dir}/accepted-fingerprints-${pr_number}.txt"
 _rite_fix_phase21A_cleanup() {
@@ -1749,8 +1750,9 @@ if [ -z "$sweep_root" ] || ! collect_out=$(bash "$plugin_root"/hooks/scripts/nb-
   echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_collect_failed" >&2
   echo "[fix:error]"; exit 1
 fi
-nb_candidates=$(mktemp "${TMPDIR:-/tmp}/rite-nb-candidates-XXXXXX") || { echo "[fix:error]"; exit 1; }
-trap 'rm -f "$nb_candidates"' EXIT
+nb_work=$(mktemp -d "${TMPDIR:-/tmp}/rite-nb-gate-XXXXXX") || { echo "[fix:error]"; exit 1; }
+trap 'rm -rf -- "$nb_work"' EXIT
+nb_candidates="$nb_work/candidates.json"
 printf '%s' "$collect_out" | jq '{candidates: .candidates}' > "$nb_candidates" \
   || { echo "[fix:error]"; exit 1; }
 gate_rc=0
@@ -1759,7 +1761,71 @@ nb_issue=$(git branch --show-current 2>/dev/null | grep -oE 'issue-[0-9]+' | gre
 gate_out=$(bash "$plugin_root"/hooks/scripts/review-adoption-gate.sh --pr "${pr_number}" --kind sweep \
   --state-root "$sweep_root" --candidates "$nb_candidates" \
   --review-result "$(printf '%s' "$collect_out" | jq -r '.record')" \
-  --base "origin/${base_branch}" --owner-repo "${owner_repo}" ${nb_issue:+--issue "$nb_issue"}) || gate_rc=$?
+  --fix-loop yes --base "origin/${base_branch}" --owner-repo "${owner_repo}" ${nb_issue:+--issue "$nb_issue"}) || gate_rc=$?
+if [ "$gate_rc" = 0 ]; then
+# verdict が欠落・未知値なら、起票も台帳 persist も始めない
+if ! printf '%s' "$gate_out" | jq -e '.held == false and (.verdicts | type) == "array"
+    and all(.verdicts[]; .verdict == "file" or .verdict == "record" or .verdict == "fix")' >/dev/null 2>&1; then
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_verdict_invalid" >&2
+  echo "[fix:error] reason=nb_sweep_verdict_invalid"; exit 1
+fi
+fi
+# Register FIX exits even when another candidate remains held; external writes stay gated.
+if [ "$gate_rc" = 0 ] || [ "$gate_rc" = 3 ]; then
+  if printf '%s' "$gate_out" | jq -e 'any(.verdicts[]?; .verdict == "fix")' >/dev/null 2>&1; then
+    nb_hold="$sweep_root/.rite/state/adoption-hold-${pr_number}-sweep.json"
+    nb_review=$(printf '%s' "$collect_out" | jq -r '.record')
+    nb_head=$(jq -r '.commit_sha' "$nb_review")
+    nb_resume="/rite:iterate ${pr_number} の NB sweep で PR 内推奨へ自動登録し、通常の fix → push → 再レビューへ進む。手作業の JSON 組み立て・record 呼出しは不要。再レビューでは持越し候補を現在の HEAD で判定し直す"
+    # Keep every candidate until the new review judges it (FIX is not a ledger disposition).
+    if [ "$gate_rc" = 0 ]; then
+      if ! jq -n --argjson pr "$pr_number" --arg head "$nb_head" --arg rr "$nb_review" --arg resume "$nb_resume" \
+        --slurpfile c "$nb_candidates" '{kind:"sweep",pr:$pr,head:$head,review_result:$rr,
+          reason:"pr_fix_pending",detail:"PR 内推奨の修正と再レビューを待つ",held_ids:[$c[0].candidates[].id],
+          candidates:$c[0].candidates,reconciliation:[],resume:$resume}' > "$nb_hold.tmp" || ! mv "$nb_hold.tmp" "$nb_hold"; then
+        rm -f "$nb_hold.tmp"; echo '[fix:error] reason=nb_sweep_adoption_held'; exit 1
+      fi
+    fi
+    printf '%s' "$gate_out" > "$nb_work/verdicts.json"
+    nb_registered="$sweep_root/.rite/state/pr-recommendations-${pr_number}.json"
+    [ -f "$nb_registered" ] || nb_registered="$nb_work/empty.json"
+    printf '{}\n' > "$nb_work/empty.json"
+    nb_previous="$nb_registered"
+    nb_registered="$nb_work/previous.json"
+    # record rewrites its whole file. Preserve this HEAD's triage registrations first,
+    # then add sweep roots not already registered, with separate synthetic candidate ids.
+    if cp "$nb_previous" "$nb_registered" && jq -n --arg sha "$nb_head" --slurpfile old "$nb_registered" --slurpfile v "$nb_work/verdicts.json" \
+      --slurpfile c "$nb_candidates" '
+      ($c[0].candidates | map(. + {file_line:(.file_line // .loc // ""),content:(.content // .description // "")})) as $cands
+      | (if $old[0].commit_sha == $sha then $old[0].recommendations else [] end) as $old
+      | [$old[] | {id:("registered:"+.id),reviewer:.reviewer,file_line:.file_line,content:.description}] as $saved
+      | [$old[] | {ids:["registered:"+.id],verdict:"fix",record:{contract:.contract,evidence:.evidence}}] as $prior
+      | [$v[0].verdicts[] | select(.verdict == "fix") | . as $d
+          | [$d.ids[] as $id | $cands[] | select(.id == $id)] as $mine
+          | select(any($old[]; .contract == $d.record.contract and .file_line == $mine[0].file_line
+              and .description == ([$mine[].content] | join("\n"))) | not)] as $new
+      | {verdicts:{verdicts:($prior+$new)},candidates:{candidates:($saved+$cands)}}
+      ' > "$nb_work/registration.json" \
+      && jq '.verdicts' "$nb_work/registration.json" > "$nb_work/record-verdicts.json" \
+      && jq '.candidates' "$nb_work/registration.json" > "$nb_work/record-candidates.json" \
+      && bash "$plugin_root/scripts/review-pr-recommendations.sh" record --pr "$pr_number" --state-root "$sweep_root" \
+        --review-result "$nb_review" --verdicts "$nb_work/record-verdicts.json" --candidates "$nb_work/record-candidates.json" >&2 \
+      && jq --slurpfile old "$nb_registered" '
+        (.recommendations[] | select(.candidates[0] | startswith("registered:"))) |=
+          (. as $r | ($r.candidates[0] | ltrimstr("registered:")) as $id
+           | .candidates=([$old[0].recommendations[] | select(.id == $id)][0].candidates))
+        ' "$sweep_root/.rite/state/pr-recommendations-${pr_number}.json" > "$nb_work/registered.json" \
+      && mv "$nb_work/registered.json" "$sweep_root/.rite/state/pr-recommendations-${pr_number}.json"; then
+      echo "[CONTEXT] NB_SWEEP_PR_FIX=pending; pr=$pr_number" >&2
+    else
+      if ! jq --arg resume "$nb_resume" '.reason="registration_failed" | .detail="PR 内推奨の登録に失敗した。直前の診断の原因を解消して再開する" | .resume=$resume' \
+          "$nb_hold" > "$nb_hold.tmp" || ! mv "$nb_hold.tmp" "$nb_hold"; then
+        rm -f "$nb_hold.tmp"; echo "ERROR: 登録失敗の理由を hold に保存できません: $nb_hold" >&2
+      fi
+      echo '[fix:error] reason=nb_sweep_adoption_held'; exit 1
+    fi
+  fi
+fi
 case "$gate_rc" in
   0) ;;
   3)
@@ -1769,12 +1835,6 @@ case "$gate_rc" in
     echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_adoption_gate_failed" >&2
     echo "[fix:error] reason=nb_sweep_adoption_gate_failed"; exit 1 ;;
 esac
-# verdict が欠落・未知値なら、起票も台帳 persist も始めない
-if ! printf '%s' "$gate_out" | jq -e '.held == false and (.verdicts | type) == "array"
-    and all(.verdicts[]; .verdict == "file" or .verdict == "record")' >/dev/null 2>&1; then
-  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_verdict_invalid" >&2
-  echo "[fix:error] reason=nb_sweep_verdict_invalid"; exit 1
-fi
 printf '%s\n' "$gate_out"
 }
 
@@ -1782,6 +1842,10 @@ printf '%s\n' "$gate_out"
 step_nb_sweep_file_issue() {
 # verdict=file の記録 1 件を起票し、起票した番号を判定記録の tracker に書き戻す。
 # タイトルと本文は caller が Write tool で作業ツリー外に置いたファイル。
+sweep_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh) || {
+  echo "ERROR: state root unresolved; issue and tracker are not modified" >&2
+  exit 1
+}
 issue_title=""
 [ -r "$issue_title_file" ] && issue_title=$(head -n 1 -- "$issue_title_file")
 if [ -z "$issue_title" ] || [ ! -s "$issue_body_file" ]; then
@@ -1808,7 +1872,7 @@ if ! issue_result=$(bash "$plugin_root"/scripts/create-issue-with-projects.sh "$
   exit 1
 fi
 # 起票した番号を判定記録の tracker に書き戻す。途中で止まって再実行すると、ゲートはこの記録を LINK にし、同じ根因を二度起票しない
-nb_adoption="$(bash "$plugin_root"/hooks/state-path-resolve.sh)/.rite/state/adoption-${pr_number}-sweep.json"
+nb_adoption="$sweep_root/.rite/state/adoption-${pr_number}-sweep.json"
 nb_issue_number=$(printf '%s' "$issue_result" | jq '.issue_number')
 if ! jq --argjson ids "$record_ids" --argjson n "$nb_issue_number" \
      'if any(.adoption.records[]; .ids == $ids) then (.adoption.records[] | select(.ids == $ids) | .tracker) = $n
@@ -1852,7 +1916,40 @@ else
     echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_extract_failed" >&2
     echo "[fix:error]"; exit 1
   }
-  bash "$plugin_root"/hooks/scripts/nb-sweep-ledger.sh append --ledger-file "$ledger" --entries-file "$entries_file" || {
+  persist_rows="$entries_file"
+  if [ "${nb_reconcile:-0}" = 1 ]; then
+    # 止まった sweep の戻り方: 台帳に既にある行は載せず、無い行だけを元の出典のまま載せる（append は重複を除かない）
+    missing_rows=$(mktemp "${TMPDIR:-/tmp}/rite-nb-missing-XXXXXX") || { echo "[fix:error]"; exit 1; }
+    missing_err=$(mktemp "${TMPDIR:-/tmp}/rite-nb-missing-err-XXXXXX") || { echo "[fix:error]"; exit 1; }
+    if ! bash "$plugin_root"/hooks/scripts/nb-sweep-ledger.sh missing --ledger-file "$ledger" --entries-file "$entries_file" \
+      > "$missing_rows" 2> "$missing_err"; then
+      neutralize_ctrl --keep-newline < "$missing_err" >&2
+      echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_check_failed" >&2
+      echo "[fix:error]"; exit 1
+    fi
+    neutralize_ctrl --keep-newline < "$missing_err" >&2
+    reconcile_rows=$(sed -n 's/^\[CONTEXT\] NB_SWEEP_LEDGER=ok; op=missing; rows=\([0-9]*\); missing=\([0-9]*\)$/\1/p' "$missing_err" | tail -1)
+    reconcile_missing=$(sed -n 's/^\[CONTEXT\] NB_SWEEP_LEDGER=ok; op=missing; rows=\([0-9]*\); missing=\([0-9]*\)$/\2/p' "$missing_err" | tail -1)
+    rm -f -- "$missing_err"
+    case "$reconcile_rows:$reconcile_missing" in
+      :*|*:|*[!0-9:]*)
+        echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_check_failed" >&2
+        echo "[fix:error]"; exit 1 ;;
+    esac
+    if [ "$reconcile_rows" -eq 0 ]; then
+      echo "ERROR: entries に台帳へ載せる行が無い: $entries_file" >&2
+      echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_entries_no_rows" >&2
+      echo "[fix:error]"; exit 1
+    fi
+    if [ "$reconcile_missing" -eq 0 ]; then
+      # 全行が台帳にある。台帳への書き込みは行わず、entries と持ち越した保留候補を消す
+      rm -f -- "$entries_file" "$sweep_root/.rite/state/adoption-hold-${pr_number}-sweep.json"
+      echo "[CONTEXT] NB_SWEEP_RECONCILE=already_recorded; rows=${reconcile_rows}; appended=0" >&2
+      return 0
+    fi
+    persist_rows="$missing_rows"
+  fi
+  bash "$plugin_root"/hooks/scripts/nb-sweep-ledger.sh append --ledger-file "$ledger" --entries-file "$persist_rows" || {
     echo "ERROR: 却下台帳 append 失敗" >&2
     echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_append_failed" >&2
     echo "[fix:error]"; exit 1
@@ -1892,13 +1989,23 @@ else
   rm -f -- "$record_err"
   # 外部への書き込みはすべて済んだ。持ち越した保留候補はもう要らないので sweep の hold を消す
   rm -f -- "$sweep_root/.rite/state/adoption-hold-${pr_number}-sweep.json"
+  if [ "${nb_reconcile:-0}" = 1 ]; then
+    rm -f -- "$entries_file"
+    echo "[CONTEXT] NB_SWEEP_RECONCILE=recorded; rows=${reconcile_rows}; appended=${reconcile_missing}" >&2
+  fi
 fi
+}
+
+# --- nb-sweep-reconcile ---------------------------------------------------------
+step_nb_sweep_reconcile() {
+nb_reconcile=1
+step_nb_sweep_persist
 }
 
 # --- nb-sweep-finish ------------------------------------------------------------
 step_nb_sweep_finish() {
 # entries の判定列から件数を数え、done の 1 行目を最新 review JSON の basename で書く
-sweep_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh) || sweep_root=""
+sweep_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh) || exit 1
 if [ -n "$sweep_root" ]; then
   mkdir -p "$sweep_root/.rite/state" || true
   source "$plugin_root"/hooks/gitignore-ensure.sh
@@ -2226,6 +2333,7 @@ case "$subcommand" in
     jq -e 'type == "array"' <<< "$record_ids" >/dev/null 2>&1 || usage_error "--record-ids must be a JSON array: $record_ids"
     step_nb_sweep_file_issue ;;
   nb-sweep-persist) require pr owner-repo; step_nb_sweep_persist ;;
+  nb-sweep-reconcile) require pr owner-repo; step_nb_sweep_reconcile ;;
   nb-sweep-finish) require pr; step_nb_sweep_finish ;;
   wiki-trigger) require pr content-file title-file; step_wiki_trigger ;;
   wiki-trigger-result)

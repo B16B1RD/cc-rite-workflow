@@ -115,6 +115,22 @@ if [ -n "$PATHS" ]; then
   IFS=',' read -r -a _wiki_paths <<<"$PATHS"
   for _wiki_path in "${_wiki_paths[@]}"; do
     [ -n "$_wiki_path" ] || continue
+    # A path gone from the work tree but present at HEAD is a deletion (one side of a rename).
+    # A path at neither place is a mistake, so it still fails below.
+    if [ ! -e "$WT/$_wiki_path" ] && [ ! -L "$WT/$_wiki_path" ] \
+      && git -C "$WT" cat-file -e "HEAD:$_wiki_path" 2>/dev/null; then
+      BLOB_BLOCK="${BLOB_BLOCK}blob: ${_wiki_path}=-"$'\n'
+      continue
+    fi
+    # git stores a symlink as its link text, so hash that rather than the file it points to.
+    if [ -L "$WT/$_wiki_path" ]; then
+      _wiki_oid=$(readlink -- "$WT/$_wiki_path" | tr -d '\n' | git -C "$WT" hash-object --stdin) || {
+        echo "ERROR: blob を計算できません: $_wiki_path" >&2
+        exit 1
+      }
+      BLOB_BLOCK="${BLOB_BLOCK}blob: ${_wiki_path}=${_wiki_oid}"$'\n'
+      continue
+    fi
     _wiki_oid=$(git -C "$WT" hash-object -- "$_wiki_path") || {
       echo "ERROR: blob を計算できません: $_wiki_path" >&2
       exit 1

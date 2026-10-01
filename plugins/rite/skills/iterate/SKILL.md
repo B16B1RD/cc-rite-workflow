@@ -87,6 +87,20 @@ rationale: references/rationale.md#circuit-breaker-conditions
 
 ---
 
+## 入口: 一時停止の解除
+
+状態の復元・変更より先に実行する。非 0 なら診断を表示して停止し、後続へ進まない。
+
+```bash
+# loop-entry-resume
+bash {plugin_root}/hooks/scripts/loop-entry-resume.sh || exit 1
+```
+
+`LOOP_ENTRY_RESUME=resumed` のときは「同じセッションからの再入により一時停止を解除し、継続ガードを再開しました」と利用者へ表示して続行する。`none` なら通常手順へ進む。
+rationale: ../../references/stop-loop-continuation-contract.md#loop-skill-reentry
+
+---
+
 ## ステップ 0: flow-state から issue_number / branch_name を復元
 
 `{issue_number}` / `{branch_name}` は standalone 起動でも flow-state set 呼び出しで必須のため、本コマンド冒頭で flow-state から復元する。
@@ -380,9 +394,10 @@ args: "--nb-sweep {pr_number}"
 | Sentinel | アクション |
 |---------|-----------|
 | `[fix:sweep-done]` | PR 内推奨の修正。ステップ 1 に戻らない |
-| `[fix:error]` / その他 / sentinel 不在 | `[iterate:nb-sweep-error]` で停止。完了通知へ進まない。手順 2 の起票後に台帳 persist（[nb-sweep.md 手順 3](../fix/references/nb-sweep.md)）で止まったときは、その戻り方で entries を直してから `/rite:iterate {pr_number}` を再実行する。同じ会話でも別の会話でも同じ経路で、ステップ 0.7 が再レビューを回さずに 5.S へ戻し、fix は起票をやり直さず手順 3 から続ける。`reason=nb_sweep_adoption_held` は起票も台帳も done も書かずに止まっている。hold ファイルの resume（ゲートの WARNING にも出る）に従って再開する。HEAD が変わらない再開では、同じ経路で fix は手順 2 の判定記録から続く |
+| `[fix:non-fatal-only]` | PR 内推奨の修正。sweep の自動登録で戻った。sweep は未完了なので下の done 記録を行わず、既存 check → mark → 通常 fix → push → 再レビューへ進む。入口 `{sweep_origin}` を保持する |
+| `[fix:error]` / その他 / sentinel 不在 | `[iterate:nb-sweep-error]` で停止。完了通知へ進まない。手順 2 の起票後に台帳 persist（[nb-sweep.md 手順 3](../fix/references/nb-sweep.md)）で止まったときは、その戻り方で entries を直してから `/rite:iterate {pr_number}` を再実行する。同じ会話でも別の会話でも同じ経路で、ステップ 0.7 が再レビューを回さずに 5.S へ戻し、fix は起票をやり直さず手順 3 から続ける。`reason=nb_sweep_adoption_held` は起票も台帳も done も書かずに止まっている（別の保留との混在では PR 内推奨の登録だけが済んでいる場合がある）。hold ファイルの resume（ゲートの WARNING にも出る）に従って再開する。HEAD が変わらない再開では、同じ経路で fix は手順 2 の判定記録から続く |
 
-fix が emit した `[CONTEXT] NB_SWEEP_RESULT=done; issued=K; recorded=M` を読み、`ITERATE_NB_SWEEP=done` を同カウントで emit する。記録した basename が最新 JSON と違う、またはファイルが無いときは、collect と同じ選び方（`LC_ALL=C` sort の末尾）で 1 行目を `done <basename>` にする。既存の 2 行目が SHA なら残し、新しい SHA は足さない。basename が取れないときは範囲なしの行を残さない:
+`[fix:sweep-done]` の場合だけ、fix が emit した `[CONTEXT] NB_SWEEP_RESULT=done; issued=K; recorded=M` を読み、`ITERATE_NB_SWEEP=done` を同カウントで emit する。記録した basename が最新 JSON と違う、またはファイルが無いときは、collect と同じ選び方（`LC_ALL=C` sort の末尾）で 1 行目を `done <basename>` にする。既存の 2 行目が SHA なら残し、新しい SHA は足さない。basename が取れないときは範囲なしの行を残さない:
 
 ```bash
 bash {plugin_root}/scripts/iterate-step.sh nb-sweep-record --pr {pr_number}
@@ -394,7 +409,7 @@ MUST NOT: 同一 review JSON で 5.S を 2 回走らせる。sweep でコード�
 
 ### 5.S 後の PR 内推奨の修正
 
-5.S 成功後・完了前確認の前に、最新の保存済み review の commit に未着手の PR 内推奨（pr-review ステップ 7.2 が採否の出口 ADOPT・`origin=pr` の根因を `R-NN` として登録したもの）があるかを確かめる。先に 5.S を済ませるのは、修正後の差分再レビューの JSON にこの JSON の non-blocking が引き継がれないため。marker 既出でも bash を省略しない。
+5.S 成功後または sweep の自動登録による return 後・完了前確認の前に、最新の保存済み review の commit に未着手の PR 内推奨（pr-review ステップ 7.2 または sweep の採否ゲートが採否の出口 ADOPT・`origin=pr` の根因を `R-NN` として登録したもの）があるかを確かめる。先に 5.S を済ませるのは、修正後の差分再レビューの JSON にこの JSON の non-blocking が引き継がれないため。marker 既出でも bash を省略しない。
 
 ```bash
 bash {plugin_root}/scripts/review-pr-recommendations.sh check --pr {pr_number}
@@ -834,7 +849,7 @@ rationale: references/rationale.md#notice-trend-and-notes
 | marker | コマンドに入れるもの |
 |---|---|
 | `STATE_ROOT=<実パス>` | `RITE_STATE_ROOT="<実パス>"` をそのまま埋める |
-| `STATE_ROOT=unresolved` | 埋めず、代わりにこう案内する: 「**リポジトリのチェックアウト内で** `root=$(bash "{plugin_root}"/hooks/state-path-resolve.sh)` を実行し、`RITE_STATE_ROOT="$root"` として使ってください（repo 外の cwd では resolver が cwd を返して空振りします。`git rev-parse --show-toplevel` で代用しないこと — linked worktree では worktree root を返し、resolver が行う main checkout への unify が効きません）」 |
+| `STATE_ROOT=unresolved` | 埋めず、代わりにこう案内する: 「**リポジトリのチェックアウト内で** `root=$(bash "{plugin_root}"/hooks/state-path-resolve.sh)` を実行し、`RITE_STATE_ROOT="$root"` として使ってください（repo 外の cwd では resolver が失敗を返します。`git rev-parse --show-toplevel` で代用しないこと — linked worktree では worktree root を返し、resolver が行う main checkout への unify が効きません）」 |
 | `SESSION_ID=<実 UUID>` | `--session <実 UUID>` をそのまま埋める |
 | `SESSION_ID=`（空） | 埋めず、代わりにこう案内する: 「`{state_root}/.rite/sessions/` の各 `*.flow-state` から `pr_number` が {pr_number} **かつ `cycle_count` が 1 以上**のものを探して `--session` に補ってください（**同一 `pr_number` の state が複数残ることがある**ため、複数該当したら `updated_at` が最新のものを採ります。`updated_at` まで同値で並ぶ場合は `next_action` が「サーキットブレーカー発火」で始まる方を採ります）」。**`cycle_count` を `max_review_cycles` と比較しないこと** — `divergence` 発火はステップ 1 が上限を先に評価する構造上つねに `cycle_count < max_review_cycles` で成立するため、上限との比較を条件にすると発散発火が残した state に対して解が空集合になり、この復旧手順そのものが行き止まりになる。**一方 `cycle_count >= 1` は両発火理由に共通で成立し**（`divergence` は `1 <= cc < max`、`max-cycles` は `cc == max`）、正常終了・fresh entry の state は 0 またはキー欠落なので、fail-safe を保ったまま候補を絞れる。**`{state_root}` が同時に未解決の場合のみ**、上表 `STATE_ROOT=unresolved` 行の案内で得た `$root` をこの位置に使う |
 

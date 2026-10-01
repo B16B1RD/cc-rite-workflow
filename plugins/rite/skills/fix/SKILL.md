@@ -1209,7 +1209,6 @@ fix(review): {description}
 オプション:
 - このメッセージでコミット
 - メッセージを編集
-- 個別にコミット（複数コミットに分割）
 ```
 
 ### 3.2.1 Root Cause Gate
@@ -1247,7 +1246,7 @@ git add {changed_files}
 git commit -F "{commit_message_file}"
 ```
 
-各 commit が成功するたびに、別の Bash 呼び出しで Wiki 適用証跡の head を commit 前の HEAD から新しい HEAD へ進める（3.2 で分割コミットを選んだときも 1 本ごと）。進めないと次の commit と次のレビューのゲートが `stale_head` で拒否する。
+各 commit が成功するたびに、別の Bash 呼び出しで Wiki 適用証跡の head を commit 前の HEAD から新しい HEAD へ進める。進めないと次の commit と次のレビューのゲートが `stale_head` で拒否する。
 
 ```bash
 # fix-wiki-apply-head

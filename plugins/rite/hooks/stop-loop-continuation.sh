@@ -70,8 +70,8 @@ IFS=$'\x1f' read -r SESSION_ID CWD <<< "$_jq_out"
 [ -n "$SESSION_ID" ] || exit 0
 [ -n "$CWD" ] && [ -d "$CWD" ] || exit 0
 
-# Resolve state root (git root or CWD) — post-tool-wm-sync.sh と同じ解決経路。
-STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
+# Resolve the shared git state root — post-tool-wm-sync.sh と同じ解決経路。
+STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD") || exit 0
 
 # 利用者の求めによる一時停止の記録（`flow-state.sh pause` が書く）があるあいだは、handoff の再注入も
 # batch watchdog も行わず停止を許可する。handoff は消費せず残すので、再開後の最初の停止で従来どおり効く。

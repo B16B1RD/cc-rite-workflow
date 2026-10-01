@@ -214,7 +214,7 @@ assert_grep_count 'iterate question inventory is unchanged' "$ROOT/plugins/rite/
 assert_grep_count 'fix question inventory is unchanged' "$ROOT/plugins/rite/skills/fix/SKILL.md" 'AskUserQuestion' 13 \
   "$ROOT/plugins/rite/skills/fix/references/"{target-comment,nb-sweep,accept-finding,wiki-recording}.md
 assert_grep_count 'ready question inventory includes AC attestation' "$ROOT/plugins/rite/skills/ready/SKILL.md" 'AskUserQuestion' 3
-assert_grep_count 'merge question inventory includes AC attestation' "$ROOT/plugins/rite/skills/merge/SKILL.md" 'AskUserQuestion' 3
+assert_grep_count 'merge question inventory includes AC attestation and BEHIND recovery' "$ROOT/plugins/rite/skills/merge/SKILL.md" 'AskUserQuestion' 2
 # 5 件目は 4-W の登録から補完した作業ツリーで未コミット変更を stash してから削除するかの確認で、
 # 類型 (b) 不可逆操作（未コミット変更を持つ作業ツリーの削除）の承認に当たる。
 # 6・7 件目は単独実行時の follow-up Issue 起票前の確認（3 択と、本文表示後の再確認）で、

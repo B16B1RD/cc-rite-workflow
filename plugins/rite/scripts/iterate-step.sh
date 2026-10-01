@@ -219,13 +219,10 @@ fi
 #     縮退するだけで、ループは止まらない。ただし縮退は WARNING で告知する。
 run_since_status=none
 if [ "$cb_mode_init" = fresh ] || [ "$cur_cc" -eq 0 ] 2>/dev/null; then
-  # `2>/dev/null` は付けない — resolver は git 内外どちらでも rc=0 / 非空を返す設計なので、
-  # ここに落ちるのは **helper 自体を実行できない場合（プラグイン破損 / 版 skew、rc=127）だけ**。
-  # その唯一の原因を示すのは bash の `No such file or directory` であり、抑止すると原因が消える
-  # （ステップ 1 側と同じ論拠）。正常系の stderr は実測 0 バイトなのでノイズは増えない。
+  # resolver の git 外失敗や実行失敗の診断は保持する。
   pin_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh) || pin_root=""
   if [ -z "$pin_root" ]; then
-    echo "WARNING: state-path-resolve.sh を実行できませんでした（プラグインの破損 / 版 skew）。run 開始点 pin を記録できないため、発散判定は前 run の JSON を含んだ列を読んで判定を降ろします" >&2
+    echo "WARNING: state root を解決できませんでした（git 外または resolver 実行失敗）。run 開始点 pin を記録できないため、発散判定は前 run の JSON を含んだ列を読んで判定を降ろします" >&2
     run_since_status=unresolved-root
   else
     rm -f "$pin_root/.rite/state/nb-sweep-done-${pr_number}.txt" "$pin_root/.rite/state/pr-recommendations-done-${pr_number}.txt"
@@ -374,7 +371,7 @@ run_since=""
 run_since_used=pin
 if [ -z "$pin_root" ]; then
   run_since_used=unresolved-root
-  echo "WARNING: state-path-resolve.sh を実行できませんでした（プラグインの破損 / 版 skew）。run 開始点 pin を読めないため、発散判定は run 境界を確定できず判定を降ろします（max_review_cycles の backstop のみが働きます）" >&2
+  echo "WARNING: state root を解決できませんでした（git 外または resolver 実行失敗）。run 開始点 pin を読めないため、発散判定は run 境界を確定できず判定を降ろします（max_review_cycles の backstop のみが働きます）" >&2
 elif [ ! -f "$pin_root/.rite/state/review-run-since-${pr_number}.txt" ]; then
   run_since_used=absent
   echo "WARNING: run 開始点 pin が未記録です（ステップ 0.6 の書き込み失敗、または pin 導入前から継続中の run）。前 run の結果が同居していれば発散判定は判定を降ろします" >&2
@@ -683,7 +680,7 @@ fi
 
 # --- nb-sweep-record -----------------------------------------------------------
 step_nb_sweep_record() {
-nb_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh) || nb_root=""
+nb_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh) || exit 1
 nb_done_file="$nb_root/.rite/state/nb-sweep-done-$pr_number.txt"
 nb_latest=""
 nb_latest_base=""
@@ -880,12 +877,11 @@ fi
 source "$plugin_root"/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした（プラグインの破損 / 版 skew）。marker を emit できないため中止します" >&2; exit 1; }
 
 state_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh)
-# 空値を sentinel に置き換える。rc 検査では救えない（resolver は cwd 削除時にも rc=0 で空文字を返す）。
+# 未解決の空値を sentinel に置き換え、手動リセットに空の root を渡さない。
 # 空のまま marker に載せると、ステップ 6.2 の (b) が提示する `RITE_STATE_ROOT=` が flow-state.sh の
 # `[ -n "${RITE_STATE_ROOT:-}" ]` 判定で「未設定」と**完全に同義**へ縮退し、(b) 自身が「省くと空振りする」
-# と警告している当の空振りを、省いていないのに無言で起こす。しかも `flow-state.sh path` は state_root が
-# 空でも rc=0 を返すため session_id は非空のまま残る（2 軸は独立）。sentinel にしておけば 6.2 の
-# pre-fill 表が ROOT 側だけを解決手順へ置き換え、判明している session_id は保ったまま渡せる。
+# と警告している空振りを避ける。sentinel にしておけば 6.2 の pre-fill 表が ROOT 側だけを
+# 解決手順へ置き換え、判明している session_id は保ったまま渡せる。
 if [ -z "$state_root" ]; then
   echo "WARNING: state root を解決できませんでした（手動リセット手順が別ディレクトリを rc=0 のまま対象にする恐れがあるため、ステップ 6.2 は state root を埋め込んだコマンドではなく、人間が自分で state root を解決する代替手順に切り替えます）" >&2
   state_root=unresolved
@@ -952,11 +948,8 @@ fi
 # CLAUDE_CODE_SESSION_ID がある間 `.rite-session-id` を書かないため、Claude Code 配下では両者の
 # 不一致が定常状態である。--session 無しのコマンドは rc=0 で「成功」しながら別 sid の state を
 # 新規作成し、上限のまま止まっている当の counter は手つかずで残る。
-# state_root も同じ理由で marker に載せる。sid を --session で固定しても、state root は
-# `resolve_state_root` が cwd へフォールバックするため、人間が repo 外の cwd（marketplace install では
-# コマンド文字列にプロジェクト参照が無く、新規端末の既定 cwd は $HOME = 非 git）で実行すると
-# rc=0 のまま $cwd/.rite/sessions/ に別ファイルを作り、当の counter はやはり手つかずで残る。
-# 2 軸のうち片方だけを塞いでも空振りは塞げない。
+# state_root も marker に載せ、linked worktree の共有ルートを明示する。
+# git 外では resolver が失敗するため、別の作業ディレクトリに状態は作らない。
 marker_emit ITERATE_CB_MODE "$cb_mode" "issue=$issue_number" "pr=$pr_number" \
   "SESSION_ID=$session_id" "STATE_ROOT=$state_root"
 }

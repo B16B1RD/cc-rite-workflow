@@ -85,6 +85,7 @@ fail() { FAIL=$((FAIL + 1)); FAILED_NAMES+=("$1"); echo "  ❌ FAIL: $1"; }
 make_test_dir() {
   local d
   d=$(mktemp -d) || { echo "ERROR: mktemp -d failed" >&2; return 1; }
+  git -C "$d" init -q || return 1
   cleanup_dirs+=("$d")
   printf '# rite test sandbox config\n' > "$d/rite-config.yml"
   echo "$d"

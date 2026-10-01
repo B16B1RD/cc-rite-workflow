@@ -35,11 +35,11 @@
 #
 # Exit codes:
 #   0  recorded (or non-blocking append failure — WARNING on stderr)
-#   1  usage error (bad/missing --type or --id, or value with TAB/newline)
+#   1  unresolved state root or usage error (bad/missing --type or --id, TAB/newline)
 #
 # Non-blocking by contract: a producer must never crash because manifest
-# recording failed, so append failures WARN and return 0. Only caller misuse
-# (invalid arguments) is a hard error.
+# appending failed, so append failures WARN and return 0. An unresolved root
+# stops before any directory creation; producers may catch this error.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -122,8 +122,8 @@ esac
 repo_root=$("$SCRIPT_DIR/../state-path-resolve.sh" 2>/dev/null) || repo_root=""
 [ -n "$repo_root" ] || repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || repo_root=""
 if [ -z "$repo_root" ]; then
-  echo "WARNING: rite-tmp-artifact: shared root を解決できず manifest 記録をスキップします (not inside a git repository?)" >&2
-  exit 0
+  echo "ERROR: rite-tmp-artifact: state root unresolved; manifest is not modified" >&2
+  exit 1
 fi
 
 manifest="$repo_root/$MANIFEST_REL"

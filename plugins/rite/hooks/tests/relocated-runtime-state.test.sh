@@ -29,6 +29,7 @@ echo "=== relocated runtime state ==="
 # T-01 / T-04: session-start writes the 4 file states to new paths, not root.
 echo "T-01: session-start writers land on new paths"
 d01="$TEST_DIR/t01"
+git init -q "$d01"
 mkdir -p "$d01"
 sid01="bbbbbbbb-1111-2222-3333-444444444444"
 run_session_start "$d01" "$sid01"
@@ -50,6 +51,7 @@ assert "T-01 no legacy work-memory at root" "0" "$?"
 # T-04 extension: work-memory-update and debug-log writers do not create root files.
 echo "T-04: work-memory-update writes .rite/work-memory not root"
 d04="$TEST_DIR/t04"
+git init -q "$d04"
 mkdir -p "$d04"
 (
   cd "$d04"
@@ -87,6 +89,7 @@ done
 # T-02: old-only fixtures are readable.
 echo "T-02: dual-read from legacy-only files"
 d02="$TEST_DIR/t02"
+git init -q "$d02"
 mkdir -p "$d02"
 uuid02="cccccccc-1111-2222-3333-444444444444"
 printf '%s' "$uuid02" > "$d02/.rite-session-id"
@@ -101,6 +104,7 @@ path=$(env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID RITE_STATE_ROOT="$d02"
 assert "T-02 flow-state path uses legacy sid file" "$d02/.rite/sessions/${uuid02}.flow-state" "$path"
 
 d02wm="$TEST_DIR/t02wm"
+git init -q "$d02wm"
 mkdir -p "$d02wm/.rite-work-memory"
 printf '# 📜 rite 作業メモリ\n\n## Summary\n---\nschema_version: 1\nissue_number: 2430\nsync_revision: 5\npr_number: 4242\nloop_count: 7\n---\n\nfrom-old\n' \
   > "$d02wm/.rite-work-memory/issue-2430.md"
@@ -123,6 +127,7 @@ assert "T-02 WM carries pr_number from legacy frontmatter" "0" "$?"
 # T-03: migrate old → new once; second run is no-op; both-exist does not clobber.
 echo "T-03: session-start migrate is idempotent"
 d03="$TEST_DIR/t03"
+git init -q "$d03"
 mkdir -p "$d03"
 printf 'legacy-plugin' > "$d03/.rite-plugin-root"
 printf 'legacy-sid' > "$d03/.rite-session-id"
@@ -157,6 +162,7 @@ assert "T-03 second run does not recreate legacy plugin-root" "0" "$?"
 # both-exist: migrate must not clobber dest. Use work-memory (session-start
 # does not rewrite it after migrate; plugin-root is rewritten every start).
 d03b="$TEST_DIR/t03both"
+git init -q "$d03b"
 mkdir -p "$d03b/.rite/work-memory" "$d03b/.rite-work-memory"
 printf 'NEWWM' > "$d03b/.rite/work-memory/issue-1.md"
 printf 'OLDWM' > "$d03b/.rite-work-memory/issue-1.md"
@@ -167,6 +173,7 @@ assert "T-03 both-exist leaves old WM" "OLDWM" "$(cat "$d03b/.rite-work-memory/i
 # T-03 fail branch: mv failure emits WARNING and leaves src (work-memory).
 echo "T-03: migrate mv failure warns and leaves src"
 d03fail="$TEST_DIR/t03fail"
+git init -q "$d03fail"
 mkdir -p "$d03fail/.rite-work-memory"
 printf 'keep' > "$d03fail/.rite-work-memory/issue-1.md"
 shim="$TEST_DIR/mv-shim"
@@ -190,6 +197,7 @@ assert "T-03 mv failure does not create dest WM dir" "0" "$?"
 # T-05: env priority CLAUDE_CODE_SESSION_ID > CLAUDE_SESSION_ID > new file > old file
 echo "T-05: session_id resolution order"
 d05="$TEST_DIR/t05"
+git init -q "$d05"
 mkdir -p "$d05/.rite"
 uuid_new="11111111-1111-1111-1111-111111111111"
 uuid_old="22222222-2222-2222-2222-222222222222"
@@ -207,6 +215,7 @@ assert "T-05 CLAUDE_CODE_SESSION_ID beats CLAUDE_SESSION_ID" "$d05/.rite/session
 # T-07: both exist → new wins for readers
 echo "T-07: new content wins when both exist"
 d07="$TEST_DIR/t07"
+git init -q "$d07"
 mkdir -p "$d07/.rite"
 printf '%s' "$uuid_new" > "$d07/.rite/session-id"
 printf '%s' "$uuid_old" > "$d07/.rite-session-id"
@@ -215,6 +224,7 @@ assert "T-07 from-file helper prefers new" "$uuid_new" "$out"
 
 # invalid new must not fall through to valid old
 d07b="$TEST_DIR/t07bad"
+git init -q "$d07b"
 mkdir -p "$d07b/.rite"
 printf 'not-a-uuid' > "$d07b/.rite/session-id"
 printf '%s' "$uuid_old" > "$d07b/.rite-session-id"
@@ -232,15 +242,16 @@ assert "T-06 no skill one-liner starts at legacy path" "" "$bare"
 
 # cleanup both dirs
 echo "cleanup-work-memory deletes new, old, and both"
-dcn="$TEST_DIR/cnew"; mkdir -p "$dcn/.rite/work-memory"; echo x > "$dcn/.rite/work-memory/issue-1.md"
+dcn="$TEST_DIR/cnew"; git init -q "$dcn"; mkdir -p "$dcn/.rite/work-memory"; echo x > "$dcn/.rite/work-memory/issue-1.md"
 ( cd "$dcn" && bash "$CLEANUP_WM" --issue 1 >/dev/null )
 [ ! -f "$dcn/.rite/work-memory/issue-1.md" ]
 assert "cleanup new-only" "0" "$?"
-dco="$TEST_DIR/cold"; mkdir -p "$dco/.rite-work-memory"; echo x > "$dco/.rite-work-memory/issue-1.md"
+dco="$TEST_DIR/cold"; git init -q "$dco"; mkdir -p "$dco/.rite-work-memory"; echo x > "$dco/.rite-work-memory/issue-1.md"
 ( cd "$dco" && bash "$CLEANUP_WM" --issue 1 >/dev/null )
 [ ! -f "$dco/.rite-work-memory/issue-1.md" ]
 assert "cleanup old-only" "0" "$?"
 dcb="$TEST_DIR/cboth"
+git init -q "$dcb"
 mkdir -p "$dcb/.rite/work-memory" "$dcb/.rite-work-memory"
 echo n > "$dcb/.rite/work-memory/issue-1.md"
 echo o > "$dcb/.rite-work-memory/issue-1.md"
@@ -268,6 +279,7 @@ done
 # umask 077 on new session-id
 echo "session-id umask 077 on new path"
 dperm="$TEST_DIR/perm"
+git init -q "$dperm"
 mkdir -p "$dperm"
 run_session_start "$dperm" "$sid01"
 perm=$(stat -c '%a' "$dperm/.rite/session-id" 2>/dev/null || stat -f '%OLp' "$dperm/.rite/session-id")

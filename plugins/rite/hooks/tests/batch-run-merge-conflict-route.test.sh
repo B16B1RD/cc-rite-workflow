@@ -132,4 +132,20 @@ d=$(run_rematch mergeable)
 assert "T-03 MERGEABLE: not-ready を出さず続行" 0 "$(grep -c 'merge:not-ready' "$d/out")"
 assert "T-03 MERGEABLE: 成功終了" 0 "$(cat "$d/rc")"
 
+echo "--- BEHIND: specific failure classification and recovery ---"
+behind_row=$(line_of '^\| `\[merge:error\]` \+ `\[CONTEXT\] MERGE_ERROR=behind`')
+if [ -n "$behind_row" ] && [ -n "$generic_row" ] && [ "$behind_row" -lt "$generic_row" ]; then
+  pass "BEHIND error is classified before the generic error stop"
+else
+  fail "BEHIND error must precede the generic row (behind=$behind_row generic=$generic_row)"
+fi
+assert_grep "BEHIND stops at step 8" "$STEP5" 'MERGE_ERROR=behind.*\*\*失敗\*\*.*ステップ 8'
+STOP="$TMP_ROOT/stop.md"
+awk '/^## ステップ 8: /{s=1} s' "$BATCH" > "$STOP"
+assert_grep "BEHIND replaces generic recover/retry instructions" "$STOP" 'MERGE_ERROR=behind.*汎用復旧 2 行.*置き換える'
+assert_grep "BEHIND draft and base intake precede review" "$STOP" '^> 1\..*draft 戻し → phase=fix.*base 取り込み.*検証・Wiki 適用証跡の取り直し・commit・head 更新・push'
+assert_grep "BEHIND reviewed head and CI are required before ready" "$STOP" '^> 2\..*/rite:iterate.*全 CI job.*完了・成功.*rite:ready'
+assert_grep "BEHIND resumes queue only after recovery" "$STOP" '^> 3\..*取り込み・再レビュー・CI 確認・ready.*完了した後.*rite:batch-run --merge'
+assert_grep "failed recovery does not restart the queue" "$STOP" '未完のままキューを再開しない'
+
 print_summary
