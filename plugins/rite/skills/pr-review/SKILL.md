@@ -1023,7 +1023,7 @@ Determine the error type from the completion notification (failure payload or ab
 
 **Note**: Timeout / network / invalid format / missing read declaration は質問せず 1 回だけ自動再試行する。再失敗後は incomplete として停止する。委譲不能をユーザー承認で mergeable に変換しない。
 
-**未選定の専門 reviewer が途中で必要になったとき**: 選定済み全員の raw、完了時刻、SHA256、manifest、`review_context` を保持する。未回収の選定済み reviewer が残るときは不足を明示して `[review:error]` で止まり、一部の結果だけで完了しない。固定名簿の変更、counter reset、偽の completed receipt、偽の circuit-breaker は案内しない。`review-start --stagnation` で名簿を変える操作は exit 1、診断 `cannot change incomplete review selection`。保存前の `review-restart` と `set --phase fix` は exit 1、診断 `all reviewers must be collected and saved`。いずれも成功と扱わず、証跡と診断を保持して停止する。保存と再開の区別は Persistence contract、restart の受理条件は [review-stagnation.md](../../references/review-stagnation.md) に従う。
+**未選定の専門 reviewer が途中で必要になったとき**: 選定済み全員の raw、完了時刻、SHA256、manifest、`review_context` を保持する。未回収の選定済み reviewer が残るときは不足を明示して `[review:error]` で止まり、一部の結果だけで完了しない。固定名簿の変更、counter reset、偽の completed receipt、偽の circuit-breaker は案内しない。`review-start --stagnation` で名簿を変える操作は exit 1、診断 `cannot change incomplete review selection`。review_run があるとき、保存前の `review-restart` と `set --phase fix` は exit 1、診断 `all reviewers must be collected and saved`。review_run が無いとき、保存前の `set --phase fix` は exit 1、診断 `unverified review transition; run review-start/review-finish before advancing`。保存前の `review-restart` は exit 1、診断 `stagnation-enabled review run required`。いずれも成功と扱わず、証跡と診断を保持して停止する。保存と再開の区別は Persistence contract、restart の受理条件は [review-stagnation.md](../../references/review-stagnation.md) に従う。
 
 ### 4.5 Review Instruction Format
 
