@@ -1254,7 +1254,7 @@ git commit -F "{commit_message_file}"
 bash {plugin_root}/hooks/scripts/wiki-apply-advance-head.sh --from HEAD^
 ```
 
-`WIKI_APPLY_HEAD=advanced` または `=current` なら 3.3.1 へ進む。非 0 終了では証跡は変わっていない。冒頭の Wiki 手順の capture からやり直し、証跡を書き直してから 3.3.1 へ進む。
+`WIKI_APPLY_HEAD=advanced` または `=current` なら 3.3.1 へ進む。非 0 終了では証跡は変わっていない。冒頭の Wiki 手順の capture からやり直し（commit 後なので `{changed_paths}` は作業ツリーにある対象パスに絞る）、証跡を書き直してから 3.3.1 へ進む。
 
 ### 3.3.1 Fix-Cycle State Persistence
 
