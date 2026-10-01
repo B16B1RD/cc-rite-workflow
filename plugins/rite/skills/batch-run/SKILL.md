@@ -341,6 +341,8 @@ iterate の終了 sentinel を `{run_mode}`（ステップ 1 の `mode=` marker�
 |---------|-----------|
 | `[review:error]` + `REVIEW_STOP=purpose_unaligned`（両モード） | **失敗** → ステップ 8（段階=iterate）。内側の `[review:mergeable]` は iterate 終端ではない |
 | `[review:error]` + `REVIEW_STOP=adoption_held`（両モード） | **失敗** → ステップ 8（段階=iterate）。採否の出口待ちで外部へ何も書かずに止まっているか、スコープ外処分の外部への書き込み（Issue・Decision Log・申し送り・台帳）が途中で失敗して止まっている（後者は一部が書き込み済み）。停止報告に `hold_file` とその resume（再開方法）を載せる。hold に書けなかったときは stderr の WARNING の `再開方法:` を載せる |
+| `[review:error]` + `REVIEW_STOP=ac_unverified`（`merge`） | 受入条件未検証は失敗ではない。ready が AI で確かめられる条件を実行して確かめ、人間にしか確かめられない条件だけが残ったときに限って止まるため → ステップ 4（ready）へ |
+| `[review:error]` + `REVIEW_STOP=ac_unverified`（`default`） | ready を実行しないため未検証の受入条件を確かめられない。**失敗** → ステップ 8（段階=iterate）。draft PR は残る。停止報告に未検証の受入条件（iterate の停止通知の内容）を載せる |
 | `[review:mergeable]` + `merge` | iterate 収束 → ステップ 4（ready）へ |
 | `[review:mergeable]` + `default` | iterate 収束。**ready/merge/cleanup はスキップ**し、draft PR を残したまま **ステップ 6 の cursor 前進 bash へ直行**（cleanup invoke はしない） |
 | `[fix:replied-only]` + `merge` | **非収束として失敗扱い** → ステップ 8（段階=iterate）。reply のみで mergeable 未到達のまま merge すると未解決指摘を握り潰すため。停止報告に続行コマンド `/rite:ready {pr_number} && /rite:merge {pr_number}` を案内 |
@@ -349,7 +351,7 @@ iterate の終了 sentinel を `{run_mode}`（ステップ 1 の `mode=` marker�
 | `[fix:cancelled-by-user]`（両モード） | ユーザー中断 → ステップ 8（段階=iterate） |
 | `[iterate:nb-sweep-error]` / `[fix:error]` / sentinel 不在（両モード） | **失敗** → ステップ 8（段階=iterate） |
 
-<!-- run orchestration: after iterate returns a terminal sentinel, do NOT stop. [review:error] + REVIEW_STOP=purpose_unaligned (both modes) -> ステップ 8; 内側の [review:mergeable] は iterate 終端ではない. [review:error] + REVIEW_STOP=adoption_held (both modes) -> ステップ 8 (held, or the out-of-scope writes stopped part way; see hold_file resume, or the stderr WARNING 再開方法: when the hold could not be written). merge mode + [review:mergeable] (purpose_unaligned なし) -> ステップ 4. default mode + [review:mergeable] or [fix:replied-only] -> ステップ 6 cursor advance (skip ready/merge/cleanup). [iterate:max-cycles-reached] (both modes) -> ステップ 8 (record failure and stop; do NOT advance cursor). -->
+<!-- run orchestration: after iterate returns a terminal sentinel, do NOT stop. [review:error] + REVIEW_STOP=purpose_unaligned (both modes) -> ステップ 8; 内側の [review:mergeable] は iterate 終端ではない. [review:error] + REVIEW_STOP=adoption_held (both modes) -> ステップ 8 (held, or the out-of-scope writes stopped part way; see hold_file resume, or the stderr WARNING 再開方法: when the hold could not be written). [review:error] + REVIEW_STOP=ac_unverified: merge mode -> ステップ 4, default mode -> ステップ 8. merge mode + [review:mergeable] (purpose_unaligned なし) -> ステップ 4. default mode + [review:mergeable] or [fix:replied-only] -> ステップ 6 cursor advance (skip ready/merge/cleanup). [iterate:max-cycles-reached] (both modes) -> ステップ 8 (record failure and stop; do NOT advance cursor). -->
 
 ---
 
@@ -367,7 +369,7 @@ args: "{pr_number}"
 | Sentinel | アクション |
 |---------|-----------|
 | `[ready:returned-to-caller]` | ステップ 5 へ |
-| `[ready:error]` / sentinel 不在 | **失敗** → ステップ 8（段階=ready） |
+| `[ready:error]` / sentinel 不在 | **失敗** → ステップ 8（段階=ready）。ready が未検証の受入条件で止まったときは、その停止理由（人間のみの条件ごとの 4 要素 = 何を確かめるか / なぜ AI では確かめられないか / どう確かめるか / 期待する結果、AI で確かめた行の `実行したコマンド => 観測結果`）を省略せず失敗理由欄へ転記する |
 
 <!-- run orchestration: after ready returns, do NOT stop — proceed to ステップ 5 -->
 
@@ -574,7 +576,7 @@ echo "[CONTEXT] RUN_STOP; cursor=$cursor; done=$done_issues; remaining=$remainin
 ## /rite:batch-run 停止
 
 失敗した Issue: #{current_issue}（段階: {resume|open|iterate|ready|merge|cleanup}、モード: {run_mode}）
-失敗理由: {受領した失敗 sentinel または「sentinel 不在」。段階=resume では RUN_RESUME_STAGE=stop の reason= 値}
+失敗理由: {受領した失敗 sentinel または「sentinel 不在」。段階=resume では RUN_RESUME_STAGE=stop の reason= 値。受入条件未検証（`REVIEW_STOP=ac_unverified` / ready の未検証停止）では、人間のみの条件ごとの 4 要素と AI で確かめた行の `実行したコマンド => 観測結果` を続けて書く}
 失敗時の状態: PR #{pr_number}（{draft | open | 未作成}。段階=resume で PR 番号を確定できないときは「PR 未確定」）
 
 処理済み Issue: {done_issues}
