@@ -46,13 +46,15 @@ RC=0
 # Existing fixtures intentionally use readable synthetic SHAs. Stub only the
 # independent HEAD lookup so each case remains focused on results-dir behavior.
 mkdir -p "$SANDBOX/bin"
+export REVIEW_VERIFY_REAL_GIT
+REVIEW_VERIFY_REAL_GIT=$(command -v git)
 cat > "$SANDBOX/bin/git" <<'EOF'
 #!/bin/bash
 if [ "$1 $2" = "rev-parse HEAD" ]; then
   printf '%s\n' "${REVIEW_VERIFY_HEAD_SHA:-}"
   exit 0
 fi
-exit 2
+exec "$REVIEW_VERIFY_REAL_GIT" "$@"
 EOF
 chmod +x "$SANDBOX/bin/git"
 
@@ -335,6 +337,7 @@ assert_grep "T-06p: state root 解決失敗を degraded として告知する" "
 # pass で同値 (どちらも 0)** なので rc だけでは変異を捕まえられず、JSON_OK の**不在**を pin する。
 PINRO="$SANDBOX/pinro"
 mkdir -p "$PINRO/.rite/review-results" "$PINRO/.rite/state"
+git -C "$PINRO" init -q
 make_result "$PINRO/.rite/review-results" 921 01 "eeee555"
 PINRO_FILE="$PINRO/.rite/state/review-run-since-921.txt"
 printf '%s\n' "921-20260101000001.json" > "$PINRO_FILE"
@@ -370,6 +373,7 @@ echo "--- T-10: 既定解決経路 (production 形の呼び出し) ---"
 
 DEFAULT_ROOT="$SANDBOX/defaultroot"
 mkdir -p "$DEFAULT_ROOT/.rite/review-results" "$DEFAULT_ROOT/.rite/state"
+git -C "$DEFAULT_ROOT" init -q
 make_result "$DEFAULT_ROOT/.rite/review-results" 920 01 "eeee555"   # pin 自身 (前 run の最終)
 printf '%s\n' "920-20260101000001.json" > "$DEFAULT_ROOT/.rite/state/review-run-since-920.txt"
 

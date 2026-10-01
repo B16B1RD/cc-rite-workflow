@@ -2,7 +2,8 @@
 # rite workflow - State Path Resolver
 # Resolves the root directory for rite state files (.rite-compact-state, .rite/work-memory/)
 # Usage: source this script or call resolve_state_root [cwd]
-# Output: Prints the resolved root path to stdout
+# Output: Prints the resolved git root on success. Outside git: nonzero, empty
+# stdout and a stderr diagnostic. Callers must check the exit status.
 set -euo pipefail
 
 resolve_state_root() {
@@ -54,9 +55,8 @@ resolve_state_root() {
     return 0
   fi
 
-  # Fallback: use cwd if not in a git repo
-  echo "$cwd"
-  return 0
+  echo "ERROR: state root unresolved: not in a git repository" >&2
+  return 1
 }
 
 # When invoked directly (not sourced), resolve and print

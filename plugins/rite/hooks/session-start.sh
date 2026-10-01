@@ -95,9 +95,9 @@ if [ ! -d "$CWD" ]; then
   exit 0
 fi
 
-# Resolve state root (git root or CWD) — consistent with pre-compact.sh / session-end.sh
+# Resolve the shared git state root — consistent with pre-compact.sh / session-end.sh
 # SCRIPT_DIR already set in preamble block above
-STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
+STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD") || exit 0
 
 # Nested self-gitignore for the whole `.rite/` tree (`*` plus wiki negations).
 # Covers runtime state even when /rite:setup has not listed each subdir in the

@@ -62,6 +62,7 @@ create_state_file() {
   local dir="$1"
   local content="$2"
   local sid="${3:-test-sid-$(basename "$dir")}"
+  git init -q "$dir"
   mkdir -p "$dir/.rite/sessions"
   printf '%s' "$sid" > "$dir/.rite-session-id"
   local merged
@@ -249,6 +250,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-005: terminal state file exists → deactivated then removed (AC-10)"
 dir005="$TEST_DIR/tc005"
+git init -q "$dir005"
 mkdir -p "$dir005"
 create_state_file "$dir005" '{"active": true, "issue_number": 42, "phase": "completed"}'
 
@@ -279,6 +281,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-007: No state file → no error"
 dir007="$TEST_DIR/tc007"
+git init -q "$dir007"
 mkdir -p "$dir007"
 
 output=$(run_hook "$dir007") && rc=0 || rc=$?
@@ -294,6 +297,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-008: Corrupted state file JSON → cleanup, exit 0 (best-effort)"
 dir008="$TEST_DIR/tc008"
+git init -q "$dir008"
 mkdir -p "$dir008"
 # Write broken JSON via create_state_file so the per-session resolver finds it
 create_state_file "$dir008" "{broken json"
@@ -324,6 +328,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-009: Stale legacy temp file cleanup (orphans in CWD)"
 dir009="$TEST_DIR/tc009"
+git init -q "$dir009"
 mkdir -p "$dir009"
 create_state_file "$dir009" '{"active": true, "issue_number": 1}'
 
@@ -350,6 +355,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-010: PID-based temp file creation and cleanup"
 dir010="$TEST_DIR/tc010"
+git init -q "$dir010"
 mkdir -p "$dir010"
 create_state_file "$dir010" '{"active": true, "issue_number": 123}'
 
@@ -384,6 +390,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-create-lifecycle-warn-A: create_interview active → lifecycle warning in stderr"
 dir475wa="$TEST_DIR/tc475wa"
+git init -q "$dir475wa"
 mkdir -p "$dir475wa"
 create_state_file "$dir475wa" '{"active": true, "phase": "create_interview", "issue_number": 0, "branch": ""}'
 run_hook "$dir475wa" >/dev/null || true
@@ -397,6 +404,7 @@ echo ""
 # TC-create-lifecycle-warn-B: create_post_interview also emits warning
 echo "TC-create-lifecycle-warn-B: create_post_interview active → lifecycle warning"
 dir475wb="$TEST_DIR/tc475wb"
+git init -q "$dir475wb"
 mkdir -p "$dir475wb"
 create_state_file "$dir475wb" '{"active": true, "phase": "create_post_interview", "issue_number": 0, "branch": ""}'
 run_hook "$dir475wb" >/dev/null || true
@@ -410,6 +418,7 @@ echo ""
 # TC-create-lifecycle-warn-C: create_completed → NO warning (lifecycle finished)
 echo "TC-create-lifecycle-warn-C: create_completed → no warning"
 dir475wc="$TEST_DIR/tc475wc"
+git init -q "$dir475wc"
 mkdir -p "$dir475wc"
 create_state_file "$dir475wc" '{"active": true, "phase": "create_completed", "issue_number": 0, "branch": ""}'
 run_hook "$dir475wc" >/dev/null || true
@@ -423,6 +432,7 @@ echo ""
 # TC-create-lifecycle-warn-D: phase5_lint (different workflow) → NO warning
 echo "TC-create-lifecycle-warn-D: phase5_lint → no warning (not create lifecycle)"
 dir475wd="$TEST_DIR/tc475wd"
+git init -q "$dir475wd"
 mkdir -p "$dir475wd"
 create_state_file "$dir475wd" '{"active": true, "phase": "phase5_lint", "issue_number": 475, "branch": ""}'
 run_hook "$dir475wd" >/dev/null || true
@@ -441,6 +451,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-cleanup-lifecycle-warn-A: cleanup_pre_ingest active → /rite:cleanup lifecycle warning"
 dir608wa="$TEST_DIR/tc608wa"
+git init -q "$dir608wa"
 mkdir -p "$dir608wa"
 create_state_file "$dir608wa" '{"active": true, "phase": "cleanup_pre_ingest", "issue_number": 604, "branch": ""}'
 run_hook "$dir608wa" >/dev/null || true
@@ -456,6 +467,7 @@ echo ""
 # TC-cleanup-lifecycle-warn-B: cleanup_completed → NO warning (lifecycle finished)
 echo "TC-cleanup-lifecycle-warn-B: cleanup_completed → no warning"
 dir608wb="$TEST_DIR/tc608wb"
+git init -q "$dir608wb"
 mkdir -p "$dir608wb"
 create_state_file "$dir608wb" '{"active": true, "phase": "cleanup_completed", "issue_number": 604, "branch": ""}'
 run_hook "$dir608wb" >/dev/null || true
@@ -470,6 +482,7 @@ echo ""
 # (regression guard — ensures the cleanup detection branch doesn't swallow create_*)
 echo "TC-cleanup-lifecycle-warn-C: create_interview active → create-specific warning (not cleanup)"
 dir608wc="$TEST_DIR/tc608wc"
+git init -q "$dir608wc"
 mkdir -p "$dir608wc"
 create_state_file "$dir608wc" '{"active": true, "phase": "create_interview", "issue_number": 0, "branch": ""}'
 run_hook "$dir608wc" >/dev/null || true
@@ -489,6 +502,7 @@ echo ""
 # false-positive 構造。本 TC で補完。
 echo "TC-cleanup-lifecycle-warn-D: cleanup_post_ingest active → /rite:cleanup lifecycle warning"
 dir608wd="$TEST_DIR/tc608wd"
+git init -q "$dir608wd"
 mkdir -p "$dir608wd"
 create_state_file "$dir608wd" '{"active": true, "phase": "cleanup_post_ingest", "issue_number": 604, "branch": ""}'
 run_hook "$dir608wd" >/dev/null || true
@@ -514,6 +528,7 @@ echo ""
 # 本 TC はその path を直接 exercise する。
 echo "TC-cleanup-lifecycle-warn-E: cleanup active → /rite:cleanup lifecycle warning (bare cleanup arm coverage)"
 dir608we="$TEST_DIR/tc608we"
+git init -q "$dir608we"
 mkdir -p "$dir608we"
 create_state_file "$dir608we" '{"active": true, "phase": "cleanup", "issue_number": 604, "branch": ""}'
 run_hook "$dir608we" >/dev/null || true
@@ -531,6 +546,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-per-session-cleanup-A (AC-10): per-session file → cleanup on session end"
 dir680a="$TEST_DIR/tc680a"
+git init -q "$dir680a"
 mkdir -p "$dir680a/.rite/sessions"
 sid680a="abcdef01-2345-6789-abcd-ef0123456789"
 echo "$sid680a" > "$dir680a/.rite-session-id"
@@ -567,6 +583,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-per-session-cleanup-C (AC-LOCAL-2): per-session active=true → lifecycle warning fires"
 dir680c="$TEST_DIR/tc680c"
+git init -q "$dir680c"
 mkdir -p "$dir680c/.rite/sessions"
 sid680c="11111111-2222-3333-4444-555555555555"
 echo "$sid680c" > "$dir680c/.rite-session-id"
@@ -597,6 +614,7 @@ FAKE_RESOLVER_EOF
 chmod +x "$sbx_749/flow-state.sh"
 
 dir_749="$TEST_DIR/tc749-passthrough"
+git init -q "$dir_749"
 mkdir -p "$dir_749"
 
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.749.XXXXXX")"
@@ -669,6 +687,7 @@ FAKE_JQ_EOF
 fi
 
 dir_jq="$TEST_DIR/tc749-jq"
+git init -q "$dir_jq"
 mkdir -p "$dir_jq"
 (
   cd "$dir_jq" && git init -q \
@@ -834,6 +853,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-MV-FAIL: mv shim → SessionEnd WARNING must carry rc"
 dir_mvfail="$TEST_DIR/tc-mv-fail"
+git init -q "$dir_mvfail"
 mkdir -p "$dir_mvfail"
 create_state_file "$dir_mvfail" \
   '{"active":true,"phase":"implement","issue_number":99,"branch":"feat/issue-99","updated_at":"2026-01-01T00:00:00+00:00"}'
@@ -878,6 +898,7 @@ FAKE_JQ
 
 echo "T-01: stopped review_run is kept"
 dir_p01="$TEST_DIR/preserve-stopped"
+git init -q "$dir_p01"
 mkdir -p "$dir_p01"
 create_state_file "$dir_p01" '{"schema_version":3,"active":false,"phase":"review","stop_reason":"circuit-breaker:divergence","review_run":{"status":"stopped","run_id":"run-stopped","observations":[{"id":1}]}}'
 sf_p01=$(state_file_path "$dir_p01")
@@ -897,6 +918,7 @@ echo ""
 
 echo "T-02: active live review_run is kept; only active flips"
 dir_p02="$TEST_DIR/preserve-active"
+git init -q "$dir_p02"
 mkdir -p "$dir_p02"
 # A terminal phase, so that only the review_run can keep it (an active state
 # in a non-terminal phase is kept on its own).
@@ -915,6 +937,7 @@ echo ""
 
 echo "T-03: parked review_run_history only is kept"
 dir_p03="$TEST_DIR/preserve-park"
+git init -q "$dir_p03"
 mkdir -p "$dir_p03"
 create_state_file "$dir_p03" '{"schema_version":3,"active":false,"phase":"review","review_run_history":[{"run_id":"old-stop","status":"stopped"}]}'
 sf_p03=$(state_file_path "$dir_p03")
@@ -932,6 +955,7 @@ echo ""
 
 echo "T-03b: parked review_cycle_abandoned only is kept"
 dir_p03b="$TEST_DIR/preserve-abandoned"
+git init -q "$dir_p03b"
 mkdir -p "$dir_p03b"
 create_state_file "$dir_p03b" '{"schema_version":3,"active":false,"phase":"review","review_cycle_abandoned":[{"run_id":"old-abandon","reason":"HEAD changed"}]}'
 sf_p03b=$(state_file_path "$dir_p03b")
@@ -949,6 +973,7 @@ echo ""
 
 echo "T-04: collecting review_cycle is kept"
 dir_p04="$TEST_DIR/preserve-collecting"
+git init -q "$dir_p04"
 mkdir -p "$dir_p04"
 # active=false so that only the collecting cycle can keep it (an active state
 # in a non-terminal phase is kept on its own).
@@ -968,6 +993,7 @@ echo ""
 
 echo "T-05: jq deactivate failure keeps original bytes (history present)"
 dir_p05="$TEST_DIR/preserve-jqfail"
+git init -q "$dir_p05"
 mkdir -p "$dir_p05"
 # A terminal phase, so that the mid-flow rule does not keep it on its own.
 create_state_file "$dir_p05" '{"schema_version":3,"active":true,"phase":"completed","review_run":{"status":"stopped","run_id":"run-jqfail"}}'
@@ -987,6 +1013,7 @@ echo ""
 
 echo "T-05b: history-less jq deactivate failure keeps original bytes"
 dir_p05b="$TEST_DIR/preserve-jqfail-none"
+git init -q "$dir_p05b"
 mkdir -p "$dir_p05b"
 create_state_file "$dir_p05b" '{"schema_version":3,"active":true,"phase":"completed","issue_number":1}'
 sf_p05b=$(state_file_path "$dir_p05b")
@@ -1005,6 +1032,7 @@ echo ""
 
 echo "T-05c: history-less mv deactivate failure keeps original bytes"
 dir_p05c="$TEST_DIR/preserve-mvfail-none"
+git init -q "$dir_p05c"
 mkdir -p "$dir_p05c"
 create_state_file "$dir_p05c" '{"schema_version":3,"active":true,"phase":"completed","issue_number":1}'
 sf_p05c=$(state_file_path "$dir_p05c")
@@ -1027,6 +1055,7 @@ echo ""
 
 echo "T-06: no review history → existing delete"
 dir_p06="$TEST_DIR/preserve-none"
+git init -q "$dir_p06"
 mkdir -p "$dir_p06"
 create_state_file "$dir_p06" '{"schema_version":3,"active":true,"phase":"completed","issue_number":1}'
 sf_p06=$(state_file_path "$dir_p06")
@@ -1041,6 +1070,7 @@ echo ""
 
 echo "T-07: other session file is not touched"
 dir_p07="$TEST_DIR/preserve-other"
+git init -q "$dir_p07"
 mkdir -p "$dir_p07/.rite/sessions"
 own_sid="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 other_sid="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
@@ -1063,6 +1093,7 @@ echo ""
 
 echo "T-08: keep result does not depend on payload reason"
 dir_p08="$TEST_DIR/preserve-reason"
+git init -q "$dir_p08"
 mkdir -p "$dir_p08"
 create_state_file "$dir_p08" '{"schema_version":3,"active":false,"phase":"review","review_run":{"status":"stopped","run_id":"run-reason"}}'
 sf_p08=$(state_file_path "$dir_p08")
@@ -1083,6 +1114,7 @@ echo ""
 
 echo "T-09: empty review_run_history is not enough to keep"
 dir_p09="$TEST_DIR/preserve-empty-hist"
+git init -q "$dir_p09"
 mkdir -p "$dir_p09"
 create_state_file "$dir_p09" '{"schema_version":3,"active":true,"phase":"completed","review_run_history":[]}'
 sf_p09=$(state_file_path "$dir_p09")
@@ -1096,6 +1128,7 @@ echo ""
 
 echo "T-09b: empty review_cycle_abandoned is not enough to keep"
 dir_p09b="$TEST_DIR/preserve-empty-abandoned"
+git init -q "$dir_p09b"
 mkdir -p "$dir_p09b"
 create_state_file "$dir_p09b" '{"schema_version":3,"active":true,"phase":"completed","review_cycle_abandoned":[]}'
 sf_p09b=$(state_file_path "$dir_p09b")
@@ -1109,6 +1142,7 @@ echo ""
 
 echo "T-10: the ending session's run-queue gets an ended marker; no queue, other sessions and bad ids get none"
 dir_p10="$TEST_DIR/queue-ended"
+git init -q "$dir_p10"
 mkdir -p "$dir_p10/.rite/state" "$dir_p10/.rite/sessions"
 end_sid="cccccccc-cccc-cccc-cccc-cccccccccccc"
 live_sid="dddddddd-dddd-dddd-dddd-dddddddddddd"
@@ -1141,6 +1175,7 @@ echo ""
 
 echo "T-11: without a payload id the resolved session's queue is marked; an upper-case payload UUID marks the lower-case queue"
 dir_p11="$TEST_DIR/queue-ended-sid"
+git init -q "$dir_p11"
 mkdir -p "$dir_p11/.rite/state" "$dir_p11/.rite/sessions"
 fb_sid="abababab-abab-abab-abab-abababababab"
 up_sid="cdcdcdcd-cdcd-cdcd-cdcd-cdcdcdcdcdcd"
@@ -1172,6 +1207,7 @@ if [ "$(id -u)" -eq 0 ]; then
   pass "T-12: skipped under root (chmod cannot force a write failure as uid 0)"
 else
   dir_p12="$TEST_DIR/queue-ended-ro"
+  git init -q "$dir_p12"
   mkdir -p "$dir_p12/.rite/state"
   ro_sid="efefefef-efef-efef-efef-efefefefefef"
   printf '%s\n' '{"issues":[1],"cursor":0,"mode":"merge","failed":[],"outstanding":[],"active":true}' \
@@ -1200,6 +1236,7 @@ echo "T-13: a mid-flow active state is kept and marked; only active, updated_at 
 ok_p13=1
 for phase in pr cleanup create_interview "<missing>"; do
   dir_p13="$TEST_DIR/keep-midflow-${phase//[<>]/}"
+  git init -q "$dir_p13"
   mkdir -p "$dir_p13/.rite/worktrees/issue-7"
   fixture_p13=$(jq -nc --arg wt "$dir_p13/.rite/worktrees/issue-7" \
     '{schema_version:3,active:true,phase:"pr",issue_number:7,pr_number:8,branch:"fix/issue-7-x",worktree:$wt}')
@@ -1230,6 +1267,7 @@ for fixture_p14 in \
   '{"schema_version":3,"active":true,"phase":"cleanup_completed","issue_number":1}' \
   '{"schema_version":3,"active":false,"phase":"cleanup","issue_number":1}'; do
   dir_p14="$TEST_DIR/remove-finished-$(printf '%s' "$fixture_p14" | jq -r '"\(.phase)-\(.active)"')"
+  git init -q "$dir_p14"
   mkdir -p "$dir_p14"
   create_state_file "$dir_p14" "$fixture_p14"
   sf_p14=$(state_file_path "$dir_p14")
@@ -1251,6 +1289,7 @@ echo ""
 
 echo "T-15: a kept state keeps its lock; a lock that cannot be removed warns with its path"
 dir_p15="$TEST_DIR/keep-lock"
+git init -q "$dir_p15"
 mkdir -p "$dir_p15"
 create_state_file "$dir_p15" '{"schema_version":3,"active":true,"phase":"pr","issue_number":7,"pr_number":8}'
 sf_p15=$(state_file_path "$dir_p15")
@@ -1258,6 +1297,7 @@ sf_p15=$(state_file_path "$dir_p15")
 rc_p15=0
 run_hook "$dir_p15" >/dev/null || rc_p15=$?
 dir_p15b="$TEST_DIR/lock-rm-fail"
+git init -q "$dir_p15b"
 mkdir -p "$dir_p15b"
 create_state_file "$dir_p15b" '{"schema_version":3,"active":true,"phase":"completed","issue_number":1}'
 sf_p15b=$(state_file_path "$dir_p15b")
@@ -1277,6 +1317,7 @@ echo ""
 echo "T-16: after SessionEnd, a resumed SessionStart turns the state active again and /rite:iterate reads it"
 dir_p16="$TEST_DIR/resume-after-end"
 sid_p16="f0e1d2c3-b4a5-9687-7869-5a4b3c2d1e0f"
+git init -q "$dir_p16"
 mkdir -p "$dir_p16/.rite/worktrees/issue-7"
 printf '# rite test sandbox config\n' > "$dir_p16/rite-config.yml"
 fixture_p16=$(jq -nc --arg wt "$dir_p16/.rite/worktrees/issue-7" \
@@ -1363,6 +1404,7 @@ if [ -s "$RESUME_STAGE_BLOCK" ]; then
     IFS='|' read -r phase_p17 stage_p17 hint_p17 <<< "$spec_p17"
     dir_p17="$TEST_DIR/resume-agree-$phase_p17"
     sid_p17="sid-p17-$phase_p17"
+    git init -q "$dir_p17"
     mkdir -p "$dir_p17"
     create_state_file "$dir_p17" "$(midflow_fixture "$phase_p17")" "$sid_p17"
     end_session "$dir_p17" "$sid_p17"
@@ -1386,6 +1428,7 @@ echo ""
 echo "T-18: a resumed iterate reaches pr-review as E2E; without the resume it does not"
 dir_p18="$TEST_DIR/resume-e2e"
 sid_p18="sid-p18"
+git init -q "$dir_p18"
 mkdir -p "$dir_p18"
 printf '# rite test sandbox config\n' > "$dir_p18/rite-config.yml"
 create_state_file "$dir_p18" "$(midflow_fixture review)" "$sid_p18"
@@ -1409,6 +1452,7 @@ echo "T-19: states that are not suspended mid-flow stay as they are on resume, s
 ok_p19=1
 # A finished cleanup is removed by SessionEnd; the next Issue starts from open.
 dir_p19a="$TEST_DIR/no-resume-finished"
+git init -q "$dir_p19a"
 mkdir -p "$dir_p19a"
 create_state_file "$dir_p19a" '{"schema_version":3,"active":false,"phase":"cleanup","issue_number":101,"pr_number":55,"branch":"fix/issue-101-x","next_action":"none"}' "sid-p19a"
 end_session "$dir_p19a" "sid-p19a"
@@ -1419,6 +1463,7 @@ if [ "$got_p19a" != "[CONTEXT] RUN_RESUME_STAGE=open; reason=fresh_or_mismatched
 fi
 # A stopped review run is inactive before SessionEnd, so it gets no mark and stays stopped.
 dir_p19b="$TEST_DIR/no-resume-stopped"
+git init -q "$dir_p19b"
 mkdir -p "$dir_p19b"
 create_state_file "$dir_p19b" '{"schema_version":3,"active":false,"phase":"review","issue_number":101,"pr_number":55,"branch":"fix/issue-101-x","stop_reason":"stagnation:non-convergent","review_run":{"status":"stopped","run_id":"run-stopped"}}' "sid-p19b"
 end_session "$dir_p19b" "sid-p19b"
@@ -1430,6 +1475,7 @@ if ! jq -e '.active == false and (has("suspended_by_session_end")|not)' "$(state
 fi
 # A marked state that also carries a stop reason is not turned active; the stop notice is shown.
 dir_p19c="$TEST_DIR/no-resume-marked-stop"
+git init -q "$dir_p19c"
 mkdir -p "$dir_p19c"
 create_state_file "$dir_p19c" '{"schema_version":3,"active":false,"phase":"review","issue_number":101,"pr_number":55,"branch":"fix/issue-101-x","stop_reason":"circuit-breaker:max-cycles","suspended_by_session_end":true}' "sid-p19c"
 out_p19c=$(start_session "$dir_p19c" "sid-p19c" resume || true)
@@ -1440,6 +1486,7 @@ fi
 # startup and clear are not resumes: the mark stays and no reset happens.
 for src_p19 in startup clear; do
   dir_p19d="$TEST_DIR/no-resume-$src_p19"
+  git init -q "$dir_p19d"
   mkdir -p "$dir_p19d"
   create_state_file "$dir_p19d" '{"schema_version":3,"active":false,"phase":"review","issue_number":101,"pr_number":55,"branch":"fix/issue-101-x","suspended_by_session_end":true}' "sid-p19-$src_p19"
   out_p19d=$(start_session "$dir_p19d" "sid-p19-$src_p19" "$src_p19" || true)
@@ -1450,6 +1497,7 @@ for src_p19 in startup clear; do
 done
 # An inactive state without the mark (e.g. left by an older SessionEnd) is not rewritten on resume.
 dir_p19e="$TEST_DIR/no-resume-unmarked"
+git init -q "$dir_p19e"
 mkdir -p "$dir_p19e"
 create_state_file "$dir_p19e" '{"schema_version":3,"active":false,"phase":"review","issue_number":101,"pr_number":55,"branch":"fix/issue-101-x"}' "sid-p19e"
 before_p19e=$(digest_file "$(state_file_path "$dir_p19e" "sid-p19e")")
@@ -1465,10 +1513,12 @@ echo "T-20: flow-state set, deactivate and reap-issue drop the suspended mark"
 ok_p20=1
 marked_p20='{"schema_version":3,"active":false,"phase":"review","issue_number":101,"pr_number":55,"branch":"fix/issue-101-x","next_action":"continue","suspended_by_session_end":true}'
 dir_p20a="$TEST_DIR/mark-set"
+git init -q "$dir_p20a"
 mkdir -p "$dir_p20a"
 create_state_file "$dir_p20a" "$marked_p20" "sid-p20a"
 (cd "$dir_p20a" && bash "$FLOW_STATE" set --phase review --issue 101 --branch fix/issue-101-x --pr 55 --next "continue" >/dev/null 2>&1) || true
 dir_p20b="$TEST_DIR/mark-deactivate"
+git init -q "$dir_p20b"
 mkdir -p "$dir_p20b"
 create_state_file "$dir_p20b" "$marked_p20" "sid-p20b"
 (cd "$dir_p20b" && bash "$FLOW_STATE" deactivate --next none >/dev/null 2>&1) || true
@@ -1480,6 +1530,7 @@ for pair_p20 in "$dir_p20a|sid-p20a" "$dir_p20b|sid-p20b"; do
 done
 # Another session reaps the Issue while this one is suspended; resuming it must not bring the Issue back.
 dir_p20c="$TEST_DIR/mark-reap"
+git init -q "$dir_p20c"
 mkdir -p "$dir_p20c"
 create_state_file "$dir_p20c" "$marked_p20" "sid-p20c-suspended"
 printf '%s' "sid-p20c-reaper" > "$dir_p20c/.rite-session-id"
@@ -1497,6 +1548,7 @@ if [ "$(id -u)" -eq 0 ]; then
   pass "T-21 skipped as root (a read-only directory does not stop root)"
 else
   dir_p21="$TEST_DIR/resume-write-fail"
+  git init -q "$dir_p21"
   mkdir -p "$dir_p21"
   create_state_file "$dir_p21" "$(midflow_fixture review)" "sid-p21"
   end_session "$dir_p21" "sid-p21"
@@ -1531,6 +1583,7 @@ else
   # $1=dir $2=sid, then the directories to make read-only for the reap → rc in rc_p22, stderr in err_p22
   reap_fail_p22() {
     local d="$1" s="$2"; shift 2
+    git init -q "$d"
     mkdir -p "$d/.rite/sessions" "$d/.rite/state"
     create_state_file "$d" "$reaped_p22" "$s"
     printf '%s' "$s-reaper" > "$d/.rite-session-id"
@@ -1545,6 +1598,7 @@ else
   dir_p22="$TEST_DIR/reap-write-fail"
   sf_p22=$(state_file_path "$dir_p22" "sid-p22")
   rec_p22="$dir_p22/.rite/state/reap-failed-sid-p22.flow-state"
+  git init -q "$dir_p22"
   mkdir -p "$dir_p22"
   create_state_file "$dir_p22" "$reaped_p22" "sid-p22"
   before_p22=$(digest_file "$sf_p22")
@@ -1665,6 +1719,7 @@ else
   dir_p22f="$TEST_DIR/reap-record-review-start"
   sf_p22f=$(state_file_path "$dir_p22f" "sid-p22f")
   rec_p22f="$dir_p22f/.rite/state/reap-failed-sid-p22f.flow-state"
+  git init -q "$dir_p22f"
   mkdir -p "$dir_p22f/.rite/state"
   (cd "$dir_p22f" && git init -q && git -c user.email=t@example.com -c user.name=t commit -q --allow-empty -m init)
   printf '%s' "sid-p22f" > "$dir_p22f/.rite-session-id"
@@ -1730,6 +1785,7 @@ else
   # Neither the state nor the record can be written: the reap says resume may bring the state back.
   dir_p22c="$TEST_DIR/reap-record-fail"
   sf_p22c=$(state_file_path "$dir_p22c" "sid-p22c")
+  git init -q "$dir_p22c"
   mkdir -p "$dir_p22c/.rite/sessions" "$dir_p22c/.rite/state"
   reap_fail_p22 "$dir_p22c" "sid-p22c" "$dir_p22c/.rite/sessions" "$dir_p22c/.rite/state"
   if [ "$rc_p22" -eq 0 ] \
@@ -1742,6 +1798,7 @@ else
   # Only the final rename of the record fails (a read-only directory sits at its path):
   # the copy made on the way is removed.
   dir_p22e="$TEST_DIR/reap-record-rename-fail"
+  git init -q "$dir_p22e"
   mkdir -p "$dir_p22e/.rite/state/reap-failed-sid-p22e.flow-state"
   reap_fail_p22 "$dir_p22e" "sid-p22e" "$dir_p22e/.rite/sessions" "$dir_p22e/.rite/state/reap-failed-sid-p22e.flow-state"
   left_p22e=$(ls -A "$dir_p22e/.rite/state" | grep -v '^\.gitignore$' || true)

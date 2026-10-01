@@ -47,9 +47,8 @@ fail() {
 
 setup_test() {
   local test_cwd="$TEST_DIR/$1"
+  git init -q "$test_cwd"
   mkdir -p "$test_cwd"
-  # Create minimal state-path-resolve.sh mock
-  mkdir -p "$test_cwd/.git"
   echo "$test_cwd"
 }
 
@@ -64,6 +63,7 @@ write_per_session_state() {
   local dir="$1"
   local content="$2"
   local sid="${3:-test-sid-$(basename "$dir")}"
+  git init -q "$dir"
   mkdir -p "$dir/.rite/sessions"
   printf '%s' "$sid" > "$dir/.rite-session-id"
   local merged
@@ -309,6 +309,7 @@ chmod +x "$sbx_749/flow-state.sh"
 # post-compact.sh exits early when no flow_state — the TC only validates stderr
 # pass-through, not the legacy fallback (which was removed in PR 2a / Phase F-3).
 dir_749="$TEST_DIR/tc749-passthrough"
+git init -q "$dir_749"
 mkdir -p "$dir_749"
 
 stderr_file="$(mktemp "$TEST_DIR/stderr.749.XXXXXX")"
@@ -390,13 +391,13 @@ _mock_gh_pr_view() {
 MOCKLIB_EOF
   } > "$dir/bin/gh-mock-lib.sh"
   if [ -n "$git_remote_url" ]; then
-    # Real git repo (not the `mkdir -p .git` non-repo stub below) so
+    # A repository with origin configured so
     # resolve_owner_repo() can actually parse `origin` — used by TC-RECON-09
     # to exercise the git-remote fast path's *success* case at the caller
     # level, instead of always falling through to the gh repo view mock.
     ( cd "$dir" && git init -q && git remote add origin "$git_remote_url" )
   else
-    mkdir -p "$dir/.git"
+    git init -q "$dir"
   fi
   # flow-state with pr_number=42 → reconciliation block enters
   write_per_session_state "$dir" \
@@ -1074,8 +1075,8 @@ else
 fi
 
 # TC-RECON-09: SSH Host alias origin → git-remote fast path bypasses a broken
-# gh repo view (the actual scenario). Every fixture above uses a fake
-# `mkdir -p .git` non-repo, so all of them fail to parse via git-remote and
+# gh repo view (the actual scenario). The fixtures above use repositories
+# without origin, so they fail to parse via git-remote and
 # fall through to (and exercise) the gh repo view fallback — none exercises
 # the git-remote fast path's *success* case at the caller level.
 echo "TC-RECON-09: SSH Host alias origin → git-remote fast path bypasses broken gh repo view"

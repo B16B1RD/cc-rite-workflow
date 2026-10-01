@@ -109,7 +109,7 @@ trap '_rite_wm_sync_cleanup; exit 129' HUP
 # ⚠ 下行はテスト hooks/tests/issue-comment-wm-sync.test.sh が awk 抽出アンカーとして参照する。変更時はテスト側の awk パターンも同時更新すること
 # Resolve repository root for .rite-flow-state access
 CWD="${CWD:-$(pwd)}"
-STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
+STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD") || exit 1
 
 # Resolve the current session's flow-state path via the canonical resolver
 # (flow-state.sh path — schema_v2/v3 per-session file under .rite/sessions/).

@@ -81,6 +81,7 @@ make_test_dir() {
   local d
   d=$(mktemp -d) || { echo "ERROR: mktemp -d failed" >&2; return 1; }
   cleanup_dirs+=("$d")
+  git init -q "$d"
   printf '# rite test sandbox config\n' > "$d/rite-config.yml"
   echo "$d"
 }

@@ -3487,9 +3487,9 @@ $(_sec_530m_step2 | sed \
   _804_pr=804001
   _804_sha=feedface1234
   # The positive helper independently resolves HEAD from its cwd. These state-root
-  # fixtures are intentionally non-git directories, so provide the same explicit
-  # git boundary used by review-save-json-verify.test.sh instead of accidentally
-  # exercising only the degraded HEAD-unresolved path.
+  # fixtures use real git roots. Stub HEAD only, preserving root resolution
+  # instead of exercising only the degraded HEAD-unresolved path.
+  _804_real_git=$(command -v git)
   _804_bin=$(mktemp -d "$TMP_ROOT/gate804bin-XXXXXX")
   cat > "$_804_bin/git" <<EOF
 #!/bin/bash
@@ -3497,7 +3497,7 @@ if [ "\$1 \$2" = "rev-parse HEAD" ]; then
   printf '%s\n' '$_804_sha'
   exit 0
 fi
-exit 2
+exec "$_804_real_git" "\$@"
 EOF
   chmod +x "$_804_bin/git"
   _run_804_arm() {  # $1=marker 値, $2=cwd (省略: 本 cycle の JSON を持つ dir) → "rc|stderr" を返す
@@ -3512,11 +3512,13 @@ EOF
   # 本 cycle の commit SHA を持つ JSON が実在する state root (正常系の arm 用)
   _804_json_ok=$(mktemp -d "$TMP_ROOT/gate804ok-XXXXXX")
   mkdir -p "$_804_json_ok/.rite/review-results"
+  git -C "$_804_json_ok" init -q
   printf '%s\n' "{\"schema_version\":\"1.1.0\",\"pr_number\":$_804_pr,\"timestamp\":\"2026-01-01T00:00:00+09:00\",\"commit_sha\":\"$_804_sha\",\"measured_gate\":{\"commit_sha\":\"$_804_sha\",\"applied_at\":\"2026-01-01T00:00:00.000000000Z\",\"blocking\":0,\"demoted\":0,\"anchor_undetermined\":0},\"overall_assessment\":\"mergeable\",\"findings\":[],\"non_blocking_findings\":[]}" \
     > "$_804_json_ok/.rite/review-results/$_804_pr-20260101000001.json"
   # 区間ごと skip の再現: results dir はあるが本 cycle の JSON が無い state root
   _804_json_missing=$(mktemp -d "$TMP_ROOT/gate804miss-XXXXXX")
   mkdir -p "$_804_json_missing/.rite/review-results"
+  git -C "$_804_json_missing" init -q
   _804_precheck_lines=$(_sec_804_precheck | grep -c . || true)
   if [ "$_804_precheck_lines" -eq 1 ] 2>/dev/null; then
     pass "TC-5h 区間解決: 8.0.4 Pre-Check の save-gate 呼び出し行を抽出できる"

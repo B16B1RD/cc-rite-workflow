@@ -49,6 +49,7 @@ echo ""
 echo "TC-001: cache_comment_id mv shim → WARNING carries real rc"
 dir001="$TEST_DIR/tc001"
 mkdir -p "$dir001/bin"
+git -C "$dir001" init -q
 echo '{"active":true,"issue_number":42}' > "$dir001/.rite-flow-state"
 cat > "$dir001/bin/mv" <<'MV_SHIM'
 #!/bin/bash
@@ -73,6 +74,7 @@ echo ""
 echo "TC-002: cache_comment_id happy path writes wm_comment_id"
 dir002="$TEST_DIR/tc002"
 mkdir -p "$dir002"
+git -C "$dir002" init -q
 echo '{"active":true,"issue_number":42}' > "$dir002/.rite-flow-state"
 stderr002=$(bash -c "
   FLOW_STATE='$dir002/.rite-flow-state'
@@ -101,6 +103,7 @@ echo ""
 echo "TC-003: FLOW_STATE resolver resolves to per-session file when session_id is available"
 dir003="$TEST_DIR/tc003"
 mkdir -p "$dir003"
+git -C "$dir003" init -q
 printf '%s' "tc003-sid" > "$dir003/.rite-session-id"
 resolver_block=$(extract_resolver_block)
 out003=$(cd "$dir003" && bash -c "
@@ -125,6 +128,7 @@ echo ""
 echo "TC-004: FLOW_STATE resolver falls back to legacy path with WARNING when session_id unresolvable"
 dir004="$TEST_DIR/tc004"
 mkdir -p "$dir004"
+git -C "$dir004" init -q
 out004=$(cd "$dir004" && bash -c "
   SCRIPT_DIR='$SCRIPT_DIR/..'
   source \"\$SCRIPT_DIR/control-char-neutralize.sh\"
@@ -147,6 +151,7 @@ echo ""
 echo "TC-005: init idempotency — existing replica → status=skipped, no post"
 dir005="$TEST_DIR/tc005"
 mkdir -p "$dir005/bin"
+git -C "$dir005" init -q
 echo '{"active":true,"issue_number":42}' > "$dir005/.rite-flow-state"
 GH_SHIM_MARKER="$dir005/posted.marker"
 cat > "$dir005/bin/gh" <<'GH_SHIM'
@@ -172,6 +177,7 @@ echo ""
 echo "TC-006: init posts when no replica exists"
 dir006="$TEST_DIR/tc006"
 mkdir -p "$dir006/bin"
+git -C "$dir006" init -q
 echo '{"active":true,"issue_number":42}' > "$dir006/.rite-flow-state"
 GH_SHIM_MARKER6="$dir006/posted.marker"
 # pre-check は空を返し、投稿後の validation は id を返す (marker 存在で切替)。
@@ -211,6 +217,7 @@ echo ""
 echo "TC-007: init pre-check gh api failure → WARNING + posting continues"
 dir007="$TEST_DIR/tc007"
 mkdir -p "$dir007/bin"
+git -C "$dir007" init -q
 echo '{"active":true,"issue_number":42}' > "$dir007/.rite-flow-state"
 GH_SHIM_MARKER7="$dir007/posted.marker"
 # pre-check (marker 不在) は gh api 失敗 (exit 1 + stderr)、投稿後の validation (marker 存在) は id を返す。
@@ -266,6 +273,7 @@ func_get_owner_repo=$(extract_get_owner_repo)
 echo "TC-008: get_owner_repo() fast path resolves via SSH Host alias origin, bypassing broken gh repo view"
 dir008="$TEST_DIR/tc008"
 mkdir -p "$dir008/bin"
+git -C "$dir008" init -q
 ( cd "$dir008" && git init -q && git remote add origin "git@github.com-work:o8/r8.git" )
 # Decoy repo with a DIFFERENT origin, used as the process cwd below. The
 # invocation deliberately runs with cwd != STATE_ROOT so the exact-value
@@ -277,6 +285,7 @@ mkdir -p "$dir008/bin"
 # the same invariant for its sibling site).
 dir008_decoy="$TEST_DIR/tc008-decoy"
 mkdir -p "$dir008_decoy"
+git -C "$dir008_decoy" init -q
 ( cd "$dir008_decoy" && git init -q && git remote add origin "git@github.com-work:decoy/wrong.git" )
 cat > "$dir008/bin/gh" <<'GH_SHIM'
 #!/bin/bash
@@ -303,6 +312,7 @@ echo ""
 echo "TC-009: get_owner_repo() falls back to gh repo view when git-remote can't resolve"
 dir009="$TEST_DIR/tc009"
 mkdir -p "$dir009/bin" "$dir009/.git"
+git -C "$dir009" init -q
 cat > "$dir009/bin/gh" <<'GH_SHIM'
 #!/bin/bash
 case "$1 $2" in
@@ -328,6 +338,7 @@ echo ""
 echo "TC-010: get_owner_repo() both fast path and fallback fail → WARNING header always emitted"
 dir010="$TEST_DIR/tc010"
 mkdir -p "$dir010/bin" "$dir010/.git"
+git -C "$dir010" init -q
 cat > "$dir010/bin/gh" <<'GH_SHIM'
 #!/bin/bash
 case "$1 $2" in
@@ -357,6 +368,7 @@ echo ""
 echo "TC-011: update merge-checklist section absent → status=skipped; reason=section_absent, no PATCH"
 dir011="$TEST_DIR/tc011"
 mkdir -p "$dir011/bin"
+git -C "$dir011" init -q
 # body は header を持つが ### 進捗サマリー を持たない（section_absent を起こす）
 # list / body / PATCH を URL 形状で分岐。--jq は shim が丸ごと gh を置換するため適用されない。
 PATCH_MARKER011="$dir011/patch.marker"
@@ -466,6 +478,7 @@ EOF
 echo "T-03/T-04: update emits status=success exit 0; gh is GET 1 + PATCH 1 (no verify GET)"
 dir_t03="$TEST_DIR/t03"
 mkdir -p "$dir_t03/bin"
+git -C "$dir_t03" init -q
 echo '{"active":true,"issue_number":42,"wm_comment_id":4242}' > "$dir_t03/.rite-flow-state"
 wm_body_fixture > "$dir_t03/wm-body.md"
 GH_LOG_T03="$dir_t03/gh.log"
@@ -528,6 +541,7 @@ echo ""
 echo "T-06: 0 comments → list GET 1, writes wm_replica=absent, status=skipped; reason=no_comment"
 dir_t06="$TEST_DIR/t06"
 mkdir -p "$dir_t06/bin"
+git -C "$dir_t06" init -q
 echo '{"active":true,"issue_number":42}' > "$dir_t06/.rite-flow-state"
 GH_CLASS_T06="$dir_t06/gh.class"
 cat > "$dir_t06/bin/gh" <<GH_SHIM
@@ -576,6 +590,7 @@ echo ""
 echo "T-08: after absent, init success deletes wm_replica and writes wm_comment_id"
 dir_t08="$TEST_DIR/t08"
 mkdir -p "$dir_t08/bin"
+git -C "$dir_t08" init -q
 echo '{"active":true,"issue_number":42,"wm_replica":"absent"}' > "$dir_t08/.rite-flow-state"
 GH_SHIM_MARKER8="$dir_t08/posted.marker"
 cat > "$dir_t08/bin/gh" <<GH_SHIM
@@ -609,6 +624,7 @@ echo ""
 echo "T-12: stale cached id → 404 then list GET once → re-cache → PATCH completes"
 dir_t12="$TEST_DIR/t12"
 mkdir -p "$dir_t12/bin"
+git -C "$dir_t12" init -q
 echo '{"active":true,"issue_number":42,"wm_comment_id":999}' > "$dir_t12/.rite-flow-state"
 wm_body_fixture > "$dir_t12/wm-body.md"
 GH_CLASS_T12="$dir_t12/gh.class"
@@ -665,6 +681,7 @@ echo ""
 echo "T-nfs: no flow-state → update GET 1 + PATCH 1, status=success (COMMENT_ID survives do_fetch)"
 dir_tnfs="$TEST_DIR/tnfs"
 mkdir -p "$dir_tnfs/bin"
+git -C "$dir_tnfs" init -q
 # flow-state 不在: .rite-session-id / .rite/sessions / .rite-flow-state を作らない
 wm_body_fixture > "$dir_tnfs/wm-body.md"
 GH_LOG_NFS="$dir_tnfs/gh.log"
@@ -724,6 +741,7 @@ echo ""
 echo "T-13: init gh call sequence unchanged (pre-check GET → gh issue comment → verify GET)"
 dir_t13="$TEST_DIR/t13"
 mkdir -p "$dir_t13/bin"
+git -C "$dir_t13" init -q
 echo '{"active":true,"issue_number":42}' > "$dir_t13/.rite-flow-state"
 GH_SEQ_T13="$dir_t13/gh.seq"
 GH_SHIM_MARKER13="$dir_t13/posted.marker"
@@ -774,6 +792,7 @@ wm_body_fixture_for() {
 setup_crossissue_shim() {
   local dir="$1" target_issue="$2" cached_body_issue="$3" with_scan_hit="$4"
   mkdir -p "$dir/bin"
+  git -C "$dir" init -q
   local seq="$dir/gh.seq"
   wm_body_fixture_for "$cached_body_issue" > "$dir/cached-body.md"
   wm_body_fixture_for "$target_issue" > "$dir/scanned-body.md"
@@ -818,6 +837,7 @@ GH_SHIM
 echo "T-20: cross-issue cached id → no PATCH on cached id, scan finds target replica (AC-1/AC-2/AC-6)"
 dir_t20="$TEST_DIR/t20"
 mkdir -p "$dir_t20"
+git -C "$dir_t20" init -q
 echo '{"active":true,"issue_number":43,"wm_comment_id":4242}' > "$dir_t20/.rite-flow-state"
 setup_crossissue_shim "$dir_t20" 43 42 yes
 out_t20=$(cd "$dir_t20" && PATH="$dir_t20/bin:$PATH" \
@@ -846,6 +866,7 @@ echo ""
 echo "T-21: cached body without an Issue marker → fall back to scan, never PATCH the cached id (AC-3)"
 dir_t21="$TEST_DIR/t21"
 mkdir -p "$dir_t21"
+git -C "$dir_t21" init -q
 echo '{"active":true,"issue_number":43,"wm_comment_id":4242}' > "$dir_t21/.rite-flow-state"
 setup_crossissue_shim "$dir_t21" 43 42 yes
 # Issue 行そのものを落とし「判定不能」を作る
@@ -866,6 +887,7 @@ echo ""
 echo "T-22: cached body for must not satisfy the check for (AC-1 boundary)"
 dir_t22="$TEST_DIR/t22"
 mkdir -p "$dir_t22"
+git -C "$dir_t22" init -q
 echo '{"active":true,"issue_number":2463,"wm_comment_id":4242}' > "$dir_t22/.rite-flow-state"
 setup_crossissue_shim "$dir_t22" 2463 246 yes
 out_t22=$(cd "$dir_t22" && PATH="$dir_t22/bin:$PATH" \
@@ -882,6 +904,7 @@ fi
 # が target 246 を「含む」と誤判定し、他 Issue の replica を PATCH する。
 dir_t22b="$TEST_DIR/t22b"
 mkdir -p "$dir_t22b"
+git -C "$dir_t22b" init -q
 echo '{"active":true,"issue_number":246,"wm_comment_id":4242}' > "$dir_t22b/.rite-flow-state"
 setup_crossissue_shim "$dir_t22b" 246 2463 yes
 out_t22b=$(cd "$dir_t22b" && PATH="$dir_t22b/bin:$PATH" \
@@ -899,6 +922,7 @@ echo ""
 echo "T-23: valid same-Issue cache → GET 1 + PATCH 1, zero extra gh from the ownership check (AC-6)"
 dir_t23="$TEST_DIR/t23"
 mkdir -p "$dir_t23"
+git -C "$dir_t23" init -q
 echo '{"active":true,"issue_number":43,"wm_comment_id":4242}' > "$dir_t23/.rite-flow-state"
 setup_crossissue_shim "$dir_t23" 43 43 yes
 out_t23=$(cd "$dir_t23" && PATH="$dir_t23/bin:$PATH" \
@@ -919,6 +943,7 @@ echo ""
 echo "T-24: init template body satisfies _body_belongs_to_issue (template↔parser coupling)"
 dir_t24="$TEST_DIR/t24"
 mkdir -p "$dir_t24/bin"
+git -C "$dir_t24" init -q
 POSTED_BODY_T24="$dir_t24/posted-body.md"
 cat > "$dir_t24/bin/gh" <<GH_SHIM
 #!/bin/bash
@@ -971,6 +996,7 @@ PY_TRANSFORM="$SCRIPT_DIR/../issue-comment-wm-update.py"
 make_args_case() {
   local dir="$1"
   mkdir -p "$dir/bin" "$dir/tmp"
+  git -C "$dir" init -q
   echo '{"active":true,"issue_number":42,"wm_comment_id":4242}' > "$dir/.rite-flow-state"
   wm_body_fixture > "$dir/wm-body.md"
   printf '%s\n' "- [x] レビュー完了" "- [x] マージ完了" > "$dir/items.md"

@@ -70,6 +70,7 @@ create_state_file() {
   local dir="$1"
   local content="$2"
   local sid="${3:-test-sid-$(basename "$dir")}"
+  git init -q "$dir"
   mkdir -p "$dir/.rite/sessions"
   printf '%s' "$sid" > "$dir/.rite-session-id"
   local merged
@@ -115,6 +116,7 @@ echo ""
 # --- TC-001: No state file → no error, exit 0 ---
 echo "TC-001: No state file → exit 0 (no-op)"
 dir001="$TEST_DIR/tc001"
+git init -q "$dir001"
 mkdir -p "$dir001"
 if run_hook "$dir001"; then
   if [ ! -f "$dir001/.rite-flow-state" ]; then
@@ -130,6 +132,7 @@ echo ""
 # --- TC-002: State file exists → updated_at is set with ISO 8601 format ---
 echo "TC-002: State file exists → updated_at updated with POSIX-compatible ISO 8601"
 dir002="$TEST_DIR/tc002"
+git init -q "$dir002"
 mkdir -p "$dir002"
 create_state_file "$dir002" '{"active": true, "phase": "impl"}'
 
@@ -155,6 +158,7 @@ echo ""
 # --- TC-003: Existing fields are preserved ---
 echo "TC-003: Existing fields in state file are preserved"
 dir003="$TEST_DIR/tc003"
+git init -q "$dir003"
 mkdir -p "$dir003"
 create_state_file "$dir003" '{"active": true, "phase": "review", "issue": 42}'
 
@@ -175,6 +179,7 @@ echo ""
 # --- TC-004: Timestamp must remain parseable by GNU date ---
 echo "TC-004: Timestamp is parseable by GNU date -d"
 dir004="$TEST_DIR/tc004"
+git init -q "$dir004"
 mkdir -p "$dir004"
 create_state_file "$dir004" '{"active": true}'
 
@@ -204,6 +209,7 @@ echo ""
 # TC-006 以降で別途 verify される。
 echo "TC-005: Invalid JSON on stdin → exit 0 (best-effort skip, lifecycle 維持)"
 dir005="$TEST_DIR/tc005"
+git init -q "$dir005"
 mkdir -p "$dir005"
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 if echo "NOT-VALID-JSON" | bash "$HOOK" 2>"$LAST_STDERR_FILE"; then
@@ -219,6 +225,7 @@ echo ""
 # (overwrite 防止)。この 3 contract を pin する。
 echo "TC-005b: Corrupted state file → exit 0 + jq parse error stderr + 元ファイル保持"
 dir005b="$TEST_DIR/tc005b"
+git init -q "$dir005b"
 mkdir -p "$dir005b"
 create_state_file "$dir005b" "{broken"
 sf005b=$(state_file_path "$dir005b")
@@ -253,6 +260,7 @@ echo ""
 # --- TC-006: Existing updated_at is overwritten with current timestamp ---
 echo "TC-006: Existing updated_at is overwritten with current timestamp"
 dir006="$TEST_DIR/tc006"
+git init -q "$dir006"
 mkdir -p "$dir006"
 create_state_file "$dir006" '{"active": true, "updated_at": "2020-01-01T00:00:00+00:00"}'
 
@@ -277,6 +285,7 @@ echo ""
 # --- TC-007: Branch detection outputs issue number message ---
 echo "TC-007: Branch detection outputs issue number when on issue branch"
 dir007="$TEST_DIR/tc007"
+git init -q "$dir007"
 mkdir -p "$dir007"
 
 # Create a temporary git repo to test branch detection
@@ -297,6 +306,7 @@ echo ""
 # --- TC-008: Lock delegation — lockdir is cleaned up after hook execution ---
 echo "TC-008: Lock delegation — lockdir cleaned up after hook execution"
 dir008="$TEST_DIR/tc008"
+git init -q "$dir008"
 mkdir -p "$dir008"
 create_state_file "$dir008" '{"active": true, "phase": "impl", "issue_number": 100}'
 lockdir="$(compact_state_path "$dir008").lockdir"
@@ -316,6 +326,7 @@ echo ""
 # --- TC-009: Lock delegation — compact state file is written under lock ---
 echo "TC-009: Lock delegation — compact state written with recovering state"
 dir009="$TEST_DIR/tc009"
+git init -q "$dir009"
 mkdir -p "$dir009"
 create_state_file "$dir009" '{"active": true, "phase": "review", "issue_number": 55}'
 
@@ -343,6 +354,7 @@ echo ""
 # The test verifies that the final state is valid regardless of execution order.
 echo "TC-010: Lock delegation — concurrent invocation safety"
 dir010="$TEST_DIR/tc010"
+git init -q "$dir010"
 mkdir -p "$dir010"
 create_state_file "$dir010" '{"active": true, "phase": "impl", "issue_number": 77}'
 
@@ -383,6 +395,7 @@ echo ""
 # --- TC-011: Lock delegation — work memory snapshot created under lock ---
 echo "TC-011: Lock delegation — local work memory snapshot created"
 dir011="$TEST_DIR/tc011"
+git init -q "$dir011"
 mkdir -p "$dir011"
 create_state_file "$dir011" '{"active": true, "phase": "impl", "issue_number": 88, "branch": "feat/issue-88-test"}'
 
@@ -416,6 +429,7 @@ echo ""
 # --- TC-012: No issue_number in state → active_issue is null, no work memory snapshot ---
 echo "TC-012: No issue_number in state → active_issue null, no work memory snapshot"
 dir012="$TEST_DIR/tc012"
+git init -q "$dir012"
 mkdir -p "$dir012"
 create_state_file "$dir012" '{"active": true, "phase": "impl"}'
 
@@ -444,6 +458,7 @@ echo ""
 # --- TC-013: active: false → no work memory snapshot, but compact state still written ---
 echo "TC-013: active: false → no WM snapshot, compact state still written"
 dir013="$TEST_DIR/tc013"
+git init -q "$dir013"
 mkdir -p "$dir013"
 create_state_file "$dir013" '{"active": false, "phase": "completed", "issue_number": 99, "branch": "fix/issue-99-test"}'
 
@@ -478,6 +493,7 @@ echo ""
 # --- TC-014: pre-compact does NOT set needs_clear in .rite-flow-state (AC-2, T-02) ---
 echo "TC-014: pre-compact does NOT set needs_clear (AC-2)"
 dir014="$TEST_DIR/tc014"
+git init -q "$dir014"
 mkdir -p "$dir014"
 create_state_file "$dir014" '{"active": true, "phase": "phase5_review", "issue_number": 847}'
 
@@ -498,6 +514,7 @@ echo ""
 # --- TC-014b: pre-compact preserves but does NOT add needs_clear (AC-2 variant) ---
 echo "TC-014b: pre-compact with existing needs_clear=true (AC-2 variant)"
 dir014b="$TEST_DIR/tc014b"
+git init -q "$dir014b"
 mkdir -p "$dir014b"
 create_state_file "$dir014b" '{"active": true, "phase": "phase5_review", "issue_number": 847, "needs_clear": true}'
 
@@ -517,6 +534,7 @@ echo ""
 # --- TC-015: resuming state is overwritten to recovering ---
 echo "TC-015: resuming state overwritten to recovering — every compact sets recovering"
 dir015="$TEST_DIR/tc015"
+git init -q "$dir015"
 mkdir -p "$dir015"
 create_state_file "$dir015" '{"active": true, "phase": "phase5_lint", "issue_number": 851}'
 # Pre-create compact state with "resuming" (simulates /clear transition)
@@ -546,6 +564,7 @@ echo ""
 # --- TC-016: resuming→recovering overwrite still saves work memory snapshot ---
 echo "TC-016: resuming→recovering overwrite still saves work memory snapshot"
 dir016="$TEST_DIR/tc016"
+git init -q "$dir016"
 mkdir -p "$dir016"
 create_state_file "$dir016" '{"active": true, "phase": "phase5_review", "issue_number": 160, "branch": "fix/issue-160-test"}'
 cs016="$(compact_state_path "$dir016")"
@@ -583,6 +602,7 @@ echo ""
 # --- TC-017: corrupted compact state JSON falls back to recovering ---
 echo "TC-017: corrupted compact state JSON → falls back to recovering"
 dir017="$TEST_DIR/tc017"
+git init -q "$dir017"
 mkdir -p "$dir017"
 create_state_file "$dir017" '{"active": true, "phase": "phase5_fix", "issue_number": 170}'
 cs017="$(compact_state_path "$dir017")"
@@ -603,6 +623,7 @@ echo ""
 # --- TC-018: normal compact state transitions to recovering ---
 echo "TC-018: normal compact state → recovering"
 dir018="$TEST_DIR/tc018"
+git init -q "$dir018"
 mkdir -p "$dir018"
 create_state_file "$dir018" '{"active": true, "phase": "phase5_impl", "issue_number": 180}'
 cs018="$(compact_state_path "$dir018")"
@@ -626,6 +647,7 @@ echo ""
 # `.active=true` precondition path still fires the workflow-active branch.
 echo "TC-per-session-detect-A (AC-LOCAL-2): per-session active=true → updated_at touched"
 dir680a="$TEST_DIR/tc680a"
+git init -q "$dir680a"
 mkdir -p "$dir680a/.rite/sessions"
 sid680a="aaaabbbb-cccc-dddd-eeee-ffffaaaa1111"
 echo "$sid680a" > "$dir680a/.rite-session-id"
@@ -672,6 +694,7 @@ FAKE_RESOLVER_EOF
 chmod +x "$sbx_749/flow-state.sh"
 
 dir_749="$TEST_DIR/tc749-passthrough"
+git init -q "$dir_749"
 mkdir -p "$dir_749"
 
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.749.XXXXXX")"
@@ -702,6 +725,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-ACTIVE-PARSE-WARNING: corrupt per-session flow-state → 'workflow snapshot will be skipped' WARNING"
 dir_active_parse="$TEST_DIR/tc-active-parse"
+git init -q "$dir_active_parse"
 mkdir -p "$dir_active_parse"
 # Valid JSON-prefix that fails when jq tries to extract .active
 create_state_file "$dir_active_parse" '{ not json'
@@ -736,6 +760,7 @@ exit 7
 SHIM
 chmod +x "$shim_dir/mv"
 dir_mvfail="$TEST_DIR/tc-mv-fail"
+git init -q "$dir_mvfail"
 mkdir -p "$dir_mvfail"
 create_state_file "$dir_mvfail" '{"active":true,"phase":"implement","updated_at":"2026-01-01T00:00:00+00:00"}'
 stderr_mvfail=$(echo "{\"cwd\": \"$dir_mvfail\"}" | PATH="$shim_dir:$PATH" bash "$HOOK" 2>&1 >/dev/null || true)
@@ -760,6 +785,7 @@ exit 13
 SHIM
 chmod +x "$shim_chmod_dir/chmod"
 dir_chmod="$TEST_DIR/tc-chmod-fail"
+git init -q "$dir_chmod"
 mkdir -p "$dir_chmod"
 create_state_file "$dir_chmod" '{"active":true,"phase":"implement","updated_at":"2026-01-01T00:00:00+00:00"}'
 stderr_chmod=$(echo "{\"cwd\": \"$dir_chmod\"}" | PATH="$shim_chmod_dir:$PATH" bash "$HOOK" 2>&1 >/dev/null || true)
@@ -801,6 +827,7 @@ echo ""
 # and the second clobbered the first — this test would have caught that.
 echo "TC-per-session-compact-independence-AC1: two sessions → independent compact-state files (no last-writer-wins)"
 dirac1="$TEST_DIR/tc1371ac1"
+git init -q "$dirac1"
 mkdir -p "$dirac1/.rite/sessions"
 sidA="session-aaaa-1371"
 sidB="session-bbbb-1371"
@@ -848,6 +875,7 @@ echo ""
 # wins over env, so existing fixture-based TCs are unaffected).
 echo "TC-LEGACY-FALLBACK: sid unresolvable → legacy .rite-compact-state written (recovering)"
 dirlf="$TEST_DIR/tc-legacy-fallback"
+git init -q "$dirlf"
 mkdir -p "$dirlf"
 lf_stderr="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 lf_rc=0
@@ -871,6 +899,7 @@ echo ""
 
 echo "T-04: active workflow → empty stdout, stderr compact detected, recovering+trigger written"
 dir_t04="$TEST_DIR/tc-t04"
+git init -q "$dir_t04"
 mkdir -p "$dir_t04/.rite/sessions"
 sid_t04="test-sid-$(basename "$dir_t04")"
 echo "$sid_t04" > "$dir_t04/.rite-session-id"

@@ -62,7 +62,7 @@ source "$SCRIPT_DIR/control-char-neutralize.sh"
 # on the SAME root. A `$PWD`-relative write would land the raw in the worktree's
 # `.rite/wiki/raw` while commit scans the main checkout's — silently dropping it
 #. The two scripts MUST stay keyed off state-path-resolve.sh.
-STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$PWD" 2>/dev/null) || STATE_ROOT="$PWD"
+STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$PWD") || exit 1
 
 TYPE=""
 SOURCE_REF=""
@@ -388,7 +388,7 @@ fi
 # relax that guard. From here on the write must target the same root
 # wiki-ingest-commit.sh scans (state-path-resolve.sh; the main checkout under a
 # linked worktree), so cd into STATE_ROOT and keep target_dir relative. When
-# STATE_ROOT == $PWD (single-session run from repo root, or non-git fallback)
+# STATE_ROOT == $PWD (single-session run from repo root)
 # this is a no-op and behaviour is byte-identical to before.
 if [ "$STATE_ROOT" != "$PWD" ]; then
   # Detectable signal (re-divergence guard): surface that the raw is written to

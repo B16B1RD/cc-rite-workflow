@@ -782,9 +782,8 @@ live_probe=$(cd "$live_repo" && bash -c '
   hermetic_leave_checkout; printf "leave_rc=%s\n" "$?"
   printf "hermetic_cwd=%s\n" "$HERMETIC_CWD"
   printf "cwd=%s\n" "$(pwd -P)"
-  # HERMETIC_CWD is a physical path, while the state root outside git is the logical cwd;
-  # compare physical paths so a symlinked TMPDIR (macOS /var/folders) does not break the match.
-  printf "resolve=%s\n" "$(root=$(bash "$4") && [ -n "$root" ] && cd "$root" && pwd -P)"
+  resolve_rc=0; resolve_out=$(bash "$4" 2>/dev/null) || resolve_rc=$?
+  printf "resolve_rc=%s\nresolve=%s\n" "$resolve_rc" "$resolve_out"
   path_rc=0; path_out=$(bash "$3" path 2>/dev/null) || path_rc=$?
   printf "after_path_rc=%s\n" "$path_rc"
   printf "after_path=%s\n" "$path_out"
@@ -802,10 +801,10 @@ else
   outer_fail "TC-18.9: sourcing _test-helpers.sh changed the cwd: $(printf '%s' "$live_probe" | tr '\n' '|')"
 fi
 if [ "$(live_field leave_rc)" = 0 ] && [ -n "$live_hcwd" ] && [ "$(live_field cwd)" = "$live_hcwd" ] \
-  && [ "$(live_field resolve)" = "$live_hcwd" ] && [[ "$live_hcwd" != "$live_repo"* ]]; then
-  outer_pass "TC-18.9: hermetic_leave_checkout moves the cwd and the state root to HERMETIC_CWD"
+  && [ "$(live_field resolve_rc)" != 0 ] && [ -z "$(live_field resolve)" ] && [[ "$live_hcwd" != "$live_repo"* ]]; then
+  outer_pass "TC-18.9: hermetic_leave_checkout moves the cwd outside git and leaves the state root unresolved"
 else
-  outer_fail "TC-18.9: cwd / state root not moved to HERMETIC_CWD: $(printf '%s' "$live_probe" | tr '\n' '|')"
+  outer_fail "TC-18.9: cwd did not leave git with an unresolved state root: $(printf '%s' "$live_probe" | tr '\n' '|')"
 fi
 if [ "$(live_field after_path_rc)" != 0 ] && [ -z "$(live_field after_path)" ]; then
   outer_pass "TC-18.9: after leaving, flow-state resolves no session"

@@ -246,9 +246,7 @@ _undecidable() {
 # hooks/review-result-save.sh と同一の解決順 (state-path-resolve.sh → cwd 相対)。
 # セッション worktree 内から呼ばれても main checkout と同一パスへ解決される。
 if [ -z "$results_dir" ]; then
-  # `2>/dev/null` は付けない — resolver は git 内外どちらでも rc=0 / 非空を返す設計なので、
-  # ここに落ちるのは helper 自体を実行できない場合 (プラグイン破損 / 版 skew) だけであり、
-  # その唯一の原因を示す診断を抑止してはならない (iterate ステップ 0.6 / 1 と同じ論拠)。
+  # git 外や resolver 実行失敗の診断を保持する。
   _state_root=$(bash "$SCRIPT_DIR/../state-path-resolve.sh") || _state_root=""
   if [ -n "$_state_root" ]; then
     results_dir="$_state_root/.rite/review-results"

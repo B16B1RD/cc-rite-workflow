@@ -63,6 +63,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=_hermetic-env.sh
 source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
 hermetic_leave_checkout || exit 1
+# Keep generic guard probes inside an isolated repository, away from live state.
+git init -q "$HERMETIC_CWD"
+export HERMETIC_CWD
 HOOK="$SCRIPT_DIR/../pre-tool-bash-guard.sh"
 PASS=0
 FAIL=0
@@ -133,7 +136,7 @@ run_guard() {
   local rc=0
   local output
   output=$(jq -n --arg tn "$tool_name" --arg cmd "$cmd" \
-    '{tool_name: $tn, tool_input: {command: $cmd}, cwd: "/tmp"}' \
+    '{tool_name: $tn, tool_input: {command: $cmd}, cwd: env.HERMETIC_CWD}' \
     | bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
   echo "$output"
   return $rc
@@ -158,7 +161,7 @@ run_guard_with_transcript() {
   local rc=0
   local output
   output=$(jq -n --arg tn "$tool_name" --arg cmd "$cmd" --arg tp "$transcript" \
-    '{tool_name: $tn, tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' \
+    '{tool_name: $tn, tool_input: {command: $cmd}, cwd: env.HERMETIC_CWD, transcript_path: $tp}' \
     | bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
   echo "$output"
   return $rc
@@ -709,7 +712,7 @@ run_guard_clean_env() {
 # --------------------------------------------------------------------------
 echo "TC-113: input JSON subagent_type field → Tier 2 deny"
 rc=0
-tc113_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp, subagent_type: "code-reviewer"}')
+tc113_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: env.HERMETIC_CWD, transcript_path: $tp, subagent_type: "code-reviewer"}')
 output=$(run_guard_clean_env "$tc113_input") || rc=$?
 decision=$(extract_hook_field "$output" permissionDecision)
 reason=$(extract_hook_field "$output" permissionDecisionReason)
@@ -732,7 +735,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-113b: agent_type field set → Tier 2 deny"
 rc=0
-tc113b_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp, agent_type: "code-reviewer"}')
+tc113b_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: env.HERMETIC_CWD, transcript_path: $tp, agent_type: "code-reviewer"}')
 output=$(run_guard_clean_env "$tc113b_input") || rc=$?
 decision=$(extract_hook_field "$output" permissionDecision)
 reason=$(extract_hook_field "$output" permissionDecisionReason)
@@ -755,7 +758,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-113c: subagent_type=\"\" → Tier 2 does not fire (main session)"
 rc=0
-tc113c_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp, subagent_type: ""}')
+tc113c_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: env.HERMETIC_CWD, transcript_path: $tp, subagent_type: ""}')
 output=$(run_guard_clean_env "$tc113c_input") || rc=$?
 if [ "$rc" = "0" ] && [ -z "$output" ]; then
   pass "TC-113c empty subagent_type does not trigger Tier 2 (main session preserved)"
@@ -771,7 +774,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-113d: subagent_type=123 → Tier 2 does not fire (numeric rejected by | strings)"
 rc=0
-tc113d_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp, subagent_type: 123}')
+tc113d_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: env.HERMETIC_CWD, transcript_path: $tp, subagent_type: 123}')
 output=$(run_guard_clean_env "$tc113d_input") || rc=$?
 if [ "$rc" = "0" ] && [ -z "$output" ]; then
   pass "TC-113d numeric subagent_type does not trigger Tier 2 (| strings filter rejects non-string)"
@@ -786,7 +789,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-113e: subagent_type=[...] → Tier 2 does not fire (array rejected by | strings)"
 rc=0
-tc113e_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp, subagent_type: ["code-reviewer", "security"]}')
+tc113e_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: env.HERMETIC_CWD, transcript_path: $tp, subagent_type: ["code-reviewer", "security"]}')
 output=$(run_guard_clean_env "$tc113e_input") || rc=$?
 if [ "$rc" = "0" ] && [ -z "$output" ]; then
   pass "TC-113e array subagent_type does not trigger Tier 2 (| strings filter rejects non-string)"
@@ -801,7 +804,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-113f: subagent_type={...} → Tier 2 does not fire (object rejected by | strings)"
 rc=0
-tc113f_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp, subagent_type: {name: "code-reviewer", level: 1}}')
+tc113f_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: env.HERMETIC_CWD, transcript_path: $tp, subagent_type: {name: "code-reviewer", level: 1}}')
 output=$(run_guard_clean_env "$tc113f_input") || rc=$?
 if [ "$rc" = "0" ] && [ -z "$output" ]; then
   pass "TC-113f object subagent_type does not trigger Tier 2 (| strings filter rejects non-string)"
@@ -816,7 +819,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-114: CLAUDE_SUBAGENT_TYPE env var → Tier 3 deny"
 rc=0
-tc114_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
+tc114_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: env.HERMETIC_CWD, transcript_path: $tp}')
 output=$(run_guard_clean_env "$tc114_input" "CLAUDE_SUBAGENT_TYPE=code-reviewer") || rc=$?
 decision=$(extract_hook_field "$output" permissionDecision)
 reason=$(extract_hook_field "$output" permissionDecisionReason)
@@ -839,7 +842,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-114b: CLAUDE_AGENT_TYPE env var → Tier 3 deny"
 rc=0
-tc114b_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
+tc114b_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: env.HERMETIC_CWD, transcript_path: $tp}')
 output=$(run_guard_clean_env "$tc114b_input" "CLAUDE_AGENT_TYPE=code-reviewer") || rc=$?
 decision=$(extract_hook_field "$output" permissionDecision)
 reason=$(extract_hook_field "$output" permissionDecisionReason)
@@ -861,7 +864,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-115: 3 tiers unset → main session allowed (regression guard)"
 rc=0
-tc115_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
+tc115_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: env.HERMETIC_CWD, transcript_path: $tp}')
 output=$(run_guard_clean_env "$tc115_input") || rc=$?
 if [ "$rc" = "0" ] && [ -z "$output" ]; then
   pass "TC-115 main session .git write allowed (Tier 2/3 no false positives)"
@@ -882,7 +885,7 @@ echo ""
 echo "TC-116: deny fallback (jq -n emit failure) → valid JSON, deny preserved"
 rc=0
 real_jq=$(command -v jq)
-tc116_input=$("$real_jq" -n '{tool_name: "Bash", tool_input: {command: "gh pr diff 123 --stat"}, cwd: "/tmp"}')
+tc116_input=$("$real_jq" -n '{tool_name: "Bash", tool_input: {command: "gh pr diff 123 --stat"}, cwd: env.HERMETIC_CWD}')
 fake_bin_116=$(mktemp -d)
 cat > "$fake_bin_116/jq" <<EOF
 #!/bin/bash
@@ -996,7 +999,7 @@ echo "TC-118: deny fallback neutralize failure → static placeholder, deny + ex
 rc=0
 real_jq=$(command -v jq)
 real_tr=$(command -v tr)
-tc118_input=$("$real_jq" -n '{tool_name: "Bash", tool_input: {command: "gh pr diff 123 --stat"}, cwd: "/tmp"}')
+tc118_input=$("$real_jq" -n '{tool_name: "Bash", tool_input: {command: "gh pr diff 123 --stat"}, cwd: env.HERMETIC_CWD}')
 fake_bin_118=$(mktemp -d)
 cat > "$fake_bin_118/jq" <<EOF
 #!/bin/bash
@@ -1065,7 +1068,7 @@ echo ""
 echo "TC-119: Pattern 4 crash in reviewer subagent → deny + exit 2 + stderr WARNING"
 rc=0
 tc119_input=$(jq -n --arg cmd "git status" --arg tp "$SUBAGENT_TRANSCRIPT" \
-  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
+  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: env.HERMETIC_CWD, transcript_path: $tp}')
 output=$(echo "$tc119_input" | RITE_BTG_TEST_CRASH=pattern4 bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
 decision=$(extract_hook_field "$output" permissionDecision)
 reason=$(extract_hook_field "$output" permissionDecisionReason)
@@ -1135,7 +1138,7 @@ echo "TC-121: Pattern 4 crash injection on a MAIN session → allow (no false de
 # denied — proves the fix does not add false denies to normal (non-reviewer) Bash.
 rc=0
 tc121_input=$(jq -n --arg cmd "git status" --arg tp "$MAIN_TRANSCRIPT" \
-  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
+  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: env.HERMETIC_CWD, transcript_path: $tp}')
 output=$(echo "$tc121_input" | RITE_BTG_TEST_CRASH=pattern4 bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
 if [ "$rc" = "0" ] && [ -z "$output" ]; then
   pass "TC-121 main-session Bash is not denied by the Pattern 4 fail-closed trap"
@@ -1183,7 +1186,7 @@ tc124_bigval=$(printf 'x%.0s' $(seq 1 10000))
 # (a) 1.28MB command padded with huge values → fast deny
 { printf 'git '; for _i in $(seq 1 128); do printf -- '-C %s ' "$tc124_bigval"; done; printf 'status'; } > "$tc124_dir/cmd.txt"
 jq -n --rawfile cmd "$tc124_dir/cmd.txt" --arg tp "$SUBAGENT_TRANSCRIPT" \
-  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/in.json"
+  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: env.HERMETIC_CWD, transcript_path: $tp}' > "$tc124_dir/in.json"
 rc=0
 _t0=$(date +%s%N)
 output=$(_timeout 15 bash "$HOOK" < "$tc124_dir/in.json" 2>"$STDERR_FILE") || rc=$?
@@ -1209,7 +1212,7 @@ fi
 # (b) oversized (~80KB) READ-ONLY command → deny (allow→deny flip; a small `git status` allows)
 { printf 'git '; for _i in $(seq 1 8); do printf -- '-C %s ' "$tc124_bigval"; done; printf 'status'; } > "$tc124_dir/ro.txt"
 jq -n --rawfile cmd "$tc124_dir/ro.txt" --arg tp "$SUBAGENT_TRANSCRIPT" \
-  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/roin.json"
+  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: env.HERMETIC_CWD, transcript_path: $tp}' > "$tc124_dir/roin.json"
 rc=0
 output=$(_timeout 15 bash "$HOOK" < "$tc124_dir/roin.json" 2>"$STDERR_FILE") || rc=$?
 decision=$(extract_hook_field "$output" permissionDecision)
@@ -1226,7 +1229,7 @@ fi
 # guard's use of the full command length.
 { printf 'git status <<EOF\n'; printf 'y%.0s' $(seq 1 200000); printf '\nEOF'; } > "$tc124_dir/hd.txt"
 jq -n --rawfile cmd "$tc124_dir/hd.txt" --arg tp "$SUBAGENT_TRANSCRIPT" \
-  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/hdin.json"
+  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: env.HERMETIC_CWD, transcript_path: $tp}' > "$tc124_dir/hdin.json"
 rc=0
 output=$(_timeout 15 bash "$HOOK" < "$tc124_dir/hdin.json" 2>"$STDERR_FILE") || rc=$?
 decision=$(extract_hook_field "$output" permissionDecision)
@@ -1237,7 +1240,7 @@ else
 fi
 # (d) oversized (~80KB) MAIN-session command → must NOT be denied (MUST NOT — reviewer-only guard)
 jq -n --rawfile cmd "$tc124_dir/ro.txt" --arg tp "$MAIN_TRANSCRIPT" \
-  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/mainin.json"
+  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: env.HERMETIC_CWD, transcript_path: $tp}' > "$tc124_dir/mainin.json"
 # Positive control for the negative assertion that follows. The hook prints NOTHING
 # when it permits a command — a deny JSON is the only thing it ever emits, which is
 # why assert_subagent_allow spells allow as "rc 0 AND empty stdout" — so an empty
@@ -1734,6 +1737,7 @@ echo ""
 _mrg_setup_state() {
   # $1 = temp root; creates sessions + review-results dirs and a session id file
   local root="$1"
+  git init -q "$root"
   mkdir -p "$root/.rite/sessions" "$root/.rite/review-results"
   printf '%s\n' "mrg-gate-sess" > "$root/.rite-session-id"
   cat > "$root/.rite/sessions/mrg-gate-sess.flow-state" <<'EOF'
@@ -1778,7 +1782,7 @@ _mrg_run() {
   local root="$1" cmd="$2"
   local rc=0 output
   output=$(RITE_STATE_ROOT="$root" jq -n --arg tn "Bash" --arg cmd "$cmd" \
-    '{tool_name: $tn, tool_input: {command: $cmd}, cwd: "/tmp"}' \
+    '{tool_name: $tn, tool_input: {command: $cmd}, cwd: env.HERMETIC_CWD}' \
     | env -u GROK_SESSION_ID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID \
         -u CODEX_THREAD_ID -u RITE_HOST \
         RITE_STATE_ROOT="$root" bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
@@ -2152,6 +2156,7 @@ echo ""
 
 echo "TC-141 / T-01: deny appends the stderr event to bash-guard.log"
 _audit_tmp=$(mktemp -d)
+git init -q "$_audit_tmp"
 rc=0
 RITE_STATE_ROOT="$_audit_tmp" jq -n --arg cmd "gh pr diff 99 --stat" \
   '{tool_name:"Bash",tool_input:{command:$cmd}}' \
@@ -2186,6 +2191,7 @@ echo ""
 
 echo "TC-142 / T-02: audit write failure preserves deny JSON and warns"
 _audit_tmp=$(mktemp -d)
+git init -q "$_audit_tmp"
 mkdir -p "$_audit_tmp/.rite"
 printf 'not-a-directory\n' > "$_audit_tmp/.rite/logs"
 rc=0
@@ -2203,6 +2209,7 @@ echo ""
 
 echo "TC-143 / T-03: allow does not create an audit log"
 _audit_tmp=$(mktemp -d)
+git init -q "$_audit_tmp"
 jq -n --arg cmd "printf safe" '{tool_name:"Bash",tool_input:{command:$cmd}}' \
   | RITE_STATE_ROOT="$_audit_tmp" bash "$HOOK" >/dev/null 2>"$_audit_tmp/stderr" || true
 if [ ! -e "$_audit_tmp/.rite/logs/bash-guard.log" ]; then
@@ -2707,7 +2714,7 @@ echo "TC-203: reviewer state-changing commands → deny; read-only and non-revie
 run_guard_typed() {
   local agent_type="$1" cmd="$2" rc=0 output
   output=$(jq -n --arg cmd "$cmd" --arg t "$agent_type" \
-    '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp"}
+    '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: env.HERMETIC_CWD}
      + (if $t == "" then {} elif $t == "-" then {transcript_path: "/tmp/p/subagents/a.jsonl"} else {agent_type: $t} end)' \
     | bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
   echo "$output"
@@ -2819,7 +2826,7 @@ done
 run_guard_fields() {
   local fields="$1" env_type="$2" rc=0 output
   output=$(jq -n --arg cmd "git push" --argjson f "$fields" \
-    '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp"} + $f' \
+    '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: env.HERMETIC_CWD} + $f' \
     | env -u CLAUDE_SUBAGENT_TYPE -u CLAUDE_AGENT_TYPE ${env_type:+CLAUDE_SUBAGENT_TYPE=$env_type} bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
   echo "$output"
   return $rc
@@ -2930,7 +2937,7 @@ for sc_stub in "fail|exit 1|parser failed" "silent|exit 0|answered 0 of 1"; do
   printf '#!/bin/sh\ncat >/dev/null\n%s\n' "$sc_stub_body" > "$sc_stub_dir/python3"
   chmod +x "$sc_stub_dir/python3"
   rc=0
-  output=$(jq -n --arg cmd "git >/dev/null log" '{tool_name: "Bash", tool_input: {command: ($cmd + "; git 2>/dev/null push")}, cwd: "/tmp", agent_type: "rite:test-reviewer"}' \
+  output=$(jq -n --arg cmd "git >/dev/null log" '{tool_name: "Bash", tool_input: {command: ($cmd + "; git 2>/dev/null push")}, cwd: env.HERMETIC_CWD, agent_type: "rite:test-reviewer"}' \
     | PATH="$sc_stub_dir:$PATH" bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
   reason=$(extract_hook_field "$output" permissionDecisionReason)
   if [ "$(extract_hook_field "$output" permissionDecision)" = "deny" ] \
@@ -2942,7 +2949,7 @@ for sc_stub in "fail|exit 1|parser failed" "silent|exit 0|answered 0 of 1"; do
   fi
   for sc_ro in "git status" "git diff"; do
     rc=0
-    output=$(jq -n --arg cmd "$sc_ro" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", agent_type: "rite:test-reviewer"}' \
+    output=$(jq -n --arg cmd "$sc_ro" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: env.HERMETIC_CWD, agent_type: "rite:test-reviewer"}' \
       | PATH="$sc_stub_dir:$PATH" bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
     if [ "$rc" = "0" ] && [ -z "$output" ]; then
       pass "reviewer '$sc_ro' allowed without the subcommand parser ($sc_stub_label)"
@@ -2970,7 +2977,7 @@ for size_case in "scan|echo $sc_pad; git push|runs 'git push'" \
   size_label="${size_case%%|*}"; size_rest="${size_case#*|}"
   size_cmd="${size_rest%|*}"; size_want="${size_rest##*|}"
   rc=0
-  output=$(jq -n --arg cmd "$size_cmd" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", agent_type: "rite:test-reviewer"}' \
+  output=$(jq -n --arg cmd "$size_cmd" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: env.HERMETIC_CWD, agent_type: "rite:test-reviewer"}' \
     | _timeout 10 bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
   reason=$(extract_hook_field "$output" permissionDecisionReason)
   if [ "$rc" != "124" ] && [[ "$reason" == "BLOCKED (reviewer-state-change):"* ]] && [[ "$reason" == *"$size_want"* ]]; then
@@ -2991,7 +2998,7 @@ else
 fi
 # A failure inside the scan function must still reach the fail-closed ERR trap.
 rc=0
-output=$(jq -n --arg cmd "git push" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", agent_type: "rite:test-reviewer"}' \
+output=$(jq -n --arg cmd "git push" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: env.HERMETIC_CWD, agent_type: "rite:test-reviewer"}' \
   | RITE_BTG_TEST_CRASH=pattern4-scan bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
 if [ "$rc" = "2" ] && [[ "$(extract_hook_field "$output" permissionDecisionReason)" == *"reviewer-gitdir-write"* ]] \
   && grep -q 'WARNING Pattern 4' "$STDERR_FILE"; then

@@ -34,7 +34,8 @@
 # pr-cycle-cleanup.sh の orphan 回収はこれらのファイルを消さない (本 helper だけが消す)。回収側は採否保留ファイルを
 # 読み、保留中の PR のレビュー結果を残す。
 #
-# exit code: 全運用経路 0（非ブロッキング。invalid pr_number も 0）。usage error のみ 2。
+# exit code: 解決失敗は 1（何も削除しない）、usage error は 2。
+# その他の運用経路は 0（非ブロッキング。invalid pr_number も 0）。
 #
 # `set -e` は使わない: rm の失敗を捕捉して marker に変換する構造に依存している。
 set -u
@@ -73,10 +74,10 @@ esac
 
 # 削除対象はリポジトリ共通の state ルート基準 (state-path-resolve.sh)。書込側
 # (review-result-save.sh / fix.md 2.1.A / fix.md 3.3.1) と同一解決のため、セッション worktree に
-# 書かれて main checkout の削除が no-op になる不整合を防ぐ (解決失敗時は cwd fallback)
+# 書かれて main checkout の削除が no-op になる不整合を防ぐ (解決失敗時は削除せず停止)
 if [ -z "$state_root" ]; then
   state_root=$(bash "$SCRIPT_DIR/../state-path-resolve.sh" 2>/dev/null) || state_root=""
-  [ -n "$state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; state_root="$(pwd)"; }
+  [ -n "$state_root" ] || { echo "ERROR: state root unresolved; state is not removed" >&2; exit 1; }
 fi
 
 # 採否保留があれば何も削除しない（glob は `<pr>-` prefix 固定。別 PR の保留では止まらない）。

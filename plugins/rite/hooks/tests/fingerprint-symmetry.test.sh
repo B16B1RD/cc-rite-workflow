@@ -28,7 +28,8 @@ else
   fail "the accept persistence call is extracted"
 fi
 
-# state root は非 git の作業ディレクトリ（state-path-resolve.sh は cwd を返す）
+# State writes resolve through a real repository fixture.
+git -C "$WORK" init -q
 run_accept() {  # $1=finding JSON path
   sed -e "s|{plugin_root}|$PLUGIN_ROOT|g" -e 's|{pr_number}|91|g' -e "s|{finding_file}|$1|g" \
     "$WORK/accept-block.sh" > "$WORK/accept-run.sh"

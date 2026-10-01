@@ -663,7 +663,7 @@ else
 fi
 gin=$(jq -n --arg cwd "$repo" '{tool_name:"Bash", tool_input:{command:"git commit -m x"}, cwd:$cwd}')
 grc=0
-gout=$(printf '%s' "$gin" | WIKI_APPLY_FLOW_STATE="$bad" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+gout=$(printf '%s' "$gin" | WIKI_APPLY_FLOW_STATE="$bad" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if grep -q 'wiki-apply-unreadable' <<<"$gout"; then
   pass "guard denies commit when flow-state is unreadable"
 else
@@ -713,21 +713,21 @@ fi
 echo "=== guard deny and cleanup allow ==="
 gin=$(jq -n --arg cwd "$repo" '{tool_name:"Bash", tool_input:{command:"git commit -m x"}, cwd:$cwd}')
 grc=0
-gout=$(printf '%s' "$gin" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+gout=$(printf '%s' "$gin" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if grep -q 'permissionDecision' <<<"$gout" && grep -q 'deny' <<<"$gout" && grep -q 'wiki-apply-gate' <<<"$gout"; then
   pass "guard denies implement commit"
 else
   fail "guard deny rc=$grc out=$gout"
 fi
 grc=0
-gout=$(printf '%s' "$gin" | WIKI_APPLY_FLOW_STATE="$clean" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+gout=$(printf '%s' "$gin" | WIKI_APPLY_FLOW_STATE="$clean" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if [ "$grc" -eq 0 ] && [ -z "$gout" ]; then
   pass "guard allows cleanup commit"
 else
   fail "guard cleanup rc=$grc out=$gout"
 fi
 grc=0
-gout=$(printf '%s' "$gin" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_GATE_BIN="$ROOT/no-gate" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+gout=$(printf '%s' "$gin" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_GATE_BIN="$ROOT/no-gate" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if grep -q 'wiki-apply-missing' <<<"$gout"; then
   pass "guard denies when the gate script is missing"
 else
@@ -737,7 +737,7 @@ fixsurf="$ROOT/fixsurf.flow-state"
 write_flow "$fixsurf" fix 7 "$repo"
 for deny_case in "$flow:implement" "$fixsurf:fix"; do
   grc=0
-  gout=$(printf '%s' "$gin" | RITE_BTG_TEST_CRASH=pattern9-surface WIKI_APPLY_FLOW_STATE="${deny_case%%:*}" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+  gout=$(printf '%s' "$gin" | RITE_BTG_TEST_CRASH=pattern9-surface WIKI_APPLY_FLOW_STATE="${deny_case%%:*}" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
   if grep -q '"permissionDecision": *"deny"' <<<"$gout" && grep -q 'wiki-apply-uninspectable' <<<"$gout" \
      && grep -q 'rc=3' <<<"$gout" && ! grep -q 'review-commit-evidence' <<<"$gout" \
      && ! grep -q 'wiki-apply-gate' <<<"$gout" && ! grep -q 'fail-open' "$ROOT/guard.err"; then
@@ -747,7 +747,7 @@ for deny_case in "$flow:implement" "$fixsurf:fix"; do
   fi
 done
 grc=0
-gout=$(printf '%s' "$gin" | RITE_BTG_TEST_CRASH=pattern9-surface WIKI_APPLY_FLOW_STATE="$bad" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+gout=$(printf '%s' "$gin" | RITE_BTG_TEST_CRASH=pattern9-surface WIKI_APPLY_FLOW_STATE="$bad" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if grep -q '"permissionDecision": *"deny"' <<<"$gout" && grep -q 'wiki-apply-uninspectable' <<<"$gout"; then
   pass "guard denies an uninspectable commit when flow-state is unreadable"
 else
@@ -755,7 +755,7 @@ else
 fi
 for surface_case in "$clean:cleanup phase" "$ROOT/no-such.flow-state:no session"; do
   grc=0
-  gout=$(printf '%s' "$gin" | RITE_BTG_TEST_CRASH=pattern9-surface WIKI_APPLY_FLOW_STATE="${surface_case%%:*}" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+  gout=$(printf '%s' "$gin" | RITE_BTG_TEST_CRASH=pattern9-surface WIKI_APPLY_FLOW_STATE="${surface_case%%:*}" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
   if [ "$grc" -eq 0 ] && [ -z "$gout" ]; then
     pass "guard allows an uninspectable commit outside the gated phases: ${surface_case#*:}"
   else
@@ -764,7 +764,7 @@ for surface_case in "$clean:cleanup phase" "$ROOT/no-such.flow-state:no session"
 done
 surface_status=$(jq -n --arg cwd "$repo" '{tool_name:"Bash", tool_input:{command:"git status"}, cwd:$cwd}')
 grc=0
-gout=$(printf '%s' "$surface_status" | RITE_BTG_TEST_CRASH=pattern9-surface WIKI_APPLY_FLOW_STATE="$flow" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+gout=$(printf '%s' "$surface_status" | RITE_BTG_TEST_CRASH=pattern9-surface WIKI_APPLY_FLOW_STATE="$flow" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if [ "$grc" -eq 0 ] && [ -z "$gout" ]; then
   pass "surface fault injection does not affect a command without git commit"
 else
@@ -772,7 +772,7 @@ else
 fi
 body_only=$(jq -n --arg cwd "$repo" --arg cmd $'cat <<\'EOF\'\ngit commit -m x\nEOF' '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
 grc=0
-gout=$(printf '%s' "$body_only" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+gout=$(printf '%s' "$body_only" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if [ "$grc" -eq 0 ] && [ -z "$gout" ]; then
   pass "guard allows git commit that appears only in a heredoc body"
 else
@@ -780,7 +780,7 @@ else
 fi
 dash_c=$(jq -n --arg cwd "/tmp" --arg cmd "git -C $repo commit -m x" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
 grc=0
-gout=$(printf '%s' "$dash_c" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+gout=$(printf '%s' "$dash_c" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if grep -q 'permissionDecision' <<<"$gout" && grep -q 'deny' <<<"$gout" && grep -q 'wiki-apply-gate' <<<"$gout"; then
   pass "guard denies git -C of the session worktree"
 else
@@ -789,7 +789,7 @@ fi
 other=$(new_repo other)
 other_cmd=$(jq -n --arg cwd "$repo" --arg cmd "git -C $other commit -m x" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
 grc=0
-gout=$(printf '%s' "$other_cmd" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+gout=$(printf '%s' "$other_cmd" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if [ "$grc" -eq 0 ] && [ -z "$gout" ]; then
   pass "guard allows git -C of another worktree"
 else
@@ -797,7 +797,7 @@ else
 fi
 dyn_cmd=$(jq -n --arg cwd "$repo" '{tool_name:"Bash", tool_input:{command:"git -C \"$wt\" commit -m x"}, cwd:$cwd}')
 grc=0
-gout=$(printf '%s' "$dyn_cmd" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+gout=$(printf '%s' "$dyn_cmd" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if grep -q 'wiki-apply-unresolved' <<<"$gout" || grep -q 'review-commit-evidence' <<<"$gout"; then
   pass "guard denies an unresolvable git -C commit"
 else
@@ -806,7 +806,7 @@ fi
 mkdir -p "$repo/sub"
 sub_cmd=$(jq -n --arg cwd "$repo/sub" '{tool_name:"Bash", tool_input:{command:"git commit -m x"}, cwd:$cwd}')
 grc=0
-gout=$(printf '%s' "$sub_cmd" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+gout=$(printf '%s' "$sub_cmd" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if grep -q 'wiki-apply-gate' <<<"$gout"; then
   pass "guard denies commit from a subdirectory"
 else
@@ -814,7 +814,7 @@ else
 fi
 away=$(jq -n --arg cwd "$repo" --arg cmd "cd $other && git commit -m x" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
 grc=0
-gout=$(printf '%s' "$away" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+gout=$(printf '%s' "$away" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if [ "$grc" -eq 0 ] && [ -z "$gout" ]; then
   pass "guard allows cd to another repository"
 else
@@ -822,7 +822,7 @@ else
 fi
 alla=$(jq -n --arg cwd "$repo" '{tool_name:"Bash", tool_input:{command:"git commit -a -m x"}, cwd:$cwd}')
 grc=0
-gout=$(printf '%s' "$alla" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+gout=$(printf '%s' "$alla" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if grep -q 'wiki-apply-index' <<<"$gout"; then
   pass "guard denies git commit -a"
 else
@@ -830,7 +830,7 @@ else
 fi
 other_a=$(jq -n --arg cwd "$repo" --arg cmd "git -C $other commit -a -m x" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
 grc=0
-gout=$(printf '%s' "$other_a" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+gout=$(printf '%s' "$other_a" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if [ "$grc" -eq 0 ] && [ -z "$gout" ]; then
   pass "guard allows git commit -a in another worktree"
 else
@@ -838,7 +838,7 @@ else
 fi
 amend=$(jq -n --arg cwd "$repo" '{tool_name:"Bash", tool_input:{command:"git commit --amend -m x"}, cwd:$cwd}')
 grc=0
-gout=$(printf '%s' "$amend" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+gout=$(printf '%s' "$amend" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if grep -q 'wiki-apply-gate' <<<"$gout" && ! grep -q 'wiki-apply-index' <<<"$gout"; then
   pass "guard does not treat --amend as -a"
 else
@@ -846,7 +846,7 @@ else
 fi
 patchc=$(jq -n --arg cwd "$repo" '{tool_name:"Bash", tool_input:{command:"git commit -p -m x"}, cwd:$cwd}')
 grc=0
-gout=$(printf '%s' "$patchc" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+gout=$(printf '%s' "$patchc" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if grep -q 'wiki-apply-index' <<<"$gout"; then
   pass "guard denies git commit -p"
 else
@@ -854,7 +854,7 @@ else
 fi
 longpatch=$(jq -n --arg cwd "$repo" '{tool_name:"Bash", tool_input:{command:"git commit --patch -m x"}, cwd:$cwd}')
 grc=0
-gout=$(printf '%s' "$longpatch" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+gout=$(printf '%s' "$longpatch" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if grep -q 'wiki-apply-index' <<<"$gout"; then
   pass "guard denies git commit --patch"
 else
@@ -862,7 +862,7 @@ else
 fi
 heredoc=$(jq -n --arg cwd "$repo" --arg cmd "$(printf '%s\n' "cat <<'EOF'" note EOF "git commit -m x")" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
 grc=0
-gout=$(printf '%s' "$heredoc" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+gout=$(printf '%s' "$heredoc" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if grep -q 'wiki-apply-gate' <<<"$gout"; then
   pass "guard sees a commit after a heredoc"
 else
@@ -890,7 +890,7 @@ fi
 for _cluster in "-av -m x" "-qa -m x" "-pv -m x" "-am msg" "--interactive -m x" "--pathspec-from-file=paths.txt -m x"; do
   cluster=$(jq -n --arg cwd "$repo" --arg cmd "git commit $_cluster" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
   grc=0
-  gout=$(printf '%s' "$cluster" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+  gout=$(printf '%s' "$cluster" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
   if grep -q 'wiki-apply-index' <<<"$gout"; then
     pass "guard denies git commit $_cluster"
   else
@@ -908,7 +908,7 @@ for _index_args in "-qm msg" "-qF file" "-mfix" "-uno" "-q -m msg"; do
 done
 qm=$(jq -n --arg cwd "$repo" '{tool_name:"Bash", tool_input:{command:"git commit -qm message"}, cwd:$cwd}')
 grc=0
-gout=$(printf '%s' "$qm" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+gout=$(printf '%s' "$qm" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if grep -q 'wiki-apply-gate' <<<"$gout" && ! grep -q 'wiki-apply-index' <<<"$gout"; then
   pass "guard does not treat -qm message as a pathspec"
 else
@@ -981,7 +981,7 @@ for _cmd in "git commit -F f 2>&1 | tail -3" "git commit -m x >/dev/null" "git c
             "git commit -m x 2>/dev/null" "git commit -m x &>log"; do
   redir=$(jq -n --arg cwd "$repo" --arg cmd "$_cmd" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
   grc=0
-  gout=$(printf '%s' "$redir" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+  gout=$(printf '%s' "$redir" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
   if grep -q 'wiki-apply-gate' <<<"$gout" && ! grep -q 'wiki-apply-index' <<<"$gout"; then
     pass "guard reads a redirection as no pathspec: $_cmd"
   else
@@ -991,7 +991,7 @@ done
 for _cmd in "git commit -F f file.txt 2>&1" "git commit -F f 2>&1 file.txt"; do
   redir=$(jq -n --arg cwd "$repo" --arg cmd "$_cmd" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
   grc=0
-  gout=$(printf '%s' "$redir" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+  gout=$(printf '%s' "$redir" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
   if grep -q 'wiki-apply-index' <<<"$gout"; then
     pass "guard still denies a pathspec beside a redirection: $_cmd"
   else
@@ -1045,7 +1045,7 @@ else
 fi
 redir=$(jq -n --arg cwd "$repo" '{tool_name:"Bash", tool_input:{command:"git 2>/dev/null commit -m x"}, cwd:$cwd}')
 grc=0
-gout=$(printf '%s' "$redir" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+gout=$(printf '%s' "$redir" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if grep -qF 'BLOCKED (wiki-apply-gate)' <<<"$gout" \
    && ! grep -qE 'wiki-apply-(unresolved|index|missing)' <<<"$gout"; then
   pass "guard checks a commit behind a redirection at the wiki gate"
@@ -1068,7 +1068,7 @@ for _cmd in 'git $OPTS commit -m x' 'git $(true) commit -m x'; do
   mkdir -p "$ROOT/dyn-state"
   gout=$(printf '%s' "$dyn" | env -u CLAUDE_SESSION_ID -u CODEX_THREAD_ID -u GROK_SESSION_ID RITE_HOST=claude \
     CLAUDE_CODE_SESSION_ID=550e8400-e29b-41d4-a716-446655440078 RITE_STATE_ROOT="$ROOT/dyn-state" \
-    WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+    WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
   if grep -qF 'BLOCKED (wiki-apply-unresolved)' <<<"$gout" && grep -q 'dynamic' <<<"$gout"; then
     pass "guard refuses a commit behind a word that may expand to nothing: $_cmd"
   else
@@ -1083,7 +1083,7 @@ many=$(jq -n --arg cwd "$repo" --arg cmd "$_cmd" '{tool_name:"Bash", tool_input:
 grc=0
 gout=$(printf '%s' "$many" | env -u CLAUDE_SESSION_ID -u CODEX_THREAD_ID -u GROK_SESSION_ID RITE_HOST=claude \
   CLAUDE_CODE_SESSION_ID=550e8400-e29b-41d4-a716-446655440078 RITE_STATE_ROOT="$ROOT/dyn-state" \
-  WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+  WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if grep -qF 'BLOCKED (wiki-apply-unresolved)' <<<"$gout" && grep -q 'target is dynamic' <<<"$gout"; then
   pass "guard refuses a commit after more directory changes than it can inspect"
 else
@@ -1116,7 +1116,7 @@ for _cmd in "git '' commit -m x" 'git log --grep commit' 'git $OPTS log --grep c
   fi
   none=$(jq -n --arg cwd "$repo" --arg cmd "$_cmd" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
   grc=0
-  gout=$(printf '%s' "$none" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+  gout=$(printf '%s' "$none" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
   if [ "$grc" -eq 0 ] && [ -z "$gout" ]; then
     pass "guard does not deny: $_cmd"
   else
@@ -1385,7 +1385,7 @@ commit_block=$(awk -v root="$PLUGIN_ROOT" '
 ' "$IMPL_MD")
 impl_gin=$(jq -n --arg cwd "$opn" --arg cmd "$commit_block" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
 grc=0
-gout=$(printf '%s' "$impl_gin" | open_env WIKI_APPLY_MEMORY="$open_mem" bash "$GUARD" 2>"$ROOT/impl-guard.err") || grc=$?
+gout=$(printf '%s' "$impl_gin" | open_env WIKI_APPLY_MEMORY="$open_mem" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/impl-guard.err") || grc=$?
 if [ -n "$commit_block" ] && ! grep -qE '\{[a-z_]+\}' <<<"$commit_block" && [ "$grc" -eq 0 ] && ! grep -q 'deny' <<<"$gout"; then
   pass "the guard lets the documented implement commit block through under phase=implement"
 else
@@ -1461,7 +1461,7 @@ for sgl_phase in implement fix; do
     fi
     sgl_gin=$(jq -n --arg cwd "$sgl" '{tool_name:"Bash", tool_input:{command:"git commit -m x"}, cwd:$cwd}')
     grc=0
-    gout=$(cd "$ROOT" && printf '%s' "$sgl_gin" | WIKI_APPLY_FLOW_STATE="$sgl_flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+    gout=$(cd "$ROOT" && printf '%s' "$sgl_gin" | WIKI_APPLY_FLOW_STATE="$sgl_flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
     if grep -q 'deny' <<<"$gout" && grep -q 'wiki-apply-gate' <<<"$gout"; then
       pass "guard denies a $sgl_phase commit without a record ($sgl_shape worktree)"
     else
@@ -1483,7 +1483,7 @@ for sgl_target in "$sgl_linked" "$sgl_other"; do
 done
 sgl_all=$(jq -n --arg cwd "$sgl" '{tool_name:"Bash", tool_input:{command:"git commit -a -m x"}, cwd:$cwd}')
 grc=0
-gout=$(printf '%s' "$sgl_all" | WIKI_APPLY_FLOW_STATE="$sgl_flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+gout=$(printf '%s' "$sgl_all" | WIKI_APPLY_FLOW_STATE="$sgl_flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if grep -q 'wiki-apply-index' <<<"$gout"; then
   pass "guard denies git commit -a in the session checkout"
 else
@@ -1502,7 +1502,7 @@ else
 fi
 jq -n '{phase:"cleanup", issue_number:7}' > "$sgl_flow"
 grc=0
-gout=$(printf '%s' "$sgl_all" | WIKI_APPLY_FLOW_STATE="$sgl_flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+gout=$(printf '%s' "$sgl_all" | WIKI_APPLY_FLOW_STATE="$sgl_flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash -c 'cd "$1" && exec bash "$2"' wiki-guard "$repo" "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if [ "$grc" -eq 0 ] && [ -z "$gout" ]; then
   pass "guard allows git commit -a in the session checkout under phase=cleanup"
 else

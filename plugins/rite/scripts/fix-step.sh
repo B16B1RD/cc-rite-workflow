@@ -1029,7 +1029,7 @@ step_skip_cycle_state() {
 # JSON は single-quote に直接埋めず、ファイル + --rawfile で渡す（ステップ 2.4 の reply と同じ形）。
 # trap + cleanup パターンの canonical 説明は references/bash-trap-patterns.md#signal-specific-trap-template 参照
 _state_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
-[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+[ -n "$_state_root" ] || { echo "ERROR: state root unresolved; state is not modified" >&2; exit 1; }
 mkdir -p "$_state_root/.rite/fix-cycle-state"
 state_file="$_state_root/.rite/fix-cycle-state/${pr_number}.json"
 head_sha=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
@@ -1161,7 +1161,7 @@ printf '[CONTEXT] PRE_COMMIT_DRIFT_CHECK exit=%d\n' "$drift_exit"
 step_cycle_state() {
 # fix-cycle-state もリポジトリ共通 state ルート基準 (pr-review.md ステップ 5.3.8 の読取側と同一解決)
 _state_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
-[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+[ -n "$_state_root" ] || { echo "ERROR: state root unresolved; state is not modified" >&2; exit 1; }
 mkdir -p "$_state_root/.rite/fix-cycle-state"
 
 state_file="$_state_root/.rite/fix-cycle-state/${pr_number}.json"
@@ -1310,7 +1310,7 @@ exit "$wm_update_rc"
 # --- accept-count ---------------------------------------------------------------
 step_accept_count() {
 _state_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
-[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+[ -n "$_state_root" ] || { echo "ERROR: state root unresolved; state is not modified" >&2; exit 1; }
 accept_count=$(wc -l < "$_state_root/.rite/state/accepted-fingerprints-${pr_number}.txt" 2>/dev/null | tr -d '[:space:]')
 case "$accept_count" in ''|*[!0-9]*) accept_count=0 ;; esac
 echo "accept_count=$accept_count"
@@ -1507,9 +1507,9 @@ esac
 tmpfile=""
 # state ファイルはリポジトリ共通の state ルート基準 (state-path-resolve.sh)。セッション worktree /
 # main checkout のどちらから実行しても同一パスに解決される (pr-review ステップ 5.1.2.A の
-# 読取側と同一解決。解決失敗時は cwd fallback)
+# 読取側と同一解決。解決失敗時は状態を変更せず停止)
 _state_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
-[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+[ -n "$_state_root" ] || { echo "ERROR: state root unresolved; state is not modified" >&2; exit 1; }
 state_dir="$_state_root/.rite/state"
 state_file="${state_dir}/accepted-fingerprints-${pr_number}.txt"
 _rite_fix_phase21A_cleanup() {
@@ -1783,6 +1783,10 @@ printf '%s\n' "$gate_out"
 step_nb_sweep_file_issue() {
 # verdict=file の記録 1 件を起票し、起票した番号を判定記録の tracker に書き戻す。
 # タイトルと本文は caller が Write tool で作業ツリー外に置いたファイル。
+sweep_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh) || {
+  echo "ERROR: state root unresolved; issue and tracker are not modified" >&2
+  exit 1
+}
 issue_title=""
 [ -r "$issue_title_file" ] && issue_title=$(head -n 1 -- "$issue_title_file")
 if [ -z "$issue_title" ] || [ ! -s "$issue_body_file" ]; then
@@ -1809,7 +1813,7 @@ if ! issue_result=$(bash "$plugin_root"/scripts/create-issue-with-projects.sh "$
   exit 1
 fi
 # 起票した番号を判定記録の tracker に書き戻す。途中で止まって再実行すると、ゲートはこの記録を LINK にし、同じ根因を二度起票しない
-nb_adoption="$(bash "$plugin_root"/hooks/state-path-resolve.sh)/.rite/state/adoption-${pr_number}-sweep.json"
+nb_adoption="$sweep_root/.rite/state/adoption-${pr_number}-sweep.json"
 nb_issue_number=$(printf '%s' "$issue_result" | jq '.issue_number')
 if ! jq --argjson ids "$record_ids" --argjson n "$nb_issue_number" \
      'if any(.adoption.records[]; .ids == $ids) then (.adoption.records[] | select(.ids == $ids) | .tracker) = $n

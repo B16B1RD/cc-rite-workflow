@@ -83,12 +83,13 @@ for reason in max-cycles divergence; do
     for write_result in success failure; do
       case_dir="$state_dir/$reason-$mode-$write_result"
       mkdir -p "$case_dir/.rite/state"
+      git -C "$case_dir" init -q
       sid=breaker-contract
       flow="$ROOT/plugins/rite/hooks/flow-state.sh"
       # The breaker runs after fix; an unfinished review cannot reset its counter.
-      env RITE_STATE_ROOT="$case_dir" CLAUDE_CODE_SESSION_ID="$sid" bash "$flow" set \
+      (cd "$case_dir" && env RITE_HOST=claude RITE_STATE_ROOT="$case_dir" CLAUDE_CODE_SESSION_ID="$sid" bash "$flow" set \
         --phase fix --issue 2567 --branch issue-2567 --pr 2600 --next pending \
-        --cycle-count 4 --handoff '/rite:pr-review 2600' >/dev/null
+        --cycle-count 4 --handoff '/rite:pr-review 2600' >/dev/null)
       if [ "$mode" = batch ]; then active=true; else active=false; fi
       jq -n --argjson active "$active" '{issues:[2567],cursor:0,active:$active}' \
         > "$case_dir/.rite/state/run-queue-$sid.json"
@@ -97,7 +98,7 @@ for reason in max-cycles divergence; do
         cat "$state_dir/step6.template"; } > "$case_dir/step6.sh"
       cat "$state_dir/wrapper.sh" "$case_dir/step6.sh" > "$case_dir/run.sh"
       if [ "$write_result" = failure ]; then fail_set=1; else fail_set=0; fi
-      output=$(cd "$case_dir" && env RITE_STATE_ROOT="$case_dir" CLAUDE_CODE_SESSION_ID="$sid" \
+      output=$(cd "$case_dir" && env RITE_HOST=claude RITE_STATE_ROOT="$case_dir" CLAUDE_CODE_SESSION_ID="$sid" \
         BREAKER_CALL_LOG="$case_dir/calls" BREAKER_FAIL_SET="$fail_set" bash "$case_dir/run.sh" 2>&1)
       label="$reason/$mode/$write_result"
       assert_eq "$label keeps terminal mode" "$mode" "$(printf '%s\n' "$output" | marker_get ITERATE_CB_MODE)"
@@ -124,7 +125,7 @@ for reason in max-cycles divergence; do
 done
 # The resolver can return an empty root with rc=0: retain a stop marker and
 # an explicit unresolved value rather than emitting an empty recovery target.
-output=$(cd "$case_dir" && env RITE_STATE_ROOT="$case_dir" CLAUDE_CODE_SESSION_ID="$sid" \
+output=$(cd "$case_dir" && env RITE_HOST=claude RITE_STATE_ROOT="$case_dir" CLAUDE_CODE_SESSION_ID="$sid" \
   BREAKER_CALL_LOG="$case_dir/calls" BREAKER_EMPTY_ROOT=1 bash "$case_dir/run.sh" 2>&1)
 assert_eq 'unresolved root retains terminal interactive route' interactive "$(printf '%s\n' "$output" | marker_get ITERATE_CB_MODE)"
 assert_eq 'unresolved root is explicit in marker' unresolved "$(printf '%s\n' "$output" | marker_get ITERATE_CB_MODE --field STATE_ROOT)"
