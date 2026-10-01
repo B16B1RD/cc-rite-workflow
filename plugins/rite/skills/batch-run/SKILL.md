@@ -593,6 +593,8 @@ echo "[CONTEXT] RUN_STOP; cursor=$cursor; done=$done_issues; remaining=$remainin
 <!-- [run:stopped] -->
 ```
 
+> **停止報告の欄**: 上のテンプレートの欄だけで構成し、独自の見出し・欄（「決めてほしいこと」等）を足さない。人間への依頼は `要対応:` に限る。推奨案があり元に戻せる判断（PR 内で直せる修正の実行など）は「〜してよいか」と質問せず、`復旧:` に推奨手順として書く。人間にしか確認できない事項だけを、[question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) 規則 6 の 4 要素（何を・なぜ AI では確かめられないか・どう確かめるか・期待する結果）で `要対応:` に書く。
+>
 > 復旧行の `/rite:batch-run` には、`{run_mode}=merge` のときのみ `--merge` を併記する（引数省略再開でも自セッションの run-queue の `mode` が維持されるため必須ではないが、明示再開する場合の指針として示す）。
 > `[merge:error]` + `MERGE_ERROR=behind` の停止では、上の汎用復旧 2 行を以下で**置き換える**。base を取り込む前に recover / batch-run で同じ merge を再試行させない:
 >
