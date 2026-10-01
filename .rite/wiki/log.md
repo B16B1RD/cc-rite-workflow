@@ -66,6 +66,8 @@
 
 * **Update**: [Bash tool 境界を跨ぐ値は [CONTEXT] sentinel として明示 emit する](pages/patterns/bash-cross-boundary-emit-explicit-context.md) と [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) — [fix 結果](raw/fixes/20261001T003117Z-pr-3568.md) を統合
 
+* **Lint incomplete** — 機械検査は stale=65, orphans=0, missing_concept=0, unregistered_raw=652, broken_refs=0, descriptive_refs=0。今回更新したページと関連する経験則の比較に矛盾は見つからなかった。全ページ間の意味的な矛盾比較は未完了で、Wiki 全体の品質検査成功とは扱わない。
+
 ## 2026-09-30
 
 * **Lint incomplete** — 機械検査は stale=64、orphans=0、missing_concept=0、unregistered_raw=621、broken_refs=0、descriptive_number_ref=0。更新ページは出典と関連ページを照合した。全658ページの意味的な矛盾比較は未完了であり、Wiki 全体の品質検査成功とは扱わない。
