@@ -119,7 +119,7 @@ def held(records, reason, **kwargs):
     check(result.returncode == 3, f'expected held {reason}: {result.stdout}{result.stderr}')
     out = json.loads(result.stdout)
     expected_hold = state / f'.rite/state/adoption-hold-{kwargs.get("pr", 5)}-{kwargs.get("kind", "sweep")}.json'
-    check(out == {'held': True, 'reason': reason, 'hold_file': str(expected_hold)},
+    check({k: v for k, v in out.items() if k != 'verdicts'} == {'held': True, 'reason': reason, 'hold_file': str(expected_hold)},
           out)
     marker = [l for l in result.stderr.splitlines() if l.startswith('[CONTEXT] ADOPTION_GATE=')]
     check(len(marker) == 1 and f'ADOPTION_GATE=held; kind={kwargs.get("kind", "sweep")}; reason={reason};' in marker[0],
@@ -213,6 +213,28 @@ for cycle, expected in ((3, 'fix'), (15, 'hold')):
     saved, _ = held([rec(origin='unknown'), rec(['F-02'], **REJECT)], 'undecided', kind='triage')
     check(saved['held_ids'] == ['F-01'], (cycle, saved))
     (state / '.rite/state/adoption-hold-5-triage.json').unlink()
+# Sweep uses the same fix-loop capacity as triage; the default stays held.
+for cycle in (3, 15):
+    review.write_text(json.dumps({'commit_sha': head, 'review_context': {'cycle_count': cycle},
+                                  'findings': [], 'non_blocking_findings': []}))
+    records = [rec(origin='pr', origin_cause=removed), rec(['F-02'], **REJECT)]
+    if cycle == 3:
+        verdicts, result = decided(records, kind='sweep', fix_loop='yes')
+        check(verdicts['F-01']['verdict'] == 'fix' and verdicts['F-02']['verdict'] == 'record', verdicts)
+    else:
+        saved, result = held(records, 'undecided', kind='sweep', fix_loop='yes')
+        check('cycle_cap' in saved['resume'] and '手作業' in saved['resume'], saved['resume'])
+    hold_file.unlink(missing_ok=True)
+# Mixed holds expose only evaluated FIX verdicts to the sweep caller.
+review.write_text(json.dumps({'commit_sha': head, 'review_context': {'cycle_count': 3},
+                              'findings': [], 'non_blocking_findings': []}))
+saved, result = held([rec(origin='pr', origin_cause=removed),
+                     rec(['F-02'], acceptance='')], 'undecided', kind='sweep', fix_loop='yes')
+check(saved['held_ids'] == ['F-02'], saved)
+check([v['verdict'] for v in json.loads(result.stdout)['verdicts']] == ['fix', 'hold'], result.stdout)
+hold_file.unlink()
+review.write_text(plain_review)
+
 # A --fix-loop value other than yes / no (an unsubstituted placeholder) stops the gate: exit 2, no hold.
 for bad in ('{fix_loop}', 'maybe'):
     result = run([rec(origin='pr', origin_cause=removed), rec(['F-02'], **REJECT)], kind='triage', fix_loop=bad)

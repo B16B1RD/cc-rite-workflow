@@ -394,9 +394,10 @@ args: "--nb-sweep {pr_number}"
 | Sentinel | アクション |
 |---------|-----------|
 | `[fix:sweep-done]` | PR 内推奨の修正。ステップ 1 に戻らない |
-| `[fix:error]` / その他 / sentinel 不在 | `[iterate:nb-sweep-error]` で停止。完了通知へ進まない。手順 2 の起票後に台帳 persist（[nb-sweep.md 手順 3](../fix/references/nb-sweep.md)）で止まったときは、その戻り方で entries を直してから `/rite:iterate {pr_number}` を再実行する。同じ会話でも別の会話でも同じ経路で、ステップ 0.7 が再レビューを回さずに 5.S へ戻し、fix は起票をやり直さず手順 3 から続ける。`reason=nb_sweep_adoption_held` は起票も台帳も done も書かずに止まっている。hold ファイルの resume（ゲートの WARNING にも出る）に従って再開する。HEAD が変わらない再開では、同じ経路で fix は手順 2 の判定記録から続く |
+| `[fix:non-fatal-only]` | PR 内推奨の修正。sweep の自動登録で戻った。sweep は未完了なので下の done 記録を行わず、既存 check → mark → 通常 fix → push → 再レビューへ進む。入口 `{sweep_origin}` を保持する |
+| `[fix:error]` / その他 / sentinel 不在 | `[iterate:nb-sweep-error]` で停止。完了通知へ進まない。手順 2 の起票後に台帳 persist（[nb-sweep.md 手順 3](../fix/references/nb-sweep.md)）で止まったときは、その戻り方で entries を直してから `/rite:iterate {pr_number}` を再実行する。同じ会話でも別の会話でも同じ経路で、ステップ 0.7 が再レビューを回さずに 5.S へ戻し、fix は起票をやり直さず手順 3 から続ける。`reason=nb_sweep_adoption_held` は起票も台帳も done も書かずに止まっている（別の保留との混在では PR 内推奨の登録だけが済んでいる場合がある）。hold ファイルの resume（ゲートの WARNING にも出る）に従って再開する。HEAD が変わらない再開では、同じ経路で fix は手順 2 の判定記録から続く |
 
-fix が emit した `[CONTEXT] NB_SWEEP_RESULT=done; issued=K; recorded=M` を読み、`ITERATE_NB_SWEEP=done` を同カウントで emit する。記録した basename が最新 JSON と違う、またはファイルが無いときは、collect と同じ選び方（`LC_ALL=C` sort の末尾）で 1 行目を `done <basename>` にする。既存の 2 行目が SHA なら残し、新しい SHA は足さない。basename が取れないときは範囲なしの行を残さない:
+`[fix:sweep-done]` の場合だけ、fix が emit した `[CONTEXT] NB_SWEEP_RESULT=done; issued=K; recorded=M` を読み、`ITERATE_NB_SWEEP=done` を同カウントで emit する。記録した basename が最新 JSON と違う、またはファイルが無いときは、collect と同じ選び方（`LC_ALL=C` sort の末尾）で 1 行目を `done <basename>` にする。既存の 2 行目が SHA なら残し、新しい SHA は足さない。basename が取れないときは範囲なしの行を残さない:
 
 ```bash
 bash {plugin_root}/scripts/iterate-step.sh nb-sweep-record --pr {pr_number}
@@ -408,7 +409,7 @@ MUST NOT: 同一 review JSON で 5.S を 2 回走らせる。sweep でコード�
 
 ### 5.S 後の PR 内推奨の修正
 
-5.S 成功後・完了前確認の前に、最新の保存済み review の commit に未着手の PR 内推奨（pr-review ステップ 7.2 が採否の出口 ADOPT・`origin=pr` の根因を `R-NN` として登録したもの）があるかを確かめる。先に 5.S を済ませるのは、修正後の差分再レビューの JSON にこの JSON の non-blocking が引き継がれないため。marker 既出でも bash を省略しない。
+5.S 成功後または sweep の自動登録による return 後・完了前確認の前に、最新の保存済み review の commit に未着手の PR 内推奨（pr-review ステップ 7.2 または sweep の採否ゲートが採否の出口 ADOPT・`origin=pr` の根因を `R-NN` として登録したもの）があるかを確かめる。先に 5.S を済ませるのは、修正後の差分再レビューの JSON にこの JSON の non-blocking が引き継がれないため。marker 既出でも bash を省略しない。
 
 ```bash
 bash {plugin_root}/scripts/review-pr-recommendations.sh check --pr {pr_number}

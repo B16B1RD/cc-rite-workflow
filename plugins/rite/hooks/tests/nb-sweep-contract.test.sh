@@ -2296,6 +2296,109 @@ assert_grep "T-26 entries が無い: 理由を出す" "$sandbox/t26-absent.err" 
 assert "T-26 persist は entries 全体を append へ渡す (reconcile 以外は絞り込まない)" 1 \
   "$(fix_step_fn step_nb_sweep_persist | grep -c 'persist_rows="\$entries_file"')"
 
+# --- T-27: sweep FIX registration, holds, retry and fresh RESOLVED judgment ---
+if python3 - "$PLUGIN_ROOT" <<'PY_SWEEP_REGISTRATION'
+import atexit, json, os, shutil, subprocess, sys, tempfile
+from pathlib import Path
+plugin = Path(sys.argv[1]).resolve()
+w = Path(tempfile.mkdtemp(prefix='rite-sweep-registration-'))
+atexit.register(shutil.rmtree, w)
+p = w/'plugin'
+shutil.copytree(plugin, p, ignore=shutil.ignore_patterns('tests','.git'))
+r = w/'repo'; r.mkdir()
+def git(*args):
+    return subprocess.run(['git',*args],cwd=r,text=True,capture_output=True,check=True).stdout.strip()
+def run(*args):
+    return subprocess.run(['bash',str(p/'scripts/fix-step.sh'),'nb-sweep-gate','--pr','5',
+                           '--base-branch','develop','--owner-repo','o/r',*args],cwd=r,env=env,text=True,capture_output=True,timeout=60)
+def check(value, why):
+    global checks
+    assert value, why
+    checks += 1
+checks=0
+git('init','-q');git('config','user.email','test@example.invalid');git('config','user.name','test')
+(r/'tool.sh').write_text('#!/bin/bash\n[ -n "$1" ] || exit 1\necho "ok: $1"\n')
+git('add','tool.sh');git('commit','-qm','base');base=git('rev-parse','HEAD');git('update-ref','refs/remotes/origin/develop',base)
+(r/'tool.sh').write_text('#!/bin/bash\necho "ok: $1"\n');git('commit','-qam','remove guard');head=git('rev-parse','HEAD');git('switch','-qc','fix/issue-7-test')
+(r/'rite-config.yml').write_text('safety:\n  max_review_cycles: 3\n')
+state=r/'.rite/state';state.mkdir(parents=True);results=r/'.rite/review-results';results.mkdir()
+review=results/'5-20261001000000.json';hold=state/'adoption-hold-5-sweep.json';registered=state/'pr-recommendations-5.json';adoption=state/'adoption-5-sweep.json'
+issue=w/'issue.md';issue.write_text('## 受入条件\n- [ ] AC-1: reject empty NAME\n')
+pr=w/'pr.md';pr.write_text('Guard empty NAME\n')
+bin_dir=w/'bin';bin_dir.mkdir();gh=bin_dir/'gh'
+gh.write_text('#!/bin/bash\nprintf "%s\\n" "$*" >> "$CALLS"\ncase "$1 $2" in\n"repo view") echo o/r;;\n"pr view") cat "$PR_BODY";;\n"issue view") cat "$ISSUE_BODY";;\n*) echo "unexpected gh call" >&2; exit 1;;\nesac\n');gh.chmod(0o755)
+# The read-only record boundary is isolated; collection, adoption, capacity and registration are real.
+(p/'hooks/review-nonblocking-record.sh').write_text('#!/bin/bash\n[ "$1" = --print-record-body ] || exit 1\n')
+rec=p/'scripts/review-pr-recommendations.sh';rec.rename(rec.with_suffix('.real.sh'))
+rec.write_text('#!/bin/bash\nprintf "%s\\n" "$*" >> "$REC_CALLS"\nif [ "$1" = record ] && [ "${FAIL_RECORD:-0}" = 1 ]; then echo "registration fixture failure" >&2; exit 1; fi\nexec bash "$(dirname "$0")/review-pr-recommendations.real.sh" "$@"\n')
+env=dict(os.environ,PATH=str(bin_dir)+':'+os.environ['PATH'],CALLS=str(w/'gh.log'),REC_CALLS=str(w/'rec.log'),ISSUE_BODY=str(issue),PR_BODY=str(pr))
+for key in ['RITE_FLOW_STATE','RITE_STATE_ROOT','RITE_WORKTREE_ROOT']:env.pop(key,None)
+def row(n=1):return {'reviewer':'test-reviewer','file_line':'tool.sh:2','description':f'empty NAME passes ({n})','filter_reason':'excluded','verification':'なし'}
+def write_review(cycle=1,rows=None,sha=head):
+    review.write_text(json.dumps({'commit_sha':sha,'pr_number':5,'overall_assessment':'mergeable','review_context':{'cycle_count':cycle},'findings':[],'non_blocking_findings':[],'guardrail_audit_log':rows if rows is not None else [row()]}))
+def record(ids,origin='pr',**changes):
+    d={'ids':ids,'V':True,'C':False,'T':False,'contract':{'ref':'AC-1'},'evidence':'bash tool.sh "" exits 0','origin':origin,'present':True,'tracker':None,'prior':None,'reason':'','proposition':None,'acceptance':'reject empty NAME'}
+    if origin=='pr':d['origin_cause']={'contract':{'ref':'AC-1'}}
+    d.update(changes);return d
+def collect():
+    out=subprocess.run(['bash',str(p/'hooks/scripts/nb-sweep-collect.sh'),'--pr','5','--state-root',str(r)],cwd=r,env=env,text=True,capture_output=True,check=True)
+    return json.loads(out.stdout)
+def classify(records,sha=head):adoption.write_text(json.dumps({'adoption':{'head':sha,'records':records}}))
+def pending():
+    return subprocess.run(['bash',str(rec),'check','--pr','5','--state-root',str(r)],cwd=r,env=env,text=True,capture_output=True,check=True).stdout
+def reset():
+    for f in [hold,registered,state/'adoption-history-5-sweep.json',state/'pr-recommendations-done-5.txt']:f.unlink(missing_ok=True)
+    (w/'rec.log').write_text('');(w/'gh.log').write_text('')
+write_review();ids=[c['id'] for c in collect()['candidates']];classify([record(ids)])
+check(subprocess.run(['bash','tool.sh',''],cwd=r,capture_output=True).returncode==0,'real removed guard reproduces defect')
+out=run();check(out.returncode==0,out.stdout+out.stderr)
+check('NB_SWEEP_PR_FIX=pending' in out.stderr,out.stderr)
+data=json.loads(registered.read_text());check(len(data['recommendations'])==1 and data['recommendations'][0]['id']=='R-01',data)
+check(data['recommendations'][0]['file_line']=='tool.sh:2',data)
+check('PR_RECOMMENDATIONS_CHECK=pending' in pending(),pending())
+check(hold.exists() and len(json.loads(hold.read_text())['candidates'])==1,'candidate retained for next review')
+check(not (state/'nb-sweep-done-5.txt').exists() and not (state/'nb-sweep-entries-5.md').exists(),'pending is not sweep done')
+before=registered.read_bytes();out=run();check(out.returncode==0,out.stdout+out.stderr);check(registered.read_bytes()==before,'same HEAD registration is byte-identical')
+# A previous triage recommendation must survive the full-file sweep record.
+d=json.loads(registered.read_text());d['recommendations'][0].update(candidates=['TRIAGE-1'],description='existing triage root');registered.write_text(json.dumps(d));out=run();check(out.returncode==0,out.stdout+out.stderr)
+check([x['id'] for x in json.loads(registered.read_text())['recommendations']]==['R-01','R-02'],'triage preserved before sweep')
+check(json.loads(registered.read_text())['recommendations'][0]['description']=='existing triage root','triage text preserved')
+# Mixed holds register only PR-origin FIX, while the hold still blocks completion.
+reset();write_review(rows=[row(1),row(2)]);ids=[c['id'] for c in collect()['candidates']];classify([record(ids[:1]),record(ids[1:],'pre_existing',acceptance='')]);out=run()
+check(out.returncode==1 and 'reason=nb_sweep_adoption_held' in out.stdout,out.stdout+out.stderr)
+check(len(json.loads(registered.read_text())['recommendations'])==1,'only PR FIX registered')
+check(json.loads(hold.read_text())['held_ids']==ids[1:],'other hold preserved')
+# Capacity stop keeps the original hold and writes no recommendation.
+reset();write_review(cycle=3);ids=[c['id'] for c in collect()['candidates']];classify([record(ids)]);out=run()
+check(out.returncode==1 and 'nb_sweep_adoption_held' in out.stdout,out.stdout+out.stderr);check(not registered.exists(),'cycle cap unregistered');check('cycle_cap' in json.loads(hold.read_text())['resume'],'capacity reason in resume')
+# Bulk record failure on two FIX roots retains every candidate, and retry registers both once.
+reset();write_review(rows=[row(1),row(2)]);ids=[c['id'] for c in collect()['candidates']];classify([record(ids[:1]),record(ids[1:])]);env['FAIL_RECORD']='1';out=run()
+check(out.returncode==1 and 'nb_sweep_adoption_held' in out.stdout,out.stdout+out.stderr);check(not registered.exists(),'failed record never claims registered')
+saved=json.loads(hold.read_text());check(saved['reason']=='registration_failed' and len(saved['candidates'])==2,saved);check('/rite:iterate 5' in saved['resume'] and '手作業' in saved['resume'],saved)
+env.pop('FAIL_RECORD');out=run();check(out.returncode==0,out.stdout+out.stderr);before=registered.read_bytes();check(len(json.loads(before)['recommendations'])==2,'retry carries both roots');out=run();check(out.returncode==0 and registered.read_bytes()==before,'retry no duplicates')
+# RECORD-only and empty paths neither call capacity nor overwrite registrations.
+reset();write_review();ids=[c['id'] for c in collect()['candidates']];classify([record(ids,V=False,contract=None,evidence='',reason='documented; reconsider on contract change')]);out=run();check(out.returncode==0,out.stdout+out.stderr);check(not registered.exists(),'RECORD-only no registration');check((w/'rec.log').read_text()=='','RECORD-only no capacity/record')
+reset();write_review(rows=[]);classify([]);out=run();check(out.returncode==0,out.stdout+out.stderr);check((w/'rec.log').read_text()=='','empty no capacity/record')
+# Fix + new review keeps old candidates for a fresh RESOLVED judgment, with no new registration.
+reset();write_review();ids=[c['id'] for c in collect()['candidates']];classify([record(ids)]);check(run().returncode==0,'initial registration')
+(r/'tool.sh').write_text('#!/bin/bash\n[ -n "$1" ] || exit 1\necho "ok: $1"\n');git('commit','-qam','restore guard');new=git('rev-parse','HEAD');review=results/'5-20261001000001.json';write_review(rows=[],sha=new)
+carried=collect()['candidates'];check(len(carried)==1 and carried[0]['record']=='5-20261001000000.json','old source survives new review')
+classify([record([carried[0]['id']],present=False,evidence='restored guard now exits 1')],sha=new);before=registered.read_bytes();out=run();check(out.returncode==0,out.stdout+out.stderr)
+check(json.loads(out.stdout)['verdicts'][0]['exit']=='RESOLVED',out.stdout);check(registered.read_bytes()==before,'RESOLVED does not re-register');check('PR_RECOMMENDATIONS_CHECK=none' in pending(),pending());check('issue create' not in (w/'gh.log').read_text(),'never files PR defects')
+# The skill's machine route must precede sweep done/persist, preserving the original sentinel.
+nb=(plugin/'skills/fix/references/nb-sweep.md').read_text();it=(plugin/'skills/iterate/SKILL.md').read_text()
+check(nb.index('NB_SWEEP_PR_FIX=pending') < nb.index('**起票**'),'FIX branch before external filing')
+check('output-handoff --pr {pr_number} --result non-fatal-only' in nb,'existing return handoff used')
+check('| `[fix:non-fatal-only]` | PR 内推奨の修正。' in it,'iterate routes to normal fix without sweep error')
+check('PR 内推奨へ登録しただけでは sweep は完了していない' in nb,'pending never marks sweep done')
+print(f'sweep automatic registration: {checks} checks passed')
+PY_SWEEP_REGISTRATION
+then
+  pass "T-27 real sweep dispatcher registers and routes PR-origin roots"
+else
+  fail "T-27 sweep automatic registration"
+fi
+
 if ! print_summary "$(basename "$0")" "nb-sweep helper contract drift — check iterate SKILL.md / iterate-step.sh 5.S / 6.1.d preserve"; then
   exit 1
 fi
