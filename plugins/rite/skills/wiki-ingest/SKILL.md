@@ -1146,20 +1146,36 @@ rationale: references/rationale.md#lock-release-failsafe
 
 ```bash
 lock_state=$(bash "{plugin_root}/hooks/scripts/wiki-ingest-lock.sh" check) || lock_state=""
+wiki_same_branch_wt=false
+if [ "{branch_strategy}" = "same_branch" ] && [ -f "$(git rev-parse --git-dir)/commondir" ]; then
+  wiki_same_branch_wt=true
+fi
 case "$lock_state" in
   own) ;;
   "")
     echo "WARNING: ingest 終了時に wiki ingest のロックの状態を確認できませんでした（直前の ERROR を参照）" >&2
     echo "  同じ原因でロックが解放されていない可能性があります。解放されなかったロックは取得から最長 2 時間後に回収され、それまで他セッションの ingest は skip されます" >&2
     ;;
-  *) echo "WARNING: ingest 中に wiki ingest のロックを失っていました (check=$lock_state)。別のセッションが同じ wiki worktree へ並行して書き込んだ可能性があります" >&2 ;;
+  *)
+    wiki_write_location="同じ wiki worktree へ並行して"
+    if [ "$wiki_same_branch_wt" = true ]; then
+      wiki_write_location="そのセッションのブランチへ"
+    fi
+    echo "WARNING: ingest 中に wiki ingest のロックを失っていました (check=$lock_state)。別のセッションが${wiki_write_location}書き込んだ可能性があります" >&2
+    ;;
 esac
 if [ "$lock_state" != "own" ]; then
   echo "[CONTEXT] WIKI_INGEST_LOCK_LOST=1; check=${lock_state:-unknown}"
   wiki_wt_abs="{wiki_worktree_abs}"; wiki_wt_abs="${wiki_wt_abs:-.rite/wiki-worktree}"
   case "{branch_strategy}" in
     separate_branch) echo "  対処: 直近の wiki の commit を確認し（git -C \"$wiki_wt_abs\" log --oneline -n 20）、重複や上書きがあれば手で直してください" >&2 ;;
-    same_branch) echo "  対処: 直近の wiki の commit を確認し（git log --oneline -n 20 -- .rite/wiki/）、重複や上書きがあれば手で直してください" >&2 ;;
+    same_branch)
+      if [ "$wiki_same_branch_wt" = true ]; then
+        echo "  対処: git worktree list で他セッションのブランチを確認し、全ブランチの wiki の履歴（git log --all --oneline -n 20 -- .rite/wiki/）を調べ、重複や上書きがあれば手で直してください" >&2
+      else
+        echo "  対処: 直近の wiki の commit を確認し（git log --oneline -n 20 -- .rite/wiki/）、重複や上書きがあれば手で直してください" >&2
+      fi
+      ;;
     *) echo "  対処: 直近の wiki の commit を確認し（separate_branch: git -C \"$wiki_wt_abs\" log --oneline -n 20 / same_branch: git log --oneline -n 20 -- .rite/wiki/）、重複や上書きがあれば手で直してください" >&2 ;;
   esac
 fi
