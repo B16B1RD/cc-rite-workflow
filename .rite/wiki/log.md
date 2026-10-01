@@ -4,6 +4,8 @@
 
 * **Create**: [手順書の分岐行に書く理由欄は参照先 skill の停止規則を読み直してから書き、対になる記述を同時に揃える](pages/heuristics/branch-row-rationale-must-match-referenced-skill-behavior.md) — raw/reviews/20261001T172952Z-pr-3603.md ほか 4 件を新規ページ化
 
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=679, broken_refs=0（矛盾の意味比較は今回新規作成した 1 ページと関連ページに限定。全ページ間の意味比較は未実施で、全体の矛盾ゼロとして扱わない）
+
 ## 2026-10-01
 
 * **Update**: [実測ゲートで降格した文書指摘でも、grep で確認できる事実誤りはリリース転記前に修正で消化する](pages/heuristics/demoted-doc-factual-error-fix-before-release-transcription.md) — raw/fixes/20261001T105449Z-pr-3596.md、raw/reviews/20261001T104845Z-pr-3596.md、raw/reviews/20261001T111805Z-pr-3596.md を統合（承認済み草案の扱いと、対象スキル名・単複の 2 型を補強）
