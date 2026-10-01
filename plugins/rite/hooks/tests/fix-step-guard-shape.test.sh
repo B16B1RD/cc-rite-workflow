@@ -25,7 +25,7 @@ assert_file_exists_or_fail "fix-step.sh exists" "$STEP" || exit 1
 
 # fix が読む reference と、それぞれの ```bash ブロック数（移設時点の数。抽出の空振りと削除を fail にする）。
 REF_DIR="$PLUGIN_ROOT/skills/fix/references"
-REF_BLOCKS="target-comment.md:3 nb-sweep.md:5 wiki-recording.md:4 accept-finding.md:1 non-fatal-record.md:1"
+REF_BLOCKS="target-comment.md:3 nb-sweep.md:6 wiki-recording.md:4 accept-finding.md:1 non-fatal-record.md:1"
 for entry in $REF_BLOCKS; do
   assert_file_exists_or_fail "${entry%%:*} exists" "$REF_DIR/${entry%%:*}" || exit 1
 done

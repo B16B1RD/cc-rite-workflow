@@ -81,6 +81,7 @@
 #                    --record-ids JSON --projects-enabled true|false --project-number N
 #                    --project-owner O
 #   bash fix-step.sh nb-sweep-persist --pr N --owner-repo O/R
+#   bash fix-step.sh nb-sweep-reconcile --pr N --owner-repo O/R
 #   bash fix-step.sh nb-sweep-finish --pr N
 #   bash fix-step.sh wiki-trigger --pr N --content-file F --title-file F
 #   bash fix-step.sh wiki-trigger-result --content-write-failed 0|1 --trigger-exit N
@@ -1852,7 +1853,40 @@ else
     echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_extract_failed" >&2
     echo "[fix:error]"; exit 1
   }
-  bash "$plugin_root"/hooks/scripts/nb-sweep-ledger.sh append --ledger-file "$ledger" --entries-file "$entries_file" || {
+  persist_rows="$entries_file"
+  if [ "${nb_reconcile:-0}" = 1 ]; then
+    # 止まった sweep の戻り方: 台帳に既にある行は載せず、無い行だけを元の出典のまま載せる（append は重複を除かない）
+    missing_rows=$(mktemp "${TMPDIR:-/tmp}/rite-nb-missing-XXXXXX") || { echo "[fix:error]"; exit 1; }
+    missing_err=$(mktemp "${TMPDIR:-/tmp}/rite-nb-missing-err-XXXXXX") || { echo "[fix:error]"; exit 1; }
+    if ! bash "$plugin_root"/hooks/scripts/nb-sweep-ledger.sh missing --ledger-file "$ledger" --entries-file "$entries_file" \
+      > "$missing_rows" 2> "$missing_err"; then
+      neutralize_ctrl --keep-newline < "$missing_err" >&2
+      echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_check_failed" >&2
+      echo "[fix:error]"; exit 1
+    fi
+    neutralize_ctrl --keep-newline < "$missing_err" >&2
+    reconcile_rows=$(sed -n 's/^\[CONTEXT\] NB_SWEEP_LEDGER=ok; op=missing; rows=\([0-9]*\); missing=\([0-9]*\)$/\1/p' "$missing_err" | tail -1)
+    reconcile_missing=$(sed -n 's/^\[CONTEXT\] NB_SWEEP_LEDGER=ok; op=missing; rows=\([0-9]*\); missing=\([0-9]*\)$/\2/p' "$missing_err" | tail -1)
+    rm -f -- "$missing_err"
+    case "$reconcile_rows:$reconcile_missing" in
+      ''|:*|*:|*[!0-9:]*)
+        echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_check_failed" >&2
+        echo "[fix:error]"; exit 1 ;;
+    esac
+    if [ "$reconcile_rows" -eq 0 ]; then
+      echo "ERROR: entries に台帳へ載せる行が無い: $entries_file" >&2
+      echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_entries_no_rows" >&2
+      echo "[fix:error]"; exit 1
+    fi
+    if [ "$reconcile_missing" -eq 0 ]; then
+      # 全行が台帳にある。台帳への書き込みは行わず、entries と持ち越した保留候補を消す
+      rm -f -- "$entries_file" "$sweep_root/.rite/state/adoption-hold-${pr_number}-sweep.json"
+      echo "[CONTEXT] NB_SWEEP_RECONCILE=already_recorded; rows=${reconcile_rows}; appended=0" >&2
+      return 0
+    fi
+    persist_rows="$missing_rows"
+  fi
+  bash "$plugin_root"/hooks/scripts/nb-sweep-ledger.sh append --ledger-file "$ledger" --entries-file "$persist_rows" || {
     echo "ERROR: 却下台帳 append 失敗" >&2
     echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_append_failed" >&2
     echo "[fix:error]"; exit 1
@@ -1892,7 +1926,17 @@ else
   rm -f -- "$record_err"
   # 外部への書き込みはすべて済んだ。持ち越した保留候補はもう要らないので sweep の hold を消す
   rm -f -- "$sweep_root/.rite/state/adoption-hold-${pr_number}-sweep.json"
+  if [ "${nb_reconcile:-0}" = 1 ]; then
+    rm -f -- "$entries_file"
+    echo "[CONTEXT] NB_SWEEP_RECONCILE=recorded; rows=${reconcile_rows}; appended=${reconcile_missing}" >&2
+  fi
 fi
+}
+
+# --- nb-sweep-reconcile ---------------------------------------------------------
+step_nb_sweep_reconcile() {
+nb_reconcile=1
+step_nb_sweep_persist
 }
 
 # --- nb-sweep-finish ------------------------------------------------------------
@@ -2226,6 +2270,7 @@ case "$subcommand" in
     jq -e 'type == "array"' <<< "$record_ids" >/dev/null 2>&1 || usage_error "--record-ids must be a JSON array: $record_ids"
     step_nb_sweep_file_issue ;;
   nb-sweep-persist) require pr owner-repo; step_nb_sweep_persist ;;
+  nb-sweep-reconcile) require pr owner-repo; step_nb_sweep_reconcile ;;
   nb-sweep-finish) require pr; step_nb_sweep_finish ;;
   wiki-trigger) require pr content-file title-file; step_wiki_trigger ;;
   wiki-trigger-result)

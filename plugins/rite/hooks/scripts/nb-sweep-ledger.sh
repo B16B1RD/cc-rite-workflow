@@ -10,6 +10,7 @@
 #   bash nb-sweep-ledger.sh append --ledger-file <path> --entries-file <path>
 #   bash nb-sweep-ledger.sh merge-into --body-file <path> --ledger-file <path>
 #   bash nb-sweep-ledger.sh tally --entries-file <path> [--record <basename>]
+#   bash nb-sweep-ledger.sh missing --ledger-file <path> --entries-file <path>
 #
 # extract  stdout: the ### 却下台帳 section (empty if absent). exit 0 when
 #          the body is readable even if no ledger exists.
@@ -40,6 +41,16 @@
 #          Entries are what an interrupted sweep already filed, so a leftover
 #          from another sweep must stop the sweep instead of standing in for
 #          this sweep's filing.
+# missing  stdout: the entries rows (same rows append would write) that the
+#          ledger does not hold yet. A ledger row holds an entries row when the
+#          finding_id, file:line and 出典 cells are all equal (the 判定 and 判定文
+#          cells are not compared; escaped pipes do not shift columns). A 4-column
+#          ledger row has no 出典 cell and never holds a row. stderr marker:
+#          `NB_SWEEP_LEDGER=ok; op=missing; rows=N; missing=M`. --ledger-file is
+#          the extract output and may be empty (no ledger yet); a missing file or
+#          unreadable entries fail. It never writes either file. Used to resume a
+#          sweep whose ledger write may already have happened, so the rows are
+#          appended once and only once.
 #
 # extract の出力は節末尾の空行を含まない。merge-into は台帳の前後を空行 1 行ずつに揃える。
 # このため同じ本文に extract → merge-into を繰り返しても本文は変わらず、空行も増えない。
@@ -63,7 +74,7 @@ entries_file=""
 record_base=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    extract|append|merge-into|tally)
+    extract|append|merge-into|tally|missing)
       [ -z "$cmd" ] || { echo "ERROR: multiple subcommands" >&2; exit 2; }
       cmd=$1; shift ;;
     --body-file) body_file=${2:-}; shift 2 ;;
@@ -74,7 +85,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-[ -n "$cmd" ] || { echo "ERROR: subcommand required (extract|append|merge-into|tally)" >&2; exit 2; }
+[ -n "$cmd" ] || { echo "ERROR: subcommand required (extract|append|merge-into|tally|missing)" >&2; exit 2; }
 
 MARKER='## 📜 rite 非実測指摘の記録'
 LEDGER_HEAD='### 却下台帳'
@@ -298,5 +309,48 @@ case "$cmd" in
     fi
     printf '%s\n' "$counts"
     echo "[CONTEXT] NB_SWEEP_LEDGER=ok; op=tally" >&2
+    ;;
+  missing)
+    [ -n "$ledger_file" ] || { echo "ERROR: --ledger-file is required" >&2; exit 2; }
+    [ -n "$entries_file" ] || { echo "ERROR: --entries-file is required" >&2; exit 2; }
+    if [ ! -f "$ledger_file" ] || [ ! -r "$ledger_file" ]; then
+      echo "ERROR: ledger file unreadable: $ledger_file" >&2
+      echo "[CONTEXT] NB_SWEEP_LEDGER=failed; op=missing; reason=ledger_unreadable" >&2
+      exit 1
+    fi
+    if [ ! -f "$entries_file" ] || [ ! -r "$entries_file" ]; then
+      echo "ERROR: entries file unreadable: $entries_file" >&2
+      echo "[CONTEXT] NB_SWEEP_LEDGER=failed; op=missing; reason=entries_missing" >&2
+      exit 1
+    fi
+    rows=$(mktemp "${TMPDIR:-/tmp}/rite-nb-rows-XXXXXX") || {
+      echo "ERROR: mktemp failed" >&2
+      echo "[CONTEXT] NB_SWEEP_LEDGER=failed; op=missing; reason=mktemp_failed" >&2
+      exit 1
+    }
+    cleanup() { rm -f -- "$rows"; }
+    trap cleanup EXIT HUP INT TERM
+    # append と同じ行だけを entries の行として数える
+    { grep -E '^\| ' "$entries_file" || true; } | { grep -Ev '^\|[-: |]+\|$' || true; } \
+      | { grep -Ev '^\| finding_id ' || true; } > "$rows"
+    # 行は 照合キー (finding_id, file:line, 出典) で台帳と突き合わせる。セル内のエスケープ済みパイプは区切りにしない
+    if ! awk '
+        function key(line,   n, c, i) {
+          sub(/\r$/, "", line); gsub(/\\\|/, "", line); n = split(line, c, "|")
+          for (i = 2; i <= 6; i++) gsub(/^[ \t]+|[ \t]+$/, "", c[i])
+          return c[2] SUBSEP c[3] SUBSEP (n == 7 ? c[6] : "")
+        }
+        FILENAME == ARGV[1] {
+          line = $0; sub(/\r$/, "", line)
+          if (index(line, "| ") != 1 || line ~ /^[|][-: |]+[|]$/ || index(line, "| finding_id ") == 1) next
+          held[key(line)] = 1; next
+        }
+        { total++; if (!(key($0) in held)) { miss++; line = $0; sub(/\r$/, "", line); print line } }
+        END { printf "[CONTEXT] NB_SWEEP_LEDGER=ok; op=missing; rows=%d; missing=%d\n", total, miss > "/dev/stderr" }
+      ' "$ledger_file" "$rows"; then
+      echo "ERROR: ledger and entries rows cannot be compared" >&2
+      echo "[CONTEXT] NB_SWEEP_LEDGER=failed; op=missing; reason=compare_failed" >&2
+      exit 1
+    fi
     ;;
 esac

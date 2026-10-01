@@ -11,7 +11,11 @@ bash {plugin_root}/scripts/fix-step.sh nb-sweep-collect --pr {pr_number}
 
 `empty` なら手順 2・3 を skip して fix/SKILL.md の 5.1 へ。collect は sweep の hold ファイル（state root の `.rite/state/adoption-hold-{pr_number}-sweep.json`）があれば、その候補のうち今回の target と内容の一致しないものを `candidates[]` に合流させる（元の review JSON の basename を `record` に持ち、id は `<record>#<key>`）。保留した commit を問わず、今回の review JSON の head で判定し直す（直っていれば RESOLVED、PR 起因が残れば保留のまま）。hold ファイルは手順 3 の台帳記録が成功するまで残る（手順 3 の bash が消す）。そのため起票や台帳 persist の途中で止まった再実行でも、持ち越した候補は候補に残る。
 
-`NB_SWEEP_ENTRIES=present` なら、この sweep の起票は前回済んでいて手順 3 で止まっている（entries は手順 2 の全件成功後にだけ作られ、手順 4 か `empty` で消える）。手順 2 を実行せず、手順 3 の後の戻り方で entries を直して手順 3 から続ける。`absent` なら手順 2 へ。`reason=nb_sweep_entries_stale` は、entries の 1 行目（`<!-- nb-sweep-record: ... -->`）が今回の `record=` の basename を名指さない（別の sweep の entries が残っている）。起票も台帳 persist も始めずに止まる。行の出典は照合しない（合流した保留候補の行は元の review JSON を出典に持つ）。1 行目が別の record を名指す entries の行は、前回の sweep が起票したまま台帳に載せられなかった記録であり、1 行目も行の出典も今回の record に書き換えてはならない（書き換えると手順 2 を飛ばし、今回の対象が起票も記録もされない）。記録コメントの `### 却下台帳` に同じ id・位置・出典の行が既にあれば、手順 3 は成功済みなので再実行しない（append は重複を除かず、同じ行が二重に載る）。entries を消して `/rite:iterate {pr_number}` を再実行する。無ければ書き換えずに手順 3 の bash だけを実行して元の出典のまま台帳へ載せ、成功したら entries を消して `/rite:iterate {pr_number}` を再実行する。台帳に載った指摘は collect が除外するので重複起票せず、今回の sweep は手順 2 から始まる。
+`NB_SWEEP_ENTRIES=present` なら、この sweep の起票は前回済んでいて手順 3 で止まっている（entries は手順 2 の全件成功後にだけ作られ、手順 4 か `empty` で消える）。手順 2 を実行せず、手順 3 の後の戻り方で entries を直して手順 3 から続ける。`absent` なら手順 2 へ。`reason=nb_sweep_entries_stale` は、entries の 1 行目（`<!-- nb-sweep-record: ... -->`）が今回の `record=` の basename を名指さない（別の sweep の entries が残っている）。起票も台帳 persist も始めずに止まる。行の出典は照合しない（合流した保留候補の行は元の review JSON を出典に持つ）。1 行目が別の record を名指す entries の行は、前回の sweep が起票したまま台帳に載せられなかった記録であり、1 行目も行の出典も今回の record に書き換えてはならない（書き換えると手順 2 を飛ばし、今回の対象が起票も記録もされない）。戻り方は次の 1 行を実行する。helper が記録コメントの `### 却下台帳` を読み、entries の全行について同じ id・位置・出典の行が既にあるかを照合する。全行が載っていれば台帳へ書かずに entries を消す（手順 3 は成功済み）。載っていない行があれば、その行だけを元の出典のまま台帳へ載せてから entries を消す（append は重複を除かないので、載っている行は二度載せない）。記録コメントの取得・台帳の抽出に失敗したときは `[fix:error]` で止まり、entries は残る。成功したら `/rite:iterate {pr_number}` を再実行する。台帳に載った指摘は collect が除外するので重複起票せず、今回の sweep は手順 2 から始まる。
+
+```bash
+bash {plugin_root}/scripts/fix-step.sh nb-sweep-reconcile --pr {pr_number} --owner-repo {owner_repo}
+```
 
 2. **採否ゲートと起票**（採否は採否判定 helper の出口で決め、重要度・実測で決めない）:
 
