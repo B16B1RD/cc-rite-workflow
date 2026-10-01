@@ -4216,3 +4216,8 @@ T02:22:43+09:00 — review ingest (skip pages)
 * **Skip**: Wiki ロック喪失時の worktree 案内をコードと検証・commit log に反映済み。プラグインの実装知見をドメイン経験則として重複記録しない — [レビュー結果](raw/reviews/20261001T050230Z-pr-3592.md)
 
 * **Lint incomplete**: 全ページの意味比較は未実施、矛盾数は未確定。機械検査の実測: {"stale": ["n_stale=66", "[CONTEXT] WIKI_LINT_STALE=66"], "orphans": ["n_orphans=0", "[CONTEXT] WIKI_LINT_ORPHANS=0"], "source-refs": ["all_source_refs_read_ok=true", "all_source_refs_read_errors=0"], "skipped-refs": ["log_read_ok=true"], "broken-refs": ["n_broken_refs=0", "broken_refs_read_ok=true", "[CONTEXT] WIKI_LINT_BROKEN_REFS=0"], "descriptive-refs": ["descriptive_refs_read_errors=0", "[CONTEXT] WIKI_DESCRIPTIVE_REFS=0", "descriptive_refs_read_ok=true"]}; missing_concept=0, unregistered_raw=676。全体 lint 成功は主張しない。
+
+### 2026-10-01T05:44:57Z
+
+* **Update**: [CI 完了ゲートの判定](pages/heuristics/ci-pending-at-review-close-reroll-finder-after-completion.md) — 初期スナップショットと最終待機を分け、consumer テストと選定済み結果の保存を同期する
+* **Update**: [順序 assert の保護範囲](pages/anti-patterns/test-pin-protection-theater.md) — helper の対応要素数を超える呼出しで後段ガードが消える経路を、独立した順序検査と mutation で確かめる

@@ -4,9 +4,17 @@ title: "CI が pending のまま閉じたレビューは失敗 job を観測で�
 domain: "heuristics"
 description: "レビュー時点で CI が未完了だと reviewer は失敗 job のログを読めず、ローカル環境で通るテストだけを根拠に受入条件を充足と判定する。CI 完了後に失敗 job が本 PR の追加テストに対応するなら、その領域の reviewer を最新の CI 状態とログ付きで reroll し、失敗行を failing_test アンカーにして blocking へ戻す。advisory な CI leg でも降格理由にはならない。"
 created: "2026-09-16T12:08:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-30T09:18:44Z" }
+generated: { by: "rite-wiki-ingest/gpt-6.1-sol", at: "2026-10-01T05:44:57Z" }
 promote: rite-plugin
 sources:
+  - type: "reviews"
+    resource: "raw/reviews/20261001T040310Z-pr-3588.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261001T041021Z-pr-3588.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261001T045359Z-pr-3588.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T053114Z-pr-3588.md"
   - type: "reviews"
     resource: "raw/reviews/20260916T111808Z-pr-2910.md"
   - type: "fixes"
@@ -20,6 +28,7 @@ sources:
 tags: ["review-loop", "ci", "portability", "reroll", "acceptance-criteria"]
 confidence: high
 verified:
+  - { by: "rite-wiki-ingest/gpt-6.1-sol", at: "2026-10-01T05:44:57Z" }
   - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T06:12:43Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-30T09:18:44Z" }
 ---
@@ -67,6 +76,12 @@ reviewer 全員が FIXED / 実測 PASS で mergeable 相当に収束しかけた
 
 修正の後は、レビューの結論を出す前に全 OS の job の完了を待ち、macOS の job の結果を根拠に含めた。ロケールに依存する修正は Linux の awk では退行を検出できないため、macOS の job の結果だけが裏付けになる。
 
+### 初期スナップショットと最終完了ゲートを分ける
+
+レビュー開始時の CI スナップショット取得は待機せず、最終判定の直前には、受入条件確認後に同じ HEAD の全 job の完了を bounded wait で確認する。最終観測値は ci_status と ci_state の双方へ同期する。判定器を再利用し、取得失敗・未知値・未完了を成功に読み替えない。修正が必要な cycle は最終 CI ゲートを通過条件にせず、先に修正へ進む。
+
+手順へ工程を挿入したら、後段番号を参照する consumer テストも同じ変更で同期する。選定外の reviewer が必要と分かっても、選定済みの raw は変更せず全員分保存する。run が active なら restart ではなく、観測した CI 失敗を正規 deviation と修正計画へ載せ、次 cycle の選定で対象 reviewer を確認する。
+
 ## 関連ページ
 
 - [macOS の awk の == は UTF-8 ロケールで照合比較になり、別の日本語文字列を等しいと判定する](../anti-patterns/macos-awk-string-equality-uses-locale-collation.md)
@@ -80,3 +95,8 @@ reviewer 全員が FIXED / 実測 PASS で mergeable 相当に収束しかけた
 - [レビュー開始時点で CI が pending だった cycle の再確認を記録したレビュー結果](../../raw/reviews/20260926T054854Z-pr-3060.md)
 - [macOS の job の失敗を merge の直前まで見落とした経緯を記録した fix 結果](../../raw/fixes/20260930T084924Z-pr-3521.md)
 - [全 OS の job の完了を待って判定を確定したレビュー結果](../../raw/reviews/20260930T085300Z-pr-3521.md)
+
+- [検証と修正の記録](../../raw/reviews/20261001T040310Z-pr-3588.md)
+- [検証と修正の記録](../../raw/fixes/20261001T041021Z-pr-3588.md)
+- [検証と修正の記録](../../raw/fixes/20261001T045359Z-pr-3588.md)
+- [検証と修正の記録](../../raw/reviews/20261001T053114Z-pr-3588.md)

@@ -5,6 +5,12 @@ created: "2026-04-24T14:55:00+00:00"
 description: "test ファイルのコメントが「cleanup arm 3 site (L383/L409/L412) の完全一致を pin」のように **複数 site pin** を claim していても、実際の `assert_contains` が 1 site しか pin していない (または canonical phrase が実在 site と factually 一致しない) 場合、regression 検出インフラへの信頼を破壊する false-sense-of-security。"
 sources:
   - type: "reviews"
+    resource: "raw/reviews/20261001T050950Z-pr-3588.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261001T051440Z-pr-3588.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T053114Z-pr-3588.md"
+  - type: "reviews"
     resource: "raw/reviews/20260916T101455Z-pr-2910.md"
   - type: "reviews"
     resource: "raw/reviews/20260905T101143Z-pr-2571.md"
@@ -84,8 +90,9 @@ sources:
     resource: "raw/reviews/20260927T201521Z-pr-3333.md"
 tags: [test-pin, mutation-test, drift-check, protection-theater, canonical-phrase, same-file-3-site-sync, subsidiary-claim-empirical-verification, cross-file-cross-site-coverage, multi-axis-mutation-verification, channel-collision, negative-control, twin-site-satisfaction, anchor-uniqueness, occurrence-count-pin]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T20:27:53Z" }
+generated: { by: "rite-wiki-ingest/gpt-6.1-sol", at: "2026-10-01T05:44:57Z" }
 verified:
+  - { by: "rite-wiki-ingest/gpt-6.1-sol", at: "2026-10-01T05:44:57Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T20:27:53Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T07:35:00Z" }
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
@@ -427,6 +434,12 @@ positive control で総 hit 数が arm 数以上あると assert しても、一
 一つずつ arm を無効にし、他の arm を重複して発火させても当該 assert が失敗することを確かめると、総数による見かけの網羅を区別できる。
 
 
+### 順序 assert の引数追加は helper が全要素を読むか確認する
+
+順序を検査する helper が三要素しか読まないと、呼出しへ四つ目の位置を追加しても最後の要素は検査されない。元の後段の存在・順序ガードが消えても suite は成功し、手順の同期修正が保護範囲を弱める。
+
+共有 helper の対応要素数に収まる連続した順序 assert へ分ければ、前半と境界を結ぶ後半をそれぞれ検査できる。正常なコピーを positive control とし、最後の工程の削除、境界より前への移動、前半の逆転を個別に試し、各 mutation で suite が失敗することを確かめる。成功件数だけでは保護範囲の維持を示せない。
+
 ## 関連ページ
 
 - [HINT-specific 文言 pin で case arm 削除 regression を検知する](../patterns/hint-specific-assertion-pin.md)
@@ -645,3 +658,7 @@ variant ごとに引数配列を組み立てて同じ本体を呼ぶテストで
 - [文書側の字面 pin が片方向しか守らず、ヘッダが両側関係を名乗っていた](../../raw/reviews/20260911T183502Z-pr-2702.md)
 - [選言の両項を同時に満たすケースだけで「実行済み」と書く、fixture を置いても assert しない保持](../../raw/reviews/20260927T072805Z-pr-3224.md)
 - [配線確認コメントを assert の観測範囲に限定した後の再レビュー結果](../../raw/reviews/20260927T201521Z-pr-3333.md)
+
+- [検証と修正の記録](../../raw/reviews/20261001T050950Z-pr-3588.md)
+- [検証と修正の記録](../../raw/fixes/20261001T051440Z-pr-3588.md)
+- [検証と修正の記録](../../raw/reviews/20261001T053114Z-pr-3588.md)
