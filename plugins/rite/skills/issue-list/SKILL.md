@@ -92,7 +92,7 @@ gh issue list -R {owner_repo} --label "{label}" --json number,title,state,labels
 
 ### 3.0 Check Language Setting
 
-Before displaying results, read the `language` field from `rite-config.yml` using the Read tool, and determine the output language:
+Before displaying results, resolve the config path with `bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh` (worktree-safe; rc=0: Read the printed path as `{rite_config}`; rc=1: no config, use the default language; rc=2: show stderr and stop), read the `language` field from `{rite_config}`, and determine the output language:
 
 | Setting | Behavior |
 |---------|----------|
@@ -156,10 +156,10 @@ Display Projects information when `rite-config.yml` exists and Projects integrat
 
 ### 4.1 Check Configuration File
 
-Read `rite-config.yml` using the Read tool to check if Projects integration is enabled (`github.projects.enabled: true`).
-If the file does not exist, skip Phase 4 entirely.
+Resolve the config path with `bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh` and Read the printed path as `{rite_config}` to check if Projects integration is enabled (`github.projects.enabled: true`).
+If rc=1 (no config), skip Phase 4 entirely. If rc=2 (unreadable or unresolved), show stderr and stop with no default fallback.
 
-Also read `github.projects.project_number` and `github.projects.owner` from `rite-config.yml`. These two values are substituted into the `{project_number}` / `{owner}` placeholders of the Phase 4.2 Tool call 1 helper invocation before the script runs.
+Also read `github.projects.project_number` and `github.projects.owner` from `{rite_config}`. These two values are substituted into the `{project_number}` / `{owner}` placeholders of the Phase 4.2 Tool call 1 helper invocation before the script runs.
 
 ### 4.2 Fetch Projects Data and Build Status Map
 

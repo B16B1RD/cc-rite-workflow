@@ -1265,9 +1265,9 @@ rationale: references/rationale.md#returned-to-caller
 | `wiki-worktree-commit.sh --commit-only` exit 1 + stdout `reason=numref-hit`（ステップ 5.1） | exit 1 で fail-fast。番号参照の commit 前検査が拒否した。5.0.n の hit 行を書き直して再実行 |
 | `wiki-worktree-commit.sh --commit-only` exit 1 + stdout `reason=numref-error`（ステップ 5.1） | exit 1 で fail-fast。検査自体が完了できなかった。直前の stderr の `WIKI_INGEST_NUMREF=error; reason=` または ERROR 行が示す原因を解消して再実行 |
 | `wiki-worktree-commit.sh --commit-only` exit 1 + stdout に `reason=numref-hit` / `numref-error` なし（ステップ 5.1） | exit 1 で fail-fast。環境 / 引数エラーとして、直前の stderr が示す worktree・設定・引数の原因を解消して再実行 |
-| `wiki-worktree-commit.sh --commit-only` exit 3 (git add/commit 失敗、ステップ 5.1) | exit 1 で fail-fast。`git -C .rite/wiki-worktree status` で worktree の状態を確認 |
+| `wiki-worktree-commit.sh --commit-only` exit 3 (git add/commit 失敗、ステップ 5.1) | exit 1 で fail-fast。`git -C {wiki_worktree_abs} status` で worktree の状態を確認 |
 | `wiki-worktree-commit.sh --commit-only` exit 6 + stdout `reason=sandbox-mask`（管理ディレクトリ書込不可、ステップ 5.1） | exit 1 で停止。5.1 の bash block を `dangerouslyDisableSandbox: true` で 1 回だけ再実行する。再実行でも exit 6 なら管理ディレクトリの権限・容量を確認して停止 |
-| `wiki-worktree-commit.sh --push-only` exit 4 (push 失敗、ステップ 8.6) | 非 fatal で継続。commit は local wiki branch に保持される。`git -C .rite/wiki-worktree push origin {wiki_branch}` で手動回復、または次回 ingest の ステップ 8.6 が自動で flush を試みる |
+| `wiki-worktree-commit.sh --push-only` exit 4 (push 失敗、ステップ 8.6) | 非 fatal で継続。commit は local wiki branch に保持される。`git -C {wiki_worktree_abs} push origin {wiki_branch}` で手動回復、または次回 ingest の ステップ 8.6 が自動で flush を試みる |
 | `wiki-worktree-commit.sh` 未知の exit code | exit 1 で fail-fast |
 | `wiki-index-update.sh` 非ゼロ exit（exit 1 / exit 2 / 127 / signal 130・143・129 等、ステップ 6） | 当該 Raw Source の index 更新をスキップして続行（非 fatal）。分岐と対処はステップ 6 の結果 marker 表が SoT |
 | `branch_strategy` が未知の値 | ステップ 5.1 の if/elif/else 末尾 else 分岐で fail-fast (ステップ 5.2 の bash block は same_branch 単独分岐のため未知値はステップ 5.1 の else が catch する。`rite-config.yml` の `wiki.branch_strategy` を確認) |

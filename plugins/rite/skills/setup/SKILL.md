@@ -533,9 +533,9 @@ If the user selects "set up later", proceed to Phase 4 with `iteration.enabled: 
 
 #### 4.1.1 Check for Existing Configuration
 
-Read `rite-config.yml` in the project root with the Read tool.
+Resolve the existing config with `bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh` (worktree-safe) and Read the printed path as `{rite_config}`. rc=2 (unreadable or unresolved): show stderr and stop, with no default fallback.
 
-**If the file does not exist** (Read tool returns an error) → Proceed to 4.1.2 (new generation).
+**If the file does not exist** (resolver rc=1) → Proceed to 4.1.2 (new generation).
 
 **If the file exists** → Check `schema_version` field:
 
