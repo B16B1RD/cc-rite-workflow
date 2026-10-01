@@ -75,7 +75,7 @@ with tempfile.TemporaryDirectory(prefix="rite-review-abandon-") as tmp:
         if state_path.exists():
             state_path.unlink()
         flow("set", "--phase", "pr", "--next", "review", "--pr", pr, "--issue", issue,
-             "--branch", "fix/issue-" + str(issue) + "-x", "--worktree", str(root / "wt"))
+             "--branch", "fix/issue-" + str(issue) + "-x", "--worktree", str(root))
         flow("review-start", "--selection", selection)
         check(state()["review_cycle"]["status"] == "collecting", "fixture freezes a collecting cycle")
 

@@ -152,6 +152,25 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
           saved['mechanical'] and saved['checked_at'], 'canonical scope receipt separates semantic and mechanical evidence')
     invoke()  # Interrupted callers may repeat the check without starting another review.
     check(json.loads(state_path.read_text())['cycle_count'] == 1, 'idempotent check preserves cycle')
+    # Run from another repository whose HEAD is not the reviewed commit, check and verify name the
+    # location before the context / HEAD check would report a stale review.
+    elsewhere = private / 'elsewhere'  # .rite/ is excluded, so the fixture repository stays clean
+    run(['git', 'init', '-q', str(elsewhere)])
+    run(['git', '-C', str(elsewhere), '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+         'commit', '-q', '--allow-empty', '-m', 'unrelated'])
+    recorded = json.loads(state_path.read_text())
+    dump(state_path, dict(recorded, worktree=str(root.resolve())))
+    for mode in ('check', 'verify'):
+        command = ['bash', str(helper), mode, '--plan', str(plan_file), '--issue', str(issue_file)]
+        if mode == 'verify':
+            command += ['--kind', 'all']
+        wrong_place = subprocess.run(command, cwd=elsewhere, env=env, text=True, capture_output=True)
+        check(wrong_place.returncode != 0 and str(root.resolve()) in wrong_place.stderr
+              and str(elsewhere.resolve()) in wrong_place.stderr
+              and 'stale or foreign review context' not in wrong_place.stderr,
+              mode + ' outside the session worktree names expected and actual paths')
+    invoke()  # In the recorded worktree the existing checks run as before.
+    dump(state_path, recorded)
     file_issue = dict(issue, body=issue['body'].replace('`protected`', '`protected/secret.py`'))
     file_plan = copy.deepcopy(plan)
     file_plan['issue_body'] = file_issue['body']

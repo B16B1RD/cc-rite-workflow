@@ -176,6 +176,7 @@ def validate_context(plan, state, session, directory):
     (plan_gate) and checking *what* a plan says are separate questions: the
     retry path answers the first one itself and still needs both of these.
     """
+    cycle.require_session_worktree(state)
     require(state.get("session_id") == session, "foreign session state")
     current = state.get("review_cycle")
     require(isinstance(current, dict) and current.get("status") == "completed", "all reviews must be collected and saved")

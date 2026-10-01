@@ -307,6 +307,31 @@ with tempfile.TemporaryDirectory(prefix="rite-review-cycle-") as tmp:
     flow("review-start", "--selection", selection)
     check(cycle()["review_context"]["pr_number"] == 72 and state()["cycle_count"] == 1, "next PR starts after old receipt cleanup")
     check(other_path.read_bytes() == other_before, "next PR still isolates other session")
+    # Outside the recorded session worktree, review-start names the location before any HEAD / tree check.
+    elsewhere = root / "elsewhere"
+    run(["git", "init", "-q", str(elsewhere)])
+    flow("set", "--phase", "review", "--next", "review", "--worktree", elsewhere)
+    wrong_place = flow("review-start", "--selection", selection, ok=False)
+    check(wrong_place.returncode != 0 and str(elsewhere) in wrong_place.stderr and str(root.resolve()) in wrong_place.stderr
+          and "HEAD content differs" not in wrong_place.stderr and "HEAD changed" not in wrong_place.stderr,
+          "review-start outside the session worktree names expected and actual paths")
+    outside_git = subprocess.run(["bash", str(hooks / "flow-state.sh"), "review-start", "--selection", str(selection)],
+                                 cwd=tmp + "/..", env=env, text=True, errors="replace", capture_output=True)
+    check(outside_git.returncode != 0 and "wrong working directory" in outside_git.stderr
+          and str(elsewhere) in outside_git.stderr, "a directory outside any git work tree gets the same diagnosis")
+    # A state without a recorded worktree keeps the previous behaviour.
+    legacy = state()
+    legacy.pop("worktree")
+    dump(state_path, legacy)
+    legacy_run = flow("review-start", "--selection", selection, ok=False)
+    check("wrong working directory" not in legacy_run.stderr, "no recorded worktree: the location check is a no-op")
+    flow("set", "--phase", "review", "--next", "review", "--worktree", elsewhere)
+    # In the recorded worktree the existing HEAD check still stops a changed HEAD.
+    flow("set", "--phase", "review", "--next", "review", "--worktree", root.resolve())
+    run(["git", "-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-q", "--allow-empty", "-m", "moved"])
+    in_place = flow("review-start", "--selection", selection, ok=False)
+    check(in_place.returncode != 0 and "HEAD changed during incomplete review" in in_place.stderr
+          and "wrong working directory" not in in_place.stderr, "existing HEAD check still applies in the session worktree")
     # A mutation that removes the runtime guard must make this suite's real CLI probe fail.
     mutant = root / "mutant-hooks"
     shutil.copytree(hooks, mutant)
