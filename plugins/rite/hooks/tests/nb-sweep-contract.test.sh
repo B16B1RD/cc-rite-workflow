@@ -2127,6 +2127,11 @@ assert "T-26 missing: 5 セルでない entries 行 (未エスケープのパイ
 assert_grep "T-26 missing: 5 セルでない entries 行は行を示して止まる" "$t26_dir/bad-cells.err" 'entries row does not have 5 cells'
 assert_grep "T-26 missing: 5 セルでない entries 行は失敗理由を出す" "$t26_dir/bad-cells.err" 'op=missing; reason=compare_failed'
 assert "T-26 missing: 5 セルでない entries 行では件数 marker も出力行も出さない" "00" "$(grep -c 'op=missing; rows=' "$t26_dir/bad-cells.err")$(printf '%s' "$t26_bad_out" | wc -c | tr -d ' ')"
+printf '%s\n' "<!-- nb-sweep-record: $t26_src -->" "| E-4 | d.ts:4 | REJECT | x |  |" > "$t26_dir/empty-src.md"
+t26_empty_out=$("$LEDGER" missing --ledger-file "$t26_dir/ledger.md" --entries-file "$t26_dir/empty-src.md" 2> "$t26_dir/empty-src.err")
+assert "T-26 missing: 出典が空の entries 行は出典の無い旧 4 列行と誤一致させずに rc=1" 1 "$?"
+assert_grep "T-26 missing: 出典が空の entries 行は行を示して止まる" "$t26_dir/empty-src.err" 'non-empty 出典'
+assert "T-26 missing: 出典が空の entries 行では件数 marker も出力行も出さない" "00" "$(grep -c 'op=missing; rows=' "$t26_dir/empty-src.err")$(printf '%s' "$t26_empty_out" | wc -c | tr -d ' ')"
 printf '%s\n' "<!-- nb-sweep-record: $t26_src -->" '| finding_id | file:line | 判定 | 判定文 | 出典 |' '|---|---|---|---|---|' > "$t26_dir/header-only.md"
 "$LEDGER" missing --ledger-file "$t26_dir/ledger.md" --entries-file "$t26_dir/header-only.md" 2> "$t26_dir/rows0.err" > /dev/null
 assert_grep "T-26 missing: 列ヘッダと区切り行だけの entries は rows=0" "$t26_dir/rows0.err" 'rows=0; missing=0$'

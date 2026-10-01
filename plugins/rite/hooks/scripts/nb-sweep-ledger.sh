@@ -49,7 +49,8 @@
 #          `NB_SWEEP_LEDGER=ok; op=missing; rows=N; missing=M`. --ledger-file is
 #          the extract output and may be empty (no ledger yet); a missing file,
 #          unreadable entries, or an entries row that does not have exactly 5
-#          cells (an unescaped pipe) fail, because its 出典 cannot be trusted. It never writes either file. Used to resume a
+#          cells (an unescaped pipe) or has an empty 出典 cell fail, because its
+#          出典 cannot be trusted. It never writes either file. Used to resume a
 #          sweep whose ledger write may already have happened, so the rows are
 #          appended once and only once.
 #
@@ -337,9 +338,9 @@ case "$cmd" in
     # 行は 照合キー (finding_id, file:line, 出典) で台帳と突き合わせる。セル内のエスケープ済みパイプは区切りにしない
     if ! awk '
         function key(line,   n, c, i) {
-          sub(/\r$/, "", line); gsub(/\\\|/, "", line); n = split(line, c, "|"); ncols = n
+          sub(/\r$/, "", line); gsub(/\\\|/, "", line); n = split(line, c, "|")
           for (i = 2; i <= 6; i++) gsub(/^[ \t]+|[ \t]+$/, "", c[i])
-          return c[2] SUBSEP c[3] SUBSEP (n == 7 ? c[6] : "")
+          return (n == 7 && c[6] != "") ? c[2] SUBSEP c[3] SUBSEP c[6] : ""
         }
         FILENAME == ARGV[1] {
           line = $0; sub(/\r$/, "", line)
@@ -348,7 +349,7 @@ case "$cmd" in
         }
         {
           total++; k = key($0)
-          if (ncols != 7) { printf "ERROR: entries row does not have 5 cells (unescaped pipe in a cell?): %s\n", $0 > "/dev/stderr"; bad++; next }
+          if (k == "") { printf "ERROR: entries row does not have 5 cells with a non-empty 出典 (unescaped pipe in a cell?): %s\n", $0 > "/dev/stderr"; bad++; next }
           if (!(k in held)) { miss++; line = $0; sub(/\r$/, "", line); print line }
         }
         END { if (bad) exit 1; printf "[CONTEXT] NB_SWEEP_LEDGER=ok; op=missing; rows=%d; missing=%d\n", total, miss > "/dev/stderr" }
