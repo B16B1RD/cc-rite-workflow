@@ -4235,3 +4235,5 @@ T02:22:43+09:00 — review ingest (skip pages)
 * **Lint incomplete**: 全ページの意味比較は未実施、矛盾数は未確定。機械検査の実測: {"stale": ["n_stale=66", "[CONTEXT] WIKI_LINT_STALE=66"], "orphans": ["n_orphans=0", "[CONTEXT] WIKI_LINT_ORPHANS=0"], "source-refs": ["all_source_refs_read_ok=true", "all_source_refs_read_errors=0"], "skipped-refs": ["log_read_ok=true"], "broken-refs": ["n_broken_refs=0", "broken_refs_read_ok=true", "[CONTEXT] WIKI_LINT_BROKEN_REFS=0"], "descriptive-refs": ["descriptive_refs_read_errors=0", "[CONTEXT] WIKI_DESCRIPTIVE_REFS=0", "descriptive_refs_read_ok=true"]}; missing_concept=0, unregistered_raw=679。全体 lint 成功は主張しない。
 
 - 2026-10-01T07:31:00Z | Ingest | raw 8件を既存 patterns 2ページへ統合。有効CLI・副作用境界の変異検査と、Git fixture の実体パス正規化の観測を追加。検出器化候補: 有効入力で拒否guardの副作用停止を検査する。別レーンの raw は対象外。
+
+- 2026-10-01T07:34:23.397711+00:00 | Lint | 全666ページの機械検査: stale=66（informational）、orphans=0、broken_refs=0、descriptive_refs=0、出典読取エラー0、missing_concept=0、skip済み未登録raw=679（informational）。今回の8 rawは全件出典登録済み。変更2ページと関連する実体パス・変異検査ページの内容に新たな矛盾なし。全ページペアの意味比較は未完了であり、全体 contradictions=0とは判定しない。自動Lint応答はこの未完了を異常1件として記録。
