@@ -394,12 +394,17 @@ Execute test verification before committing when conditions are met.
 
 ##### Condition Check
 
-設定は 5.0.W と同じ resolver（`rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1`）で解決した `$rite_config` を読んで確認する。rc=2 は stderr を表示して停止し、既定値へ倒さない:
+設定は 5.0.W と同じ resolver で解決し、同じブロックで内容を表示して確認する。rc=2 は stderr を表示して停止し（`|| exit 1`）、既定値へ倒さない:
+
+```bash
+rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+cat "$rite_config"
+```
 
 | Condition | Check Method |
 |-----------|-------------|
-| `commands.test` is set | Non-null value in `rite-config.yml` |
-| `verification.run_tests_before_pr` is `true` | From `rite-config.yml` (default: `true`) |
+| `commands.test` is set | Non-null value in the resolved config |
+| `verification.run_tests_before_pr` is `true` | From the resolved config (default: `true`) |
 
 **Skip conditions** (any match → skip to 5.1.0.7, then 5.1.0.8, then 5.1.1):
 - `commands.test` is `null` or not set

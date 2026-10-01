@@ -345,7 +345,7 @@ if [ "{resolved_phase}" = "cleanup" ] || [ "{resolved_phase}" = "completed" ]; t
 fi
 ```
 
-`[CONTEXT] RECOVER_OUTSTANDING_WIKI=` / `RECOVER_OUTSTANDING_BRANCH=` marker のいずれかがあれば、Phase 4.1 の状態サマリに以下を追記する（`{wiki_worktree_abs}` は上の bash の `$wiki_wt`（`$state_root/.rite/wiki-worktree`）をリテラル置換する。無ければ追記しない — silent、未完了事項「なし」を明示するのは cleanup 自身の完了報告の責務であり、本節は検出のみ）:
+`[CONTEXT] RECOVER_OUTSTANDING_WIKI=` / `RECOVER_OUTSTANDING_BRANCH=` marker のいずれかがあれば、Phase 4.1 の状態サマリに以下を追記する（`{wiki_worktree_abs}` は `bash {plugin_root}/hooks/state-path-resolve.sh` の出力 + `/.rite/wiki-worktree` をリテラル置換する。無ければ追記しない — silent、未完了事項「なし」を明示するのは cleanup 自身の完了報告の責務であり、本節は検出のみ）:
 
 ```
 ⚠️ 未完了事項を検出しました:

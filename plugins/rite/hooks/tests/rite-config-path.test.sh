@@ -313,7 +313,20 @@ for sk in pr-create issue-implement lint skill-suggest issue-list setup; do
   sk_missing=""
   [[ -n "$resolver_at" && -n "$use_at" && "$resolver_at" -le "$use_at" ]] || sk_missing="$sk_missing resolver-before-use"
   [[ "$relative_reads" = "0" ]] || sk_missing="$sk_missing relative-reads=$relative_reads"
-  grep -qF 'rc=2' "$md" || sk_missing="$sk_missing rc2"
+  # rc=2 は停止の語と同じ行で数える（無関係な rc=2 の記述では通らない）
+  case "$sk" in issue-list) min_rc2=2 ;; *) min_rc2=1 ;; esac
+  rc2_stops=$(grep -cE 'rc=2.*(停止|stop)' "$md") || rc2_stops=0
+  [[ "$rc2_stops" -ge "$min_rc2" ]] || sk_missing="$sk_missing rc2-stop=$rc2_stops"
+  # rc=1 は各スキルの既存の「設定なし」の扱いへ進み、設定ファイルの直接 Read へ倒れない
+  case "$sk" in
+    lint|issue-implement)
+      grep -qF -- '--or-devnull' "$md" || sk_missing="$sk_missing or-devnull" ;;
+    *)
+      rc1_names_file=$(grep -E 'rc=1' "$md" | grep -cF 'rite-config.yml') || rc1_names_file=0
+      rc1_effect=$(grep -E 'rc=1' "$md" | grep -cE '`main`|既定|default|unset|未設定|[Ss]kip|スキップ|新規|new generation|Proceed') || rc1_effect=0
+      [[ "$rc1_names_file" = "0" ]] || sk_missing="$sk_missing rc1-names-file=$rc1_names_file"
+      [[ "$rc1_effect" -ge 1 ]] || sk_missing="$sk_missing rc1-effect" ;;
+  esac
   if [[ -z "$sk_missing" ]]; then
     pass "T-13 $sk reads the resolved config path"
   else
@@ -325,11 +338,19 @@ done
 for sk in wiki-init recover cleanup wiki-ingest; do
   md="$PLUGIN_ROOT/skills/$sk/SKILL.md"
   rel=$(grep -cF 'git -C .rite/wiki-worktree' "$md") || rel=0
-  abs=$(grep -cF '{wiki_worktree_abs}' "$md") || abs=0
-  if [[ "$rel" = "0" && "$abs" -ge 1 ]]; then
+  use=$(grep -cF 'git -C {wiki_worktree_abs}' "$md") || use=0
+  # 絶対パスの出どころ（定義）と使用箇所を別々に数える
+  if [[ "$sk" = wiki-ingest ]]; then
+    def=$(grep -cF 'WIKI_WORKTREE_ABS=' "$md") || def=0
+    min_use=2
+  else
+    def=$(grep -F '{wiki_worktree_abs}' "$md" | grep -cF 'state-path-resolve.sh') || def=0
+    case "$sk" in wiki-init) min_use=2 ;; *) min_use=1 ;; esac
+  fi
+  if [[ "$rel" = "0" && "$def" -ge 1 && "$use" -ge "$min_use" ]]; then
     pass "T-14 $sk wiki guidance uses the absolute worktree path"
   else
-    fail "T-14 $sk wiki guidance uses the absolute worktree path (relative=$rel abs=$abs)"
+    fail "T-14 $sk wiki guidance uses the absolute worktree path (relative=$rel def=$def use=$use)"
   fi
 done
 
