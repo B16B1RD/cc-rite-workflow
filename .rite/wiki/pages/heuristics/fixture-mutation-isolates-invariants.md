@@ -6,6 +6,8 @@ description: "複数の不変量（集合差分 I1/I2 + 行内整合 I3 等）�
 created: "2026-07-03T18:30:00+00:00"
 sources:
   - type: "reviews"
+    resource: "raw/reviews/20261001T015350Z-pr-3576.md"
+  - type: "reviews"
     resource: "raw/reviews/20260703T164934Z-pr-1743.md"
   - type: "fixes"
     resource: "raw/fixes/20260703T165654Z-pr-1743.md"
@@ -79,8 +81,9 @@ sources:
     resource: "raw/fixes/20260930T093720Z-pr-3525.md"
 tags: ["test", "fixture", "mutation", "invariant", "coverage"]
 confidence: high
-generated: { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T09:44:17Z" }
+generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-10-01T02:00:46Z" }
 verified:
+  - { by: "rite-wiki-ingest/gpt-6", at: "2026-10-01T02:00:46Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T18:43:00+00:00" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T23:20:00+00:00" }
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-13T01:10:00+00:00" }
@@ -300,6 +303,10 @@ helper の docstring が「この場合に記録を書く」と分岐を列挙�
 
 **積で書いた除外条件は因子ごとに結果が変わる入力を置く**: 除外を「名前が一致 かつ 種別が一致 かつ symlink でない」の積で書いたら、各因子を 1 つだけ外す変異ごとに結果が変わる入力（同名の通常ファイル、同名のディレクトリ、実在する先を指す symlink）を検査に揃える。どれか 1 つを外しても他の因子が同じ結果を返す入力しかなければ、その因子は固定されない。除外の範囲を ignore 判定で代用すると、ignore 済みディレクトリを入力にしたとき配下がすべて落ちて無検査になるので、対象は名前で限定する。
 
+### 入力の前提を固定する補強
+
+複合キーの列ごとの fixture は、出典だけでなく id と位置もそれぞれ単独で違う行を置く。列数が想定と違う行を空の列として補って照合すると旧形式と誤一致するため、その入力を拒否する分岐も個別に失敗注入して固定する。
+
 ## 関連ページ
 
 - [位置依存の表パースには検査行数ガードを対にする（silent false-pass 遮断）](../patterns/positional-parse-row-count-guard.md)
@@ -345,3 +352,5 @@ helper の docstring が「この場合に記録を書く」と分岐を列挙�
 - [積で書いた除外条件を検査したレビュー結果](../../raw/reviews/20260929T054229Z-pr-3434.md)
 - [重なった除外の片方を無効化しても通ることを確かめたレビュー結果](../../raw/reviews/20260930T092118Z-pr-3525.md)
 - [名乗りを観測した傾向と印に限った fix 結果](../../raw/fixes/20260930T093720Z-pr-3525.md)
+
+- [レビュー・修正結果](../../raw/reviews/20261001T015350Z-pr-3576.md)

@@ -4,11 +4,17 @@ domain: "anti-patterns"
 description: "`git diff --quiet <rev> -- <pathspec>` は pathspec がどのファイルにも一致しないとき「比較対象なし = 差分なし = exit 0」を返す。"
 created: "2026-07-13T09:15:00Z"
 sources:
+  - type: "fixes"
+    resource: "raw/fixes/20261001T015937Z-pr-3571.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T015022Z-pr-3571.md"
   - type: "reviews"
     resource: "raw/reviews/20260713T000901Z-pr-1840.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-13T09:15:00Z" }
+generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-10-01T02:00:46Z" }
+verified:
+  - { by: "rite-wiki-ingest/gpt-6", at: "2026-10-01T02:00:46Z" }
 ---
 
 # pathspec 不一致の git diff --quiet は exit 0 を返し「差分なし」ガードを無効化する
@@ -25,6 +31,10 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-13T09:15:00Z" }
 2. **空 pathspec** — `xargs -r` は空入力で何も実行せず rc 0。「比較していない」が「差分なし」に化ける。修正: 非空 guard を独立に置く。
 3. **quotePath C-quote** — 非 `-z` の `--name-only` は非 ASCII / 改行入りファイル名を `"\346..."` に C-quote する。quote 済みリテラルは pathspec として実ファイルに不一致 → exit 0。修正: `-z` 出力を xargs -0 に **pipe 直結** する (NUL は command substitution が落とすため変数を経由できない — この制約を改行 + tr で回避しようとしたことが quote 素通しを生んだ)。
 
+### 入力の前提を固定する補強
+
+テストの準備で git rm や git add を使う場合を含め、単一パスの存在を git ls-files で確かめるときも、シェルで引用するだけでは Git 側の glob 解釈は止まらない。[id].tsx のような文字を含む名前は :(literal) を付けて照合する。
+
 ## 検出のポイント
 
 - 「差分なし (rc 0) → 安全」型の判定を見たら、「pathspec が実在ファイルに解決されたこと」が独立に保証されているかを確認する
@@ -35,3 +45,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-13T09:15:00Z" }
 
 - [[path-basis-change-observation-surface-sweep]] — 基準不一致の一般形
 - [[classifier-destructive-action-same-tree-alignment]] — 同 PR の姉妹 heuristic
+
+- [レビュー・修正結果](../../raw/reviews/20261001T015022Z-pr-3571.md)
+
+- [修正結果](../../raw/fixes/20261001T015937Z-pr-3571.md)

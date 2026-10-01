@@ -4,12 +4,17 @@ title: "GNU 形式の `sed -i '<expr>' file` は BSD sed で fixture を書き�
 domain: "anti-patterns"
 description: "BSD sed は `-i` の次の引数を backup 拡張子と解釈するため、式が拡張子・ファイル名が script として扱われ parse error になる。`set -e` の無いテストでは無言で先へ進み、fixture 不変のまま突合系 assertion だけが落ちる。"
 created: "2026-09-06T16:10:23Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T15:08:04Z" }
+generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-10-01T02:00:46Z" }
 verified:
+  - { by: "rite-wiki-ingest/gpt-6", at: "2026-10-01T02:00:46Z" }
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-07T23:54:45Z" }
   - { by: "rite-wiki-ingest/gpt-5", at: "2026-09-16T14:11:59Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T15:08:04Z" }
 sources:
+  - type: "fixes"
+    resource: "raw/fixes/20261001T015937Z-pr-3571.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T015022Z-pr-3571.md"
   - type: "reviews"
     resource: "raw/reviews/20260906T155431Z-pr-2582.md"
   - type: "reviews"
@@ -50,6 +55,10 @@ BSD sed（macOS 既定）は `-i` の直後の引数を backup 拡張子とし�
 
 `-i` オプションだけでなく、挿入命令 `i` の同一行形式も GNU/BSD 差を持つ。境界 fixture を作る `sed '20i\ingested: false'` は Linux で成功しても macOS では失敗した。行位置を保つ挿入は `awk 'NR == 20 { print "ingested: false" } { print }'` で表現でき、元本文も最後まで出力する。fixture 生成の終了コードと生成行位置を確認し、Linux の成功だけを移植性の根拠にしない。
 
+### 入力の前提を固定する補強
+
+fixture の書き換えには GNU/BSD の両方で動く sed -i.bak または awk の出力を別ファイルへ書く形を使い、書き換え後に狙った前提が成立したこと自体を assert する。書き換えコマンドの失敗を見逃すと、その後の判定が空振りで通ることがある。
+
 ## 関連ページ
 
 - [移植性の指摘は「環境分岐を足す」より先に「その正規表現機能が本当に要るか」を疑う](../heuristics/portability-fix-questions-the-regex-feature-first.md)
@@ -63,3 +72,7 @@ BSD sed（macOS 既定）は `-i` の直後の引数を backup 拡張子とし�
 - [mock の事後パッチが macOS で失敗し、否定アサーションも空振りし得たレビュー結果](../../raw/reviews/20260916T135355Z-pr-2917.md)
 - [marker を mock 定義へ移して事後パッチを除去した修正結果](../../raw/fixes/20260916T140542Z-pr-2917.md)
 - [置き換えを 2 変異で実測した再レビュー結果](../../raw/reviews/20260916T141828Z-pr-2917.md)
+
+- [レビュー・修正結果](../../raw/reviews/20261001T015022Z-pr-3571.md)
+
+- [修正結果](../../raw/fixes/20261001T015937Z-pr-3571.md)

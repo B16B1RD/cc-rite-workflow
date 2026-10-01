@@ -81,6 +81,17 @@
 * **Lint incomplete** — 機械検査は stale=65, orphans=0, missing_concept=0, unregistered_raw=652, broken_refs=0, descriptive_refs=0。今回更新したページと関連する経験則の比較に矛盾は見つからなかった。全ページ間の意味的な矛盾比較は未完了で、Wiki 全体の品質検査成功とは扱わない。
 
 * **Lint incomplete** — 機械検査は stale=65, orphans=0, missing_concept=0, unregistered_raw=661, broken_refs=0, descriptive_refs=0。今回追加・更新したページと関連する経験則の比較に矛盾は見つからなかった。全ページ間の意味的な矛盾比較は未完了で、Wiki 全体の品質検査成功とは扱わない。
+* **Skip**: [20261001T014935Z-pr-3575.md](raw/reviews/20261001T014935Z-pr-3575.md) — 今回の収束結果・運用記録のみで新しい経験則なし
+* **Update**: [GNU 形式の `sed -i '<expr>' file` は BSD sed で fixture を書き換えないまま失敗する](pages/anti-patterns/gnu-sed-inplace-silently-noop-on-bsd.md) — raw source を統合
+* **Update**: [pathspec 不一致の git diff --quiet は exit 0 を返し「差分なし」ガードを無効化する](pages/anti-patterns/pathspec-miss-exit-zero-defeats-diff-guard.md) — raw source を統合
+* **Skip**: [20261001T012755Z-pr-3571.md](raw/reviews/20261001T012755Z-pr-3571.md) — 収束と残存推奨の記録のみで独立した経験則なし
+* **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw source を統合
+* **Skip**: [20261001T012632Z-pr-3575.md](raw/reviews/20261001T012632Z-pr-3575.md) — 今回の収束結果・運用記録のみで新しい経験則なし
+* **Skip**: [20261001T013851Z-pr-3575.md](raw/fixes/20261001T013851Z-pr-3575.md) — 今回の収束結果・運用記録のみで新しい経験則なし
+* **Update**: [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) — raw source を統合
+* **Update**: [GNU 形式の `sed -i '<expr>' file` は BSD sed で fixture を書き換えないまま失敗する](pages/anti-patterns/gnu-sed-inplace-silently-noop-on-bsd.md) — raw source を統合
+* **Update**: [pathspec 不一致の git diff --quiet は exit 0 を返し「差分なし」ガードを無効化する](pages/anti-patterns/pathspec-miss-exit-zero-defeats-diff-guard.md) — raw source を統合
+
 
 ## 2026-09-30
 

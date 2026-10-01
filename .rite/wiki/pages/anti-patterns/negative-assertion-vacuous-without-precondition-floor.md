@@ -6,6 +6,8 @@ description: "「X が起きていないこと」を検証する assert は、�
 created: "2026-07-25T14:18:43Z"
 sources:
   - type: "fixes"
+    resource: "raw/fixes/20261001T013801Z-pr-3571.md"
+  - type: "fixes"
     resource: "raw/fixes/20260725T103734Z-pr-2017-cycle3.md"
   - type: "reviews"
     resource: "raw/reviews/20260916T125101Z-pr-2914.md"
@@ -37,8 +39,9 @@ sources:
     resource: "raw/reviews/20260928T045038Z-pr-3386.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T05:02:36Z" }
+generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-10-01T02:00:46Z" }
 verified:
+  - { by: "rite-wiki-ingest/gpt-6", at: "2026-10-01T02:00:46Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T12:58:00Z" }
   - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T07:10:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T10:30:52Z" }
@@ -210,6 +213,10 @@ rm -f "$result_dir"/*.json
 
 path traversal を含む不正な id で「印が作られないこと」を assert したテストが、検証を外しても通っていた。id（`../x` の形）が存在しない中間ディレクトリを経由するため、検証の有無に関係なく書き込みが失敗していた。traversal が実在する位置へ着地する id（中間ディレクトリを先に作っておく）にすると、検証を外したときに印が作られて assert が落ちる。テストが分岐へ実際に入るかは、対応する実装行の変異で落ちることで確かめる。
 
+### 入力の前提を固定する補強
+
+回復経路を試す前に、その経路が必要になる失敗直後の状態を fixture へ明示的に作る。正常走行の状態をそのまま流用すると、何もしない回復処理も通ってしまう。入口状態の成立と回復後の変化を別々に assert する。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
@@ -233,3 +240,5 @@ path traversal を含む不正な id で「印が作られないこと」を ass
 - [否定の assert を成功 marker の完全一致と WARNING 行の件数で表す形を確認したレビュー結果](../../raw/reviews/20260927T165534Z-pr-3317.md)
 - [不在の assert の検出式を陽性・陰性サンプルで固定したレビュー結果](../../raw/reviews/20260927T191353Z-pr-3325.md)
 - [レビュー結果（traversal fixture の空振りの解消確認）](../../raw/reviews/20260928T045038Z-pr-3386.md)
+
+- [レビュー・修正結果](../../raw/fixes/20261001T013801Z-pr-3571.md)
