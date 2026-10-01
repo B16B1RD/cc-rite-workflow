@@ -30,6 +30,33 @@ blocking gate として実行する。
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-10-01
+
+### 変更
+
+- **`/rite:recover` に別セッションからのレビュー再開手順を明記** — 旧セッションの state・raw・manifest・時計を保ち、所有権と停止理由を確認したあと、現 HEAD で全差分レビューとして新しい run を開始する。停止済み・履歴上の停止・所有未確認の run は、新しいセッション ID に切り替えて回避しない。
+- **`/rite:pr-review` で途中停止の保存と再開の受理を分けた** — 未選定の reviewer が必要になって止まったとき、選定済み reviewer の証跡を残したまま保存できる。この保存は最終の成功でも run の停止でもなく、明示の承認だけでは再開を受理しない。
+- **手順の記述を実装に合わせた** — PR 内推奨の保留条件に既存の review-fix cycle 上限を明記。`issue-implement` は直接 commit 後の Wiki 適用証跡を、head の無条件書き換えではなく既存 helper（`--from HEAD^`、失敗時は capture からやり直し）で更新する。lint の走査不能エラー、here-string の SIGPIPE 回避（Bash 5.0 以前と 5.1 以降）、`>|` の commit 境界規則の理由説明を訂正。
+
+### 修正
+
+- **Git 外では state root の解決を失敗させる** — resolver が cwd へ倒れて無関係な場所に状態を作ることがなくなった。lifecycle hook は副作用の前に正常終了し、書き込み helper は非 0 で停止する。Git 内と明示 root の挙動は変わらない。
+- **paused の loop を入口で自動再開する** — pause 記録が残っていると、レビュー・`/rite:batch-run`・`/rite:recover` が既存ガードで停止していた。共通入口が既存の resume 操作を実行して pause 記録の解消を確認し、再開失敗や記録の残存は明示して停止する。
+- **`/rite:pr-review` は mergeable 確定前に全 CI job を確認する** — 受入条件レビューのあと最終報告の前に、pending の job を既存の上限付き方針で待ち、失敗・不明の check は fail closed で扱う。修正が必要な cycle はこの最終ゲートの影響を受けない。
+- **レビュー範囲と受入条件の抽出で入力を黙って落とさない** — レビュー範囲の積集合で `sort` が失敗したとき、base 側だけの変更として報告せず、診断を出して全体レビューへ倒す。受入条件の節の外（コードフェンス外）にある AC 項目行は、落とさずに最初の行番号つきの `ac_item_outside_section` で失敗する。
+- **`/rite:fix` の base 取り込みが Wiki 適用ゲートで止まらない** — 取り込み commit と push の間に `wiki-apply-advance-head.sh --from HEAD^` で証跡の head を進め、commit 直前に証跡を取り直す。capture は HEAD から削除したパス（blob 値 `-`）と symlink（リンク文字列の hash）を記録し、ゲートが照合する。`/rite:merge` と `/rite:batch-run` の BEHIND 案内も同じ手順に揃えた。
+- **`/rite:merge` が BEHIND による失敗からの戻り方を案内する** — マージ失敗後に OPEN と BEHIND を区別し、draft への戻し・検証済みの base 取り込み・再レビュー・全 CI job 完了後の再開を案内する。BEHIND の観測だけではマージを止めず、ブランチ保護のない通常マージは変わらない。
+- **`/rite:fix` の non-blocking sweep** — `origin=pr` の ADOPT 候補を停止させず、既存の PR 内推奨登録と通常の修正・再レビューへ渡す。登録失敗・cycle 上限・別候補の保留は維持する。Issue 起票後、台帳への記録前に止まった sweep は `fix-step.sh nb-sweep-reconcile` が照合し、却下台帳に無い entries の行（id・file:line・出典で照合）だけを記録する。取得・抽出に失敗したときは entries を残して止まる。
+- **`git-commit-file` は commit 後の後処理失敗を終了コード 4 で返す** — commit 成功後の証跡更新失敗が引数エラーと同じ終了コード 1 を返さなくなった。caller は「コミット済み・後処理失敗」と表示して push 前に停止する。引数エラーの 1 と git commit 失敗の 3 は変わらない。
+- **セッション worktree で設定と Wiki のパスを解決する** — `pr-create`・`issue-implement`・`lint`・`skill-suggest`・`issue-list`・`setup` は `rite-config-path.sh` 経由で設定を読む。`recover`・`cleanup`・`wiki-init`・`wiki-ingest` の Wiki 復旧案内は `state-path-resolve.sh` で解決した絶対パスを使い、解決できないときはその旨を出す。`same_branch` のセッション worktree で Wiki ロックを失ったときは、他セッションのブランチ・worktree 一覧・全ブランチの Wiki 履歴を案内する。
+- **hook の解析を修正** — `gh` の branch lookup が返す複数形の PR 不在メッセージを不在として分類する。phase/worktree の列を単位区切りで読み、先頭の空の phase を読み飛ばさない。
+- **スコープ外処分の手順が lint 警告を出さない** — 採否手順の長い bash を同じ終了コードの helper に移し、手順は作業ツリー外の JSON を渡す 1 行の呼び出しにした。
+- **テストの信頼性** — worktree 保護 fixture（Git 2.55 の auto maintenance との競合）、producer の終了コードを検査する否定アサーション、git のグローバルオプションも検出する helper commit 検査、照合範囲に合わせたコメントの文言など。
+
+### 削除
+
+- **`/rite:fix` の未対応の commit 確認選択肢** — 実行手順が未定義だった選択肢を削除した。メッセージファイル経由の commit、Root Cause Gate、commit ごとの Wiki head 前進は変わらない。
+
 ## [0.19.0] - 2026-10-01
 
 ### 追加
@@ -1192,6 +1219,7 @@ v0.4.0 では値は silent に無視されます。機能的な代替はあり�
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.19.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.17.1...v0.18.0
 [0.17.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.17.0...v0.17.1

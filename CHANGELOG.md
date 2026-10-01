@@ -32,6 +32,33 @@ Past version sections carry none either — they have already been stripped.
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-10-01
+
+### Changed
+
+- **`/rite:recover` documents how to resume a review from a different session** — the old session's state, raw results, manifest, and clock are kept; after ownership and the stop reason are confirmed, a new run starts on the current HEAD as a full-diff review. Stopped runs, historically stopped runs, and runs with unconfirmed ownership are not bypassed by switching to a new session ID.
+- **`/rite:pr-review` separates saving a mid-run stop from accepting a resume** — when a reviewer that was not selected becomes necessary, the run can be saved with the evidence of the already-selected reviewers; that save is neither a final success nor a run stop, and an explicit approval alone does not accept a resume.
+- **Procedure wording aligned with the implementation** — the hold condition for in-PR recommendations now states the existing review-fix cycle cap; `issue-implement` updates the Wiki apply evidence after a direct commit through the existing helper (`--from HEAD^`, back to capture on failure) instead of rewriting the head unconditionally; rationale texts for the lint scan-failure error, the here-string SIGPIPE avoidance (Bash 5.0 and earlier vs 5.1 and later), and the `>|` commit-boundary rule were corrected.
+
+### Fixed
+
+- **State root resolution fails outside a Git repository** — the resolver no longer falls back to the current directory and creates state in an unrelated location. Lifecycle hooks exit normally before any side effect, and writing helpers stop with a non-zero exit. Behavior inside Git and with an explicit root is unchanged.
+- **A paused loop resumes automatically at the entry point** — a leftover pause record no longer makes review, `/rite:batch-run`, and `/rite:recover` stop at their existing guards. The shared entry runs the existing resume operation and confirms the pause record is cleared; a failed resume or a remaining record stops with an explicit message.
+- **`/rite:pr-review` checks every CI job before finalizing mergeable** — after the acceptance review and before the final report, pending jobs are waited on with the existing bounded policy, and failed or unknown checks fail closed. Fix-needed cycles are not affected by this final gate.
+- **Review scope and acceptance-criteria extraction stop silently losing input** — a failing `sort` while intersecting the review scope now falls back to a full review with a diagnostic instead of reporting base-only changes, and an AC item line outside the Acceptance Criteria section (outside code fences) now fails with `ac_item_outside_section` and its first line number instead of being dropped.
+- **Base intake in `/rite:fix` no longer stops at the Wiki apply gate** — the evidence head is advanced with `wiki-apply-advance-head.sh --from HEAD^` between the intake commit and the push, and the evidence is recaptured right before the commit; capture records paths deleted from HEAD (blob value `-`) and symlinks (hash of the link string), and the gate checks them. The BEHIND guidance in `/rite:merge` and `/rite:batch-run` follows the same procedure.
+- **`/rite:merge` guides recovery from a BEHIND failure** — after a merge failure, OPEN and BEHIND are distinguished, and the guidance covers returning to draft, verified base intake, re-review, and resuming after all CI jobs complete. Observing BEHIND alone does not stop the merge, and normal merges without branch protection are unchanged.
+- **Non-blocking sweep in `/rite:fix`** — an ADOPT candidate with `origin=pr` is now handed to the existing in-PR recommendation registration and the normal fix and re-review instead of stopping, while registration failures, the cycle cap, and holds for other candidates are kept. A stale sweep that stopped between filing an Issue and recording it is reconciled by `fix-step.sh nb-sweep-reconcile`, which records only the entries rows missing from the rejection ledger (matched by id, file:line, and source) and stops with the entries kept when fetching or extracting fails.
+- **`git-commit-file` reports a post-commit failure with exit code 4** — a failure to update the evidence after a successful commit no longer shares exit code 1 with argument errors; callers report "committed, post-processing failed" and stop before pushing. Exit codes 1 (argument error) and 3 (git commit failure) are unchanged.
+- **Session worktrees resolve config and Wiki paths** — `pr-create`, `issue-implement`, `lint`, `skill-suggest`, `issue-list`, and `setup` read the config through `rite-config-path.sh`; Wiki recovery guidance in `recover`, `cleanup`, `wiki-init`, and `wiki-ingest` uses absolute paths from `state-path-resolve.sh` and says so when a path cannot be resolved. When the Wiki lock is lost in a `same_branch` session worktree, the warning points to the other session's branch, the worktree list, and the Wiki history of all branches.
+- **Hook parsing fixes** — the plural "no pull requests found" message from `gh` branch lookups is classified as not-found, and phase/worktree columns are read with the unit separator so an empty leading phase is no longer skipped.
+- **Out-of-scope disposal no longer triggers a lint warning** — the long bash block in the adoption procedure moved into a helper with the same exit codes; the procedure passes a JSON file outside the working tree in a single call.
+- **Test reliability** — tests such as worktree protection fixtures (Git 2.55 auto maintenance race), negative assertions that now check producer exit codes, the helper commit check that now detects git global options, and comment wording that now matches the checked ranges.
+
+### Removed
+
+- **Unsupported commit confirmation choice in `/rite:fix`** — a choice whose execution procedure was undefined is removed. The message-file commit path, the Root Cause Gate, and Wiki head advancement after each commit are unchanged.
+
 ## [0.19.0] - 2026-10-01
 
 ### Added
@@ -1195,6 +1222,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.19.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.17.1...v0.18.0
 [0.17.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.17.0...v0.17.1
