@@ -669,9 +669,11 @@ okf_version: "0.2"
 | [エラー文に書く確認コマンドは検出に使ったコマンドと同じ形にし、テストは出力から取り出して実行する](pages/patterns/error-message-check-command-mirrors-detection-command.md) | patterns | 検出コマンドに設定の上書きなどを足すと、エラー文の「対処」に書いた確認コマンドが古い形のまま残り、利用者が実行しても検出と違う結果になる。確認コマンドは検出と同じ形を独立した行で示し、テストは出力からその行を取り出して実行して、解除前と解除後の両方の結果を検査する。 | 2026-09-30T09:18:44Z | high |
 | [受入条件が PR 本文を対象にするときは、本文の更新だけでは再レビューされない — 対応するファイルの修正と合わせて commit する](pages/heuristics/acceptance-on-pr-body-needs-a-commit-to-be-rereviewed.md) | heuristics | 受入条件が PR 本文の表を対象にしていると、本文だけを直しても HEAD が変わらず、差分スコープの再レビューでは確認されない。対応するファイルの修正と同じ commit で直し、本文の状態は検証コマンドで固定する。表の突き合わせは項目の名前の集合ではなく行単位で行う。 | 2026-09-30T09:18:44Z | medium |
 | [照合を位置で狭めたら、診断に位置の基準になる受理集合も挙げる](pages/heuristics/narrowed-match-position-diagnostic-lists-accepted-set.md) | heuristics | 照合を「項目の冒頭」のような位置で狭めると、受け付けない記号で始まる入力が受理から拒否へ変わる。診断が位置しか言わないと、書き手は診断だけでは直せない。 | 2026-09-30T22:06:00+09:00 | medium |
+| [他スキルから直接読まれる手順に工程を足すときは、回復手順の所在と呼び出し側の規定を合わせる](pages/heuristics/reference-recovery-step-pointer-and-caller-sync.md) | heuristics | 節アンカーで複数スキルから直接参照される手順書に工程を挿入すると、スキル内でしか解決しない所在指示は読み手に届かず、番号で範囲を引く呼び出し側や一律の失敗規定を持つ呼び出し側と食い違う。 | 2026-10-01T00:20:00Z | medium |
+| [既存パーサの一部だけを再利用すると、保守的に判定していた入力の扱いが抜け落ちる](pages/anti-patterns/partial-parser-reuse-drops-conservative-judgment.md) | anti-patterns | 検出器を作り直すときに既存パーサの一部の関数だけを借りると、直接コマンドでない形（timeout や nice 経由など）を保守的に数えていた判定が抜け、旧検出器が拾っていた対象を 0 件と数える退行になる。 | 2026-10-01T00:20:00Z | medium |
 ## 統計
 
-- 総ページ数: 659
-- ドメイン別: patterns=140, heuristics=328, anti-patterns=191
-- 最終更新: 2026-10-01T08:45:00Z
+- 総ページ数: 661
+- ドメイン別: patterns=140, heuristics=329, anti-patterns=192
+- 最終更新: 2026-10-01T00:20:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

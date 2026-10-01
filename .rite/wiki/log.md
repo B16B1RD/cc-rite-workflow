@@ -2,6 +2,20 @@
 
 ## 2026-10-01
 
+* **Create**: [他スキルから直接読まれる手順に工程を足すときは、回復手順の所在と呼び出し側の規定を合わせる](pages/heuristics/reference-recovery-step-pointer-and-caller-sync.md) — raw/reviews/20260930T233640Z-pr-3564.md と raw/fixes/20260930T235110Z-pr-3564.md を新規ページ化
+
+* **Create**: [既存パーサの一部だけを再利用すると、保守的に判定していた入力の扱いが抜け落ちる](pages/anti-patterns/partial-parser-reuse-drops-conservative-judgment.md) — raw/reviews/20261001T000445Z-pr-3551.md を新規ページ化
+
+* **Skip**: [20260930T230123Z-pr-3546.md](raw/reviews/20260930T230123Z-pr-3546.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
+
+* **Skip**: [20260930T232622Z-pr-3546.md](raw/reviews/20260930T232622Z-pr-3546.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
+
+* **Skip**: [20260930T235622Z-pr-3564.md](raw/reviews/20260930T235622Z-pr-3564.md) — 指摘なしの差分スコープ再レビュー記録であり、追加する独立した経験則はない
+
+* **Skip**: [20260930T235831Z-pr-3566.md](raw/reviews/20260930T235831Z-pr-3566.md) — 指摘なしの検証記録であり、追加する独立した経験則はない
+
+* **Skip**: [20261001T001433Z-pr-3566.md](raw/fixes/20261001T001433Z-pr-3566.md) — 既存テストの期待値同期という作業記録であり、独立した経験則はない
+
 * **Lint incomplete** — 機械検査は stale=65, orphans=0, missing_concept=0, unregistered_raw=642, broken_refs=0, descriptive_refs=0。全ページの意味比較は出力の途中欠損により未完了であり、contradictions は未確定。今回の取り込みではページ本文の変更なし。Wiki 全体の品質検査成功とは扱わない。
 
 * **Update**: [Scope drift fix での overclaim substitution (置換後に新たな過剰主張を持ち込む)](pages/anti-patterns/scope-drift-fix-overclaim-substitution.md) — 変更履歴の項目の範囲を実装の分岐の単位で書く変種として、レビュー結果 5 件と fix 結果 6 件を統合
