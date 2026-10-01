@@ -1794,8 +1794,9 @@ recapture_case() {
     fail "$change: review after intake adv_rc=$adv_rc rc=$GRC out=$GOUT err=$(cat "$ROOT/rc-$change-review.err") adv=$(cat "$ROOT/rc-$change-adv.out")"
   fi
   # 手順 4 の回復: commit 後は手順 2 の paths のうち作業ツリーにあるものだけで取り直す
-  local kept="" p
-  for p in ${changed//,/ }; do [ -e "$r/$p" ] && kept="${kept:+$kept,}$p"; done
+  local kept="" p _cs
+  IFS=',' read -r -a _cs <<<"$changed"
+  for p in "${_cs[@]}"; do [ -e "$r/$p" ] && kept="${kept:+$kept,}$p"; done
   sed "s|__CHANGED__|$kept|" "$cap_block" > "$ROOT/rc-$change-recover.sh"
   # 手順 4 が進められなかった状態（head がレビュー済み commit のまま）から回復する
   sed -i.bak "s/^head: .*/head: $(git -C "$r" rev-parse HEAD^)/" "$mem" && rm -f "$mem.bak"

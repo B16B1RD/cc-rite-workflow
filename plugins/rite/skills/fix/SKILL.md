@@ -125,7 +125,7 @@ standalone: 引数なしなら現在ブランチの PR。work memory の関連 P
 bash {plugin_root}/scripts/fix-step.sh wiki-query-config
 ```
 
-`{keywords}` は指摘カテゴリ、対象パス、失敗内容。`{changed_paths}` は存在する対象パスのカンマ区切りで、空なら空文字を渡す（helper が capture の `--paths` を省く）。値は単一引用符で渡すため `'` を含めない。契約は [wiki-apply-contract.md](../../references/wiki-apply-contract.md)。
+`{keywords}` は指摘カテゴリ、対象パス、失敗内容。`{changed_paths}` は存在する対象パスと HEAD から削除した対象パスのカンマ区切りで、空なら空文字を渡す（helper が capture の `--paths` を省く）。値は単一引用符で渡すため `'` を含めない。契約は [wiki-apply-contract.md](../../references/wiki-apply-contract.md)。
 
 ```bash
 bash {plugin_root}/scripts/fix-step.sh wiki-capture --keywords '{keywords}' --changed-paths '{changed_paths}'
