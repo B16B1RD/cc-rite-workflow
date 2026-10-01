@@ -228,8 +228,8 @@ ISSUE_NUMBER=$(printf '%s\n' "$ISSUE_URL" | grep -oE '[0-9]+$' || true)
 
 ```bash
 # here-string `<<<` で echo/printf subprocess を排除
-# bash は here-string を一時ファイル経由で grep に渡すため、
-# grep の早期終了で SIGPIPE を受ける書き込みプロセスが存在しない
+# bash 5.0 以前は一時ファイル、5.1 以降は pipe buffer 未満なら pipe（大きい入力は一時ファイル）で渡す
+# here-string は上流の書き手プロセスを作らないため、grep の早期終了で書き手が SIGPIPE を受ける経路がない
 progress_section=$(sed -n '/### 進捗/,/### /p' <<< "$comment_body")
 incomplete_tasks=$(grep -E '^\s*- \[ \]' <<< "$progress_section" | head -10)
 
@@ -242,7 +242,18 @@ ISSUE_NUMBER=$(grep -oE '[0-9]+$' <<< "$ISSUE_URL" || true)
 1. `echo "$var" | cmd` → `cmd <<< "$var"` — echo subprocess を排除し SIGPIPE 経路を断つ
 2. 複合 pipeline (`sed | grep | head`) は段階分割: まず `sed <<< "$var"` で範囲抽出、次に `grep <<< "$section"` でフィルタ
 3. `grep -q` / `grep -m 1` のような早期終了 flag と組み合わせる場合は特に重要
-4. 前段が `jq` / `git` / `sed` などのコマンドで、pipeline の終了コードで producer の失敗も判定していた場合は、`out=$(cmd) && grep -q x <<< "$out"` のように結果を変数に受けてから渡し、producer の失敗を偽として残す。否定形は `if ! { out=$(cmd) && grep -q x <<< "$out"; }; then` のように全体をブレースでまとめてから否定する（否定演算子を代入の直前に置くと、否定は代入だけにかかる）。出力を変数に受けず stream のまま読むときは、後述の「Buffered Writer + Early-Exit `awk`」節に従い、`grep -q` の代わりに入力を読み切る `cmd | awk '/x/ { found=1 } END { exit !found }'` を使う
+4. 前段が `jq` / `git` / `sed` などのコマンドで、pipeline の終了コードで producer の失敗も判定していた場合は、`out=$(cmd) && grep -q x <<< "$out"` のように結果を変数に受けてから渡し、producer の失敗を偽として残す。「一致なし」を確かめる否定形では、producer の成功を先に確認する。代入と検索をまとめて否定すると、producer の失敗も「一致なし」の側へ入る。出力を変数に受けず stream のまま読むときは、後述の「Buffered Writer + Early-Exit `awk`」節に従い、`grep -q` の代わりに入力を読み切る `cmd | awk '/x/ { found=1 } END { exit !found }'` を使う
+
+```bash
+if ! out=$(cmd); then
+  echo "ERROR: producer failed" >&2
+  exit 1
+elif grep -q x <<< "$out"; then
+  echo "一致あり"
+else
+  echo "一致なし"
+fi
+```
 
 ### When NOT to Convert
 

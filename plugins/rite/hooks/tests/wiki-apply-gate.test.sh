@@ -1647,6 +1647,76 @@ else
   fail "git-commit-file output leaks helper lines: $(cat "$ROOT/land.out")"
 fi
 
+echo "=== a base-intake merge commit moves head with the documented block ==="
+PLAN_MD="$SCRIPT_DIR/../../skills/fix/references/fix-plan.md"
+intake=$(awk '/^## base 取り込み$/ { copy=1; next } copy && /^## / { exit } copy { print }' "$PLAN_MD")
+steps=$(grep -oE '^[0-9]+\. ' <<<"$intake" | tr -d '. ' | paste -sd, -)
+step4=$(awk '/^4\. / { copy=1 } /^5\. / { exit } copy { print }' <<<"$intake")
+step5=$(grep '^5\. ' <<<"$intake")
+if [ "$steps" = "1,2,3,4,5,6" ] && [ "$(grep -c '^   # base-intake-wiki-apply-head$' <<<"$intake")" -eq 1 ] \
+  && grep -q '^   # base-intake-wiki-apply-head$' <<<"$step4" && grep -q 'capture からやり直' <<<"$step4" \
+  && grep -q 'git push origin HEAD' <<<"$step5"; then
+  pass "the base-intake steps are 1-6 with the head block and its retry in step 4, before the push in step 5"
+else
+  fail "base-intake steps=$steps step4=$step4 step5=$step5"
+fi
+bi_block="$ROOT/base-intake-wiki-apply-head.sh"
+awk -v root="$PLUGIN_ROOT" '
+  /^   # base-intake-wiki-apply-head$/ { copy=1; next }
+  copy && /^   ```$/ { exit }
+  copy { sub(/^   /, ""); gsub(/\{plugin_root\}/, root); print }
+' "$PLAN_MD" > "$bi_block"
+if [ -s "$bi_block" ] && ! grep -q '{' "$bi_block"; then
+  pass "the extracted base-intake head block is complete"
+else
+  fail "base-intake head block is empty or keeps a placeholder: $(cat "$bi_block")"
+fi
+bi=$(new_repo base-intake)
+write_config "$bi" true true
+bi_flow="$ROOT/base-intake.flow-state"
+write_flow "$bi_flow" fix 7 "$bi"
+bi_mem="$bi/.rite/work-memory/issue-7.md"
+git -C "$bi" branch base
+printf 'base\n' > "$bi/BASE"
+git -C "$bi" add BASE
+git -C "$bi" commit -qm 'fix: reviewed'
+git -C "$bi" switch -q base
+printf 'upstream\n' > "$bi/UPSTREAM"
+git -C "$bi" add UPSTREAM
+git -C "$bi" commit -qm 'chore: upstream'
+git -C "$bi" switch -q -
+write_mem "$bi_mem" "$(fresh_header none base-intake "$bi" 1 BASE)"
+bi_old=$(git -C "$bi" rev-parse HEAD)
+git -C "$bi" merge -q --no-ff -m 'merge base' base
+bi_new=$(git -C "$bi" rev-parse HEAD)
+bi_env() { env -u WIKI_APPLY_MEMORY -u RITE_STATE_ROOT WIKI_APPLY_FLOW_STATE="$bi_flow" "$@"; }
+arc=0
+(cd "$bi" && bi_env bash "$bi_block") >"$ROOT/bi.out" 2>"$ROOT/bi.err" || arc=$?
+if [ "$arc" -eq 0 ] && grep -qx 'WIKI_APPLY_HEAD=advanced' "$ROOT/bi.out" && grep -qx "head: $bi_new" "$bi_mem" \
+  && ! grep -qx "head: $bi_old" "$bi_mem"; then
+  pass "the block moves head from the reviewed commit to the merge commit"
+else
+  fail "base-intake head block rc=$arc out=$(cat "$ROOT/bi.out") err=$(cat "$ROOT/bi.err")"
+fi
+GRC=0
+GOUT=$(cd "$bi" && bi_env bash "$GATE" --mode review 2>"$ROOT/bi-gate.err") || GRC=$?
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+  pass "review after the base-intake commit allows"
+else
+  fail "review after base-intake rc=$GRC out=$GOUT err=$(cat "$ROOT/bi-gate.err")"
+fi
+write_mem "$bi_mem" "### Wiki 適用証跡
+head: $bi_old"
+git -C "$bi" commit -q --allow-empty -m 'fix: later'
+cp "$bi_mem" "$ROOT/bi-before.md"
+arc=0
+(cd "$bi" && bi_env bash "$bi_block") >"$ROOT/bi2.out" 2>"$ROOT/bi2.err" || arc=$?
+if [ "$arc" -eq 1 ] && grep -q 'capture からやり直' "$ROOT/bi2.err" && cmp -s "$ROOT/bi-before.md" "$bi_mem"; then
+  pass "a record that does not name the first parent fails and stays as it was"
+else
+  fail "base-intake mismatch rc=$arc err=$(cat "$ROOT/bi2.err")"
+fi
+
 echo "=== a record that is not this commit's is left as it is ==="
 adv_case() {
   local label="$1" from="$2" body="$3" mem="$ROOT/adv-case.md" rc=0

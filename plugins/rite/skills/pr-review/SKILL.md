@@ -459,7 +459,7 @@ Retain the Issue number in the conversation context for use in ステップ 6.4.
 
 ### 1.3.1 Load Issue Specification
 
-対応形式は `acceptance-criteria-check.sh extract` が正典。レベル2の `Acceptance Criteria`（大文字小文字不問）/ `受入基準` / `受入条件` / `受け入れ条件`（先頭の `N. ` は任意）配下の `### AC-N` または `- [ ] AC-N: 内容`（`[x]` / `[X]`、`*` / `+` も可）を抽出する。行頭3空白までは許容する。コードフェンス内は除外し、次のレベル1/2見出しで節を閉じる。未対応のAC見出し・不正項目は修正案内付きで停止し、IDを捏造しない。issue-implement 5.1.0.6.1 も同じ helper を使う。
+対応形式は `acceptance-criteria-check.sh extract` が正典。レベル2の `Acceptance Criteria`（大文字小文字不問）/ `受入基準` / `受入条件` / `受け入れ条件`（先頭の `N. ` は任意）配下の `### AC-N` または `- [ ] AC-N: 内容`（`[x]` / `[X]`、`*` / `+` も可）を抽出する。行頭3空白までは許容する。コードフェンス内は除外し、次のレベル1/2見出しで節を閉じる。未対応のAC見出し・不正項目・節の外のAC項目は修正案内付きで停止し、IDを捏造しない。issue-implement 5.1.0.6.1 も同じ helper を使う。
 
 関連 Issue の「仕様詳細」「技術的決定事項」をレビュー基準としてロードし、受入条件確認の対象かを決める。ステップ 1.3 で Issue 番号が取れなかったときは本節を実行せず、`[CONTEXT] ACCEPTANCE_SCOPE=skipped; reason=no_issue` として `受入条件確認: 対象外（関連 Issue なし）` を 1 行表示し、`{acceptance_ids}` を空文字列としてステップ 5.3.0.A まで retain する。
 
@@ -474,7 +474,7 @@ Retain the Issue number in the conversation context for use in ステップ 6.4.
  |---|---|
  | `target; ids=` | `ids=` を `{acceptance_ids}` として retain。ステップ 3.2.2 で acceptance reviewer を追加する |
  | `skipped; reason=no_ac_section` | `受入条件確認: 対象外（AC 節なし）` を 1 行表示 |
- | 上記 bash が `[review:error]` で終了（`ACCEPTANCE_CHECK_FAILED` の `unsupported_ac_section` / `no_ac_ids` / `malformed_ac_item` / `duplicate_ac_id` を含む） | 停止。受入条件確認を skip して続行しない |
+ | 上記 bash が `[review:error]` で終了（`ACCEPTANCE_CHECK_FAILED` の `unsupported_ac_section` / `no_ac_ids` / `malformed_ac_item` / `ac_item_outside_section` / `duplicate_ac_id` を含む） | 停止。受入条件確認を skip して続行しない |
 
  `ACCEPTANCE_SCOPE` の値（`target` / `skipped` と reason）と `{acceptance_ids}` はステップ 5.3.0.A まで retain する。`skipped; reason=no_ac_section` の cycle では `{acceptance_ids}` を空文字列とする。
 
@@ -2245,7 +2245,7 @@ loop 内では pattern だけ出す。続きは `/rite:iterate` ステップ 1-4
 
 候補は **2 source**:
 **Source A**: MEDIUM+ かつキーワード（`スコープ外` / `別 Issue` / `out of scope` / `separate issue` 等）。
-**Source B**: `recommendation_items` の `actionable` または `boundary`。`design_confirmation` は除外。PR が持ち込んだ根因（採否の出口 ADOPT・`origin=pr`）は、`/rite:iterate` 経由の mergeable の review では 7.2 の採否ゲートが `fix` にして PR 内推奨として登録し、同じ PR で直す（受入条件未検証の停止と単独実行では hold。scope-triage.md 手順 3 の `{fix_loop}`）。
+**Source B**: `recommendation_items` の `actionable` または `boundary`。`design_confirmation` は除外。PR が持ち込んだ根因（採否の出口 ADOPT・`origin=pr`）は、`/rite:iterate` 経由の mergeable の review では 7.2 の採否ゲートが `fix` にして PR 内推奨として登録し、同じ PR で直す（受入条件未検証の停止・単独実行・cycle が `safety.max_review_cycles` に達したときは hold。scope-triage.md 手順 3 の `{fix_loop}`）。
 
 **`candidate_count` assignment**:
 

@@ -55,7 +55,7 @@ for skill in wiki-ingest wiki-lint cleanup issue-close; do
     fail "$skill no longer references $LIB_REL — did it grow its own parser again?"
   fi
   # The delegation is pointless if the body still calls a parser it defines.
-  if grep -qE '^\s*(extract_yaml_key|parse_wiki_key)\s*\(\)' "$body"; then
+  if grep -qE '^[[:space:]]*(extract_yaml_key|parse_wiki_key)[[:space:]]*\(\)' "$body"; then
     fail "$skill defines an inline YAML parser again"
   else
     pass "$skill defines no inline YAML parser"
