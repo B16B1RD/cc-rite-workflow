@@ -1782,6 +1782,7 @@ fi
 
 echo "=== git-commit-file stops when head cannot be moved after the commit ==="
 stuck=$(new_repo stuck)
+stuck_before=$(git -C "$stuck" rev-parse HEAD)
 stuck_mem="$ROOT/stuck.md"
 write_mem "$stuck_mem" "### Wiki 適用証跡
 head: 3333333333333333333333333333333333333333"
@@ -1792,13 +1793,75 @@ printf 'stuck\n' >> "$stuck/README"
 git -C "$stuck" add README
 crc=0
 bash "$copy/hooks/scripts/git-commit-file.sh" --file "$msg" --worktree "$stuck" >"$ROOT/stuck.out" 2>"$ROOT/stuck.err" || crc=$?
-if [ "$crc" -eq 1 ] && grep -q 'commit 後に Wiki 適用証跡の head を更新できません' "$ROOT/stuck.err" \
+if [ "$crc" -eq 4 ] && [ "$stuck_before" != "$(git -C "$stuck" rev-parse HEAD)" ] \
+  && [ -z "$(git -C "$stuck" status --porcelain)" ] \
+  && grep -q 'commit 後に Wiki 適用証跡の head を更新できません' "$ROOT/stuck.err" \
   && grep -q 'capture からやり直' "$ROOT/stuck.err" \
   && grep -qx 'head: 3333333333333333333333333333333333333333' "$stuck_mem"; then
   pass "a record that does not name the old HEAD stops git-commit-file with its error"
 else
   fail "stuck head rc=$crc err=$(cat "$ROOT/stuck.err")"
 fi
+
+
+# Missing memory is also a post-commit failure, with no evidence to overwrite.
+missing=$(new_repo missing-memory)
+missing_before=$(git -C "$missing" rev-parse HEAD)
+printf '#!/bin/bash\necho WIKI_APPLY_GATE=allow\necho reason=ok\n' > "$copy/hooks/scripts/wiki-apply-gate.sh"
+printf 'missing\n' >> "$missing/README"
+git -C "$missing" add README
+crc=0
+bash "$copy/hooks/scripts/git-commit-file.sh" --file "$msg" --worktree "$missing" >"$ROOT/missing.out" 2>"$ROOT/missing.err" || crc=$?
+if [ "$crc" -eq 4 ] && [ "$missing_before" != "$(git -C "$missing" rev-parse HEAD)" ] \
+  && [ -z "$(git -C "$missing" status --porcelain)" ] \
+  && grep -q 'commit 後に Wiki 適用証跡の head を更新できません' "$ROOT/missing.err"; then
+  pass "missing memory reports post-commit failure after HEAD moves"
+else
+  fail "missing memory rc=$crc err=$(cat "$ROOT/missing.err")"
+fi
+
+# Run the actual skill block and commit helper, intercepting only git push.
+caller_block=${commit_block//"$PLUGIN_ROOT"/$copy}
+if [ -n "$caller_block" ] && grep -q 'git-commit-file.sh' <<<"$caller_block" && grep -q '^git push ' <<<"$caller_block"; then
+  pass "the extracted caller includes the commit and push operations"
+else
+  fail "the extracted caller is incomplete"
+fi
+for mode in stale success git-failure; do
+  caller_repo=$(new_repo "caller-$mode")
+  caller_before=$(git -C "$caller_repo" rev-parse HEAD)
+  caller_mem="$ROOT/caller-$mode.md"
+  record_head="$caller_before"
+  [ "$mode" != stale ] || record_head=3333333333333333333333333333333333333333
+  write_mem "$caller_mem" "### Wiki 適用証跡
+head: $record_head"
+  printf '#!/bin/bash\necho WIKI_APPLY_GATE=allow\necho reason=ok\necho "memory=%s"\n' "$caller_mem" > "$copy/hooks/scripts/wiki-apply-gate.sh"
+  printf 'caller\n' >> "$caller_repo/README"
+  if [ "$mode" = git-failure ]; then
+    printf '#!/bin/sh\nexit 1\n' > "$caller_repo/.git/hooks/pre-commit"
+    chmod +x "$caller_repo/.git/hooks/pre-commit"
+  fi
+  caller_log="$ROOT/caller-$mode.log"
+  : > "$caller_log"
+  brc=0
+  (cd "$caller_repo" && PATH="$ROOT/stub-bin:$PATH" STUB_LOG="$caller_log" bash -c "$caller_block") \
+    >"$ROOT/caller-$mode.out" 2>"$ROOT/caller-$mode.err" || brc=$?
+  caller_after=$(git -C "$caller_repo" rev-parse HEAD)
+  pushes=$(grep -cx push "$caller_log" || true)
+  if [ "$mode" = stale ] && [ "$brc" -ne 0 ] && [ "$caller_before" != "$caller_after" ] \
+    && [ "$pushes" -eq 0 ] && grep -q 'コミット済み.*後処理.*head 更新.*push しません' "$ROOT/caller-$mode.err" \
+    && ! grep -q 'コミットに失敗' "$ROOT/caller-$mode.err"; then
+    pass "the caller reports post-commit failure and never pushes"
+  elif [ "$mode" = success ] && [ "$brc" -eq 0 ] && [ "$caller_before" != "$caller_after" ] && [ "$pushes" -eq 1 ]; then
+    pass "the caller pushes once after a successful real commit"
+  elif [ "$mode" = git-failure ] && [ "$brc" -ne 0 ] && [ "$caller_before" = "$caller_after" ] \
+    && [ "$pushes" -eq 0 ] && grep -q 'コミットに失敗' "$ROOT/caller-$mode.err" \
+    && ! grep -q 'コミット済み' "$ROOT/caller-$mode.err"; then
+    pass "the caller keeps the uncommitted failure diagnostic and never pushes"
+  else
+    fail "caller mode=$mode rc=$brc pushes=$pushes before=$caller_before after=$caller_after err=$(cat "$ROOT/caller-$mode.err")"
+  fi
+done
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

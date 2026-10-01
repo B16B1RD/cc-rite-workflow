@@ -581,8 +581,14 @@ if grep -qx '[{].*[}]' "$commit_msg_file"; then
   echo "ERROR: コミットメッセージが未置換です" >&2
   exit 1
 fi
-if ! bash {plugin_root}/hooks/scripts/git-commit-file.sh --file "$commit_msg_file"; then
-  echo "ERROR: コミットに失敗したため push しません" >&2
+commit_rc=0
+bash {plugin_root}/hooks/scripts/git-commit-file.sh --file "$commit_msg_file" || commit_rc=$?
+if [ "$commit_rc" -ne 0 ]; then
+  if [ "$commit_rc" -eq 4 ]; then
+    echo "ERROR: コミット済みですが、後処理（Wiki 適用証跡の head 更新）に失敗したため push しません" >&2
+  else
+    echo "ERROR: コミットに失敗したため push しません" >&2
+  fi
   exit 1
 fi
 git push origin {branch_name}
