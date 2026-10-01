@@ -4134,3 +4134,5 @@ T02:22:43+09:00 — review ingest (skip pages)
 * **Skip**: 既存契約との説明の整合確認を記録。独立した新規経験則はない — [レビュー結果](raw/reviews/20261001T002101Z-pr-3569.md)
 
 * **Lint incomplete**: 全ページの意味比較は未実施、矛盾数は未確定。機械検査の実測: {"stale": ["n_stale=65", "[CONTEXT] WIKI_LINT_STALE=65"], "orphans": ["n_orphans=0", "[CONTEXT] WIKI_LINT_ORPHANS=0"], "source-refs": ["all_source_refs_read_ok=true", "all_source_refs_read_errors=0"], "skipped-refs": ["log_read_ok=true"], "broken-refs": ["n_broken_refs=0", "broken_refs_read_ok=true", "[CONTEXT] WIKI_LINT_BROKEN_REFS=0"], "descriptive-refs": ["descriptive_refs_read_errors=0", "[CONTEXT] WIKI_DESCRIPTIVE_REFS=0", "descriptive_refs_read_ok=true"]}; missing_concept=0, unregistered_raw=651。全体 lint 成功は主張しない。
+
+* **Skip**: 既存契約との説明の整合確認を記録。独立した新規経験則はない — [レビュー結果](raw/reviews/20261001T005304Z-pr-3572.md)
