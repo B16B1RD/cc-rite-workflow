@@ -193,7 +193,7 @@ echo "=== cleanup-pr-state-purge: 既定の state-root 解決（本番経路）=
 
 # 本番 caller (cleanup/SKILL.md ステップ 6) は `--pr` だけを渡し `--state-root` を渡さない。
 # 全 TC が `--state-root` を明示すると、helper の既定解決 (state-path-resolve.sh → 失敗時
-# cwd fallback) がスイート全体で 1 度も実行されず、本番が通る唯一の経路が未検査になる。
+# 非 0) がスイート全体で 1 度も実行されず、本番が通る唯一の経路が未検査になる。
 # state-path-resolve.sh は git の toplevel (linked worktree なら main checkout) を返すため、
 # 既定解決を通すには temp repo を git repo にして cwd をその中に置く。
 r=$(mktemp -d "$TMP_ROOT/root.XXXXXX"); seed "$r"
@@ -225,7 +225,7 @@ assert_absent "linked worktree から呼んでも main checkout 側の state を
   "$r/.rite/state/nb-sweep-done-42.txt"
 assert_present "linked worktree: 別 PR の state は残る" "$r/.rite/state/nb-sweep-done-4.txt"
 
-# state root を解決できない環境では WARNING を出して cwd へ倒す（silent に no-op しない）。
+# An unresolved root must fail before removing any state.
 # state-path-resolve.sh を欠いた stub plugin root から helper を呼んで再現する。
 r=$(mktemp -d "$TMP_ROOT/root.XXXXXX"); seed "$r"
 stub_root=$(mktemp -d "$TMP_ROOT/stubroot.XXXXXX")
@@ -236,12 +236,12 @@ cp "$HELPER" "$stub_root/hooks/scripts/"
 # レッグを「検証したつもり」で素通りさせる。コピー元は常在するので失敗は fail-loud にする。
 cp "$SCRIPT_DIR/../scripts/review-results-archive-or-rm.sh" "$stub_root/hooks/scripts/"
 cp "$SCRIPT_DIR/../gitignore-ensure.sh" "$stub_root/hooks/"
-# state-path-resolve.sh は意図的に置かない → 解決失敗 → cwd fallback
+# state-path-resolve.sh is intentionally absent: root resolution must fail.
 out=$(cd "$r" && bash "$stub_root/hooks/scripts/cleanup-pr-state-purge.sh" --pr 42 2>&1); rc=$?
-assert_eq "state root 解決失敗: exit 0（非ブロッキング）" "$rc" "0"
-assert_contains "state root 解決失敗: WARNING を出す" "$out" "state-path-resolve.sh の解決に失敗"
-assert_absent "state root 解決失敗: cwd を root として削除する" "$r/.rite/state/nb-sweep-done-42.txt"
-assert_absent "state root 解決失敗: cwd 配下の review-results も処理される" \
+assert_eq "state root 解決失敗: exit 1" "$rc" "1"
+assert_contains "state root 解決失敗: ERROR を出す" "$out" "state root unresolved"
+assert_present "state root 解決失敗: cwd state を保存する" "$r/.rite/state/nb-sweep-done-42.txt"
+assert_present "state root 解決失敗: review-results を保存する" \
   "$r/.rite/review-results/42-cycle1.json"
 
 echo "=== cleanup-pr-state-purge: 対象なし / helper 失敗 ==="

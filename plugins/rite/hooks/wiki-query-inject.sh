@@ -66,7 +66,7 @@ source "$SCRIPT_DIR/control-char-neutralize.sh"
 # is invoked from a subdirectory. This script is a CLI tool (not a Claude Code
 # hook), so $PWD is used in place of the stdin-supplied CWD that hook scripts
 # receive.
-STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$PWD" 2>/dev/null) || STATE_ROOT="$PWD"
+STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$PWD") || exit 1
 
 # Tempfile paths declared up front, trap set up before any mktemp, cleanup on
 # both normal exit and signal termination. Mirrors the repo convention used in

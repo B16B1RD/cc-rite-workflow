@@ -157,9 +157,7 @@ command -v jq >/dev/null 2>&1 || _degraded "jq が PATH 上にありません。
 # 誤った基準で「JSON 不在 = fail」を宣告する gate になるより、未判定として降りる方が安全側。
 state_root=""
 if [ -z "$results_dir" ] || [ "$since_set" -eq 0 ]; then
-  # `2>/dev/null` は付けない — resolver は git 内外どちらでも rc=0 / 非空を返す設計なので、
-  # ここに落ちるのは helper 自体を実行できない場合 (プラグイン破損 / 版 skew) だけであり、
-  # その唯一の原因を示す診断を抑止してはならない (sibling helper と同じ論拠)。
+  # git 外や resolver 実行失敗の診断を保持する。
   state_root=$(bash "$SCRIPT_DIR/../state-path-resolve.sh") || state_root=""
 fi
 

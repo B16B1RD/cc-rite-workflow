@@ -640,9 +640,9 @@ case "$pr_number" in
  ;;
  *)
  # state ファイルはリポジトリ共通の state ルート基準 (state-path-resolve.sh)。セッション
- # worktree / main checkout のどちらから実行しても同一パスに解決される (解決失敗時は cwd fallback)
+ # worktree / main checkout のどちらから実行しても同一パスに解決される (解決失敗時は状態を変更せず停止)
  _state_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
- [ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+ [ -n "$_state_root" ] || { echo "ERROR: state root unresolved; state is not modified" >&2; exit 1; }
  state_file="$_state_root/.rite/state/accepted-fingerprints-${pr_number}.txt"
  if [ -f "$state_file" ] && [ -s "$state_file" ]; then
  accepted_fingerprints=$(cat "$state_file" 2>/dev/null || echo "")
@@ -696,7 +696,7 @@ f_category=$(jq -r '.category' "$finding_file") || exit 1
 f_description=$(jq -r '.description' "$finding_file") || exit 1
 
 _state_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
-[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+[ -n "$_state_root" ] || { echo "ERROR: state root unresolved; state is not modified" >&2; exit 1; }
 state_file="$_state_root/.rite/state/accepted-fingerprints-${pr_number}.txt"
 if [ -f "$state_file" ] && [ -s "$state_file" ]; then
  accepted_fingerprints=$(cat "$state_file" 2>/dev/null || echo "")
@@ -875,7 +875,7 @@ printf '[CONTEXT] ATTRIBUTION original_files=%d fix_files=%d\n' \
 step_attribution_write() {
 # fix-cycle-state もリポジトリ共通 state ルート基準 (fix.md ステップ 3.3.1 の書込側と同一解決)
 _state_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
-[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+[ -n "$_state_root" ] || { echo "ERROR: state root unresolved; state is not modified" >&2; exit 1; }
 state_file="$_state_root/.rite/fix-cycle-state/${pr_number}.json"
 total_findings="${total}"
 fix_introduced_count="${fix_introduced}"

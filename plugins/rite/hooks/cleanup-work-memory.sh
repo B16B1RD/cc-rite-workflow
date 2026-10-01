@@ -26,7 +26,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/control-char-neutralize.sh"
 
 # Resolve repository root
-STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$(pwd)" 2>/dev/null) || STATE_ROOT="$(pwd)"
+STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$(pwd)") || exit 1
 
 WM_DIR_NEW="$STATE_ROOT/.rite/work-memory"
 WM_DIR_OLD="$STATE_ROOT/.rite-work-memory"

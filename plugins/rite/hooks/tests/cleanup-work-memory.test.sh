@@ -37,6 +37,7 @@ fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; }
 seed_session_flow_state() {
   local dir="$1" sid="$2" json="$3"
   mkdir -p "$dir/.rite/sessions"
+  git -C "$dir" init -q
   printf '%s' "$sid" > "$dir/.rite-session-id"
   printf '%s' "$json" > "$dir/.rite/sessions/${sid}.flow-state"
 }
@@ -48,6 +49,7 @@ echo ""
 echo "TC-001: TMP_STATE mktemp failure does not abort Step 2/3 cleanup"
 dir001="$TEST_DIR/tc001"
 mkdir -p "$dir001/.rite/work-memory"
+git -C "$dir001" init -q
 # Seed the per-session flow-state file (schema_v2/v3), compact-state, and a
 # per-issue work memory file
 seed_session_flow_state "$dir001" "tc001-sid" '{"active":true,"issue_number":42,"phase":"completed","branch":"feat/issue-42-test"}'
@@ -103,6 +105,7 @@ echo ""
 echo "TC-002: happy path with working mktemp removes all three"
 dir002="$TEST_DIR/tc002"
 mkdir -p "$dir002/.rite/work-memory"
+git -C "$dir002" init -q
 seed_session_flow_state "$dir002" "tc002-sid" '{"active":true,"issue_number":43,"phase":"completed"}'
 echo '{"compact_state":"recovering","active_issue":43}' > "$dir002/.rite-compact-state"
 echo "# wm 43" > "$dir002/.rite/work-memory/issue-43.md"
@@ -139,6 +142,7 @@ echo ""
 echo "TC-003: Step 1 mv mutation emits WARNING with real rc"
 dir003="$TEST_DIR/tc003"
 mkdir -p "$dir003/.rite/work-memory"
+git -C "$dir003" init -q
 seed_session_flow_state "$dir003" "tc003-sid" '{"active":true,"issue_number":44,"phase":"completed","branch":"feat/issue-44"}'
 mkdir -p "$dir003/bin"
 cat > "$dir003/bin/mv" <<'MV_SHIM'
@@ -168,6 +172,7 @@ echo ""
 echo "TC-004: --issue N close mode removes only the specified issue's wm"
 dir004="$TEST_DIR/tc004"
 mkdir -p "$dir004/.rite/work-memory"
+git -C "$dir004" init -q
 echo "# wm 50" > "$dir004/.rite/work-memory/issue-50.md"
 echo "# wm 51" > "$dir004/.rite/work-memory/issue-51.md"
 ( cd "$dir004" && bash "$HOOK" --issue 50 >/dev/null 2>&1 ) || true
@@ -185,6 +190,7 @@ echo ""
 echo "TC-005: --issue with non-numeric value exits 1 with ERROR"
 dir005="$TEST_DIR/tc005"
 mkdir -p "$dir005"
+git -C "$dir005" init -q
 err005="$TEST_DIR/tc005.err"
 rc005=0
 ( cd "$dir005" && bash "$HOOK" --issue abc 2>"$err005" >/dev/null ) || rc005=$?
@@ -200,6 +206,7 @@ echo ""
 echo "TC-006: --issue with missing value exits 1 with ERROR"
 dir006="$TEST_DIR/tc006"
 mkdir -p "$dir006"
+git -C "$dir006" init -q
 err006="$TEST_DIR/tc006.err"
 rc006=0
 ( cd "$dir006" && bash "$HOOK" --issue 2>"$err006" >/dev/null ) || rc006=$?
@@ -218,6 +225,7 @@ echo ""
 echo "TC-007: find permission denied surfaces as remaining=unknown"
 dir007="$TEST_DIR/tc007"
 mkdir -p "$dir007/.rite/work-memory"
+git -C "$dir007" init -q
 echo "wm a" > "$dir007/.rite/work-memory/issue-1.md"
 mkdir -p "$dir007/bin"
 cat > "$dir007/bin/find" <<'EOF'
@@ -244,6 +252,7 @@ echo ""
 echo "TC-008: corrupt FLOW_STATE surfaces jq rc in WARNING"
 dir008="$TEST_DIR/tc008"
 mkdir -p "$dir008/.rite/work-memory"
+git -C "$dir008" init -q
 mkdir -p "$dir008/.rite/sessions"
 printf '%s' "tc008-sid" > "$dir008/.rite-session-id"
 printf 'not-valid-json{{' > "$dir008/.rite/sessions/tc008-sid.flow-state"
@@ -268,6 +277,7 @@ echo ""
 echo "TC-resolver-fallback: session resolution failure emits WARNING and resets legacy file"
 dir_resolver="$TEST_DIR/tc_resolver_fallback"
 mkdir -p "$dir_resolver/.rite/work-memory"
+git -C "$dir_resolver" init -q
 echo '{"active":true,"issue_number":77,"phase":"cleanup"}' > "$dir_resolver/.rite-flow-state"
 out_resolver="$TEST_DIR/tc_resolver_fallback.out"
 ( cd "$dir_resolver" && bash "$HOOK" >"$out_resolver" 2>&1 ) || true
@@ -309,6 +319,7 @@ echo "TC-parked-history: full cleanup keeps other PRs' parked review runs"
 dirph="$TEST_DIR/tcph"
 sidph="22222222-2222-4222-8222-222222222222"
 mkdir -p "$dirph"
+git -C "$dirph" init -q
 git -C "$dirph" init -q
 ctxph='{"session_id":"'"$sidph"'","run_id":"r-a","pr_number":100,"cycle_count":2,"commit_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}'
 # r-c は cycle を放棄して凍結 cycle を持たずに退避した run。復元は放棄記録で検証される

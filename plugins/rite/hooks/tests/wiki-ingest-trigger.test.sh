@@ -148,6 +148,7 @@ echo ""
 echo "TC-008: Empty --content-file → exit 1"
 dir8="$TEST_DIR/tc8"
 mkdir -p "$dir8"
+git -C "$dir8" init -q
 : > "$dir8/empty.md"
 ( cd "$dir8" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file empty.md >/dev/null 2>err.log ) && rc=0 || rc=$?
 if [ $rc -eq 1 ] && grep -q 'is empty' "$dir8/err.log"; then
@@ -167,6 +168,7 @@ echo ""
 echo "TC-009: wiki.enabled: false → exit 2"
 dir9="$TEST_DIR/tc9"
 mkdir -p "$dir9"
+git -C "$dir9" init -q
 cat > "$dir9/rite-config.yml" <<'EOF'
 wiki:
   enabled: false
@@ -190,6 +192,7 @@ echo ""
 echo "TC-010: Happy path (reviews) → file created with frontmatter"
 dir10="$TEST_DIR/tc10"
 mkdir -p "$dir10"
+git -C "$dir10" init -q
 cat > "$dir10/rite-config.yml" <<'EOF'
 wiki:
   enabled: true
@@ -230,6 +233,7 @@ echo ""
 echo "TC-015: Special-chars-only --source-ref → exit 1 (empty slug)"
 dir15="$TEST_DIR/tc15"
 mkdir -p "$dir15"
+git -C "$dir15" init -q
 echo "x" > "$dir15/body.md"
 ( cd "$dir15" && bash "$HOOK" --type reviews --source-ref "///@@@" --content-file body.md >/dev/null 2>err.log ) && rc=0 || rc=$?
 if [ $rc -eq 1 ] && grep -q 'produced an empty slug' "$dir15/err.log"; then
@@ -245,6 +249,7 @@ echo ""
 echo "TC-016: 70-char source-ref → slug truncated to 60 chars"
 dir16="$TEST_DIR/tc16"
 mkdir -p "$dir16"
+git -C "$dir16" init -q
 echo "x" > "$dir16/body.md"
 long_ref="aaaaaaaaaa-bbbbbbbbbb-cccccccccc-dddddddddd-eeeeeeeeee-ffffffffff-gggggg"
 ( cd "$dir16" && bash "$HOOK" --type reviews --source-ref "$long_ref" --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
@@ -265,6 +270,7 @@ echo ""
 echo "TC-017: Newline in --source-ref → exit 1"
 dir17="$TEST_DIR/tc17"
 mkdir -p "$dir17"
+git -C "$dir17" init -q
 echo "x" > "$dir17/body.md"
 ( cd "$dir17" && bash "$HOOK" --type reviews --source-ref $'pr-1\n---\n# Malicious' --content-file body.md >/dev/null 2>err.log ) && rc=0 || rc=$?
 if [ $rc -eq 1 ] && grep -q 'control characters' "$dir17/err.log"; then
@@ -280,6 +286,7 @@ echo ""
 echo "TC-018: Newline in --title → exit 1"
 dir18="$TEST_DIR/tc18"
 mkdir -p "$dir18"
+git -C "$dir18" init -q
 echo "x" > "$dir18/body.md"
 ( cd "$dir18" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --title $'foo\nbar' >/dev/null 2>err.log ) && rc=0 || rc=$?
 if [ $rc -eq 1 ] && grep -q 'control characters' "$dir18/err.log"; then
@@ -295,6 +302,7 @@ echo ""
 echo "TC-019: Title with embedded double quote → escaped to \\\""
 dir19="$TEST_DIR/tc19"
 mkdir -p "$dir19"
+git -C "$dir19" init -q
 echo "x" > "$dir19/body.md"
 ( cd "$dir19" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --title 'He said "hi"' > out.log 2>err.log ) && rc=0 || rc=$?
 target_path="$(cat "$dir19/out.log" 2>/dev/null || true)"
@@ -312,6 +320,7 @@ echo ""
 echo "TC-020: Title ending with single backslash → exit 1"
 dir20="$TEST_DIR/tc20"
 mkdir -p "$dir20"
+git -C "$dir20" init -q
 echo "x" > "$dir20/body.md"
 ( cd "$dir20" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --title 'foo\' >/dev/null 2>err.log ) && rc=0 || rc=$?
 if [ $rc -eq 1 ] && grep -q 'odd number of backslashes' "$dir20/err.log"; then
@@ -327,6 +336,7 @@ echo ""
 echo "TC-021: Non-numeric --pr-number → exit 1"
 dir21="$TEST_DIR/tc21"
 mkdir -p "$dir21"
+git -C "$dir21" init -q
 echo "x" > "$dir21/body.md"
 ( cd "$dir21" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --pr-number "1abc" >/dev/null 2>err.log ) && rc=0 || rc=$?
 if [ $rc -eq 1 ] && grep -q 'must be a positive integer' "$dir21/err.log"; then
@@ -342,6 +352,7 @@ echo ""
 echo "TC-022: --pr-number with embedded newline → exit 1"
 dir22="$TEST_DIR/tc22"
 mkdir -p "$dir22"
+git -C "$dir22" init -q
 echo "x" > "$dir22/body.md"
 ( cd "$dir22" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --pr-number $'1\ningested: true' >/dev/null 2>err.log ) && rc=0 || rc=$?
 if [ $rc -eq 1 ] && grep -q 'must be a positive integer' "$dir22/err.log"; then
@@ -358,6 +369,7 @@ echo "TC-023: wiki.enabled: yes / 1 → accepted"
 for variant in yes 1; do
   d="$TEST_DIR/tc23_$variant"
   mkdir -p "$d"
+  git -C "$d" init -q
   cat > "$d/rite-config.yml" <<EOF
 wiki:
   enabled: $variant
@@ -384,6 +396,7 @@ echo ""
 echo "TC-024: wiki.enabled: no → exit 2"
 d="$TEST_DIR/tc24"
 mkdir -p "$d"
+git -C "$d" init -q
 cat > "$d/rite-config.yml" <<'EOF'
 wiki:
   enabled: no
@@ -403,6 +416,7 @@ echo ""
 echo "TC-025: rite-config.yml without wiki: section → lenient pass (no abort)"
 d="$TEST_DIR/tc25"
 mkdir -p "$d"
+git -C "$d" init -q
 cat > "$d/rite-config.yml" <<'EOF'
 project:
   type: generic
@@ -428,6 +442,7 @@ echo ""
 echo "TC-011: type=fixes → target dir is .rite/wiki/raw/fixes/"
 dir11="$TEST_DIR/tc11"
 mkdir -p "$dir11"
+git -C "$dir11" init -q
 echo "Fix details" > "$dir11/body.md"
 ( cd "$dir11" && bash "$HOOK" \
   --type fixes \
@@ -450,6 +465,7 @@ echo ""
 echo "TC-012: type=retrospectives without --title"
 dir12="$TEST_DIR/tc12"
 mkdir -p "$dir12"
+git -C "$dir12" init -q
 echo "Retrospective body" > "$dir12/body.md"
 ( cd "$dir12" && bash "$HOOK" \
   --type retrospectives \
@@ -472,6 +488,7 @@ echo ""
 echo "TC-013: Special characters in --source-ref are slugified"
 dir13="$TEST_DIR/tc13"
 mkdir -p "$dir13"
+git -C "$dir13" init -q
 echo "x" > "$dir13/body.md"
 _src_ref="PR #123/:: Review" # drift-check-ignore
 ( cd "$dir13" && bash "$HOOK" \
@@ -507,6 +524,7 @@ echo ""
 echo "TC-026: Body with markdown horizontal rule → integrity check passes"
 dir26="$TEST_DIR/tc26"
 mkdir -p "$dir26"
+git -C "$dir26" init -q
 printf '%s\n' '## Section A' '' '---' '' '## Section B' > "$dir26/body.md"
 ( cd "$dir26" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
 target_path="$(cat "$dir26/out.log" 2>/dev/null || true)"
@@ -523,6 +541,7 @@ echo ""
 echo "TC-029: Non-numeric --issue-number → exit 1"
 dir29="$TEST_DIR/tc29"
 mkdir -p "$dir29"
+git -C "$dir29" init -q
 echo "x" > "$dir29/body.md"
 ( cd "$dir29" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --issue-number "1abc" >/dev/null 2>err.log ) && rc=0 || rc=$?
 if [ $rc -eq 1 ] && grep -q 'must be a positive integer' "$dir29/err.log"; then
@@ -538,6 +557,7 @@ echo ""
 echo "TC-030: --issue-number with embedded newline → exit 1"
 dir30="$TEST_DIR/tc30"
 mkdir -p "$dir30"
+git -C "$dir30" init -q
 echo "x" > "$dir30/body.md"
 ( cd "$dir30" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --issue-number $'1\ningested: true' >/dev/null 2>err.log ) && rc=0 || rc=$?
 if [ $rc -eq 1 ] && grep -q 'must be a positive integer' "$dir30/err.log"; then
@@ -553,6 +573,7 @@ echo ""
 echo "TC-031: wiki.enabled: 0 → exit 2"
 dir31="$TEST_DIR/tc31"
 mkdir -p "$dir31"
+git -C "$dir31" init -q
 cat > "$dir31/rite-config.yml" <<'EOF'
 wiki:
   enabled: 0
@@ -572,6 +593,7 @@ echo ""
 echo "TC-032: wiki.enabled: \"false\" (quoted) → exit 2"
 dir32="$TEST_DIR/tc32"
 mkdir -p "$dir32"
+git -C "$dir32" init -q
 cat > "$dir32/rite-config.yml" <<'EOF'
 wiki:
   enabled: "false"
@@ -592,6 +614,7 @@ echo ""
 echo "TC-027: Whitespace-only body → exit 3 via script (integrity check detects no body)"
 dir27="$TEST_DIR/tc27"
 mkdir -p "$dir27"
+git -C "$dir27" init -q
 cat > "$dir27/rite-config.yml" <<'EOF'
 wiki:
   enabled: true
@@ -637,6 +660,7 @@ echo ""
 echo "TC-028: Valid file → exit 0 via script (integrity check passes)"
 dir28="$TEST_DIR/tc28"
 mkdir -p "$dir28"
+git -C "$dir28" init -q
 cat > "$dir28/rite-config.yml" <<'EOF'
 wiki:
   enabled: true
@@ -658,6 +682,7 @@ echo ""
 echo "TC-033: Symlink --content-file → exit 1"
 dir33="$TEST_DIR/tc33"
 mkdir -p "$dir33"
+git -C "$dir33" init -q
 cat > "$dir33/rite-config.yml" <<'EOF'
 wiki:
   enabled: true
@@ -678,6 +703,7 @@ echo ""
 echo "TC-034: Content-file outside \$PWD → exit 1"
 dir34="$TEST_DIR/tc34"
 mkdir -p "$dir34"
+git -C "$dir34" init -q
 cat > "$dir34/rite-config.yml" <<'EOF'
 wiki:
   enabled: true
@@ -701,6 +727,7 @@ echo "TC-034b: symlink component in \$PWD + regular content-file → exit 0"
 dir34b_real="$TEST_DIR/tc34b-real"
 dir34b_link="$TEST_DIR/tc34b-link"
 mkdir -p "$dir34b_real"
+git -C "$dir34b_real" init -q
 ln -s "$dir34b_real" "$dir34b_link"
 cat > "$dir34b_real/rite-config.yml" <<'EOF'
 wiki:
@@ -726,6 +753,7 @@ echo ""
 echo "TC-035: Control character in --source-ref → exit 1"
 dir35="$TEST_DIR/tc35"
 mkdir -p "$dir35"
+git -C "$dir35" init -q
 echo "x" > "$dir35/body.md"
 ( cd "$dir35" && bash "$HOOK" --type reviews --source-ref $'pr-1\x01injected' --content-file body.md >/dev/null 2>err.log ) && rc=0 || rc=$?
 if [ $rc -eq 1 ] && grep -q 'control characters' "$dir35/err.log"; then
@@ -741,6 +769,7 @@ echo ""
 echo "TC-036: No rite-config.yml → lenient pass (rc=0)"
 dir36="$TEST_DIR/tc36"
 mkdir -p "$dir36"
+git -C "$dir36" init -q
 echo "body" > "$dir36/body.md"
 # Deliberately do NOT create rite-config.yml
 ( cd "$dir36" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
@@ -791,6 +820,7 @@ if _probe36a=$(mktemp /tmp/rite-probe-XXXXXX 2>/dev/null); then
   rm -f "$_probe36a"
   dir36a="$TEST_DIR/tc36a"
   mkdir -p "$dir36a"
+  git -C "$dir36a" init -q
   cat > "$dir36a/rite-config.yml" <<'EOF'
 wiki:
   enabled: true
@@ -843,6 +873,7 @@ echo ""
 echo "TC-036b: Content-file from mktemp default → exit 1 (pitfall)"
 dir36b="$TEST_DIR/tc36b"
 mkdir -p "$dir36b"
+git -C "$dir36b" init -q
 cat > "$dir36b/rite-config.yml" <<'EOF'
 wiki:
   enabled: true
@@ -875,6 +906,7 @@ echo ""
 echo "TC-036c: Content-file in \$TMPDIR/rite-* → exit 0 (sandbox arm)"
 dir36c="$TEST_DIR/tc36c"
 mkdir -p "$dir36c"
+git -C "$dir36c" init -q
 cat > "$dir36c/rite-config.yml" <<'EOF'
 wiki:
   enabled: true
@@ -904,6 +936,7 @@ echo ""
 echo "TC-036d: Content-file in \$TMPDIR without rite-* prefix → exit 1"
 dir36d="$TEST_DIR/tc36d"
 mkdir -p "$dir36d"
+git -C "$dir36d" init -q
 cat > "$dir36d/rite-config.yml" <<'EOF'
 wiki:
   enabled: true
@@ -928,6 +961,7 @@ echo ""
 echo "TC-036e: TMPDIR realpath failure → arm disabled + WARNING + exit 1"
 dir36e="$TEST_DIR/tc36e"
 mkdir -p "$dir36e"
+git -C "$dir36e" init -q
 cat > "$dir36e/rite-config.yml" <<'EOF'
 wiki:
   enabled: true
@@ -1047,6 +1081,7 @@ echo ""
 echo "TC-042: Partial-write rollback trap auto-removes target_file on exit 3"
 dir42="$TEST_DIR/tc42"
 mkdir -p "$dir42"
+git -C "$dir42" init -q
 cat > "$dir42/rite-config.yml" <<'EOF'
 wiki:
   enabled: true
@@ -1079,6 +1114,7 @@ echo ""
 
 echo "[TC-043] chmod 000 rite-config.yml → sed extraction fail → exit 2"
 dir43=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-test-tc043-XXXXXX")
+git -C "$dir43" init -q
 cat > "$dir43/rite-config.yml" <<EOF
 wiki:
   enabled: true
@@ -1101,6 +1137,7 @@ echo ""
 
 echo "[TC-044] binary garbage in wiki section → awk fail → exit 2"
 dir44=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-test-tc044-XXXXXX")
+git -C "$dir44" init -q
 # NUL byte handling differs by platform, so this case may pass-through the
 # tr/sed pipeline. Either outcome is acceptable as long as raw is not silently
 # created when the parser bails: that is the invariant the assertion enforces.
@@ -1128,6 +1165,7 @@ echo ""
 
 echo "[TC-045] wiki.enabled normalization happy path (negative control)"
 dir45=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-test-tc045-XXXXXX")
+git -C "$dir45" init -q
 # Negative control: ensure the strict guards above don't accidentally break
 # the success path. A regression here would mean the safe-default became
 # fail-closed for valid configs too.
@@ -1152,6 +1190,7 @@ echo "[TC-046] wiki.enabled: TRUE (uppercase) → normalize lowercase → exit 0
 # typo-reject arm and exit 2; the TC pins that the normalization step survives
 # future refactors.
 dir46=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-test-tc046-XXXXXX")
+git -C "$dir46" init -q
 cat > "$dir46/rite-config.yml" <<EOF
 wiki:
   enabled: TRUE
@@ -1170,6 +1209,7 @@ echo "[TC-047] wiki.enabled: False (MixedCase) → normalize lowercase → exit 
 # Symmetric to TC-046 for the false path. A regression that drops the
 # normalize step would let MixedCase typos bypass the disable guard.
 dir47=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-test-tc047-XXXXXX")
+git -C "$dir47" init -q
 cat > "$dir47/rite-config.yml" <<EOF
 wiki:
   enabled: False
@@ -1189,6 +1229,7 @@ echo "[TC-048] wiki.enabled: tru (typo) → exit 2 + recognised-boolean WARNING"
 # silent typo-induced enable. Without this TC, future refactors could weaken
 # the arm to no-op and the safety net would vanish silently.
 dir48=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-test-tc048-XXXXXX")
+git -C "$dir48" init -q
 cat > "$dir48/rite-config.yml" <<EOF
 wiki:
   enabled: tru
@@ -1213,6 +1254,7 @@ echo ""
 echo "TC-049: C1 0x9b in --source-ref → exit 1"
 dir49="$TEST_DIR/tc49"
 mkdir -p "$dir49"
+git -C "$dir49" init -q
 echo "x" > "$dir49/body.md"
 ( cd "$dir49" && bash "$HOOK" --type reviews --source-ref $'pr-1\x9bcsi' --content-file body.md >/dev/null 2>err.log ) && rc=0 || rc=$?
 if [ $rc -eq 1 ] && grep -q 'control characters' "$dir49/err.log"; then
@@ -1230,6 +1272,7 @@ echo ""
 echo "TC-050: Japanese UTF-8 in --title → exit 0"
 dir50="$TEST_DIR/tc50"
 mkdir -p "$dir50"
+git -C "$dir50" init -q
 echo "x" > "$dir50/body.md"
 ( cd "$dir50" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --title '静的 pin' >out.log 2>err.log ) && rc=0 || rc=$?
 target_path50=$(cat "$dir50/out.log" 2>/dev/null || true)
@@ -1247,6 +1290,7 @@ echo "TC-050b: C0/C1 controls and invalid UTF-8 in --title → exit 1"
 for control_name in tab soh c1-codepoint raw-c1; do
   dir50b="$TEST_DIR/tc50b-$control_name"
   mkdir -p "$dir50b"
+  git -C "$dir50b" init -q
   echo "x" > "$dir50b/body.md"
   case "$control_name" in
     tab) bad_title=$'foo\tbar' ;;

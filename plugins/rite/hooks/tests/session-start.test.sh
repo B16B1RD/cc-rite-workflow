@@ -75,6 +75,7 @@ create_state_file() {
   local dir="$1"
   local content="$2"
   local sid="${3:-test-sid-$(basename "$dir")}"
+  git init -q "$dir"
   mkdir -p "$dir/.rite/sessions"
   printf '%s' "$sid" > "$dir/.rite-session-id"
   # Inject schema_version=3 if not already present so the auto-migrate step
@@ -182,6 +183,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-006b: compact + stop_reason still emits recovery (not recover notice)"
 dir006b="$TEST_DIR/tc006b"
+git init -q "$dir006b"
 mkdir -p "$dir006b"
 create_state_file "$dir006b" '{
   "active": true,
@@ -206,6 +208,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-006c: startup reset reports circuit-breaker failure reason"
 dir006c="$TEST_DIR/tc006c"
+git init -q "$dir006c"
 mkdir -p "$dir006c"
 create_state_file "$dir006c" '{
   "active": true,
@@ -225,6 +228,7 @@ echo ""
 
 echo "TC-006d: startup reset names the receipt-missing stop as a known reason"
 dir006d="$TEST_DIR/tc006d"
+git init -q "$dir006d"
 mkdir -p "$dir006d"
 create_state_file "$dir006d" '{
   "active": true,
@@ -270,6 +274,7 @@ for _sr_case in \
   _sr_token=${_sr_case%%|*}
   _sr_phrase=${_sr_case#*|}
   dir006e="$TEST_DIR/tc006e-${_sr_token//:/-}"
+  git init -q "$dir006e"
   mkdir -p "$dir006e"
   create_state_file "$dir006e" '{
   "active": false,
@@ -424,6 +429,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-005: State file exists but active=false → exit 0 silently"
 dir005="$TEST_DIR/tc005"
+git init -q "$dir005"
 mkdir -p "$dir005"
 create_state_file "$dir005" '{"active": false, "issue_number": 42}'
 
@@ -440,6 +446,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-006: State file with active=true + source=compact → recovery text"
 dir006="$TEST_DIR/tc006"
+git init -q "$dir006"
 mkdir -p "$dir006"
 create_state_file "$dir006" '{
   "active": true,
@@ -471,6 +478,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-007: State file missing issue_number + source=compact → issue_number missing warning"
 dir007="$TEST_DIR/tc007"
+git init -q "$dir007"
 mkdir -p "$dir007"
 create_state_file "$dir007" '{"active": true, "phase": "test"}'
 
@@ -488,6 +496,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-008: State file with null/missing optional fields + source=compact → defaults"
 dir008="$TEST_DIR/tc008"
+git init -q "$dir008"
 mkdir -p "$dir008"
 create_state_file "$dir008" '{"active": true, "issue_number": 99}'
 
@@ -505,6 +514,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-009: Stale temp file cleanup"
 dir009="$TEST_DIR/tc009"
+git init -q "$dir009"
 mkdir -p "$dir009"
 create_state_file "$dir009" '{"active": true, "issue_number": 1}'
 
@@ -533,6 +543,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-010: Invalid JSON in state file → exit 0 (line 111 ACTIVE fallback)"
 dir010="$TEST_DIR/tc010"
+git init -q "$dir010"
 mkdir -p "$dir010"
 # Write broken JSON via create_state_file so the per-session path resolver finds it
 create_state_file "$dir010" "{broken json"
@@ -564,6 +575,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-011: Field extraction with unit-separator-delimited IFS"
 dir011="$TEST_DIR/tc011"
+git init -q "$dir011"
 mkdir -p "$dir011"
 create_state_file "$dir011" '{
   "active": true,
@@ -587,6 +599,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-012: source=compact + compact_state=recovering → recovery text"
 dir012="$TEST_DIR/tc012"
+git init -q "$dir012"
 mkdir -p "$dir012"
 create_state_file "$dir012" '{"active": true, "issue_number": 55, "phase": "implementing"}'
 echo '{"compact_state": "recovering", "active_issue": 55}' > "$dir012/.rite-compact-state"
@@ -606,6 +619,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-013: source=compact + compact_state=normal → recovery text"
 dir013="$TEST_DIR/tc013"
+git init -q "$dir013"
 mkdir -p "$dir013"
 create_state_file "$dir013" '{"active": true, "issue_number": 56, "phase": "reviewing"}'
 echo '{"compact_state": "normal"}' > "$dir013/.rite-compact-state"
@@ -625,6 +639,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-014: source=compact + no compact-state → recovery text (auto default)"
 dir014="$TEST_DIR/tc014"
+git init -q "$dir014"
 mkdir -p "$dir014"
 create_state_file "$dir014" '{"active": true, "issue_number": 57, "phase": "testing"}'
 
@@ -645,6 +660,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-015: source=clear + compact_state=recovering → defensive reset"
 dir015="$TEST_DIR/tc015"
+git init -q "$dir015"
 mkdir -p "$dir015"
 create_state_file "$dir015" '{"active": true, "issue_number": 58, "phase": "implementing"}'
 echo '{"compact_state": "recovering", "active_issue": 58}' > "$dir015/.rite-compact-state"
@@ -669,6 +685,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-per-session-legacy-compact-cleanup: source=clear → per-session AND legacy compact-state both cleaned"
 dir1371="$TEST_DIR/tc1371"
+git init -q "$dir1371"
 mkdir -p "$dir1371"
 create_state_file "$dir1371" '{"active": true, "issue_number": 1371, "phase": "implement"}'
 cs1371_session="$(compact_state_path "$dir1371")"
@@ -689,6 +706,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-016: source=startup + compact_state=blocked + active=true → defensive reset"
 dir016="$TEST_DIR/tc016"
+git init -q "$dir016"
 mkdir -p "$dir016"
 create_state_file "$dir016" '{"active": true, "issue_number": 59, "phase": "reviewing"}'
 echo '{"compact_state": "recovering", "active_issue": 59}' > "$dir016/.rite-compact-state"
@@ -707,6 +725,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-017: source=startup + compact_state=blocked + active=false → clean compact state"
 dir017="$TEST_DIR/tc017"
+git init -q "$dir017"
 mkdir -p "$dir017"
 create_state_file "$dir017" '{"active": false, "issue_number": 60, "phase": "completed"}'
 echo '{"compact_state": "recovering", "active_issue": 60}' > "$dir017/.rite-compact-state"
@@ -724,6 +743,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-018: source=startup + compact_state=blocked + no flow state → clean compact state"
 dir018="$TEST_DIR/tc018"
+git init -q "$dir018"
 mkdir -p "$dir018"
 # No .rite-flow-state at all
 echo '{"compact_state": "recovering", "active_issue": 61}' > "$dir018/.rite-compact-state"
@@ -741,6 +761,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-019: source=startup + compact_state=blocked + active=true → compact state cleaned"
 dir019="$TEST_DIR/tc019"
+git init -q "$dir019"
 mkdir -p "$dir019"
 create_state_file "$dir019" '{"active": true, "issue_number": 62, "phase": "implementing"}'
 echo '{"compact_state": "recovering", "active_issue": 62}' > "$dir019/.rite-compact-state"
@@ -758,6 +779,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-020: source=startup + compact_state=blocked + lockdir → both cleaned"
 dir020="$TEST_DIR/tc020"
+git init -q "$dir020"
 mkdir -p "$dir020"
 create_state_file "$dir020" '{"active": false, "issue_number": 63, "phase": "completed"}'
 echo '{"compact_state": "recovering", "active_issue": 63}' > "$dir020/.rite-compact-state"
@@ -777,6 +799,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-021: source=compact + compact_state=recovering + active=false → compact state cleaned"
 dir021="$TEST_DIR/tc021"
+git init -q "$dir021"
 mkdir -p "$dir021"
 create_state_file "$dir021" '{"active": false, "issue_number": 64, "phase": "completed"}'
 echo '{"compact_state": "recovering", "active_issue": 64}' > "$dir021/.rite-compact-state"
@@ -794,6 +817,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-022: source=startup + active=false + no compact state → no-op"
 dir022="$TEST_DIR/tc022"
+git init -q "$dir022"
 mkdir -p "$dir022"
 create_state_file "$dir022" '{"active": false, "issue_number": 65, "phase": "completed"}'
 # No .rite-compact-state file
@@ -811,6 +835,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-023: source=startup + active=true + phase=completed → silent reset + compact cleanup"
 dir023="$TEST_DIR/tc023"
+git init -q "$dir023"
 mkdir -p "$dir023"
 create_state_file "$dir023" '{"active": true, "issue_number": 70, "branch": "fix/issue-70-test", "phase": "completed"}'
 echo '{"compact_state": "recovering", "active_issue": 70}' > "$dir023/.rite-compact-state"
@@ -829,6 +854,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-024: source=startup + active=true + phase=implementing → message shown"
 dir024="$TEST_DIR/tc024"
+git init -q "$dir024"
 mkdir -p "$dir024"
 create_state_file "$dir024" '{"active": true, "issue_number": 71, "branch": "feat/issue-71-test", "phase": "implementing"}'
 
@@ -863,6 +889,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-026: source=startup + phase=completed + needs_clear=true → silent reset (completed priority)"
 dir026="$TEST_DIR/tc026"
+git init -q "$dir026"
 mkdir -p "$dir026"
 create_state_file "$dir026" '{"active": true, "issue_number": 73, "branch": "fix/issue-73-test", "phase": "completed", "needs_clear": true}'
 
@@ -881,6 +908,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-027: source=startup + active=true + no issue_number → silent reset, no message"
 dir027="$TEST_DIR/tc027"
+git init -q "$dir027"
 mkdir -p "$dir027"
 create_state_file "$dir027" '{"active": true, "phase": "implementing"}'
 
@@ -898,6 +926,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-T01: own-session startup → reset proceeds"
 dirT01="$TEST_DIR/tcT01"
+git init -q "$dirT01"
 mkdir -p "$dirT01"
 sid_t01="ses-T01-$(date +%s)"
 ts_t01=$(iso8601_now 0)
@@ -919,6 +948,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-T02: other-session startup → reset skipped (regression guard)"
 dirT02="$TEST_DIR/tcT02"
+git init -q "$dirT02"
 mkdir -p "$dirT02"
 sid_state="ses-T02-state-$(date +%s)"
 sid_hook="ses-T02-hook-$(date +%s)"
@@ -950,6 +980,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-T03: per-session state without internal session_id field → reset"
 dirT03="$TEST_DIR/tcT03"
+git init -q "$dirT03"
 mkdir -p "$dirT03"
 sid_t03="ses-T03-hook"
 ts_t03=$(iso8601_now 0)
@@ -976,6 +1007,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-T04: check_session_ownership unavailable → fail-safe reset"
 dirT04="$TEST_DIR/tcT04"
+git init -q "$dirT04"
 mkdir -p "$dirT04/sandbox/hooks"
 sandbox_hook_dir="$dirT04/sandbox/hooks"
 src_hook_dir="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -1023,6 +1055,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-T04b: helper undefined + RITE_DEBUG=1 → 'ownership check unavailable' debug log"
 dirT04b="$TEST_DIR/tcT04b"
+git init -q "$dirT04b"
 mkdir -p "$dirT04b/sandbox/hooks"
 sandbox_hook_dir_b="$dirT04b/sandbox/hooks"
 src_hook_dir_b="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -1088,6 +1121,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-per-session-detect-A (AC-LOCAL-2): per-session active=true → workflow detected"
 dir680a="$TEST_DIR/tc680a"
+git init -q "$dir680a"
 mkdir -p "$dir680a/.rite/sessions"
 sid680a="aaaabbbb-cccc-dddd-eeee-ffffaaaa1111"
 echo "$sid680a" > "$dir680a/.rite-session-id"
@@ -1112,6 +1146,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-per-session-detect-B  : per-session active=false → no detection (AND-logic preserved)"
 dir680b="$TEST_DIR/tc680b"
+git init -q "$dir680b"
 mkdir -p "$dir680b/.rite/sessions"
 sid680b="22222222-3333-4444-5555-666666666666"
 echo "$sid680b" > "$dir680b/.rite-session-id"
@@ -1154,6 +1189,7 @@ FAKE_RESOLVER_EOF
 chmod +x "$sbx_749/flow-state.sh"
 
 dir_749="$TEST_DIR/tc749"
+git init -q "$dir_749"
 mkdir -p "$dir_749"
 
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.749.XXXXXX")"
@@ -1181,6 +1217,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-EXTRACT-SID-WARNING: malformed stdin → extract_session_id WARNING reaches caller stderr"
 dir_sid="$TEST_DIR/tc-sid-warning"
+git init -q "$dir_sid"
 mkdir -p "$dir_sid"
 sid_stderr=$(mktemp "$TEST_DIR/stderr.sid.XXXXXX")
 echo '{"cwd":"'"$dir_sid"'","session_id":"not-json-{{","extra":' | bash "$HOOK" >/dev/null 2>"$sid_stderr" || true
@@ -1227,6 +1264,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-settings-local-invalid-json: invalid settings.local.json → hook continues + corruption surfaces + JSON hint"
 dir_1241a="$TEST_DIR/tc1241a"
+git init -q "$dir_1241a"
 mkdir -p "$dir_1241a/.claude"
 # No .rite-settings-hooks-cleaned marker → _needs_cleanup=true; source=startup gates the repair path.
 # Run the hook directly in the main shell rather than via the run_hook_* helpers:
@@ -1264,6 +1302,7 @@ echo ""
 echo "TC-settings-local-noop-downstream: rc=1 no-op repair → hook continues silently to STATE_FILE resolution"
 dir_1241b="$TEST_DIR/tc1241b"
 sid_1241b="11112222-3333-4444-5555-666677778888"
+git init -q "$dir_1241b"
 mkdir -p "$dir_1241b/.claude"
 # Valid JSON with no rite hook entries → cleanup script returns rc=1 (intentional no-op).
 printf '%s' '{"permissions":{"allow":["Bash(ls:*)"]}}' > "$dir_1241b/.claude/settings.local.json"
@@ -1307,6 +1346,7 @@ sbx_1241c="$(mktemp -d "$TEST_DIR/sbx-1241c-XXXXXX")"
 cp -a "$HOOKS_REAL_DIR_1241/." "$sbx_1241c/"
 rm -f "$sbx_1241c/scripts/settings-local-rite-hook-cleanup.py"
 dir_1241c="$TEST_DIR/tc1241c"
+git init -q "$dir_1241c"
 mkdir -p "$dir_1241c/.claude"
 printf '%s' '{"permissions":{"allow":[]}}' > "$dir_1241c/.claude/settings.local.json"
 stderr_1241c="$(mktemp "$TEST_DIR/stderr.1241c.XXXXXX")"
@@ -1341,6 +1381,7 @@ echo ""
 # --------------------------------------------------------------------------
 _dep_git_repo() {
   local d="$1" sv="$2"  # sv: "1" | "2" | "" (empty → omit flow_state section)
+  git init -q "$d"
   mkdir -p "$d"
   (cd "$d" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q && git checkout -b "feat/issue-1458-test" -q)
   if [ -n "$sv" ]; then
@@ -1448,6 +1489,7 @@ dirWT="$TEST_DIR/tc1524a"
 sbx_wt="$(_mk_wt_sandbox "$dirWT")"
 sid_wt="ses-1524a"
 ts_wt=$(iso8601_now 0)
+git init -q "$dirWT"
 mkdir -p "$dirWT/.rite/sessions"
 printf '%s' "$sid_wt" > "$dirWT/.rite-session-id"
 # `worktree` points at a path that does NOT exist (the reaped session worktree).
@@ -1472,6 +1514,7 @@ dirWTb="$TEST_DIR/tc1524b"
 sbx_wtb="$(_mk_wt_sandbox "$dirWTb")"
 sid_wtb="ses-1524b"
 ts_wtb=$(iso8601_now 0)
+git init -q "$dirWTb"
 mkdir -p "$dirWTb/.rite/sessions"
 mkdir -p "$dirWTb/.rite/worktrees/issue-1525"   # the recorded worktree DOES exist
 printf '%s' "$sid_wtb" > "$dirWTb/.rite-session-id"
@@ -1500,6 +1543,7 @@ else
   sbx_wtc="$(_mk_wt_sandbox "$dirWTc")"
   sid_wtc="ses-1524c"
   ts_wtc=$(iso8601_now 0)
+  git init -q "$dirWTc"
   mkdir -p "$dirWTc/.rite/sessions"
   printf '%s' "$sid_wtc" > "$dirWTc/.rite-session-id"
   cat > "$dirWTc/.rite/sessions/${sid_wtc}.flow-state" <<EOF
@@ -1528,6 +1572,7 @@ echo "TC-1530: .rite/session-id write conditioned on env-absence"
 # Case A: env absent → session-start writes .rite/session-id (the fallback channel
 # env-absent runtimes rely on for flow-state.sh resolution).
 dir1530a="$TEST_DIR/cond-env-absent"
+git init -q "$dir1530a"
 mkdir -p "$dir1530a"
 sid1530a="dddddddd-1111-2222-3333-444444444444"
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
@@ -1544,6 +1589,7 @@ fi
 # session-id file; the per-session env var is authoritative, so leaving the
 # shared file untouched is what prevents concurrent sessions from overwriting it.
 dir1530b="$TEST_DIR/cond-env-present"
+git init -q "$dir1530b"
 mkdir -p "$dir1530b"
 sid1530b="eeeeeeee-5555-6666-7777-888888888888"
 env_sid_b="ffffffff-9999-0000-1111-222222222222"
@@ -1565,6 +1611,7 @@ echo "TC-1552 (AC-5): dangling harness cwd at a reaped session worktree → reco
 # the /clear `Path does not exist` fix. _RITE_HOOK_RUNNING_SESSIONSTART must be
 # unset or the double-execution guard exits 0 before reaching the cwd check.
 dir1552_root="$TEST_DIR/dangling-cwd"
+git init -q "$dir1552_root"
 mkdir -p "$dir1552_root"
 dangling_cwd="$dir1552_root/.rite/worktrees/issue-1231"   # intentionally NOT created
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
@@ -1601,6 +1648,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-1968-01 (AC-1): reap output is captured to .rite/logs/pr-cycle-cleanup.log"
 dir_reap_ac1="$TEST_DIR/reap-ac1"
+git init -q "$dir_reap_ac1"
 mkdir -p "$dir_reap_ac1"
 (cd "$dir_reap_ac1" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q)
 # TMPDIR isolation: a real git fixture lets reap run to completion, which also
@@ -1619,6 +1667,7 @@ echo ""
 
 echo "TC-1968-02 (AC-2): reap output does not leak into hook stdout"
 dir_reap_ac2="$TEST_DIR/reap-ac2"
+git init -q "$dir_reap_ac2"
 mkdir -p "$dir_reap_ac2"
 (cd "$dir_reap_ac2" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q)
 iso_tmpdir_ac2="$TEST_DIR/reap-ac2-tmpdir"
@@ -1634,6 +1683,7 @@ echo ""
 
 echo "TC-1968-03 (AC-3): log dir creation failure falls back to discard, hook still exits 0"
 dir_reap_ac3="$TEST_DIR/reap-ac3"
+git init -q "$dir_reap_ac3"
 mkdir -p "$dir_reap_ac3/.rite"
 # A file named "logs" at the target path blocks `mkdir -p .../.rite/logs`,
 # forcing the fallback-to-discard branch without disturbing other .rite/ state.
@@ -1651,6 +1701,7 @@ echo ""
 
 echo "TC-1968-05 (AC-1): a reap WARNING line (not just the status line) is captured to the log"
 dir_reap_ac5="$TEST_DIR/reap-ac5"
+git init -q "$dir_reap_ac5"
 mkdir -p "$dir_reap_ac5"
 (cd "$dir_reap_ac5" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q)
 iso_tmpdir_ac5="$TEST_DIR/reap-ac5-tmpdir"
@@ -1669,6 +1720,7 @@ echo ""
 
 echo "TC-1968-06 (AC-3): mkdir succeeds but the log file itself is not writable → falls back to discard"
 dir_reap_ac6="$TEST_DIR/reap-ac6"
+git init -q "$dir_reap_ac6"
 mkdir -p "$dir_reap_ac6/.rite/logs"
 # Existing read-only dir: mkdir -p is a no-op success even though writes inside
 # it fail — the exact gap the writability probe (`{ : > file; } 2>/dev/null`)
@@ -1724,6 +1776,7 @@ echo ""
 
 echo "TC-1968-07 (self-contained gitignore): reap log dir gets its own .gitignore (*) on first creation"
 dir_reap_ac7="$TEST_DIR/reap-ac7"
+git init -q "$dir_reap_ac7"
 mkdir -p "$dir_reap_ac7"
 (cd "$dir_reap_ac7" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q)
 # TMPDIR isolation: same rationale as TC-1968-01/02/05 (real git fixture lets reap
@@ -1741,6 +1794,7 @@ echo ""
 
 echo "TC-1968-08 (regression: .gitignore write failure does not leak a bash redirect error): .gitignore path collides with a directory"
 dir_reap_ac8="$TEST_DIR/reap-ac8"
+git init -q "$dir_reap_ac8"
 mkdir -p "$dir_reap_ac8"
 (cd "$dir_reap_ac8" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q)
 # Name collision: pre-create .gitignore as a directory so the `-f` check is
@@ -1761,6 +1815,7 @@ echo ""
 
 echo "nested .rite mkdir failure: file at .rite emits WARNING, hook exits 0"
 dir_rite_file="$TEST_DIR/rite-as-file"
+git init -q "$dir_rite_file"
 mkdir -p "$dir_rite_file"
 (cd "$dir_rite_file" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q)
 # A file named ".rite" at STATE_ROOT blocks `mkdir -p .../.rite`, so the
@@ -1794,6 +1849,7 @@ write_batch_queue() {
 
 echo "T-09: compact + active queue appends Batch frame (T-03)"
 dir_t09="$TEST_DIR/tc-batch-09"
+git init -q "$dir_t09"
 mkdir -p "$dir_t09"
 create_state_file "$dir_t09" '{
   "active": true,
@@ -1826,6 +1882,7 @@ echo ""
 
 echo "T-09b: compact + stop_reason + active queue still avoids recover resume phrase"
 dir_t09b="$TEST_DIR/tc-batch-09b"
+git init -q "$dir_t09b"
 mkdir -p "$dir_t09b"
 create_state_file "$dir_t09b" '{
   "active": true,
@@ -1849,6 +1906,7 @@ echo "T-10 / T-01: compact without active queue is byte-identical auto recovery"
 T10_EXPECTED=$'[rite] Auto-compact recovery: Issue #42, Phase: implement, Branch: feat/issue-42-test\nNext action: Continue coding\nLoop: 1 | PR: #10\nUse `bash {plugin_root}/hooks/flow-state.sh get --field <field>` for full state details. Also consult .rite/work-memory/issue-42.md, then continue.'
 T10_STATE='{"active": true, "issue_number": 42, "phase": "implement", "next_action": "Continue coding", "loop_count": 1, "pr_number": 10, "branch": "feat/issue-42-test"}'
 dir_t10="$TEST_DIR/tc-batch-10"
+git init -q "$dir_t10"
 mkdir -p "$dir_t10"
 create_state_file "$dir_t10" "$T10_STATE"
 output=$(run_hook_with_source "$dir_t10" "compact")
@@ -1862,6 +1920,7 @@ echo ""
 echo "T-10b: active:false / cursor>=total / other sid keep recovery fixture (no Batch)"
 for variant in false done othersid; do
   dir_v="$TEST_DIR/tc-batch-10-$variant"
+  git init -q "$dir_v"
   mkdir -p "$dir_v"
   create_state_file "$dir_v" "$T10_STATE"
   case "$variant" in
@@ -1881,6 +1940,7 @@ echo ""
 echo "T-02: compact-state.trigger=manual is byte-identical state-only recovery"
 T02_EXPECTED=$'[rite] Compact recovery: Issue #42, Phase: implement, Branch: feat/issue-42-test\nNext action: Continue coding\nLoop: 1 | PR: #10'
 dir_t02="$TEST_DIR/tc-t02-manual"
+git init -q "$dir_t02"
 mkdir -p "$dir_t02"
 create_state_file "$dir_t02" "$T10_STATE"
 jq -n '{compact_state: "normal", trigger: "manual"}' > "$(compact_state_path "$dir_t02")"
@@ -1894,6 +1954,7 @@ echo ""
 
 echo "T-12: corrupt compact-state still emits auto recovery and warns"
 dir_t12="$TEST_DIR/tc-t12-corrupt-cs"
+git init -q "$dir_t12"
 mkdir -p "$dir_t12"
 create_state_file "$dir_t12" "$T10_STATE"
 printf 'not-json{{' > "$(compact_state_path "$dir_t12")"
@@ -1911,6 +1972,7 @@ echo ""
 
 echo "T-13: next_action newline does not drop Loop/PR/Branch"
 dir_t13="$TEST_DIR/tc-t13-nl"
+git init -q "$dir_t13"
 mkdir -p "$dir_t13"
 T13_STATE=$(jq -nc --arg na $'line1\nline2' '{
   active: true,
@@ -1936,6 +1998,7 @@ echo ""
 
 echo "T-11: compact + corrupt queue emits unreadable Batch line"
 dir_t11="$TEST_DIR/tc-batch-11-corrupt"
+git init -q "$dir_t11"
 mkdir -p "$dir_t11"
 create_state_file "$dir_t11" "$T10_STATE"
 sid_t11="test-sid-$(basename "$dir_t11")"
@@ -1958,6 +2021,7 @@ echo ""
 
 echo "T-10c: startup + active queue still defensive-resets (does not switch to batch notice)"
 dir_t10c="$TEST_DIR/tc-batch-10-startup"
+git init -q "$dir_t10c"
 mkdir -p "$dir_t10c"
 create_state_file "$dir_t10c" '{
   "active": true,
@@ -1985,6 +2049,7 @@ COLLISION_MSG="読み込まれた plugin が .rite/plugin-root と一致しま�
 
 echo "TC-plugin-root-match: expected == actual → no collision warning"
 dir_pr_match="$TEST_DIR/tc-plugin-root-match"
+git init -q "$dir_pr_match"
 mkdir -p "$dir_pr_match/.rite"
 printf '%s' "$ACTUAL_PLUGIN_ROOT" > "$dir_pr_match/.rite/plugin-root"
 fake_home_match="$TEST_DIR/fake-home-match"
@@ -2002,6 +2067,7 @@ echo ""
 
 echo "TC-plugin-root-mismatch: expected != actual → collision warning"
 dir_pr_mis="$TEST_DIR/tc-plugin-root-mismatch"
+git init -q "$dir_pr_mis"
 mkdir -p "$dir_pr_mis/.rite"
 printf '%s' "/tmp/rite-other-plugin-root" > "$dir_pr_mis/.rite/plugin-root"
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
@@ -2017,6 +2083,7 @@ echo ""
 
 echo "TC-plugin-root-absent: no expected path → no collision warning"
 dir_pr_abs="$TEST_DIR/tc-plugin-root-absent"
+git init -q "$dir_pr_abs"
 mkdir -p "$dir_pr_abs"
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 output=$(echo "{\"cwd\": \"$dir_pr_abs\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
@@ -2029,6 +2096,7 @@ echo ""
 
 echo "TC-plugin-root-explicit: RITE_RUNTIME_EXPLICIT=1 skips collision warning"
 dir_pr_exp="$TEST_DIR/tc-plugin-root-explicit"
+git init -q "$dir_pr_exp"
 mkdir -p "$dir_pr_exp/.rite"
 printf '%s' "/tmp/rite-other-plugin-root" > "$dir_pr_exp/.rite/plugin-root"
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
@@ -2083,6 +2151,7 @@ write_owner_flow_state() {
 
 echo "RQ-01: own stale queue remains; ended other stale queues with absent or old owner flow-state are removed (same fixture)"
 dir_rq01="$TEST_DIR/rq-01"
+git init -q "$dir_rq01"
 mkdir -p "$dir_rq01"
 stale_ts=$(iso8601_now -8000)
 write_queue_file "$dir_rq01" "own-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[1],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
@@ -2114,6 +2183,7 @@ echo ""
 
 echo "RQ-11: other stale queue remains while its owner flow-state is fresh"
 dir_rq11="$TEST_DIR/rq-11"
+git init -q "$dir_rq11"
 mkdir -p "$dir_rq11"
 write_queue_file "$dir_rq11" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[4],cursor:0,mode:"merge",failed:[11],outstanding:[],active:true,updated_at:$ts}')"
 write_owner_flow_state "$dir_rq11" "other-sid" "$(jq -n --arg ts "$(iso8601_now -60)" '{active:true,updated_at:$ts}')"
@@ -2136,6 +2206,7 @@ echo ""
 
 echo "RQ-12: broken or non-object owner flow-state keeps the queue; missing or unparsable updated_at reaps with a reason"
 dir_rq12="$TEST_DIR/rq-12"
+git init -q "$dir_rq12"
 mkdir -p "$dir_rq12"
 for sid in broken-sid array-sid missing-sid badts-sid; do
   write_queue_file "$dir_rq12" "$sid" "$(jq -n --arg ts "$stale_ts" '{issues:[5],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
@@ -2185,6 +2256,7 @@ expected_kept_notice() {
 
 echo "RQ-13: without an ended marker, stale queues of a paused owner are kept and announced once each; live-owner, fresh and marked queues are not announced"
 dir_rq13="$TEST_DIR/rq-13"
+git init -q "$dir_rq13"
 mkdir -p "$dir_rq13"
 # Paused mid-Issue / paused after cleanup deactivated flow-state / batch stopped (active=false, unfinished) / flow-state gone.
 for sid in paused-sid cleaned-sid stopped-sid nofs-sid marked-sid live-sid; do
@@ -2232,6 +2304,7 @@ rq14_ok=1
 rq14_note=""
 for ttl in 1 24h; do
   dir_rq14="$TEST_DIR/rq-14-$ttl"
+  git init -q "$dir_rq14"
   mkdir -p "$dir_rq14"
   for sid in week-sid ctrl-sid; do
     write_queue_file "$dir_rq14" "$sid" "$(jq -n --arg ts "$seven_days_ts" '{issues:[15],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
@@ -2266,6 +2339,7 @@ echo ""
 
 echo "RQ-18: the announcement of a kept unmarked queue prints a non-ASCII state-root path byte for byte"
 dir_rq18="$TEST_DIR/rq-18-プロジェクト"
+git init -q "$dir_rq18"
 mkdir -p "$dir_rq18"
 rq18_ts=$(iso8601_now -604800)
 write_queue_file "$dir_rq18" "week-sid" "$(jq -n --arg ts "$rq18_ts" '{issues:[15],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
@@ -2283,6 +2357,7 @@ echo ""
 
 echo "RQ-15: SessionStart drops only its own ended marker, so a resumed session's queue is protected again"
 dir_rq15="$TEST_DIR/rq-15"
+git init -q "$dir_rq15"
 mkdir -p "$dir_rq15"
 create_state_file "$dir_rq15" '{"active":true,"issue_number":15,"phase":"review","next_action":"iterate","loop_count":1,"pr_number":15,"branch":"fix/issue-15-x","schema_version":3}' "own-sid"
 write_queue_file "$dir_rq15" "own-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[15],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
@@ -2306,6 +2381,7 @@ if [ "$(id -u)" -eq 0 ]; then
   pass "RQ-16: skipped under root (chmod cannot force a removal failure as uid 0)"
 else
   dir_rq16="$TEST_DIR/rq-16"
+  git init -q "$dir_rq16"
   mkdir -p "$dir_rq16"
   create_state_file "$dir_rq16" '{"active":true,"issue_number":16,"phase":"review","next_action":"iterate","loop_count":1,"pr_number":16,"branch":"fix/issue-16-x","schema_version":3}' "own-sid"
   write_queue_file "$dir_rq16" "own-sid" "$(jq -n --arg ts "$(iso8601_now -60)" '{issues:[16],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
@@ -2326,6 +2402,7 @@ echo ""
 
 echo "RQ-02: other fresh queue remains even when active=true"
 dir_rq02="$TEST_DIR/rq-02"
+git init -q "$dir_rq02"
 mkdir -p "$dir_rq02"
 fresh_ts=$(iso8601_now -60)
 write_queue_file "$dir_rq02" "other-sid" "$(jq -n --arg ts "$fresh_ts" '{issues:[3],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
@@ -2340,6 +2417,7 @@ echo ""
 
 echo "RQ-03: other stale with failed[] prints each item then deletes"
 dir_rq03="$TEST_DIR/rq-03"
+git init -q "$dir_rq03"
 mkdir -p "$dir_rq03"
 write_queue_file "$dir_rq03" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[4],cursor:0,mode:"merge",failed:[11,12],outstanding:[],active:false,updated_at:$ts}')"
 write_ended_marker "$dir_rq03" "other-sid"
@@ -2357,6 +2435,7 @@ echo ""
 
 echo "RQ-04: other stale with outstanding[] only prints each item then deletes"
 dir_rq04="$TEST_DIR/rq-04"
+git init -q "$dir_rq04"
 mkdir -p "$dir_rq04"
 write_queue_file "$dir_rq04" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[5],cursor:0,mode:"default",failed:[],outstanding:[21],active:true,updated_at:$ts}')"
 write_ended_marker "$dir_rq04" "other-sid"
@@ -2372,6 +2451,7 @@ echo ""
 
 echo "RQ-10: Japanese leftover detail remains readable after C0 neutralize"
 dir_rq10="$TEST_DIR/rq-10"
+git init -q "$dir_rq10"
 mkdir -p "$dir_rq10"
 write_queue_file "$dir_rq10" "other-sid" "$(jq -n --arg ts "$stale_ts" --arg d 'サーキットブレーカーで非収束' '{issues:[10],cursor:0,mode:"merge",failed:[{issue:2089,detail:$d}],outstanding:[],active:false,updated_at:$ts}')"
 write_ended_marker "$dir_rq10" "other-sid"
@@ -2389,6 +2469,7 @@ echo ""
 
 echo "RQ-05: unreadable other queue is WARNING+skip (json and watchdog kept)"
 dir_rq05="$TEST_DIR/rq-05"
+git init -q "$dir_rq05"
 mkdir -p "$dir_rq05/.rite/state"
 printf 'not-json{{' > "$dir_rq05/.rite/state/run-queue-other-sid.json"
 : > "$dir_rq05/.rite/state/run-queue-other-sid.watchdog"
@@ -2404,6 +2485,7 @@ echo ""
 
 echo "RQ-06: missing updated_at and epoch=0 parse failure are stale and deleted"
 dir_rq06="$TEST_DIR/rq-06"
+git init -q "$dir_rq06"
 mkdir -p "$dir_rq06"
 write_queue_file "$dir_rq06" "missing-ts" '{"issues":[6],"cursor":0,"mode":"default","failed":[],"outstanding":[],"active":true}'
 write_queue_file "$dir_rq06" "bad-ts" '{"issues":[7],"cursor":0,"mode":"default","failed":[],"outstanding":[],"active":true,"updated_at":"not-iso"}'
@@ -2420,6 +2502,7 @@ echo ""
 
 echo "RQ-07: SessionStart from non-root CWD still reaps; leftover stderr is not in pr-cycle-cleanup.log"
 dir_rq07="$TEST_DIR/rq-07"
+git init -q "$dir_rq07"
 mkdir -p "$dir_rq07/sub"
 git -C "$dir_rq07" init -q
 create_state_file "$dir_rq07" '{"active":true,"issue_number":1,"phase":"review","next_action":"iterate","loop_count":1,"pr_number":9,"branch":"feat/x","schema_version":3}' "own-sid"
@@ -2446,6 +2529,7 @@ echo ""
 
 echo "RQ-08: compact Batch frame still emitted after reap (own queue skipped)"
 dir_rq08="$TEST_DIR/rq-08"
+git init -q "$dir_rq08"
 mkdir -p "$dir_rq08"
 create_state_file "$dir_rq08" '{"active":true,"issue_number":2502,"phase":"review","next_action":"iterate","loop_count":1,"pr_number":99,"branch":"fix/issue-2502-x","schema_version":3}' "own-sid"
 write_batch_queue "$dir_rq08" "own-sid" true 0
@@ -2463,6 +2547,7 @@ echo ""
 
 echo "RQ-17: SessionStart passes the announcement of a kept unmarked queue to hook stdout next to the own Batch frame"
 dir_rq17="$TEST_DIR/rq-17"
+git init -q "$dir_rq17"
 mkdir -p "$dir_rq17"
 create_state_file "$dir_rq17" '{"active":true,"issue_number":2502,"phase":"review","next_action":"iterate","loop_count":1,"pr_number":99,"branch":"fix/issue-2502-x","schema_version":3}' "own-sid"
 write_batch_queue "$dir_rq17" "own-sid" true 0
@@ -2641,6 +2726,7 @@ echo "PAUSE: session start announces this session's pause record and how to resu
 pause_sid="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 other_sid="bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
 dir_p="$TEST_DIR/pause_notice"
+git init -q "$dir_p"
 mkdir -p "$dir_p"
 output=$(run_hook_with_session "$dir_p" "startup" "$pause_sid")
 if ! grep -q "一時停止中" <<< "$output"; then

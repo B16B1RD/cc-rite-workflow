@@ -233,6 +233,8 @@ negative_control "T-06: removing PIN_RECOVER breaks T-02" \
 HOOK="$PLUGIN_ROOT/hooks/stop-failure.sh"
 HOOKS_JSON="$PLUGIN_ROOT/hooks/hooks.json"
 SF_DIR=$(mktemp -d)
+# Match Git's physical root spelling in path and diagnostic assertions.
+SF_DIR=$(cd "$SF_DIR" && pwd -P)
 trap 'chmod -R u+w "$SF_DIR" 2>/dev/null || true; rm -rf "$SF_DIR"' EXIT
 SF_STDERR="$SF_DIR/stderr"
 SID="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
@@ -241,6 +243,7 @@ OTHER="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 # An open record in the shape review-clock-open writes (no ended_at yet).
 write_open_record() {
   mkdir -p "$(dirname "$1")"
+  git -C "${1%%/.rite/*}" init -q
   jq -n --arg start "$2" \
     '{review_context:{session_id:"ctx",run_id:"r1",pr_number:1,cycle:1,head:"abc"},segment_id:"seg.1",kind:"work",started_at:$start}' > "$1"
 }
@@ -294,7 +297,7 @@ write_open_record "$fo" "$(iso_ago 600)"
 cp "$fo" "$SF_DIR/none.before"
 rc=0; run_hook --arg cwd "$d" --arg session_id "$SID" || rc=$?
 if [ "$rc" -eq 0 ] && [ ! -e "$d/.rite/state/review-clock-$SID.json" ] \
-  && cmp -s "$fo" "$SF_DIR/none.before" && [ "$(find "$d" -type f | wc -l | tr -d ' ')" = 1 ]; then
+  && cmp -s "$fo" "$SF_DIR/none.before" && [ "$(find "$d/.rite" -type f | wc -l | tr -d ' ')" = 1 ]; then
   pass "T-09: no record creates nothing; another session's open record is untouched"
 else
   fail "T-09: rc=$rc files=$(find "$d" -type f | tr '\n' ' ')"; show_stderr
@@ -304,7 +307,7 @@ d="$SF_DIR/upper"; f="$d/.rite/state/review-clock-$SID.json"
 write_open_record "$f" "$(iso_ago 600)"
 rc=0; run_hook --arg cwd "$d" --arg session_id "$(printf '%s' "$SID" | tr 'a-f' 'A-F')" || rc=$?
 if [ "$rc" -eq 0 ] && jq -e 'has("ended_at")' "$f" >/dev/null \
-  && [ "$(find "$d" -type f | wc -l | tr -d ' ')" = 1 ]; then
+  && [ "$(find "$d/.rite" -type f | wc -l | tr -d ' ')" = 1 ]; then
   pass "T-10: an upper-case payload UUID stamps the lower-case record"
 else
   fail "T-10: rc=$rc files=$(find "$d" -type f | tr '\n' ' ')"; show_stderr
@@ -324,7 +327,7 @@ else
 fi
 
 d="$SF_DIR/corrupt"; f="$d/.rite/state/review-clock-$SID.json"
-mkdir -p "$(dirname "$f")"; printf '[1,2]\n' > "$f"
+mkdir -p "$(dirname "$f")"; git -C "$d" init -q; printf '[1,2]\n' > "$f"
 rc=0; run_hook --arg cwd "$d" --arg session_id "$SID" || rc=$?
 if [ "$rc" -eq 0 ] && [ "$(cat "$f")" = "[1,2]" ] \
   && grep -qF "[rite] WARNING: stop-failure: review clock record is not a JSON object; left unchanged: $f" "$SF_STDERR"; then
@@ -341,7 +344,7 @@ nosid_warned=0
 grep -qF "[rite] WARNING: stop-failure: payload has no session_id" "$SF_STDERR" && nosid_warned=1
 rc_nocwd=0; run_hook --arg session_id "$SID" --arg error rate_limit || rc_nocwd=$?
 if [ "$rc_nosid" -eq 0 ] && [ "$rc_nocwd" -eq 0 ] && [ "$nosid_warned" = 1 ] \
-  && cmp -s "$f" "$SF_DIR/partial.before" && [ "$(find "$d" -type f | wc -l | tr -d ' ')" = 1 ]; then
+  && cmp -s "$f" "$SF_DIR/partial.before" && [ "$(find "$d/.rite" -type f | wc -l | tr -d ' ')" = 1 ]; then
   pass "T-13: a payload without session_id warns and one without cwd exits; nothing changes"
 else
   fail "T-13: rc=$rc_nosid/$rc_nocwd warned=$nosid_warned files=$(find "$d" -type f | tr '\n' ' ')"; show_stderr

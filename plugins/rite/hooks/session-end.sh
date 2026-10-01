@@ -58,7 +58,7 @@ fi
 
 # Resolve state file path using state-path-resolve.sh (consistent with other hooks)
 # SCRIPT_DIR already set in preamble block above
-STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
+STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD") || exit 0
 
 # Resolve the active flow-state file: always the per-session file (the legacy
 # single-file selection path was removed). Stderr is captured via the

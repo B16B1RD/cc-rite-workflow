@@ -61,6 +61,7 @@ make_test_dir() {
   local d
   d=$(mktemp -d) || { echo "ERROR: mktemp -d failed" >&2; return 1; }
   cleanup_dirs+=("$d")
+  git -C "$d" init -q
   # rite-config.yml sandbox marker. flow-state is always per-session (no
   # `flow_state.schema_version` selection).
   printf '# rite test sandbox config\n' > "$d/rite-config.yml"
