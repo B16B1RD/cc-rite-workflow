@@ -5,10 +5,17 @@ domain: "heuristics"
 promote: rite-plugin
 description: "実測必須ゲートが non-blocking へ降格した文書指摘のうち、reviewer が Grep で裏取りした事実誤り（機能の帰属先ファイルの取り違え等）は、記録台帳へ載せて次サイクルの再報告を抑止するのではなく、その場で修正して消化する。記録に回すと CHANGELOG の誤記述がそのまま GitHub Release へ転記され、後から修正する経路が無い。"
 created: "2026-09-11T15:07:49Z"
-generated: { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-17T06:16:56Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-01T11:30:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-17T06:16:56Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-01T11:30:00Z" }
 sources:
+  - type: "fixes"
+    resource: "raw/fixes/20261001T105449Z-pr-3596.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T104845Z-pr-3596.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T111805Z-pr-3596.md"
   - type: "reviews"
     resource: "raw/reviews/20260911T124654Z-pr-2686.md"
   - type: "reviews"
@@ -46,6 +53,13 @@ confidence: medium
 
 修正後の差分スコープ再レビューは、前回指摘の FIXED 判定と修正 3 文の実装照合だけで済み、記録に回すより短い。
 
+### 補強: 承認済み草案でも同じ扱いにし、追加の型が 2 つある
+
+リリース担当が文言を承認した草案であっても、実装と食い違う記述は公開前に直す。承認は文意の承認であって実装との照合ではないため、承認済みを理由に記録へ回すと誤りがそのまま公開される。直す範囲は食い違った語句だけに絞り、それ以外の承認済み文言には触れない。差分スコープの再レビューで「指示した箇所以外の行が変わっていない」ことを diff の行数で確かめると、過剰修正も同時に防げる。
+
+- **対象スキル名を総称で書く**: 「review」のような総称は、隣に並ぶ他の項目が slash コマンド名で書かれていると特定のスキル（`/rite:pr-review`）と読まれる。入口処理を呼ぶスキルを grep で列挙し、実際の呼び出し元の名前で書く。処理が同じセッションに限られるような適用条件も、実装の契約文から拾って添える。
+- **英語の単数・複数がファイル数と食い違う**: 実装が 2 つのファイルを渡すのに "a JSON file" と書くと、受け手は 1 ファイルだと読む。日本語は数を区別しない表記が多いので、英日の一方だけが食い違うことがあり、その場合は食い違う側だけを直す。
+
 ## 関連ページ
 
 - [散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする](./prose-cited-implementation-behavioral-verification.md)
@@ -56,3 +70,6 @@ confidence: medium
 - [レビュー結果](../../raw/reviews/20260917T060028Z-pr-2924-c2.md)
 
 - [レビュー結果](../../raw/reviews/20260911T124654Z-pr-2686.md)
+- [fix 結果](../../raw/fixes/20261001T105449Z-pr-3596.md)
+- [レビュー結果](../../raw/reviews/20261001T104845Z-pr-3596.md)
+- [レビュー結果](../../raw/reviews/20261001T111805Z-pr-3596.md)
