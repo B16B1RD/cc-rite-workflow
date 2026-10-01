@@ -41,7 +41,7 @@ blocking gate として実行する。
 ### 修正
 
 - **Git 外では state root の解決を失敗させる** — resolver が cwd へ倒れて無関係な場所に状態を作ることがなくなった。lifecycle hook は副作用の前に正常終了し、書き込み helper は非 0 で停止する。Git 内と明示 root の挙動は変わらない。
-- **paused の loop を入口で自動再開する** — pause 記録が残っていると、レビュー・`/rite:batch-run`・`/rite:recover` が既存ガードで停止していた。共通入口が既存の resume 操作を実行して pause 記録の解消を確認し、再開失敗や記録の残存は明示して停止する。
+- **paused の loop を入口で自動再開する** — 同じセッションから再入したとき、pause 記録が残っていると `/rite:iterate`・`/rite:batch-run`・`/rite:recover` が既存ガードで停止していた。共通入口が既存の resume 操作を実行して pause 記録の解消を確認し、再開失敗や記録の残存は明示して停止する。
 - **`/rite:pr-review` は mergeable 確定前に全 CI job を確認する** — 受入条件レビューのあと最終報告の前に、pending の job を既存の上限付き方針で待ち、失敗・不明の check は fail closed で扱う。修正が必要な cycle はこの最終ゲートの影響を受けない。
 - **レビュー範囲と受入条件の抽出で入力を黙って落とさない** — レビュー範囲の積集合で `sort` が失敗したとき、base 側だけの変更として報告せず、診断を出して全体レビューへ倒す。受入条件の節の外（コードフェンス外）にある AC 項目行は、落とさずに最初の行番号つきの `ac_item_outside_section` で失敗する。
 - **`/rite:fix` の base 取り込みが Wiki 適用ゲートで止まらない** — 取り込み commit と push の間に `wiki-apply-advance-head.sh --from HEAD^` で証跡の head を進め、commit 直前に証跡を取り直す。capture は HEAD から削除したパス（blob 値 `-`）と symlink（リンク文字列の hash）を記録し、ゲートが照合する。`/rite:merge` と `/rite:batch-run` の BEHIND 案内も同じ手順に揃えた。
