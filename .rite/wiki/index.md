@@ -258,7 +258,7 @@ okf_version: "0.2"
 | [移植性のための外部コマンド差し替えは分岐を消さず「別の層」へ移動させる](pages/anti-patterns/external-command-swap-relocates-platform-divergence.md) | anti-patterns | GNU/BSD で挙動が割れるコマンドを別コマンドへ置き換えるとき、比較するのは「解決セマンティクス（何を返すか）」に偏りがちである。 | 2026-07-25T14:18:43Z | high |
 | [sentinel でコマンド置換のバイト厳密性を守る](pages/patterns/sentinel-byte-exact-command-substitution-capture.md) | patterns | `var=$(cmd)` はコマンド出力の **末尾の改行を全て** 除去する。 | 2026-07-25T14:18:43Z | high |
 | [対象プラットフォーム挙動を shim して blocking gate 側で pin する](pages/heuristics/portability-fix-needs-target-platform-shim-on-blocking-gate.md) | heuristics | 移植性の修正は、対象プラットフォームで検証されて初めて意味を持つ。 | 2026-09-29T18:04:11Z | high |
-| [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) | anti-patterns | 「X が起きていないこと」を検証する assert は、そもそも X が起こりうる条件が成立していなければ自動的に通る。 | 2026-10-01T02:00:46Z | high |
+| [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) | anti-patterns | 「X が起きていないこと」を検証する assert は、そもそも X が起こりうる条件が成立していなければ自動的に通る。 | 2026-10-01T16:55:00Z | high |
 | [レビューが足場を対象に発散したら finding の基準を prompt で明示して止める](pages/heuristics/review-finding-bar-stops-scaffolding-divergence.md) | heuristics | 修正 1 件は新しいレビュー対象面を 1 つ作る。 | 2026-07-25T14:18:43Z | medium |
 | [`set -euo pipefail` 下の `var=$(cmd \| jq ... 2>/dev/null)` は不正入力でテストを無言 abort させる](pages/anti-patterns/pipefail-jq-assignment-silent-abort.md) | anti-patterns | 被テスト対象の stdout を jq でパースして変数に代入する形は、`set -euo pipefail` 下では **jq の非ゼロ終了がそのまま代入コマンドの終了ステータス**になる。 | 2026-07-26T01:35:00+09:00 | high |
 | [コメントの主語は「変更イベント」ではなく「コードの現在の性質」に置く — lint が緑でも規約違反は成立する](pages/heuristics/comment-subject-present-tense-not-change-event.md) | heuristics | 判定形式を変えたとき、その理由を「旧形式は X を受け入れていた」と書くと、コメントの**主語が変更イベント（過去の行為）**になる。 | 2026-07-26T01:35:00+09:00 | high |
@@ -671,14 +671,15 @@ okf_version: "0.2"
 | [照合を位置で狭めたら、診断に位置の基準になる受理集合も挙げる](pages/heuristics/narrowed-match-position-diagnostic-lists-accepted-set.md) | heuristics | 照合を「項目の冒頭」のような位置で狭めると、受け付けない記号で始まる入力が受理から拒否へ変わる。診断が位置しか言わないと、書き手は診断だけでは直せない。 | 2026-09-30T22:06:00+09:00 | medium |
 | [他スキルから直接読まれる手順に工程を足すときは、回復手順の所在と呼び出し側の規定を合わせる](pages/heuristics/reference-recovery-step-pointer-and-caller-sync.md) | heuristics | 節アンカーで複数スキルから直接参照される手順書に工程を挿入すると、スキル内でしか解決しない所在指示は読み手に届かず、番号で範囲を引く呼び出し側や一律の失敗規定を持つ呼び出し側と食い違う。 | 2026-10-01T03:17:07Z | medium |
 | [既存パーサの一部だけを再利用すると、保守的に判定していた入力の扱いが抜け落ちる](pages/anti-patterns/partial-parser-reuse-drops-conservative-judgment.md) | anti-patterns | 検出器を作り直すときに既存パーサの一部の関数だけを借りると、直接コマンドでない形（timeout や nice 経由など）を保守的に数えていた判定が抜け、旧検出器が拾っていた対象を 0 件と数える退行になる。 | 2026-10-01T00:40:35Z | medium |
-| [手順書の bash 文は期待文字列で固定せず、抽出して実行するテストで固定する](pages/patterns/procedure-bash-extracted-and-executed-by-test.md) | patterns | 手順書に書いた 1 文を期待文字列として固定するだけのテストは、その文が実行すると構文エラーになることを検出できない。手順書から実行ブロックを抽出し、プレースホルダーを置換して実際に走らせる形にすると、手順と挙動のずれが変異で落ちる。 | 2026-10-01 | medium |
+| [手順書の bash 文は期待文字列で固定せず、抽出して実行するテストで固定する](pages/patterns/procedure-bash-extracted-and-executed-by-test.md) | patterns | 手順書に書いた 1 文を期待文字列として固定するだけのテストは、その文が実行すると構文エラーになることを検出できない。手順書から実行ブロックを抽出し、プレースホルダーを置換して実際に走らせる形にすると、手順と挙動のずれが変異で落ちる。 | 2026-10-01T16:55:00Z | medium |
 | [作業ツリーの内容 hash を証跡にするなら、削除されたパスを表す値を持たせる](pages/heuristics/evidence-hash-needs-deleted-path-representation.md) | heuristics | 作業ツリーを hash して index と比べる証跡は、削除・改名で消えたパスと、symlink のように作業ツリーと index で表現が分かれるパスを、同じ方法で表さないと commit の前後で食い違う。削除は HEAD にあって作業ツリーに無いパスだけを専用の値にし、照合を変えたら契約文書も同時に直し、commit 後の回復は作業ツリーに残るパスへ絞る。 | 2026-10-01T04:06:42Z | medium |
 | [受入条件の範囲を実装側の都合で黙って狭めると、書かれたとおりに未充足と判定される](pages/heuristics/ac-scope-narrowed-by-helper-constraint-reads-as-unmet.md) | heuristics | 受入条件の本文が範囲を限定していないのに、実装が helper の制約を理由に一部を範囲外とすると、acceptance レビューは条件を書かれたとおりに読んで未充足とする。範囲を絞るなら条件を先に改訂し、絞らないなら helper を直す。 | 2026-10-01 | medium |
 | [照合キーの要素を信頼できない行は空キーにして、呼び出し側の 1 本の検査で止める](pages/heuristics/untrusted-row-yields-empty-match-key-single-fail-loud-check.md) | heuristics | 列数が想定外の行や、キー要素のセルが空の行を、既定値で寄せて照合に使うと旧形式の行と誤一致して「記録済み」と判定される。要素を信頼できない行は空キーにし、呼び出し側が空キーで fail-loud に止める 1 本の検査にすると、別変数と別検査を足さずに閉じられる。 | 2026-10-01T12:05:00+09:00 | medium |
 | [手順の要約を直すときは、その文言を固定しているテストも同時に直す](pages/heuristics/summary-phrase-edit-updates-pinning-tests.md) | heuristics | 手順が掲げる要約の文言を直すときは、その文言を正規表現で固定しているテストも同じ変更に含める。直す前にその文言でテストを検索し、検証の最後で初めて欠落に気づいて範囲を取り直す手戻りを避ける。 | 2026-10-01T04:06:42Z | medium |
+| [停止で終える分岐から sub-skill を呼ぶときは、sub-skill が張った完了 handoff を phase を変えずに消してから止まる](pages/patterns/stop-path-clears-subskill-completion-handoff.md) | patterns | 停止で終える分岐の手前に sub-skill を呼ぶ経路を足すと、sub-skill が戻りで張る完了 handoff が残り、Stop hook が停止を完了経路へ差し戻す。停止通知の前に handoff なしの set で消し、その set は phase を現在値のまま書く。 | 2026-10-01T16:55:00Z | high |
 ## 統計
 
-- 総ページ数: 666
-- ドメイン別: patterns=141, heuristics=333, anti-patterns=192
-- 最終更新: 2026-10-01T11:30:00Z
+- 総ページ数: 667
+- ドメイン別: patterns=142, heuristics=333, anti-patterns=192
+- 最終更新: 2026-10-01T16:55:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

@@ -128,6 +128,20 @@
 * **Update**: [Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格](pages/heuristics/observed-likelihood-gate-with-evidence-anchors.md) — raw/reviews/20261001T080830Z-pr-3594.md を統合
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=679, broken_refs=0
 
+* **Create**: [停止で終える分岐から sub-skill を呼ぶときは、sub-skill が張った完了 handoff を phase を変えずに消してから止まる](pages/patterns/stop-path-clears-subskill-completion-handoff.md) — raw/fixes/20261001T152306Z-pr-3602.md を新規ページ化
+
+* **Update**: [停止で終える分岐から sub-skill を呼ぶときは、sub-skill が張った完了 handoff を phase を変えずに消してから止まる](pages/patterns/stop-path-clears-subskill-completion-handoff.md) — raw/reviews/20261001T151452Z-pr-3602.md を統合（同じ戻りを 2 か所に書く読み割れと、機械的に止まらない書き込みの書き方を補強）
+
+* **Update**: [停止で終える分岐から sub-skill を呼ぶときは、sub-skill が張った完了 handoff を phase を変えずに消してから止まる](pages/patterns/stop-path-clears-subskill-completion-handoff.md) — raw/fixes/20261001T154600Z-pr-3602.md を統合（消去の set で phase を維持する理由と挙動テストを補強）
+
+* **Update**: [手順書の bash 文は期待文字列で固定せず、抽出して実行するテストで固定する](pages/patterns/procedure-bash-extracted-and-executed-by-test.md) — raw/reviews/20261001T153658Z-pr-3602.md を統合（状態遷移の拒否は形の固定では見えない例を補強）
+
+* **Update**: [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) — raw/reviews/20261001T161124Z-pr-3602.md を統合
+
+* **Update**: [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) — raw/fixes/20261001T162018Z-pr-3602.md を統合
+
+* **Update**: [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) — raw/reviews/20261001T164304Z-pr-3602.md を統合（前提の rc と state 値の 2 段 assert と、2 方向の変異による検出力の確認を補強）
+
 ## 2026-09-30
 
 * **Lint incomplete** — 機械検査は stale=64、orphans=0、missing_concept=0、unregistered_raw=621、broken_refs=0、descriptive_number_ref=0。更新ページは出典と関連ページを照合した。全658ページの意味的な矛盾比較は未完了であり、Wiki 全体の品質検査成功とは扱わない。

@@ -4,7 +4,9 @@ title: "手順書の bash 文は期待文字列で固定せず、抽出して実
 domain: "patterns"
 description: "手順書に書いた 1 文を期待文字列として固定するだけのテストは、その文が実行すると構文エラーになることを検出できない。手順書から実行ブロックを抽出し、プレースホルダーを置換して実際に走らせる形にすると、手順と挙動のずれが変異で落ちる。"
 created: "2026-10-01T01:19:14Z"
-generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-10-01T01:19:14Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-01T16:55:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-01T16:55:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20261001T004716Z-pr-3567.md"
@@ -14,6 +16,8 @@ sources:
     resource: "raw/reviews/20261001T005011Z-pr-3571.md"
   - type: "fixes"
     resource: "raw/fixes/20261001T010038Z-pr-3571.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T153658Z-pr-3602.md"
 tags: []
 confidence: medium
 ---
@@ -34,6 +38,8 @@ confidence: medium
 
 **補助関数の診断**: テストの補助関数が gate の stderr を捨てていると、失敗時の診断が残らない。実行して固定する形にしたら、stderr も受け取って fail メッセージに出す。
 
+**状態遷移の拒否は形の固定では見えない**: handoff を消すための set が phase を書き換えていたため、状態遷移の規則に拒否されて rc=1 で何も書いていなかった。文言と fenced block の形（`--handoff` が無いこと）を固定するテストはこれを通した。複数のレビュアーが文言の整合を FIXED と判定した後、flow-state を実際に動かして観測したレビュアーだけが拒否を見つけた。状態遷移を伴う手順は、抜き出した set を sandbox の state に対して実行し、rc と遷移後の状態を assert する。
+
 ## 関連ページ
 
 - [テストで「同じ行」を固定するなら行単位で判定し、否定条件は肯定側と同じ述語の否定で書く](./test-pin-same-line-and-negation-by-positive-predicate.md)
@@ -44,3 +50,4 @@ confidence: medium
 - [引用した placeholder への修正と実行の固定](../../raw/fixes/20261001T010647Z-pr-3567.md)
 - [手順から抽出したブロックを実行するテストのレビュー結果](../../raw/reviews/20261001T005011Z-pr-3571.md)
 - [削除・改名のケースを足した修正結果](../../raw/fixes/20261001T010038Z-pr-3571.md)
+- [形の固定では状態遷移の拒否を検出できなかったレビュー結果](../../raw/reviews/20261001T153658Z-pr-3602.md)
