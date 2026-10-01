@@ -1744,14 +1744,15 @@ recapture_case() {
   local change="$1" before_mode="$2" before_reason="$3"
   local r flow mem changed cap_rc=0 adv_rc=0 merge_rc=0
   r=$(new_repo "rc-$change")
-  # 実リポジトリと同じく .rite/ は追跡外（空の paths で capture が作業ツリーの変更一覧を使う回復で拾わない）
+  # 実リポジトリと同じく .rite/ は追跡外、rite-config.yml は追跡済みにする
+  # （空の paths で capture が作業ツリーの変更一覧を使う回復で、どちらも拾わない）
   printf '.rite/\n' >> "$r/.git/info/exclude"
   write_config "$r" true false
   flow="$ROOT/rc-$change.flow-state"
   write_flow "$flow" fix 7 "$r"
   mem="$r/.rite/work-memory/issue-7.md"
   printf 'keep\n' > "$r/KEEP"
-  git -C "$r" add KEEP
+  git -C "$r" add KEEP rite-config.yml
   git -C "$r" commit -qm 'fix: reviewed'
   git -C "$r" branch base
   git -C "$r" switch -q base

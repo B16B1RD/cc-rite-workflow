@@ -470,7 +470,7 @@ fi
 rm -rf "$STEP1_SANDBOX"
 run_step2 "$PIN_A" "$PIN_A" "$PIN_B" BEHIND
 if [[ "$STEP2_OUT" == *'[merge:error]'* && "$STEP2_OUT" == *'MERGE_ERROR=behind; pr=1'* ]] \
-  && [[ "$STEP2_ERR" == *'BEHIND:'* && "$STEP2_ERR" == *'gh pr ready 1'* && "$STEP2_ERR" == *'base 取り込み手順 1〜4'* && "$STEP2_ERR" == *'/rite:iterate 1'* && "$STEP2_ERR" == *'全 CI job'* ]]; then
+  && [[ "$STEP2_ERR" == *'BEHIND:'* && "$STEP2_ERR" == *'gh pr ready 1'* && "$STEP2_ERR" == *'base 取り込み手順 1〜5'* && "$STEP2_ERR" == *'/rite:iterate 1'* && "$STEP2_ERR" == *'全 CI job'* ]]; then
   pass "BEHIND rejection provides base intake, review and CI recovery"
 else
   fail "BEHIND rejection must expose its state and concrete recovery (out=$STEP2_OUT err=$STEP2_ERR)"
