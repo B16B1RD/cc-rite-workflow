@@ -1592,8 +1592,9 @@ If reviewers have written items in the "仕様への疑問" section, first settl
 2. **5.3.0.M 実測必須ゲート** — **`scripts/review-measured-gate.sh` を実行する**。分類は helper。Claude は判定しない。SoT: [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) / [assessment-rules.md §5.3.0.M](../fix/references/assessment-rules.md)。
 3. **5.3.0.C 帰結クラス降格政策** — 分類 map の Write と `scripts/review-class-demotion-gate.sh`。`blocking=0` なら本ゲート全体を skip。A=0 で exclusion なし B を降格し、exclusion 付き B は blocking 維持。SoT: [severity-levels.md §帰結クラス軸](../../references/severity-levels.md#帰結クラス軸-consequence-class) / [assessment-rules.md §5.3.0.C](../fix/references/assessment-rules.md)。
 4. **5.3.0.A 受入条件の最終整合検査** — `scripts/acceptance-criteria-check.sh final` を実行する。判定行の AC-ID 集合・対象判定と reviewers[] の整合、未充足行の finding が降格後も blocking に残ることを検査し、未検証 AC を 8.0 / 8.1 へ渡す。
-5. **5.3.1-5.3.7** を降格後の `全指摘事項` に適用。件数は marker とゲート後 JSON から読む（再分類しない）。
-5.3.0 / 5.3.0.M / 5.3.0.C / 5.3.0.A を 5.3.1 の前に飛ばすことは **禁止**。
+5. **5.3.0.CI 確定前の全 CI job 確認** — 暫定 mergeable は同一 reviewed commit の全 job 完了・非失敗を確認してから確定する。fix-needed は取得・待機しない。
+6. **5.3.1-5.3.7** を降格後の `全指摘事項` に適用。件数は marker とゲート後 JSON から読む（再分類しない）。
+5.3.0 / 5.3.0.M / 5.3.0.C / 5.3.0.A / 5.3.0.CI を 5.3.1 の前に飛ばすことは **禁止**。
 rationale: references/design-rationale.md#5.3-execution-order-why
 
 #### Number-reference `--diff` (every cycle)
@@ -1800,7 +1801,7 @@ helper はレビュー JSON の commit と毎回取得した PR HEAD を照合�
 
 | 観測 | Action |
 |---|---|
-| rc=0 + `REVIEW_CI_FINAL=passed; state=healthy` または `state=none` | 全 job 完了・非失敗、または check 0 件。stdout の最新 JSON を `{ci_status}` に保持し、5.3.8 → 5.4 → 6.1.a へ進む |
+| rc=0 + `REVIEW_CI_FINAL=passed; state=healthy` または `state=none` | 全 job 完了・非失敗、または check 0 件。stdout の最新 JSON を `{ci_status}`、その `.state` を `{ci_state}` に保持し、5.3.8 → 5.4 → 6.1.a へ進む |
 | rc=0 + `REVIEW_CI_FINAL=skipped; reason=fix_needed` | 修正が必要なので CI を待たず、既存の fix-needed の報告・保存へ進む |
 | rc=1 + `REVIEW_CI_FINAL=failed; reason=unhealthy` | 最終 mergeable を出力せず、下記の CI 失敗回収へ進む。report/save は実行しない |
 | その他の非ゼロ、`REVIEW_CI_FINAL=error`、成功 marker 不在 | 診断を保持し `[review:error]` で停止。report/save は実行しない。取得不能・期限超過を再生成で迂回しない |
