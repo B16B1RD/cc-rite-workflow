@@ -298,7 +298,15 @@ pin "iterate: 停止通知の見出し" "$ITERATE" '## /rite:iterate 停止（�
 pin "iterate: ac_unverified 行は先に PR 内推奨の修正を行う" "$ITERATE" '受入条件未検証の停止。先に下記「受入条件未検証の停止での PR 内推奨の修正」を行い、`[fix:pushed]` / `[fix:pushed-wm-stale]` ならステップ 1 へ戻る。'
 pin "iterate: none は停止通知" "$ITERATE" '| `none` | 下記の停止通知を出して終了する |'
 pin "iterate: pending は mark と handoff なしの set の後に fix" "$ITERATE" '| `pending` | 「5.S 後の PR 内推奨の修正」の `mark` と flow-state set（`--next "PR 内推奨の修正"`。`--handoff` は付けない）を行ってから `/rite:fix` を invoke する |'
-pin "iterate: push の無い戻りは停止通知" "$ITERATE" '`[fix:replied-only]` / `[fix:non-fatal-only]` は push が無く受入条件が未検証のままなので、完了前確認へ進まず下記の停止通知を出して終了する。'
+pin "iterate: push の無い戻りは FINALIZE を消してから停止通知" "$ITERATE" '`[fix:replied-only]` / `[fix:non-fatal-only]` は push が無く受入条件が未検証のままなので、完了前確認へ進まず、fix が張った FINALIZE handoff を下の set（`--handoff` なし）で消してから停止通知を出して終了する。'
+# fix が張った FINALIZE が残ると Stop hook が停止通知を完了経路へ差し戻すため、消去の set は停止通知の前に置く
+in_order "iterate: FINALIZE を消す set が停止通知の見出しより前" \
+  "$(line_of "$ITERATE" 'fix が張った FINALIZE handoff を下の set（`--handoff` なし）で消してから停止通知を出して終了する。')" \
+  "$(line_of "$ITERATE" '  --next "受入条件未検証の停止"')" \
+  "$(line_of "$ITERATE" '## /rite:iterate 停止（受入条件未検証）')"
+clear_block=$(awk '/^```bash$/{b="";f=1;next} f&&/^```$/{if(b~/--next "受入条件未検証の停止"/)printf "%s",b; f=0; next} f{b=b $0 "\n"}' "$ITERATE")
+assert "iterate: FINALIZE を消す fenced block は flow-state.sh set を 1 回呼ぶ" "1" "$(grep -c 'flow-state.sh set' <<<"$clear_block")"
+assert "iterate: FINALIZE を消す set は --handoff を付けない" "0" "$(grep -c -- '--handoff' <<<"$clear_block")"
 in_order "iterate: ac_unverified の check が停止通知の見出しより前" \
   "$(line_of "$ITERATE" '| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=ac_unverified; ac={ids}` |')" \
   "$(line_of "$ITERATE" '**受入条件未検証の停止での PR 内推奨の修正**: 停止通知の前に、pr-review ステップ 7.2 がこの review で登録した PR 内推奨を、「5.S 後の PR 内推奨の修正」と同じ `review-pr-recommendations.sh check` で確かめる。')" \
@@ -418,7 +426,9 @@ echo ""
 echo "=== TC-10: 実行して確かめる受入条件・fix_loop・ready の分類 ==="
 pin "agent: 書き込む When は detached worktree の実験で実行" "$AGENT" 'is run as an experiment in a detached `rite-review-mutation-*` worktree, following "Mutation experiments and verification (worktree-only)" in the shared principles.'
 pin "agent: 参照先の節が shared principles に存在する" "$PLUGIN_ROOT/agents/_reviewer-base.md" '### Mutation experiments and verification (worktree-only)'
-pin "agent: 実験 worktree の外への書き込みは Measurement-Blocked" "$AGENT" 'a step that needs them is blocked, and the criterion is 未検証 with `Measurement-Blocked:`.'
+pin "agent: 外への書き込みは機械的に止まらないことを書く" "$AGENT" '`state-path-resolve.sh` returns the main checkout'"'"'s state root even from inside the experiment worktree, and the guard does not see writes made inside a helper.'
+pin "agent: helper は実行前に読み、外へ書く段は実行せず Measurement-Blocked" "$AGENT" 'Read each helper before running it. Do not run a step that resolves the state root, writes through `gh`, or calls `flow-state.sh` beyond `get` / `path` or a `*-step.sh`; the criterion is 未検証 with `Measurement-Blocked: <helper> => writes the state root or GitHub`.'
+assert "agent: 機械的な遮断を前提にした旧文言が無い" "0" "$(grep -cF 'a step that needs them is blocked' "$AGENT")"
 pin "agent: 散文だけで充足にしない" "$AGENT" 'never judge 充足 from prose alone.'
 pin "agent: 未検証の理由を限定する" "$AGENT" 'The only allowed reasons are a real-environment requirement — credentials, an external service, a human operation, or a real environment that this machine does not have — or a blocked command;'
 pin "agent: 理由の無い条件は実行する" "$AGENT" 'A criterion that needs none of these is run, not left 未検証.'

@@ -310,7 +310,13 @@ rationale: references/rationale.md#ac-unverified-pr-recommendation
 | `pending` | 「5.S 後の PR 内推奨の修正」の `mark` と flow-state set（`--next "PR 内推奨の修正"`。`--handoff` は付けない）を行ってから `/rite:fix` を invoke する |
 | 非ゼロ終了 / marker 不在 | 停止する。成功 sentinel を出さない |
 
-`pending` で invoke した `/rite:fix` の戻り: `[fix:pushed]` / `[fix:pushed-wm-stale]` はステップ 1 に戻る（修正後の再レビュー）。`[fix:replied-only]` / `[fix:non-fatal-only]` は push が無く受入条件が未検証のままなので、完了前確認へ進まず下記の停止通知を出して終了する。`[fix:cancelled-by-user]` / `[fix:error]` / sentinel 不在は「5.S 後の PR 内推奨の修正」の表に従う。
+`pending` で invoke した `/rite:fix` の戻り: `[fix:pushed]` / `[fix:pushed-wm-stale]` はステップ 1 に戻る（修正後の再レビュー）。`[fix:replied-only]` / `[fix:non-fatal-only]` は push が無く受入条件が未検証のままなので、完了前確認へ進まず、fix が張った FINALIZE handoff を下の set（`--handoff` なし）で消してから停止通知を出して終了する。set が失敗したら停止通知にその WARNING を併記する。`[fix:cancelled-by-user]` / `[fix:error]` / sentinel 不在は「5.S 後の PR 内推奨の修正」の表に従う。
+
+```bash
+bash {plugin_root}/hooks/flow-state.sh set \
+  --phase review --issue {issue_number} --branch {branch_name} --pr {pr_number} \
+  --next "受入条件未検証の停止"
+```
 
 停止通知は `state-path-resolve.sh` 基準の `.rite/review-results/{pr_number}-*.json` のうち最新のファイルの `acceptance_criteria` から `status == "unverified"` の行を読み、[ready の unverified 手順 1](../ready/SKILL.md) で分類して作る。人間のみの行は [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) 規則 6 の 4 要素で書く（人間が応答しない停止なので規則 7）:
 
