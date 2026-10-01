@@ -121,8 +121,8 @@ if [ -z "$_wiki_flow" ]; then
   _wiki_flow=$(bash "$SCRIPT_DIR/../flow-state.sh" path 2>/dev/null) || _wiki_flow=""
 fi
 if [ -n "$_wiki_flow" ] && [ -f "$_wiki_flow" ] \
-  && _wiki_row=$(jq -r '[.phase // "", .worktree // ""] | @tsv' "$_wiki_flow" 2>/dev/null); then
-  IFS=$'\t' read -r _wiki_phase _wiki_fswt <<<"$_wiki_row"
+  && _wiki_row=$(jq -r '[.phase // "", .worktree // ""] | join("\u001f")' "$_wiki_flow" 2>/dev/null); then
+  IFS=$'\x1f' read -r _wiki_phase _wiki_fswt <<<"$_wiki_row"
   case "$_wiki_phase" in
     implement|fix)
       # worktree を記録しないセッションの作業ツリーは flow-state を持つ checkout（gate と同じ導出）
