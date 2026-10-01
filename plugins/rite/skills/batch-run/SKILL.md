@@ -576,7 +576,7 @@ echo "[CONTEXT] RUN_STOP; cursor=$cursor; done=$done_issues; remaining=$remainin
 ## /rite:batch-run 停止
 
 失敗した Issue: #{current_issue}（段階: {resume|open|iterate|ready|merge|cleanup}、モード: {run_mode}）
-失敗理由: {受領した失敗 sentinel または「sentinel 不在」。段階=resume では RUN_RESUME_STAGE=stop の reason= 値。受入条件未検証（ready の停止）では、人間のみの条件ごとの 4 要素と AI で確かめた行の `実行したコマンド => 観測結果` を続けて書く。default の `REVIEW_STOP=ac_unverified` では `ac=` の ID を書く}
+失敗理由: {受領した失敗 sentinel または「sentinel 不在」。段階=resume では RUN_RESUME_STAGE=stop の reason= 値。受入条件未検証（ready の停止）では、人間のみの条件ごとの 4 要素と AI で確かめた行の `実行したコマンド => 観測結果` を続けて書く。default の `REVIEW_STOP=ac_unverified` では iterate の停止通知の内容（`ac=` の ID と人間のみの条件ごとの 4 要素）を書く}
 失敗時の状態: PR #{pr_number}（{draft | open | 未作成}。段階=resume で PR 番号を確定できないときは「PR 未確定」）
 
 処理済み Issue: {done_issues}

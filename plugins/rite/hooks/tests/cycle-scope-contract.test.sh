@@ -204,6 +204,10 @@ assert_grep "step 4 ready:error row forwards the 4 elements and the executed com
   '^\| `\[ready:error\]` / sentinel 不在 \| .*何を確かめるか / なぜ AI では確かめられないか / どう確かめるか / 期待する結果.*`実行したコマンド => 観測結果`'
 assert_grep "step 8 failure reason carries the 4 elements for ac_unverified stops" "$BATCH_RUN" \
   '^失敗理由: .*受入条件未検証.*4 要素.*`実行したコマンド => 観測結果`'
+assert_grep "step 8 failure reason names the iterate stop notice for the default ac_unverified stop" "$BATCH_RUN" \
+  '^失敗理由: .*default の `REVIEW_STOP=ac_unverified` では iterate の停止通知の内容'
+assert_grep "default ac_unverified row names the iterate stop notice" "$BATCH_RUN" \
+  'ac_unverified`（`default`） \| .*（iterate の停止通知の内容）'
 # batch-run が分岐に使う marker の綴りが、発行側（iterate / pr-review）と一致していること
 assert_grep "iterate emits the REVIEW_STOP=ac_unverified marker batch-run routes on" "$ITERATE" \
   'REVIEW_STOP=ac_unverified; ac=\{ids\}'
