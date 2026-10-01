@@ -4,6 +4,8 @@
 
 * **Update**: [実測ゲートで降格した文書指摘でも、grep で確認できる事実誤りはリリース転記前に修正で消化する](pages/heuristics/demoted-doc-factual-error-fix-before-release-transcription.md) — raw/fixes/20261001T105449Z-pr-3596.md、raw/reviews/20261001T104845Z-pr-3596.md、raw/reviews/20261001T111805Z-pr-3596.md を統合（承認済み草案の扱いと、対象スキル名・単複の 2 型を補強）
 
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=679, broken_refs=0（矛盾の意味比較は今回更新した 1 ページと関連ページに限定。全ページ間の意味比較は未実施で、全体の矛盾ゼロとして扱わない）
+
 * **lint:warning** — cleanup の機械検査: 665 ページ、stale 65、orphan 0、broken refs 0、番号参照 0、欠落候補 0。ページから未参照の ingested raw は 672 件（skip 記録を含む）。今回更新した 3 ページを確認したが、全ページ間の意味比較は未完了であり、全体の矛盾件数は未判定。全体意味検査の完了・矛盾ゼロとして扱わない。
 
 * **Create**: [手順書の bash 文は期待文字列で固定せず、抽出して実行するテストで固定する](pages/patterns/procedure-bash-extracted-and-executed-by-test.md) — raw/reviews/20261001T004716Z-pr-3567.md ほか 3 件を新規ページ化
