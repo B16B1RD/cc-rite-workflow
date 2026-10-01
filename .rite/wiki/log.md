@@ -112,6 +112,12 @@
 * **Skip**: [20261001T024411Z-pr-3567.md](raw/fixes/20261001T024411Z-pr-3567.md) — detector-candidate: 未ブレース変数と全角文字の隣接は既存の静的検査で強制できる
 * **Update**: [他スキルから直接読まれる手順に工程を足すときは、回復手順の所在と呼び出し側の規定を合わせる](pages/heuristics/reference-recovery-step-pointer-and-caller-sync.md) — raw/fixes/20261001T025526Z-pr-3571.md を統合
 * **Update**: [機構の新設・移設・撤去では、全ての停止経路と文書から消費者を列挙して確かめる](pages/heuristics/mechanism-add-move-remove-enumerate-consumers.md) — raw/fixes/20261001T021748Z-pr-3571.md を統合
+* **Create**: [手順の要約を直すときは、その文言を固定しているテストも同時に直す](pages/heuristics/summary-phrase-edit-updates-pinning-tests.md) — raw/fixes/20261001T032159Z-pr-3571.md を新規ページ化
+* **Skip**: [20261001T032920Z-pr-3567.md](raw/reviews/20261001T032920Z-pr-3567.md) — 指摘ゼロの収束確認で、経験則として抽出できる内容が無い
+* **Update**: [作業ツリーの内容 hash を証跡にするなら、削除されたパスを表す値を持たせる](pages/heuristics/evidence-hash-needs-deleted-path-representation.md) — raw/reviews/20261001T033506Z-pr-3571.md を統合
+* **Update**: [作業ツリーの内容 hash を証跡にするなら、削除されたパスを表す値を持たせる](pages/heuristics/evidence-hash-needs-deleted-path-representation.md) — raw/fixes/20261001T034312Z-pr-3571.md を統合
+* **Update**: [作業ツリーの内容 hash を証跡にするなら、削除されたパスを表す値を持たせる](pages/heuristics/evidence-hash-needs-deleted-path-representation.md) — raw/reviews/20261001T035359Z-pr-3571.md を統合
+* **Skip**: [20261001T040014Z-pr-3589.md](raw/reviews/20261001T040014Z-pr-3589.md) — 指摘ゼロの検証記録で、経験則として抽出できる内容が無い
 
 ## 2026-09-30
 

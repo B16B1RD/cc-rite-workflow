@@ -2,9 +2,9 @@
 type: "heuristics"
 title: "作業ツリーの内容 hash を証跡にするなら、削除されたパスを表す値を持たせる"
 domain: "heuristics"
-description: "作業ツリーのファイルを hash して記録し index と比べる型の証跡は、削除・改名で消えたパスに hash を取れず、取り込みを表現できない。削除は「HEAD にあって作業ツリーに無い」ときだけ専用の値で記録し、どちらにも無いパスは誤りとして止める。"
+description: "作業ツリーを hash して index と比べる証跡は、削除・改名で消えたパスと、symlink のように作業ツリーと index で表現が分かれるパスを、同じ方法で表さないと commit の前後で食い違う。削除は HEAD にあって作業ツリーに無いパスだけを専用の値にし、照合を変えたら契約文書も同時に直し、commit 後の回復は作業ツリーに残るパスへ絞る。"
 created: "2026-10-01T01:19:14Z"
-generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-10-01T01:19:14Z" }
+generated: { by: "rite-wiki-ingest/grok-4.7", at: "2026-10-01T04:06:42Z" }
 sources:
   - type: "fixes"
     resource: "raw/fixes/20261001T010038Z-pr-3571.md"
@@ -12,6 +12,12 @@ sources:
     resource: "raw/reviews/20261001T011105Z-pr-3571.md"
   - type: "fixes"
     resource: "raw/fixes/20261001T011929Z-pr-3571.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261001T034312Z-pr-3571.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T033506Z-pr-3571.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T035359Z-pr-3571.md"
 tags: []
 confidence: medium
 ---
@@ -20,7 +26,7 @@ confidence: medium
 
 ## 概要
 
-作業ツリーのファイルを hash して記録し、index と比べる型の証跡は、削除・改名で消えたパスに hash を取れず、その取り込みを表現できない。削除は「HEAD にあって作業ツリーに無い」ときだけ専用の値で記録し、どちらにも無いパスは誤りとして止めると fail-loud を保てる。
+作業ツリーを hash して index と比べる証跡は、削除・改名で消えたパスと、symlink のように作業ツリーと index で表現が分かれるパスを、同じ方法で表さないと commit の前後で食い違う。削除は HEAD にあって作業ツリーに無いパスだけを専用の値にし、照合を変えたら契約文書も同時に直し、commit 後の回復は作業ツリーに残るパスへ絞る。
 
 ## 詳細
 
@@ -32,6 +38,12 @@ confidence: medium
 
 **受入条件の範囲は黙って狭めない**: helper の制約を理由に範囲外とするより、helper 側を直して満たす方が早く収束する。
 
+**symlink はリンク文字列で hash する**: パスを直接 hash する操作は symlink をたどり、リンク先の内容を hash する。index に入る symlink の blob はリンク文字列である。作業ツリー側も、symlink ならリンク先を読んだ文字列を標準入力から hash し、記録側と照合側を同じ方法に揃える。揃えないと、通常ファイルでは等しいはずの値が symlink では commit の前後で食い違う。実行ビットなど、作業ツリーと index で表現が分かれる種類も同じ照合の対象にする。
+
+**照合を変えたら契約文書も同時に直す**: 実装の照合方法を変えたら、正本と宣言している契約文書の同じ照合条件も同時に書き換える。片側だけだと、契約どおりに検算した人が別の値を得る。
+
+**commit 後の回復は残っているパスへ絞る**: 削除パスを入力に含める規定を足したら、commit 後に同じ取り込みを呼ぶ回復経路へ、作業ツリーに残るパスへ絞る限定を入れる。commit 後には、消えたパスは HEAD にも作業ツリーにも無い。
+
 ## 関連ページ
 
 - [手順書の bash 文は期待文字列で固定せず、抽出して実行するテストで固定する](../patterns/procedure-bash-extracted-and-executed-by-test.md)
@@ -41,3 +53,6 @@ confidence: medium
 - [削除を表す値を持たせた修正結果](../../raw/fixes/20261001T010038Z-pr-3571.md)
 - [削除・改名で回復経路が壊れることを独立に再現したレビュー結果](../../raw/reviews/20261001T011105Z-pr-3571.md)
 - [回復文に入力条件を書いた修正結果](../../raw/fixes/20261001T011929Z-pr-3571.md)
+- [symlink のリンク文字列で hash を揃えた修正結果](../../raw/fixes/20261001T034312Z-pr-3571.md)
+- [symlink をたどる hash と index のリンク文字列が食い違うことを示したレビュー結果](../../raw/reviews/20261001T033506Z-pr-3571.md)
+- [照合変更と契約文書、commit 後の回復範囲を同時に揃えることを示したレビュー結果](../../raw/reviews/20261001T035359Z-pr-3571.md)
