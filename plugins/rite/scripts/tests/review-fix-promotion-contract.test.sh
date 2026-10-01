@@ -284,10 +284,8 @@ assert_grep 'any other gate result stops with review error' "$review" '| それ�
 # commit, pass the triage arguments and surface the gate's exit code.
 triage_dir="$state_dir/triage"
 mkdir -p "$triage_dir/plugin/hooks/scripts" "$triage_dir/plugin/scripts" "$triage_dir/root/.rite/review-results"
-awk '/^### 7\.2-7\.3 / { s=1 } s && /^```bash$/ { a=1; blk=""; next }
-  a && /^```$/ { a=0; if (index(blk, "--kind triage")) { printf "%s", blk; exit } next }
-  a { blk = blk $0 "\n" }' "$review" > "$triage_dir/block.sh"
-assert_grep 'gate block calls the triage gate' "$triage_dir/block.sh" 'review-adoption-gate.sh --pr {pr_number} --kind triage'
+cp "$ROOT/plugins/rite/hooks/scripts/triage-adoption-run.sh" "$triage_dir/plugin/hooks/scripts/triage-adoption-run.sh"
+assert_grep 'gate block calls the triage gate' "$triage_dir/plugin/hooks/scripts/triage-adoption-run.sh" 'review-adoption-gate.sh --pr "$pr" --kind triage'
 printf '#!/bin/bash\nprintf "%%s\\n" "$TRIAGE_ROOT"\n' > "$triage_dir/plugin/hooks/state-path-resolve.sh"
 cat > "$triage_dir/plugin/hooks/scripts/review-adoption-gate.sh" <<'STUB'
 #!/bin/bash
@@ -306,18 +304,26 @@ printf '{"commit_sha": "c0ffee"}\n' > "$triage_dir/root/.rite/review-results/5-2
 triage_records='[{"ids": ["C-1"]}]'
 triage_candidates='{"candidates": [{"id": "C-1", "content": "full text"}]}'
 run_triage_block() {
-  local issue=$1 code
-  code=$(cat "$triage_dir/block.sh")
-  code=${code//\{plugin_root\}/$triage_dir/plugin}
-  code=${code//\{pr_number\}/5}
-  code=${code//\{base_branch\}/develop}
-  code=${code//\{fix_loop\}/yes}
-  code=${code//\{source_issue_number\}/$issue}
-  code=${code//\{records\}/$triage_records}
-  code=${code//\{candidates\}/$triage_candidates}
+  local issue=$1 rec cand
+  rec=$(mktemp)
+  cand=$(mktemp)
+  printf '%s\n' "$triage_records" > "$rec"
+  printf '%s\n' "$triage_candidates" > "$cand"
   rm -f "$triage_dir/args" "$triage_dir/args.record" "$triage_dir/args.verdicts"
-  TRIAGE_ROOT="$triage_dir/root" TRIAGE_ARGS="$triage_dir/args" TRIAGE_GATE_RC="$TRIAGE_GATE_RC" \
-    PATH="${TRIAGE_PATH_PREFIX:+$TRIAGE_PATH_PREFIX:}$PATH" bash -c "$code" 2>&1 || true
+  if [ -n "$issue" ]; then
+    TRIAGE_ROOT="$triage_dir/root" TRIAGE_ARGS="$triage_dir/args" TRIAGE_GATE_RC="$TRIAGE_GATE_RC" \
+      PATH="${TRIAGE_PATH_PREFIX:+$TRIAGE_PATH_PREFIX:}$PATH" \
+      bash "$triage_dir/plugin/hooks/scripts/triage-adoption-run.sh" \
+      --pr 5 --base origin/develop --fix-loop yes \
+      --records-file "$rec" --candidates-file "$cand" --issue "$issue" 2>&1 || true
+  else
+    TRIAGE_ROOT="$triage_dir/root" TRIAGE_ARGS="$triage_dir/args" TRIAGE_GATE_RC="$TRIAGE_GATE_RC" \
+      PATH="${TRIAGE_PATH_PREFIX:+$TRIAGE_PATH_PREFIX:}$PATH" \
+      bash "$triage_dir/plugin/hooks/scripts/triage-adoption-run.sh" \
+      --pr 5 --base origin/develop --fix-loop yes \
+      --records-file "$rec" --candidates-file "$cand" 2>&1 || true
+  fi
+  rm -f "$rec" "$cand"
 }
 out=$(TRIAGE_GATE_RC=3 run_triage_block 7)
 assert_eq 'gate block surfaces the held exit code' '[CONTEXT] ADOPTION_GATE_RC=3' "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"

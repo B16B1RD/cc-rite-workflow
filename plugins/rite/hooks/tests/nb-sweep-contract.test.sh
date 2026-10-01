@@ -677,10 +677,51 @@ rec_order=$(awk -v s="$REC_START" -v e="$REC_END" '
 assert "T-07 iterate recommendation order check → mark → set → fix" "check|mark|set|fix|" "$rec_order"
 
 TRIAGE_MD="$PLUGIN_ROOT/skills/pr-review/references/scope-triage.md"
-assert_grep "T-07 pr-review 7.2 registers the adoption verdict fix after the gate decided" "$TRIAGE_MD" \
-  '^  bash \{plugin_root\}/scripts/review-pr-recommendations\.sh record --pr \{pr_number\} --review-result "\$review_json" \\$'
-assert_grep "T-07 pr-review 7.2 stops when the registration fails" "$TRIAGE_MD" \
+HELPER="$PLUGIN_ROOT/hooks/scripts/triage-adoption-run.sh"
+assert_grep "T-07 pr-review 7.2 registers the adoption verdict fix after the gate decided" "$HELPER" \
+  '^  bash "\$plugin_root/scripts/review-pr-recommendations\.sh" record --pr "\$pr" --review-result "\$review_json" \\$'
+assert_grep "T-07 pr-review 7.2 stops when the registration fails" "$HELPER" \
   '\|\| \{ echo "ERROR: PR 内推奨を登録できません（原因は直前の出力）" >&2; rc=2; \}'
+fence=$(awk '
+  /^```bash$/ { a=1; blk=""; next }
+  a && /^```$/ {
+    a=0
+    if (index(blk, "triage-adoption-run.sh")) { printf "%s", blk; exit }
+    next
+  }
+  a { blk = blk $0 "\n" }
+' "$TRIAGE_MD")
+expected="bash {plugin_root}/hooks/scripts/triage-adoption-run.sh --pr {pr_number} --base origin/{base_branch} --fix-loop {fix_loop} --records-file '{records_file}' --candidates-file '{candidates_file}'"
+assert "T-07 procedure 3 fence is one helper call" "$expected" "$fence"
+# 保存済み review JSON の無い番号なら helper は状態を書く前に ADOPTION_GATE_RC を出して止まる。
+# 構文エラーで helper に届かない文は、この印が無いので失敗する。
+records_file=$(mktemp)
+candidates_file=$(mktemp)
+printf '[]\n' > "$records_file"
+printf '{"candidates":[]}\n' > "$candidates_file"
+run_line=$fence
+run_line=${run_line//\{plugin_root\}/$PLUGIN_ROOT}
+run_line=${run_line//\{pr_number\}/9999993508}
+run_line=${run_line//\{base_branch\}/develop}
+run_line=${run_line//\{fix_loop\}/no}
+run_line=${run_line//\{records_file\}/$records_file}
+run_line=${run_line//\{candidates_file\}/$candidates_file}
+exec_out=$(mktemp)
+exec_err=$(mktemp)
+bash -c "$run_line" >"$exec_out" 2>"$exec_err" || true
+assert "T-07 procedure 3 starts the helper" 1 "$(grep -c '\[CONTEXT\] ADOPTION_GATE_RC=' "$exec_out" || true)"
+rm -f "$records_file" "$candidates_file" "$exec_out" "$exec_err"
+repo_root=$(cd "$PLUGIN_ROOT/../.." && pwd)
+heaviness_err=$(mktemp)
+heaviness_rc=0
+heaviness_out=$(cd "$repo_root" && bash plugins/rite/hooks/scripts/bash-heaviness-check.sh --target plugins/rite/skills/pr-review/references/scope-triage.md 2>"$heaviness_err") || heaviness_rc=$?
+assert "T-07 scope-triage heaviness exits 0" 0 "$heaviness_rc"
+assert "T-07 scope-triage heaviness stdout has no heavy block" 0 "$(printf '%s\n' "$heaviness_out" | grep -c 'heavy operational bash block' || true)"
+assert "T-07 scope-triage heaviness stderr has no target not found" 0 "$(grep -c 'target not found' "$heaviness_err" || true)"
+rm -f "$heaviness_err"
+miss_rc=0
+bash "$HELPER" >/dev/null 2>/dev/null || miss_rc=$?
+assert "T-07 helper without required arguments exits 2" 2 "$miss_rc"
 assert "T-07 pr-review no longer registers by position" "0" "$(grep -c '5\.3\.0\.R\|recommendations-register\|registered_recommendation_positions' "$REVIEW" "$REVIEW_STEP" | awk -F: '{ n += $2 } END { print n }')"
 assert_grep_in_section "T-07 fix 2.1 routes R-NN to the normal fix" "$FIX_SKILL" \
   '^### 2\.1 Confirm Fix Approach$' '^### 2\.1\.A ' \
