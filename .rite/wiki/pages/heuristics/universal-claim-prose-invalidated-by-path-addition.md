@@ -69,9 +69,17 @@ sources:
     resource: "raw/reviews/20260929T005026Z-pr-3397.md"
   - type: "reviews"
     resource: "raw/reviews/20260929T040545Z-pr-3426.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T230026Z-pr-3606.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261001T231816Z-pr-3606-fix1.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T233134Z-pr-3606-c2.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T235421Z-pr-3606-c3.md"
 tags: ["comment-rot", "cause-neutral", "exclusivity-claim", "doc-sync", "not-grep-pin", "quantifier-strengthening", "birth-defect"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T04:14:57Z" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-10-01T23:59:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:47:53Z" }
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
@@ -213,6 +221,12 @@ consumer ごとに読取り・書込み・同期という責務を確認して�
 
 旧文言の除去を確かめる grep は、「0 件」と「0」のような表記の揺れを取りこぼす。同種の記述を探すときは表記を変えて複数回 grep する。テストでは、旧文言が無いことを確かめる否定 pin は補助にとどめ、新しい規範文が在ることを確かめる存在 pin を主にする。
 
+### 共有関数の冒頭に足した検査の効く範囲は、列挙する前に各コマンドを実行して確かめる
+
+共有 validate 関数の冒頭に新しい検査を足すと、その関数を呼ぶ別コマンド（retry / replan など）にも効くように読める。文書へ「先に停止するコマンド」を列挙した修正が、cycle 2 で偽と判定された。実際には、その関数に到達する前に別の検査（HEAD 照合）が先に走るコマンドがあり、列挙した範囲が実挙動より広かった。コード読解だけでは reviewer の判断も割れたため、**各コマンドを別 HEAD の場所から実際に実行し、出るエラーを確かめてから書く**。
+
+対処は列挙を広げることではなく、実測で確認できた範囲まで削ることだった。削った版は次の cycle で再指摘を生まず、1 cycle で収束した。主張を広げる修正は、広げた各項目を実行で裏取りしないと実測付きの指摘になる。削る修正は再指摘を生まない。差分スコープの再レビューは、前 cycle の指摘を出した reviewer に解消の検証だけを依頼すると短時間で終わる。
+
 ## 関連ページ
 
 - [実装の分岐を散文へ落とす前に、フラグの状態数と観測ラベルの値域を機械的に数える](./count-implementation-states-before-writing-prose.md)
@@ -249,3 +263,7 @@ consumer ごとに読取り・書込み・同期という責務を確認して�
 - [別言語のコメントに主張が残ったレビュー結果](../../raw/reviews/20260929T003742Z-pr-3397.md)
 - [コメントだけの修正で指摘 0 件に収束したレビュー結果](../../raw/reviews/20260929T005026Z-pr-3397.md)
 - [表記の揺れで旧文言の探索が漏れうることを指摘したレビュー結果](../../raw/reviews/20260929T040545Z-pr-3426.md)
+- [共有関数の冒頭の検査が別コマンドにも効くと書いた文書の範囲を指摘したレビュー結果](../../raw/reviews/20261001T230026Z-pr-3606.md)
+- [検査の効く範囲を実挙動どおりに書き直した fix 結果](../../raw/fixes/20261001T231816Z-pr-3606-fix1.md)
+- [列挙した範囲が実行結果と合わないと指摘したレビュー結果](../../raw/reviews/20261001T233134Z-pr-3606-c2.md)
+- [列挙を実挙動へ削って収束したレビュー結果](../../raw/reviews/20261001T235421Z-pr-3606-c3.md)

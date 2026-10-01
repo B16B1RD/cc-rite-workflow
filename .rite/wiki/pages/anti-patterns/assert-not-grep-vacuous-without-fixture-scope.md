@@ -13,14 +13,20 @@ sources:
     resource: "raw/reviews/20260830T093009Z-pr-2483.md"
   - type: "reviews"
     resource: "raw/reviews/20260925T010623Z-pr-3063.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261001T230026Z-pr-3606.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261001T231816Z-pr-3606-fix1.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-25T03:58:00Z" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-10-01T23:59:00Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-30T09:45:00Z"
   - by: "rite-wiki-ingest/claude-opus-5-5"
     at: "2026-09-25T03:58:00Z"
+  - by: "rite-wiki-ingest/claude-sonnet-5-5"
+    at: "2026-10-01T23:59:00Z"
 ---
 
 # assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く
@@ -99,6 +105,12 @@ positive control を置いても「その control が本当に検査対象を守
 
 「失敗経路で古いファイルを消す」ことを検証するテストが、直前のテストが既にそのファイルを消した状態で走り、削除しない実装でも pass していた。不在を assert するテストは、検証前に対象が存在する状態を明示的に作る（例: 失敗経路を通す直前に古い一覧を書いておく）。
 
+### 追記: 検査の順序を固定する否定 assert は、検査が無いと別のエラーが先に出る場所で走らせる
+
+「新しい検査 G を既存の検査 H（HEAD 照合など）より前に置く」という順序を、「H のエラー文が出ない」という否定 assert で固定しようとしたテストがあった。fixture が H の条件に掛からない（state だけ差し替えて cwd と HEAD が同じ）と、G を H の後ろへ移しても H は元から発火せず、否定 assert は pass し続けた。順序の固定は、**G が無ければ H が先に出る状況**（HEAD の違う別リポジトリから実行する等）を作って初めて成立する。順序を入れ替える変異を当てて、その assert だけが落ちることを確かめる。
+
+同じ指摘は、契約の「既存の検査が従来どおり効く」ケースにも当たる。隣接する別の assert で代用せず、新しい検査を通過したうえで既存の診断が出ることを、既存の fixture を持つスイートに 1 ケース足して固定する。
+
 ## 関連ページ
 
 - [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](../patterns/absence-pin-base-present-head-absent-single-line.md)
@@ -110,3 +122,5 @@ positive control を置いても「その control が本当に検査対象を守
 - [fix 結果](../../raw/fixes/20260728T093135Z-pr-2038.md)
 - [レビュー結果](../../raw/reviews/20260728T081222Z-pr-2038.md)
 - [レビュー結果](../../raw/reviews/20260925T010623Z-pr-3063.md)
+- [順序を固定する pin が検査の無い fixture で空振りしたレビュー結果](../../raw/reviews/20261001T230026Z-pr-3606.md)
+- [別 HEAD の場所から実行する形へ直した fix 結果](../../raw/fixes/20261001T231816Z-pr-3606-fix1.md)
