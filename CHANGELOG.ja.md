@@ -30,6 +30,12 @@ blocking gate として実行する。
 
 ## [Unreleased]
 
+## [0.19.3] - 2026-10-02
+
+### 修正
+
+- **対象ブランチが main checkout に残っているときの session worktree への自動移行** — `/rite:iterate` などが「別セッションが作業中」と誤診断して中止しなくなった。main checkout が clean なら `branch.base` へ自動で切り替えて session worktree へ移り、そのまま続行する。未コミット変更（未追跡ファイルを含む）がある、または切り替えに失敗したときは、切り替えずに停止し、変更ファイル一覧か git の原因を stderr に出す（新しい marker `branch_in_main_checkout`）。別の worktree がブランチを使っているときの `branch_other_worktree` の中止は変えない。
+
 ## [0.19.2] - 2026-10-02
 
 ### 修正
@@ -1228,6 +1234,7 @@ v0.4.0 では値は silent に無視されます。機能的な代替はあり�
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.19.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.2...v0.19.3
 [0.19.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.1...v0.19.2
 [0.19.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.18.0...v0.19.0
