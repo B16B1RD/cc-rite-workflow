@@ -36,11 +36,10 @@ jobs:
   test:
     name: tests (${{ matrix.os }}${{ matrix.shard && format(', shard {0}/3', matrix.shard) || '' }})
     runs-on: ${{ matrix.os }}
-    # Per-OS limit, at least twice the measured full-job maximum rounded up to
-    # whole minutes: macOS peaks at 17.7 minutes, ubuntu at 7. The same test set
-    # varies more than 2x across macOS runners, so the macOS limit carries the
-    # margin instead of tighter scheduling. "Report job duration" warns when a
-    # run passes 70% of its limit.
+    # Three CI runs at the same commit measured a macOS full-job maximum of
+    # 542 seconds. Twice that maximum rounded up gives ceil(2 * 542 / 60) = 19
+    # minutes. Keep ubuntu's existing 18-minute limit. "Report job duration"
+    # warns when a run passes 70% of its limit.
     timeout-minutes: ${{ matrix.timeout_minutes }}
     strategy:
       fail-fast: false
@@ -51,13 +50,13 @@ jobs:
             timeout_minutes: 18
           - os: macos-latest
             shard: 1
-            timeout_minutes: 36
+            timeout_minutes: 19
           - os: macos-latest
             shard: 2
-            timeout_minutes: 36
+            timeout_minutes: 19
           - os: macos-latest
             shard: 3
-            timeout_minutes: 36
+            timeout_minutes: 19
 
     steps:
       # First step, so the elapsed time reported at the end covers every step.
