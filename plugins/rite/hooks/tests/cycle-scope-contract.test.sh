@@ -183,6 +183,36 @@ assert "batch-run adoption_held fails to step 8 before mergeable" "true" \
   "$( [ -n "$ah_line" ] && [ -n "$mg_line" ] && [ "$ah_line" -lt "$mg_line" ] && echo true || echo "false ah=$ah_line mg=$mg_line" )"
 assert_grep "batch-run orchestration comment routes adoption_held to step 8" "$BATCH_RUN" \
   'REVIEW_STOP=adoption_held \(both modes\) -> ステップ 8'
+# 受入条件未検証（ac_unverified）: merge は ready へ、default は停止。行全体で pin し、変数表や本文の別の言及に当たらないようにする
+ACU_PREFIX='| `[review:error]` + `REVIEW_STOP=ac_unverified`'
+acm_line=$(grep -nF "${ACU_PREFIX}（\`merge\`） | → ステップ 4（ready）へ。" "$BATCH_RUN" | head -1 | cut -d: -f1)
+acd_line=$(grep -nF "${ACU_PREFIX}（\`default\`） | ready を実行しない" "$BATCH_RUN" | head -1 | cut -d: -f1)
+assert "batch-run ac_unverified merge row precedes mergeable" "true" \
+  "$( [ -n "$acm_line" ] && [ -n "$mg_line" ] && [ "$acm_line" -lt "$mg_line" ] && echo true || echo "false acm=$acm_line mg=$mg_line" )"
+assert "batch-run ac_unverified default row precedes mergeable" "true" \
+  "$( [ -n "$acd_line" ] && [ -n "$mg_line" ] && [ "$acd_line" -lt "$mg_line" ] && echo true || echo "false acd=$acd_line mg=$mg_line" )"
+acm_row=$([ -n "$acm_line" ] && sed -n "${acm_line}p" "$BATCH_RUN")
+acd_row=$([ -n "$acd_line" ] && sed -n "${acd_line}p" "$BATCH_RUN")
+assert "batch-run ac_unverified merge row goes to step 4 (ready), not step 8" "true" \
+  "$( case "$acm_row" in *'ステップ 4（ready）へ'*) case "$acm_row" in *'ステップ 8'*) echo "false: merge row mentions step 8" ;; *) echo true ;; esac ;; *) echo "false: no step 4 in merge row" ;; esac )"
+assert "batch-run ac_unverified default row stops at step 8, never advances the cursor or merges" "true" \
+  "$( case "$acd_row" in *'ステップ 8（段階=iterate）'*) case "$acd_row" in *'ステップ 6'*|*'ステップ 4'*) echo "false: default row routes to step 4/6" ;; *) echo true ;; esac ;; *) echo "false: no step 8 in default row" ;; esac )"
+assert_grep "batch-run orchestration comment routes ac_unverified by mode" "$BATCH_RUN" \
+  'REVIEW_STOP=ac_unverified: merge mode -> ステップ 4, default mode -> ステップ 8'
+# 人間のみの受入条件が残る停止: ステップ 4 の ready 失敗行とステップ 8 の失敗理由欄が 4 要素と実行結果を転記する
+assert_grep "step 4 ready:error row forwards the 4 elements and the executed commands" "$BATCH_RUN" \
+  '^\| `\[ready:error\]` / sentinel 不在 \| .*何を確かめるか / なぜ AI では確かめられないか / どう確かめるか / 期待する結果.*`実行したコマンド => 観測結果`'
+assert_grep "step 8 failure reason carries the 4 elements for ac_unverified stops" "$BATCH_RUN" \
+  '^失敗理由: .*受入条件未検証.*4 要素.*`実行したコマンド => 観測結果`'
+assert_grep "step 8 failure reason names the iterate stop notice for the default ac_unverified stop" "$BATCH_RUN" \
+  '^失敗理由: .*default の `REVIEW_STOP=ac_unverified` では iterate の停止通知の内容'
+assert_grep "default ac_unverified row names the iterate stop notice" "$BATCH_RUN" \
+  'ac_unverified`（`default`） \| .*（iterate の停止通知の内容）'
+# batch-run が分岐に使う marker の綴りが、発行側（iterate / pr-review）と一致していること
+assert_grep "iterate emits the REVIEW_STOP=ac_unverified marker batch-run routes on" "$ITERATE" \
+  'REVIEW_STOP=ac_unverified; ac=\{ids\}'
+assert_grep "pr-review emits the REVIEW_STOP=ac_unverified marker batch-run routes on" "$PR_REVIEW" \
+  'REVIEW_STOP=ac_unverified; ac=\{acceptance_unverified\}'
 assert_grep "parent discovery uses named 仕様との整合性 section" "$PR_REVIEW" \
   '`### 仕様との整合性` に 1 行で残す'
 

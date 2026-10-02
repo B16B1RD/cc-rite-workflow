@@ -137,7 +137,7 @@ Finding Quality Guardrail Category #2 で除外した候補を次の表へ必ず
 
 | 分類 | 意味 | 対応経路 |
 |------|------|---------|
-| `actionable` | 対応が妥当な改善提案。本 PR が追加した行の欠陥（誤ったコメント・到達しない分岐・テストの粗さ等）なら `ファイル:行` を併記する。本 PR の diff と無関係なものは `別 Issue` / `スコープ外` キーワードを含める | ステップ 7.2 の採否ゲートの出口で処分する。PR が持ち込んだ根因（ADOPT・`origin=pr`）は `/rite:iterate` 経由の mergeable の review なら同じ PR で修正し（fix）、受入条件未検証の停止・単独実行・cycle 上限では hold。それ以外は file / record / hold |
+| `actionable` | 対応が妥当な改善提案。本 PR が追加した行の欠陥（誤ったコメント・到達しない分岐・テストの粗さ等）なら `ファイル:行` を併記する。本 PR の diff と無関係なものは `別 Issue` / `スコープ外` キーワードを含める | ステップ 7.2 の採否ゲートの出口で処分する。PR が持ち込んだ根因（ADOPT・`origin=pr`）は `/rite:iterate` 経由の review（mergeable と受入条件未検証の停止）なら同じ PR で修正し（fix）、単独実行・cycle 上限では hold。それ以外は file / record / hold |
 | `design_confirmation` | reviewer 自身が「現状の判断は妥当」「対応不要」「informational 寄り」と結論しており、action 要求を伴わない観察事項 | ステップ 7 で起票・記録なし、completion report に件数のみ表示 |
 | `boundary` | reviewer が action 要否を判断できない境界事案 | ステップ 7.2 の採否ゲートの出口（file / record / fix / hold）で処分 |
 

@@ -158,7 +158,7 @@ assert_grep 'cleanup preserves destructive confirmation' \
 assert_grep 'review triage mode exception is only the fix loop' \
   "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '例外は手順 3 の `{fix_loop}` だけで、`/rite:iterate` からの呼び出しかどうかで ADOPT・origin=pr の fix / hold が分かれる'
 assert_grep 'review triage fix loop requires the iterate caller flag' \
-  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '`PR_REVIEW_FROM_ITERATE == true`（ステップ 1.0。`/rite:iterate` が `--from-iterate` を付けて呼んだ review）かつステップ 8.1 の出力表で `[review:mergeable]` に一致する review だけ `yes`'
+  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '`PR_REVIEW_FROM_ITERATE == true`（ステップ 1.0。`/rite:iterate` が `--from-iterate` を付けて呼んだ review）なら `yes`'
 assert_not_grep 'review triage fix loop does not read e2e-detect' \
   "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" 'PR_REVIEW_IN_E2E == true'
 assert_grep 'iterate invokes review with the caller flag' \

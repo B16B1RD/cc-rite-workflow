@@ -32,6 +32,15 @@ Past version sections carry none either — they have already been stripped.
 
 ## [Unreleased]
 
+## [0.19.2] - 2026-10-02
+
+### Fixed
+
+- **`/rite:pr-review` no longer routes verifiable acceptance criteria and in-PR fixes to a human** — acceptance criteria that can be confirmed by running something, and fixes that can be made inside the PR, are handled by the AI instead of being handed to human judgment.
+- **`/rite:batch-run --merge` hands over runs stopped on unverified acceptance criteria** — a run that stops because acceptance criteria are unverified is passed on to ready when `--merge` is specified.
+- **`/rite:batch-run` stop reports no longer turn AI-decidable judgments into questions** — decisions the AI can make itself are not posed to the human in the stop report.
+- **Re-review started outside the PR's worktree stops with a location error** — starting a re-review outside the PR's worktree now stops with an error that names the wrong location.
+
 ## [0.19.1] - 2026-10-01
 
 ### Changed
@@ -1222,6 +1231,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.19.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.1...v0.19.2
 [0.19.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.17.1...v0.18.0

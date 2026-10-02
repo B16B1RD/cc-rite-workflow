@@ -547,7 +547,7 @@ bash {plugin_root}/scripts/review-pr-recommendations.sh list --pr {pr_number} --
 | Classification | Criteria | Action |
 |---------------|----------|--------|
 | **Required fix** | `fatal_map[id] == true` | 修正対象 |
-| **PR 内推奨** | 上の `list` の `R-NN`（pr-review 7.2 が `/rite:iterate` 経由の mergeable の review で、採否の出口 ADOPT・`origin=pr` の根因をレビュー済み commit に登録したもの） | 修正対象。map には載らないので ID で直接扱う |
+| **PR 内推奨** | 上の `list` の `R-NN`（pr-review 7.2 が `/rite:iterate` 経由の review（mergeable と受入条件未検証の停止）で、採否の出口 ADOPT・`origin=pr` の根因をレビュー済み commit に登録したもの） | 修正対象。map には載らないので ID で直接扱う |
 | **完了前確認の逸脱** | flow-state の `review_run.deviations[]` のうち現在の review context のもの（`D-NN`。iterate の完了前確認が `review-deviate` で記録） | 修正対象。PR 内推奨と同じく ID で直接扱う |
 | **nit (認知のみ)** | `scope_map[id] == "nit-noted"` | PR reply / fix 対象外。`acknowledged_nit_count` に算入 |
 | **non-blocking（fix 対象外）** | 永続 JSON の `non_blocking_findings[]`（nit 除外） | 記録・表示のみ。修正選択肢に出さない |

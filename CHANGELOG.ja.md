@@ -30,6 +30,15 @@ blocking gate として実行する。
 
 ## [Unreleased]
 
+## [0.19.2] - 2026-10-02
+
+### 修正
+
+- **`/rite:pr-review` が、実行して確かめられる受入条件と PR 内で直せる修正を人間の判断に回さない** — 実行して確認できる受入条件と PR 内で直せる修正は、人間の判断に回さず AI が処理する。
+- **`/rite:batch-run --merge` が、受入条件未検証で停止した run を ready へ引き渡す** — 受入条件が未検証のまま停止した run を、`--merge` 指定時に ready へ渡す。
+- **`/rite:batch-run` の停止報告で、AI が決められる判断を質問にしない** — AI 自身が決められる判断を、停止報告で人間への質問にしない。
+- **PR の worktree の外で再レビューを始めたとき、場所違いと分かるエラーで停止する** — PR の worktree の外で再レビューを始めると、場所が違うことを示すエラーで停止する。
+
 ## [0.19.1] - 2026-10-01
 
 ### 変更
@@ -1219,6 +1228,7 @@ v0.4.0 では値は silent に無視されます。機能的な代替はあり�
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.19.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.1...v0.19.2
 [0.19.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.17.1...v0.18.0

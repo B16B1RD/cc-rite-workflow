@@ -2967,6 +2967,23 @@ try:
 finally:
     f.close()
 
+# In the recorded session worktree the verified-tree check still runs: content committed after
+# the verification is refused by its own diagnosis, not by the location check.
+f = bytecode_fixture('test -s source.txt')
+try:
+    f.scope('verify')
+    (f.root / 'source.txt').write_text('changed after verification\n')
+    f.commit()
+    recorded = f.state()
+    recorded['worktree'] = str(f.root.resolve())
+    dump(f.state_path, recorded)
+    after_change = f.start(ok=False)
+    check(after_change.returncode != 0 and 'HEAD content differs from verified fix tree' in after_change.stderr
+          and 'wrong working directory' not in after_change.stderr,
+          'review-start in the recorded worktree still refuses content that differs from the verified fix tree')
+finally:
+    f.close()
+
 # T-27: a purpose deviation on a line the PR added reopens a mergeable review of the
 # same run for an ordinary fix and re-review; anything else is refused unchanged.
 def deviation_review(cap=None, roots=()):

@@ -46,6 +46,18 @@ def head():
     return subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
 
 
+def require_session_worktree(state):
+    """Stop before any HEAD / tree comparison when run outside the recorded session worktree."""
+    expected = state.get("worktree")
+    if not expected:
+        return
+    found = subprocess.run(["git", "rev-parse", "--show-toplevel"], text=True, capture_output=True)
+    actual = found.stdout.strip() if found.returncode == 0 else str(Path.cwd()) + " (not a git work tree)"
+    require(found.returncode == 0 and Path(actual).resolve() == Path(expected).resolve(),
+            "wrong working directory: expected the session worktree " + str(expected) + " but running in " + actual
+            + "; re-run from the session worktree")
+
+
 def roster(value):
     require(isinstance(value, list) and bool(value)
             and all(isinstance(name, str) and re.fullmatch(r"[a-z][a-z0-9-]*-reviewer", name) for name in value)
@@ -274,6 +286,7 @@ def start(state, args, directory):
     selected = read(args.selection)
     roster(selected)
     cycle = state.get("review_cycle")
+    require_session_worktree(state)
     current_head = head()
     stagnation = importlib.import_module("review-stagnation")
     resumed_run = None
