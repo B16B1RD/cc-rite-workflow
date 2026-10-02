@@ -143,6 +143,8 @@ jobs:
         # Overlap shard 1's other suites with its longest hook test. Keep three
         # hook workers to limit contention, and wait for both exit statuses.
         run: |
+          # Preserve SIGINT handling in the background suite's descendants.
+          set -m
           (
             bash plugins/rite/scripts/tests/run-all.sh 2>&1 | tee scripts-tests.log
             bash tests/rite-dev.test.sh 2>&1 | tee rite-dev-tests.log
