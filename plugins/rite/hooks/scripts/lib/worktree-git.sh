@@ -744,8 +744,9 @@ ensure_session_worktree() {
   fi
 
   # --- worktree missing → reconstruct only if the branch exists somewhere ---
-  # If the branch is checked out in ANOTHER worktree (concurrent session),
-  # do not reconstruct — mirror open.md's branch_other_worktree guard.
+  # A branch parked in the main checkout is released below. If it is checked out in
+  # any other worktree (concurrent session), do not reconstruct — mirror open.md's
+  # branch_other_worktree guard.
   if [ -n "$branch" ]; then
     local branch_wt
     branch_wt=$(git worktree list --porcelain 2>/dev/null | awk -v b="refs/heads/$branch" '
@@ -762,8 +763,8 @@ ensure_session_worktree() {
         echo "[CONTEXT] WT_ENSURE=branch_in_main_checkout; path=$wt_path; branch=$branch; other=$branch_wt"
         return 0
       fi
-      if ! dirty=$(git -C "$main_root" status --porcelain 2>&1); then
-        echo "ERROR: ensure_session_worktree: main checkout の git status に失敗しました: $dirty" >&2
+      if ! dirty=$(git -C "$main_root" status --porcelain 2>/dev/null); then
+        echo "ERROR: ensure_session_worktree: main checkout の git status に失敗しました（issue #${issue}）。main checkout で git status を実行して原因を確認してください" >&2
         echo "[CONTEXT] WT_ENSURE=branch_in_main_checkout; path=$wt_path; branch=$branch; other=$branch_wt"
         return 0
       fi

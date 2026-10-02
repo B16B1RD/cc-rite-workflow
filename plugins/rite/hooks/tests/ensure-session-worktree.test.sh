@@ -239,9 +239,10 @@ assert "TC-8m-4 main checkout still on the issue branch" "fix/issue-42-foo" "$(h
 echo "=== TC-8m-5: branch.base is not a local branch → branch_in_main_checkout ==="
 main_on_issue_branch $'branch:\n  base: "no-such-base"\n'; M="$REPO_MAIN"
 out=$(mktemp); err=$(mktemp); cleanup_dirs+=("$out" "$err")
-rc=$(ens_run_capture "$M" "$out" "$err" --issue 42)
+rc=$(LC_ALL=C ens_run_capture "$M" "$out" "$err" --issue 42)
 assert "TC-8m-5 token" "branch_in_main_checkout" "$(marker_case "$out")"
-assert "TC-8m-5 stderr carries the git switch failure" "yes" "$([ -s "$err" ] && echo yes || echo no)"
+# The helper's own ERROR line already names the base, so only git's message proves the switch output is relayed.
+assert "TC-8m-5 stderr carries the git switch failure" "yes" "$(grep -q 'invalid reference' "$err" && echo yes || echo no)"
 assert "TC-8m-5 main checkout still on the issue branch" "fix/issue-42-foo" "$(head_branch "$M")"
 assert "TC-8m-5 no session worktree" "no" "$(wt_registered "$M" 42)"
 
@@ -257,6 +258,8 @@ echo "=== TC-8m-7: every WT_ENSURE branch table carries branch_in_main_checkout 
 RECOVER_TBL="$SCRIPT_DIR/../../skills/recover/SKILL.md"
 recover_row=$(grep -E '^\| `branch_in_main_checkout` \|' "$RECOVER_TBL" || true)
 assert "recover table row stops" "yes" "$(grep -q '停止' <<< "$recover_row" && echo yes || echo no)"
+assert "recover table row shows the cause (stderr)" "yes" "$(grep -q 'stderr' <<< "$recover_row" && echo yes || echo no)"
+assert "recover table row names the remedy (commit)" "yes" "$(grep -q 'commit' <<< "$recover_row" && echo yes || echo no)"
 for s in iterate pr-review fix; do
   assert "$s branch list has branch_in_main_checkout" "1" "$(grep -cE '^- `branch_in_main_checkout` →' "$SCRIPT_DIR/../../skills/$s/SKILL.md")"
 done

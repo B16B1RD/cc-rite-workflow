@@ -585,7 +585,7 @@ Consequences enforced across the workflow:
   in a worktree cannot be deleted or fetch-updated).
 - `cleanup`'s base update runs **only when the main checkout is on `{base}`**; on any
   other branch it WARNINGs and skips (it must not yank the main checkout off a
-  human's working branch). Moving the main checkout's branch is a **human-only** action.
+  human's working branch). `cleanup` never moves the main checkout's branch.
 
 ### Issue claim + lazy reap (lifecycle bookends)
 
