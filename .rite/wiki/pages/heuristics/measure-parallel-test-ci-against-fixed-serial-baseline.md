@@ -11,9 +11,13 @@ sources:
     resource: "raw/reviews/20260917T031500Z-pr-2920-final.md"
   - type: "fixes"
     resource: "raw/fixes/20260917T000451Z-pr-2920.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261002T160324Z-pr-3633.md"
 tags: ["ci", "performance", "parallel-tests", "measurement", "timeout"]
 confidence: high
-generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-17T03:15:00Z" }
+generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-10-02T16:08:32Z" }
+verified:
+  - { by: "rite-wiki-ingest/gpt-6", at: "2026-10-02T16:08:32Z" }
 ---
 
 # 並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する
@@ -35,6 +39,12 @@ generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-17T03:15:00Z" }
 10回の完走測定で全173 hook testsと4 suiteが成功した。Ubuntu hook平均は156.4/416秒（37.6%）、macOSは330.4/726秒（45.5%）。macOS job最大520秒で、600秒未満の目標を満たした。最大値の2倍を分に切り上げたtimeoutは18分となり、設定変更後の通常CIも両OSの全4suiteが成功した。詳細は [Raw Source](../../raw/reviews/20260917T031500Z-pr-2920-final.md) を参照。
 
 Git metadataをseedからコピーしてfixture初期化を短縮する場合、コピー元が実際に不変であることを確認する。初期commitの自動maintenanceが非同期でlockを作成・削除し、macOSのcopytreeと競合した実例がある。seed作成commandで`maintenance.auto=false`を指定し、Git traceでmaintenance子プロセスが起動しないことと、両OSの再測定成功を確認した。
+
+## macOS shard 構成の再計測
+
+同一構成の 3 実行で macOS 各 job の最長は 542 秒だった。hook 199 ファイルは 3 shard 全体で各 1 回、scripts 25 ファイルと rite-dev・runtime-e2e は shard 1 で各 1 回の成功を確認した。最大値の 2 倍を分単位で切り上げて timeout を 19 分にし、通常 CI でも各 job は 468・398・389 秒、70% 警告なしで完走した。
+
+suite を背景で重ねる構成では、時間だけでなくシグナルと失敗伝播も別に確認する。非対話 Bash の背景プロセスが SIGINT を無視すると、シグナルを扱うテストが停止し、並列化の速度測定自体が成立しない。monitor mode を有効にして、hook と背景 suite の終了コードを独立に捕捉し wait 後に返す構成で、両方の故意失敗が CI check の failure になることを確認した。
 
 ## 関連ページ
 
