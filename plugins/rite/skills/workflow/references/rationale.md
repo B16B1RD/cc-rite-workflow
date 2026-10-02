@@ -8,9 +8,10 @@
 
 ## main-checkout-untouched
 
-rite は main checkout のブランチを切り替えない。multi_session 時の作業はセッション worktree 内で
-進行し、中断後は `/rite:recover` がその worktree へ再入場する（消失していればブランチから再構築）。
-main checkout のカレントブランチは base のままにしておく。
+rite は main checkout のブランチを切り替えない。例外は、Issue 自身のブランチが clean な main checkout に
+残っているときだけで、session entry gate が `branch.base` へ切り替えて worktree へ移る。multi_session 時の
+作業はセッション worktree 内で進行し、中断後は `/rite:recover` がその worktree へ再入場する（消失していれば
+ブランチから再構築）。main checkout のカレントブランチは base のままにしておく。
 
 ## status-language-invariant
 

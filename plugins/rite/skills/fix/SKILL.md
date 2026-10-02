@@ -284,6 +284,7 @@ bash {plugin_root}/scripts/fix-step.sh ensure-worktree --head-ref '{head_ref}'
 - `reenter` / `reconstructed` → recover Phase 3.1.5 と[共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) に従い、marker の `path=` へ native / 検証済み代替で入場し、所有権・branch・変更前検証を通してステップ 1.2 へ。後続の全 shell・編集・検証・委譲をこの作業先に固定する。
 - `residue` → [残骸の確認](../../references/git-worktree-patterns.md#5-残骸ディレクトリの削除確認)で中身を調べ、その結果を添えて AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止）。
 - `branch_other_worktree` → 中止（並行セッションの可能性。`other=` のパスを表示）。
+- `branch_in_main_checkout` → 中止（branch が main checkout に残り、helper が解放できなかった。`other=` と stderr の原因を表示し、未コミット変更の commit または退避後に再実行を案内。recover Phase 3.1.5 の表が SoT）。
 - `branch_absent` → 誤再構築しない。**develop 上で続行せず** `[fix:error]`（Edit/Write へ進まない）。
 - `failed` → **silent fallback せず `[fix:error]`**。
 

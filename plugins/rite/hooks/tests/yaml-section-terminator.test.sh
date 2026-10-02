@@ -103,7 +103,7 @@ EXPECTED_COUNTS = {
     "hooks/scripts/gitignore-health-check.sh": 2,
     "hooks/scripts/lib/review-stagnation.py": 1,
     "hooks/scripts/lib/wiki-config.sh": 1,
-    "hooks/scripts/lib/worktree-git.sh": 1,
+    "hooks/scripts/lib/worktree-git.sh": 2,
     "hooks/scripts/pr-cycle-cleanup.sh": 1,
     "hooks/scripts/pr-review-post-comment-read.sh": 1,
     "hooks/scripts/wiki-apply-capture.sh": 1,
