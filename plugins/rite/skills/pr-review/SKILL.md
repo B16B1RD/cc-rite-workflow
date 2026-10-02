@@ -1798,7 +1798,7 @@ bash {plugin_root}/scripts/pr-review-step.sh ci-completion-check \
   --input {review_tmp_dir}/rite-review-result-{pr_number}.json
 ```
 
-helper はレビュー JSON の commit と毎回取得した PR HEAD を照合し、`pr-checks-classify.sh` で job ごとの結果を読む。workflow 全体の成功表示や必須 check の subset で代用しない。`continue-on-error` の job も失敗なら止める。pending は 15 秒間隔・上限 540 秒（merge と同じ）で再取得し、失敗 job と実行中 job が混在する場合も全 job の完了まで待つ。wait/poll の明示引数は通常省略し、上限を超えた確認を成功へ切り替える用途には使わない。
+helper はレビュー JSON の commit と毎回取得した PR HEAD を照合し、`pr-checks-classify.sh` で job ごとの結果を読む。workflow 全体の成功表示や必須 check の subset で代用しない。`continue-on-error` の job も失敗なら止める。pending は 15 秒間隔・上限 540 秒（merge の 1 block と同じ）で再取得し、失敗 job と実行中 job が混在する場合も全 job の完了まで待つ。wait/poll の明示引数は通常省略し、上限を超えた確認を成功へ切り替える用途には使わない。
 
 呼び出し前に現在の work 計測区間を閉じ、待機を `external_wait` として開始する。終了コードにかかわらず区間を閉じ、後続作業で work を開く。Bash の実行上限は待機上限を含む 600000ms とし、途中 yield 後も完了を回収する。fix-needed は helper が取得・待機せず skip する。取得・分類不明、HEAD 不一致、上限到達は未確認の停止であり、CI を成功扱いしない。
 
