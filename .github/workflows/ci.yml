@@ -134,22 +134,39 @@ jobs:
       # bash from PATH = the Homebrew bash 5 prepended above.
       - name: Run hook test suite
         shell: bash
-        # Shard 1 also runs the other suites; three hook workers reduce contention
-        # while its longest hook test is still running on the macOS runner.
-        run: bash plugins/rite/hooks/tests/run-tests.sh ${{ matrix.shard == 1 && '--jobs 3' || '' }} ${{ matrix.shard && format('--shard {0}/3', matrix.shard) || '' }} 2>&1 | tee hooks-tests.log
+        # Overlap shard 1's other suites with its longest hook test. Keep three
+        # hook workers to limit contention, and wait for both exit statuses.
+        run: |
+          other_pid=''
+          if [ '${{ matrix.shard }}' = 1 ]; then
+            (
+              bash plugins/rite/scripts/tests/run-all.sh 2>&1 | tee scripts-tests.log
+              bash tests/rite-dev.test.sh 2>&1 | tee rite-dev-tests.log
+              bash tests/runtime-e2e.test.sh 2>&1 | tee runtime-e2e-tests.log
+            ) &
+            other_pid=$!
+          fi
+          hook_status=0
+          bash plugins/rite/hooks/tests/run-tests.sh ${{ matrix.shard == 1 && '--jobs 3' || '' }} ${{ matrix.shard && format('--shard {0}/3', matrix.shard) || '' }} 2>&1 | tee hooks-tests.log || hook_status=$?
+          other_status=0
+          if [ -n "$other_pid" ]; then
+            wait "$other_pid" || other_status=$?
+          fi
+          [ "$hook_status" -eq 0 ] || exit "$hook_status"
+          exit "$other_status"
 
       - name: Run script test suite
-        if: matrix.shard == 0 || matrix.shard == 1
+        if: matrix.shard == 0
         shell: bash
         run: bash plugins/rite/scripts/tests/run-all.sh 2>&1 | tee scripts-tests.log
 
       - name: Run rite-dev launcher test suite
-        if: matrix.shard == 0 || matrix.shard == 1
+        if: matrix.shard == 0
         shell: bash
         run: bash tests/rite-dev.test.sh 2>&1 | tee rite-dev-tests.log
 
       - name: Run runtime contract test suite
-        if: matrix.shard == 0 || matrix.shard == 1
+        if: matrix.shard == 0
         shell: bash
         run: bash tests/runtime-e2e.test.sh 2>&1 | tee runtime-e2e-tests.log
 
