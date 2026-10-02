@@ -134,7 +134,9 @@ jobs:
       # bash from PATH = the Homebrew bash 5 prepended above.
       - name: Run hook test suite
         shell: bash
-        run: bash plugins/rite/hooks/tests/run-tests.sh ${{ matrix.shard && format('--shard {0}/3', matrix.shard) || '' }} 2>&1 | tee hooks-tests.log
+        # Shard 1 also runs the other suites; three hook workers reduce contention
+        # while its longest hook test is still running on the macOS runner.
+        run: bash plugins/rite/hooks/tests/run-tests.sh ${{ matrix.shard == 1 && '--jobs 3' || '' }} ${{ matrix.shard && format('--shard {0}/3', matrix.shard) || '' }} 2>&1 | tee hooks-tests.log
 
       - name: Run script test suite
         if: matrix.shard == 0 || matrix.shard == 1
