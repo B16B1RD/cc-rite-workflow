@@ -174,6 +174,97 @@ assert "TC-8 other= ends with elsewhere-42" "yes" \
 assert "TC-8 canonical issue-42 worktree not created" "no" \
   "$(git -C "$M" worktree list --porcelain | grep -qE '/\.rite/worktrees/issue-42($|/| )' && echo yes || echo no)"
 
+# --- TC-8m: branch left checked out in the MAIN checkout ---
+# Clean main checkout → rite releases it (switch to branch.base) and reconstructs the session worktree.
+# Dirty / unswitchable → stop with branch_in_main_checkout, main checkout untouched.
+# $1 is the rite-config.yml `branch:` block committed on develop before the issue branch is checked out.
+main_on_issue_branch() {
+  setup_repo || return 1
+  local m="$REPO_MAIN" branch_block="$1"
+  (
+    cd "$m" || exit 1
+    printf '%s' "$branch_block" >> rite-config.yml
+    git add -A; git commit -qm cfg
+    git push -q origin develop
+    git branch -f fix/issue-42-foo develop
+    git checkout -q fix/issue-42-foo
+  ) >/dev/null 2>&1
+}
+head_branch() { git -C "$1" symbolic-ref --short HEAD 2>/dev/null; }
+marker_case() { sed -n 's/.*WT_ENSURE=\([a-z_]*\).*/\1/p' "$1"; }
+
+echo "=== TC-8m-1: clean main checkout on the issue branch → released, reconstructed ==="
+main_on_issue_branch $'branch:\n  base: "develop"\n'; M="$REPO_MAIN"
+out=$(mktemp); err=$(mktemp); cleanup_dirs+=("$out" "$err")
+rc=$(ens_run_capture "$M" "$out" "$err" --issue 42)
+assert "TC-8m-1 rc=0" "0" "$rc"
+assert "TC-8m-1 stdout is exactly the one marker line" "1" "$(wc -l < "$out" | tr -d ' ')"
+assert "TC-8m-1 reconstructed token" "reconstructed" "$(marker_case "$out")"
+assert "TC-8m-1 main checkout is on branch.base" "develop" "$(head_branch "$M")"
+assert "TC-8m-1 path= ends with .rite/worktrees/issue-42" "yes" \
+  "$(case "$(sed -n 's/.*; path=\([^;]*\);.*/\1/p' "$out")" in */.rite/worktrees/issue-42) echo yes ;; *) echo no ;; esac)"
+assert "TC-8m-1 session worktree holds the issue branch" "fix/issue-42-foo" "$(head_branch "$M/.rite/worktrees/issue-42")"
+
+echo "=== TC-8m-2: unpushed commits survive the release ==="
+main_on_issue_branch $'branch:\n  base: "develop"\n'; M="$REPO_MAIN"
+( cd "$M" && echo y > y.txt && git add -A && git commit -qm unpushed ) >/dev/null 2>&1
+before=$(git -C "$M" rev-parse fix/issue-42-foo)
+assert "TC-8m-2 reconstructed token" "reconstructed" "$(ens_case "$M" --issue 42)"
+assert "TC-8m-2 branch tip unchanged" "$before" "$(git -C "$M" rev-parse fix/issue-42-foo)"
+assert "TC-8m-2 session worktree HEAD is the same commit" "$before" "$(git -C "$M/.rite/worktrees/issue-42" rev-parse HEAD)"
+
+echo "=== TC-8m-3: tracked change in main checkout → branch_in_main_checkout, nothing moved ==="
+main_on_issue_branch $'branch:\n  base: "develop"\n'; M="$REPO_MAIN"
+echo dirty >> "$M/rite-config.yml"
+status_before=$(git -C "$M" status --porcelain)
+out=$(mktemp); err=$(mktemp); cleanup_dirs+=("$out" "$err")
+rc=$(ens_run_capture "$M" "$out" "$err" --issue 42)
+assert "TC-8m-3 rc=0" "0" "$rc"
+assert "TC-8m-3 token" "branch_in_main_checkout" "$(marker_case "$out")"
+assert "TC-8m-3 other= is the main checkout" "$M" "$(sed -n 's/.*; other=\([^;]*\).*/\1/p' "$out" | head -1)"
+assert "TC-8m-3 stderr names the dirty file" "yes" "$(grep -q 'rite-config.yml' "$err" && echo yes || echo no)"
+assert "TC-8m-3 main checkout still on the issue branch" "fix/issue-42-foo" "$(head_branch "$M")"
+assert "TC-8m-3 working tree change untouched" "$status_before" "$(git -C "$M" status --porcelain)"
+assert "TC-8m-3 no session worktree" "no" "$(wt_registered "$M" 42)"
+
+echo "=== TC-8m-4: untracked file in main checkout → branch_in_main_checkout ==="
+main_on_issue_branch $'branch:\n  base: "develop"\n'; M="$REPO_MAIN"
+echo u > "$M/untracked.txt"
+out=$(mktemp); err=$(mktemp); cleanup_dirs+=("$out" "$err")
+rc=$(ens_run_capture "$M" "$out" "$err" --issue 42)
+assert "TC-8m-4 token" "branch_in_main_checkout" "$(marker_case "$out")"
+assert "TC-8m-4 stderr names the untracked file" "yes" "$(grep -q 'untracked.txt' "$err" && echo yes || echo no)"
+assert "TC-8m-4 main checkout still on the issue branch" "fix/issue-42-foo" "$(head_branch "$M")"
+
+echo "=== TC-8m-5: branch.base is not a local branch → branch_in_main_checkout ==="
+main_on_issue_branch $'branch:\n  base: "no-such-base"\n'; M="$REPO_MAIN"
+out=$(mktemp); err=$(mktemp); cleanup_dirs+=("$out" "$err")
+rc=$(ens_run_capture "$M" "$out" "$err" --issue 42)
+assert "TC-8m-5 token" "branch_in_main_checkout" "$(marker_case "$out")"
+assert "TC-8m-5 stderr carries the git switch failure" "yes" "$([ -s "$err" ] && echo yes || echo no)"
+assert "TC-8m-5 main checkout still on the issue branch" "fix/issue-42-foo" "$(head_branch "$M")"
+assert "TC-8m-5 no session worktree" "no" "$(wt_registered "$M" 42)"
+
+echo "=== TC-8m-6: branch.base unset → branch_in_main_checkout (base_branch_unresolved), no default ==="
+main_on_issue_branch ''; M="$REPO_MAIN"
+out=$(mktemp); err=$(mktemp); cleanup_dirs+=("$out" "$err")
+rc=$(ens_run_capture "$M" "$out" "$err" --issue 42)
+assert "TC-8m-6 token" "branch_in_main_checkout" "$(marker_case "$out")"
+assert "TC-8m-6 stderr states base_branch_unresolved" "yes" "$(grep -q 'base_branch_unresolved' "$err" && echo yes || echo no)"
+assert "TC-8m-6 main checkout still on the issue branch" "fix/issue-42-foo" "$(head_branch "$M")"
+
+echo "=== TC-8m-7: every WT_ENSURE branch table carries branch_in_main_checkout ==="
+RECOVER_TBL="$SCRIPT_DIR/../../skills/recover/SKILL.md"
+recover_row=$(grep -E '^\| `branch_in_main_checkout` \|' "$RECOVER_TBL" || true)
+assert "recover table row stops" "yes" "$(grep -q '停止' <<< "$recover_row" && echo yes || echo no)"
+for s in iterate pr-review fix; do
+  assert "$s branch list has branch_in_main_checkout" "1" "$(grep -cE '^- `branch_in_main_checkout` →' "$SCRIPT_DIR/../../skills/$s/SKILL.md")"
+done
+resume_note=$(grep 'RESUME_WT_MODE' "$RECOVER_TBL" || true)
+assert "recover RESUME_WT_MODE note lists it on the non-worktree side" "yes" \
+  "$(case "${resume_note#*それ以外}" in *branch_in_main_checkout*) echo yes ;; *) echo no ;; esac)"
+assert "helper header documents the case" "yes" "$(grep -qE '^#   branch_in_main_checkout' "$HELPER" && echo yes || echo no)"
+
 # --- TC-9 (T-04 / AC-4): git worktree add fails → failed (rc 1, NO fallback, no residue) ---
 echo "=== TC-9 (T-04/AC-4): reconstruction fails → failed, rc=1, no partial worktree ==="
 setup_repo; M="$REPO_MAIN"

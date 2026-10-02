@@ -567,8 +567,13 @@ not best-effort.
 
 ### main-checkout-不可侵 (inviolability) convention
 
-In `multi_session` mode rite **never switches the main checkout's current branch**
-(`git switch {base}` from a session is impossible anyway — the main checkout holds it).
+In `multi_session` mode rite **does not move the main checkout's current branch** — with
+one exception: when the Issue's own branch is parked in the main checkout, the session
+entry gate (`ensure_session_worktree`) switches the main checkout to `branch.base` so the
+session worktree can be built. It does so only when the main checkout has no uncommitted
+changes (untracked files included); otherwise it stops with `branch_in_main_checkout`
+and never stashes or discards anything. Nothing is lost by the switch: the branch and its
+commits stay. Any other branch change of the main checkout is a **human-only** action.
 Consequences enforced across the workflow:
 
 - New session branches are created with their base as **`origin/{base}` directly**

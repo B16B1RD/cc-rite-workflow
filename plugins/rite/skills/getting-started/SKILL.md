@@ -366,8 +366,10 @@ Operating rules (important):
     so nothing is rebuilt. rite never silently falls back to git switch -c.
 
   • Keep the main checkout on your base branch (rite-config.yml branch.base, e.g. develop).
-    rite never moves the main checkout's branch — that is a human-only action,
-    and /rite:cleanup's base update (git fetch + git merge --ff-only) only
+    rite does not move the main checkout's branch — that is a human-only action,
+    except that a clean main checkout holding the Issue's own branch is switched
+    to the base branch automatically so the session worktree can be built.
+    /rite:cleanup's base update (git fetch + git merge --ff-only) only
     runs when the main checkout is actually on the base branch (otherwise it
     warns and skips).
 
