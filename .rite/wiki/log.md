@@ -2,6 +2,8 @@
 
 ## 2026-10-02
 
+* **lint:warning** — 機械検査: stale=66, orphans=0, missing_concept=0, unregistered_raw=693, broken_refs=0, descriptive_number_ref=0。全ページのカタログを読み、タイトル類似候補なし、概要類似候補の二つの本文は異なる契約で矛盾ではないと確認。今回はページを変更していない。全668ページ間の本文の意味比較は未実施のため、全体の矛盾件数は未判定。
+
 * **Skip** — [比較式の検証結果](raw/fixes/20261002T101114Z-pr-3624.md) — detector-candidate: 数値比較は桁数で値域を制限してから行い、巨大値の短絡と静的解析を併せて検証する
 * **Skip** — [比較式の検証結果](raw/reviews/20261002T100602Z-pr-3624.md) — detector-candidate: 数値比較は桁数で値域を制限してから行い、巨大値の短絡と静的解析を併せて検証する
 * **Skip** — [最終レビュー結果](raw/reviews/20261002T111228Z-pr-3624.md) — 最終確認の一時的な計測結果のみで新しい経験則がないため
