@@ -258,7 +258,7 @@ echo "=== TC-8m-7: every WT_ENSURE branch table carries branch_in_main_checkout 
 RECOVER_TBL="$SCRIPT_DIR/../../skills/recover/SKILL.md"
 recover_row=$(grep -E '^\| `branch_in_main_checkout` \|' "$RECOVER_TBL" || true)
 assert "recover table row stops" "yes" "$(grep -q '停止' <<< "$recover_row" && echo yes || echo no)"
-assert "recover table row shows the cause (stderr)" "yes" "$(grep -q 'stderr' <<< "$recover_row" && echo yes || echo no)"
+assert "recover table row instructs to show the stderr cause" "yes" "$(grep -q 'stderr の原因を表示' <<< "$recover_row" && echo yes || echo no)"
 assert "recover table row names the remedy (commit)" "yes" "$(grep -q 'commit' <<< "$recover_row" && echo yes || echo no)"
 for s in iterate pr-review fix; do
   assert "$s branch list has branch_in_main_checkout" "1" "$(grep -cE '^- `branch_in_main_checkout` →' "$SCRIPT_DIR/../../skills/$s/SKILL.md")"
