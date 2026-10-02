@@ -32,6 +32,12 @@ Past version sections carry none either — they have already been stripped.
 
 ## [Unreleased]
 
+## [0.19.3] - 2026-10-02
+
+### Fixed
+
+- **Session worktree hand-off when the target branch is still checked out in the main checkout** — `/rite:iterate` and related skills no longer abort with a misdiagnosed "another session is working" error. When the main checkout is clean, it is switched to `branch.base` automatically and work continues in the session worktree. With uncommitted changes (including untracked files) or a failed switch, it stops without switching and reports the changed files or the git cause on stderr (new marker `branch_in_main_checkout`). The `branch_other_worktree` abort for a branch used by another worktree is unchanged.
+
 ## [0.19.2] - 2026-10-02
 
 ### Fixed
@@ -1231,6 +1237,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.19.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.2...v0.19.3
 [0.19.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.1...v0.19.2
 [0.19.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.18.0...v0.19.0

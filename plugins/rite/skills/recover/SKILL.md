@@ -195,7 +195,8 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 | `already_in` | 下記の state 確定・変更前検証を実行して Phase 3.2 へ（入場操作だけ不要） |
 | `reenter` / `reconstructed` | 共通作業先契約の native / 検証済み代替で `{path}` へ入場してから Phase 3.2 へ（`{path}` は marker の `path=` 値。`reconstructed` は helper が `git worktree add` 済み） |
 | `residue` | パスは存在するが worktree 未登録（prune 後も残存）→ [残骸の確認](../../references/git-worktree-patterns.md#5-残骸ディレクトリの削除確認)で中身を調べ、その結果を添えて AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止） |
-| `branch_other_worktree` | branch が**別の worktree** で checkout 中（並行セッションの可能性）→ **中止**。`other=` のパスを表示する（git が構造的に保証する二重着手ガード） |
+| `branch_other_worktree` | branch が**別の worktree**（main checkout 以外）で checkout 中（並行セッションの可能性）→ **中止**。`other=` のパスを表示する（git が構造的に保証する二重着手ガード） |
+| `branch_in_main_checkout` | branch が **main checkout** に残っており、helper が解放できなかった（未コミット変更あり / `branch.base` を読めない / `git switch` 失敗。原因は stderr）→ **停止**。`other=`（main checkout のパス）と stderr の原因を表示し、未コミット変更は commit または退避してから再実行するよう案内する。clean な main checkout は helper が `branch.base` へ切り替えて自動で解放し、`reconstructed` を返す。AI が stash・破棄・手動の `git switch` を代行しない |
 | `branch_absent` | branch がローカル・リモートどこにも無い → **矛盾サマリ + AskUserQuestion**（新規セッション扱い / 中止）。helper は再構築しない（silent に新規扱いもしない） |
 | `failed` | 再構築（`git fetch` / `git worktree add`）が失敗（helper rc=1, stderr に原因 + 復旧手順）→ **silent fallback せず明示停止**。develop 上で recover を続行しない |
 
@@ -430,7 +431,7 @@ elif [ -n "$state_branch" ] && [ "$git_branch" != "$state_branch" ]; then
 fi
 ```
 
-> `RESUME_WT_MODE` は Phase 3.1.5 の `[CONTEXT] WT_ENSURE=` marker が `already_in` / `reenter` / `reconstructed`（= worktree に入った / 再構築した）のとき `worktree`、それ以外（`disabled`（従来分岐） / `residue` / `branch_other_worktree` / `branch_absent` / `failed`（= worktree に入っていない。停止 or 新規セッション扱いへ分岐）のとき空として LLM が置換する。
+> `RESUME_WT_MODE` は Phase 3.1.5 の `[CONTEXT] WT_ENSURE=` marker が `already_in` / `reenter` / `reconstructed`（= worktree に入った / 再構築した）のとき `worktree`、それ以外（`disabled`（従来分岐） / `residue` / `branch_other_worktree` / `branch_in_main_checkout` / `branch_absent` / `failed`（= worktree に入っていない。停止 or 新規セッション扱いへ分岐）のとき空として LLM が置換する。
 
 ### 5.2 flow-state の active=true 復元
 

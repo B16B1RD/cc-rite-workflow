@@ -598,7 +598,10 @@ worktree_push_branch() {
 #
 # It does NOT call EnterWorktree (an LLM tool, not a shell command) and it
 # NEVER `git switch -c`-es onto the main checkout — a missing worktree is
-# reconstructed in place or reported, never silently bypassed.
+# reconstructed in place or reported, never silently bypassed. The only
+# main-checkout move is releasing the Issue's own branch: when that branch is
+# parked in a clean main checkout it is switched to branch.base so the session
+# worktree can be built (no commit is lost; the branch itself stays).
 #
 # Usage:
 #   ensure_session_worktree --issue <N> [--branch <branch>] [--worktree-base <base>]
@@ -622,15 +625,21 @@ worktree_push_branch() {
 #                         `git worktree add` succeeded → EnterWorktree(path)
 #   residue               path exists but not a registered worktree (prune
 #                         did not clear) → AskUserQuestion (rm -rf + re-run / abort)
-#   branch_other_worktree branch checked out in ANOTHER worktree → caller
-#                         aborts (concurrent session; structural double-start guard)
+#   branch_other_worktree branch checked out in ANOTHER worktree (not the main
+#                         checkout) → caller aborts (concurrent session; structural
+#                         double-start guard)
+#   branch_in_main_checkout
+#                         branch checked out in the MAIN checkout and it could not be
+#                         released (uncommitted changes, branch.base unreadable, or
+#                         `git switch` failed; cause on stderr) → caller aborts. A clean
+#                         main checkout is released automatically and yields `reconstructed`.
 #   branch_absent         branch exists nowhere → caller delegates to its
 #                         existing non-existence handling; DO NOT reconstruct
 #   failed                fetch / git worktree add failed → caller STOPS loud;
 #                         NO silent fallback to the main checkout
 #
 # Exit codes:
-#   0  disabled|already_in|reenter|reconstructed|residue|branch_other_worktree|branch_absent
+#   0  disabled|already_in|reenter|reconstructed|residue|branch_other_worktree|branch_in_main_checkout|branch_absent
 #   1  failed (cause on stderr; marker still emitted on stdout)
 #   2  argument error (missing/invalid --issue)
 #
@@ -735,13 +744,43 @@ ensure_session_worktree() {
   fi
 
   # --- worktree missing → reconstruct only if the branch exists somewhere ---
-  # If the branch is checked out in ANOTHER worktree (concurrent session),
-  # do not reconstruct — mirror open.md's branch_other_worktree guard.
+  # A branch parked in the main checkout is released below. If it is checked out in
+  # any other worktree (concurrent session), do not reconstruct — mirror open.md's
+  # branch_other_worktree guard.
   if [ -n "$branch" ]; then
     local branch_wt
     branch_wt=$(git worktree list --porcelain 2>/dev/null | awk -v b="refs/heads/$branch" '
       $1=="worktree"{wt=$2} $1=="branch" && $2==b {print wt}')
-    if [ -n "$branch_wt" ]; then
+    if [ -n "$branch_wt" ] && [ "$branch_wt" = "$main_root" ]; then
+      # The branch is parked in the main checkout (no concurrent session). Release it
+      # by moving the main checkout to branch.base — only when nothing there can be
+      # lost — then fall through to the normal reconstruction below.
+      local base dirty
+      base=$(sed -n '/^branch:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null | awk '/^[[:space:]]+base:/ {print; exit}' \
+        | sed 's/[[:space:]]#.*//' | sed 's/.*base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
+      if [ -z "$base" ]; then
+        echo "ERROR: ensure_session_worktree: branch.base を rite-config.yml から読めないため main checkout を解放できません（reason=base_branch_unresolved、issue #${issue}）" >&2
+        echo "[CONTEXT] WT_ENSURE=branch_in_main_checkout; path=$wt_path; branch=$branch; other=$branch_wt"
+        return 0
+      fi
+      if ! dirty=$(git -C "$main_root" status --porcelain 2>/dev/null); then
+        echo "ERROR: ensure_session_worktree: main checkout の git status に失敗しました（issue #${issue}）。main checkout で git status を実行して原因を確認してください" >&2
+        echo "[CONTEXT] WT_ENSURE=branch_in_main_checkout; path=$wt_path; branch=$branch; other=$branch_wt"
+        return 0
+      fi
+      if [ -n "$dirty" ]; then
+        echo "ERROR: ensure_session_worktree: '$branch' は main checkout で checkout 中で、未コミット変更があるため切り替えません（issue #${issue}）。commit または退避してから再実行してください:" >&2
+        printf '%s\n' "$dirty" | sed 's/^/  /' >&2
+        echo "[CONTEXT] WT_ENSURE=branch_in_main_checkout; path=$wt_path; branch=$branch; other=$branch_wt"
+        return 0
+      fi
+      local switch_err
+      if ! switch_err=$(git -C "$main_root" switch --no-guess -- "$base" 2>&1); then
+        echo "ERROR: ensure_session_worktree: main checkout を '$base' へ切り替えられません（issue #${issue}）:$switch_err" >&2
+        echo "[CONTEXT] WT_ENSURE=branch_in_main_checkout; path=$wt_path; branch=$branch; other=$branch_wt"
+        return 0
+      fi
+    elif [ -n "$branch_wt" ]; then
       echo "[CONTEXT] WT_ENSURE=branch_other_worktree; path=$wt_path; branch=$branch; other=$branch_wt"
       return 0
     fi
