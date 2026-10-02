@@ -107,7 +107,7 @@ if [ -n "$SHARD_INDEX" ]; then
   for variable in SHARD_INDEX SHARD_COUNT; do
     value=${!variable}
     if [ "${#value}" -gt "${#limit}" ] ||
-       { [ "${#value}" -eq "${#limit}" ] && [[ "$value" > "$limit" ]]; }; then
+       { [ "${#value}" -eq "${#limit}" ] && [ "$value" -gt "$limit" ]; }; then
       printf -v "$variable" '%s' "$limit"
     fi
   done
