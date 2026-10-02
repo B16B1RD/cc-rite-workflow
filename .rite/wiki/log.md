@@ -2,6 +2,11 @@
 
 ## 2026-10-02
 
+* **Skip**: [20261002T061607Z-pr-3612.md](raw/reviews/20261002T061607Z-pr-3612.md) — rite workflow 自体の挙動（worktree 入場ゲート・規約文書・レビュー記述法）に関する知見で、プロジェクトドメインの経験則ではない。assert の絞り込みや stderr の扱いは既存の Wiki ページが網羅しているため新規ページを作らない
+* **Skip**: [20261002T063142Z-pr-3612.md](raw/fixes/20261002T063142Z-pr-3612.md) — 同上
+* **Skip**: [20261002T065029Z-pr-3612.md](raw/reviews/20261002T065029Z-pr-3612.md) — 同上
+* **Skip**: [20261002T070219Z-pr-3612.md](raw/fixes/20261002T070219Z-pr-3612.md) — 同上
+* **Skip**: [20261002T072546Z-pr-3612.md](raw/reviews/20261002T072546Z-pr-3612.md) — 同上
 * **Skip**: [20261002T005457Z-pr-3608.md](raw/reviews/20261002T005457Z-pr-3608.md) — 指摘 0 件のリリース準備レビューで、得られる知見は rite workflow の機構に関するものでありプロジェクトドメインの経験則ではないため Wiki に置かない
 * **Update**: [assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く](pages/anti-patterns/assert-not-grep-vacuous-without-fixture-scope.md) — raw/reviews/20261001T230026Z-pr-3606.md と raw/fixes/20261001T231816Z-pr-3606-fix1.md を統合（検査の順序を固定する否定 assert の fixture 条件）
 * **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — raw/reviews/20261001T230026Z-pr-3606.md ほか 3 件を統合（共有関数の冒頭の検査が効く範囲は実行で確かめてから列挙する）
