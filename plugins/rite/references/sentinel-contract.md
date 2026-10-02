@@ -34,6 +34,7 @@ rite workflow のスキル間連携は、各 sub-skill が bash 出力に埋め�
 | `[lint:returned-to-caller:auto]` | wiki-lint | wiki-ingest | `--auto` モードでの wiki-lint 完了、caller (wiki-ingest) へ制御を返す |
 | `[ready:returned-to-caller]` | ready | batch-run | Ready for review 化完了、caller へ制御を返す |
 | `[ready:error]` | ready | batch-run | Ready 化中にエラー発生 |
+| `[merge:ci-wait-continue]` | merge | merge | CI が進行中のため同じ待ち block を再実行する内部継続。後続ゲートへ進まず、caller へ制御を返さない |
 | `[merge:returned-to-caller]` | merge | batch-run | マージ完了、caller へ制御を返す |
 | `[merge:not-ready]` | merge | batch-run | PR が draft または mergeable でないため merge 不可。再判定後も `mergeable == CONFLICTING` のときだけ `[CONTEXT] MERGE_NOT_READY=conflicting; pr=N` を併記し、batch-run は base 取り込みから iterate へ戻る。併記がなければ停止 |
 | `[merge:error]` | merge | batch-run | merge 実行中にエラー発生 |
