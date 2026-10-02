@@ -2,6 +2,10 @@
 
 ## 2026-10-02
 
+* **Skip** — [比較式の検証結果](raw/fixes/20261002T101114Z-pr-3624.md) — detector-candidate: 数値比較は桁数で値域を制限してから行い、巨大値の短絡と静的解析を併せて検証する
+* **Skip** — [比較式の検証結果](raw/reviews/20261002T100602Z-pr-3624.md) — detector-candidate: 数値比較は桁数で値域を制限してから行い、巨大値の短絡と静的解析を併せて検証する
+* **Skip** — [最終レビュー結果](raw/reviews/20261002T111228Z-pr-3624.md) — 最終確認の一時的な計測結果のみで新しい経験則がないため
+
 * **Skip**: [テスト分割のレビュー結果](raw/reviews/20261002T091126Z-pr-3621.md) — 指摘0件で、プロジェクトドメインの新しい経験則がないため
 
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=689, broken_refs=0
