@@ -1,21 +1,47 @@
 #!/bin/bash
 # Run all rite hook tests
-# Usage: bash plugins/rite/hooks/tests/run-tests.sh [--jobs N]
+# Usage: bash plugins/rite/hooks/tests/run-tests.sh [--jobs N] [--shard i/n]
 set -euo pipefail
 
 JOBS=4
+SHARD_INDEX=
+SHARD_COUNT=
+jobs_seen=0
 usage() {
-  echo "Usage: $0 [--jobs N] (N must be a positive integer)" >&2
+  echo "Usage: $0 [--jobs N] [--shard i/n] (positive integers; 1 <= i <= n)" >&2
   exit 2
 }
-if [ "$#" -gt 0 ]; then
-  [ "$#" -eq 2 ] && [ "$1" = --jobs ] || usage
-  JOBS=$2
-  case "$JOBS" in ''|*[!0-9]*) usage ;; esac
-  # Normalize leading zeroes without arithmetic overflow for large valid values.
-  JOBS=${JOBS#"${JOBS%%[!0]*}"}
-  [ -n "$JOBS" ] || usage
-fi
+while [ "$#" -gt 0 ]; do
+  [ "$#" -ge 2 ] || usage
+  case "$1" in
+    --jobs)
+      [ "$jobs_seen" -eq 0 ] || usage
+      jobs_seen=1
+      JOBS=$2
+      case "$JOBS" in ''|*[!0-9]*) usage ;; esac
+      # Normalize leading zeroes without arithmetic overflow.
+      JOBS=${JOBS#"${JOBS%%[!0]*}"}
+      [ -n "$JOBS" ] || usage
+      ;;
+    --shard)
+      [ -z "$SHARD_INDEX" ] || usage
+      case "$2" in */*) ;; *) usage ;; esac
+      SHARD_INDEX=${2%%/*}
+      SHARD_COUNT=${2#*/}
+      case "$SHARD_INDEX" in ''|*[!0-9]*) usage ;; esac
+      case "$SHARD_COUNT" in ''|*[!0-9]*) usage ;; esac
+      SHARD_INDEX=${SHARD_INDEX#"${SHARD_INDEX%%[!0]*}"}
+      SHARD_COUNT=${SHARD_COUNT#"${SHARD_COUNT%%[!0]*}"}
+      [ -n "$SHARD_INDEX" ] && [ -n "$SHARD_COUNT" ] || usage
+      if [ "${#SHARD_INDEX}" -gt "${#SHARD_COUNT}" ] ||
+         { [ "${#SHARD_INDEX}" -eq "${#SHARD_COUNT}" ] && [[ "$SHARD_INDEX" > "$SHARD_COUNT" ]]; }; then
+        usage
+      fi
+      ;;
+    *) usage ;;
+  esac
+  shift 2
+done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -41,6 +67,57 @@ for f in "$SCRIPT_DIR"/*.test.sh; do
 done
 for f in "$SCRIPT_DIR"/../scripts/tests/test-*.sh; do
   [ -f "$f" ] && test_files+=("$f")
+done
+
+# Fixed longest-first order from macOS suite timings; fail if a rename makes it stale.
+priority_files=(
+  cleanup-follow-up-issue.test.sh
+  review-commit-guard.test.sh
+  review-stagnation-breaker.test.sh
+  review-stagnation-retry.test.sh
+  pre-tool-bash-guard.test.sh
+  review-stagnation-cleanup.test.sh
+  session-start.test.sh
+  pr-cycle-cleanup-session-reap.test.sh
+  wiki-apply-gate.test.sh
+  review-helpers-gate-behavior.test.sh
+)
+ordered_files=()
+for priority in ${priority_files[@]+"${priority_files[@]}"}; do
+  if [ ! -f "$SCRIPT_DIR/$priority" ]; then
+    echo "ERROR: priority list entry not found: $priority" >&2
+    exit 1
+  fi
+  ordered_files+=("$SCRIPT_DIR/$priority")
+done
+for f in ${test_files[@]+"${test_files[@]}"}; do
+  is_priority=0
+  for priority in ${priority_files[@]+"${priority_files[@]}"}; do
+    if [ "$f" = "$SCRIPT_DIR/$priority" ]; then is_priority=1; break; fi
+  done
+  [ "$is_priority" -eq 1 ] || ordered_files+=("$f")
+done
+
+# Restart round-robin for the alphabetic remainder so each group spreads evenly.
+test_files=()
+if [ -n "$SHARD_INDEX" ]; then
+  # Counts beyond the suite size cannot wrap any offset. Clamp before arithmetic
+  # so valid decimal arguments, including very large ones, never overflow Bash.
+  limit=$((${#ordered_files[@]} + 1))
+  for variable in SHARD_INDEX SHARD_COUNT; do
+    value=${!variable}
+    if [ "${#value}" -gt "${#limit}" ] ||
+       { [ "${#value}" -eq "${#limit}" ] && [ "$value" -gt "$limit" ]; }; then
+      printf -v "$variable" '%s' "$limit"
+    fi
+  done
+fi
+for ((i=0; i<${#ordered_files[@]}; i++)); do
+  offset=$i
+  if [ "$i" -ge "${#priority_files[@]}" ]; then offset=$((i - ${#priority_files[@]})); fi
+  if [ -z "$SHARD_INDEX" ] || [ "$((offset % SHARD_COUNT + 1))" -eq "$SHARD_INDEX" ]; then
+    test_files+=("${ordered_files[$i]}")
+  fi
 done
 
 # Each asynchronous worker owns a process group, including its test's children.

@@ -50,7 +50,14 @@ stage_runner() {
   local runner="$1" name="$2" dir
   dir="$TEST_DIR/$name/hooks/tests"
   mkdir -p "$dir"
-  cp "$runner" "$dir/runner.sh"
+  # Accounting and process fixtures control their own order and file count.
+  # Scheduling is exercised separately by run-tests-shard.test.sh.
+  if [ "$runner" = "$HOOKS_RUNNER" ]; then
+    sed '/^priority_files=(/,/^)/c\
+priority_files=()' "$runner" > "$dir/runner.sh"
+  else
+    cp "$runner" "$dir/runner.sh"
+  fi
   # The hooks runner sources its sibling unset list; the scripts runner has none.
   if [ "$runner" = "$HOOKS_RUNNER" ]; then
     cp "$SCRIPT_DIR/_hermetic-env.sh" "$dir/_hermetic-env.sh"
@@ -384,7 +391,7 @@ source, root = map(Path, sys.argv[1:])
 def stage(name):
     directory = root / name / 'hooks' / 'tests'
     directory.mkdir(parents=True)
-    shutil.copy(source, directory / 'runner.sh')
+    (directory / 'runner.sh').write_text(re.sub(r'^priority_files=\(\n.*?^\)', 'priority_files=()', source.read_text(), flags=re.M | re.S))
     shutil.copy(source.parent / '_hermetic-env.sh', directory)
     return directory
 
