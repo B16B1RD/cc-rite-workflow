@@ -12,9 +12,8 @@ name: CI
 #
 # macOS is intentionally run with Homebrew bash 5 (rite requires bash 4+) but
 # WITHOUT coreutils, leaving date/sed/stat as the BSD variants — that is what
-# exposes GNU/BSD divergence. It is marked continue-on-error during initial
-# rollout because its pass rate is unknown (D-03); ubuntu is the
-# blocking gate.
+# exposes GNU/BSD divergence. Both platforms are blocking gates; macOS splits
+# the hook suite across three shards to keep individual jobs short.
 
 on:
   push:
@@ -35,12 +34,8 @@ concurrency:
 
 jobs:
   test:
-    name: tests (${{ matrix.os }})
+    name: tests (${{ matrix.os }}${{ matrix.shard && format(', shard {0}/3', matrix.shard) || '' }})
     runs-on: ${{ matrix.os }}
-    # macOS is informational during rollout: a macOS-only failure must not block
-    # the PR while its pass rate is being triaged (D-03). ubuntu stays
-    # blocking. AC-5 (fail-fast: false) still lets both legs run to completion.
-    continue-on-error: ${{ matrix.os == 'macos-latest' }}
     # Per-OS limit, at least twice the measured full-job maximum rounded up to
     # whole minutes: macOS peaks at 17.7 minutes, ubuntu at 7. The same test set
     # varies more than 2x across macOS runners, so the macOS limit carries the
@@ -50,11 +45,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
         include:
           - os: ubuntu-latest
+            shard: 0
             timeout_minutes: 18
           - os: macos-latest
+            shard: 1
+            timeout_minutes: 36
+          - os: macos-latest
+            shard: 2
+            timeout_minutes: 36
+          - os: macos-latest
+            shard: 3
             timeout_minutes: 36
 
     steps:
@@ -132,17 +134,20 @@ jobs:
       # bash from PATH = the Homebrew bash 5 prepended above.
       - name: Run hook test suite
         shell: bash
-        run: bash plugins/rite/hooks/tests/run-tests.sh 2>&1 | tee hooks-tests.log
+        run: bash plugins/rite/hooks/tests/run-tests.sh ${{ matrix.shard && format('--shard {0}/3', matrix.shard) || '' }} 2>&1 | tee hooks-tests.log
 
       - name: Run script test suite
+        if: matrix.shard == 0 || matrix.shard == 1
         shell: bash
         run: bash plugins/rite/scripts/tests/run-all.sh 2>&1 | tee scripts-tests.log
 
       - name: Run rite-dev launcher test suite
+        if: matrix.shard == 0 || matrix.shard == 1
         shell: bash
         run: bash tests/rite-dev.test.sh 2>&1 | tee rite-dev-tests.log
 
       - name: Run runtime contract test suite
+        if: matrix.shard == 0 || matrix.shard == 1
         shell: bash
         run: bash tests/runtime-e2e.test.sh 2>&1 | tee runtime-e2e-tests.log
 
