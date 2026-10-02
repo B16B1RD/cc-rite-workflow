@@ -4,6 +4,8 @@
 
 * **Update**: [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) — macOS 3 shard の時間・排他的配置・失敗伝播の実測を統合
 
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=693, broken_refs=0
+
 ## 2026-10-02
 
 * **lint:warning** — 機械検査: stale=66, orphans=0, missing_concept=0, unregistered_raw=693, broken_refs=0, descriptive_number_ref=0。全ページのカタログを読み、タイトル類似候補なし、概要類似候補の二つの本文は異なる契約で矛盾ではないと確認。今回はページを変更していない。全668ページ間の本文の意味比較は未実施のため、全体の矛盾件数は未判定。
