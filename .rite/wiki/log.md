@@ -2,6 +2,8 @@
 
 ## 2026-10-02
 
+* **Skip**: [テスト分割のレビュー結果](raw/reviews/20261002T091126Z-pr-3621.md) — 指摘0件で、プロジェクトドメインの新しい経験則がないため
+
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=689, broken_refs=0
 * **Skip**: [20261002T081330Z-pr-3614.md](raw/reviews/20261002T081330Z-pr-3614.md) — 指摘 0 件のリリース準備レビューで、再利用できる経験則がないため Wiki に置かない
 * **Skip**: [20261002T061607Z-pr-3612.md](raw/reviews/20261002T061607Z-pr-3612.md) — rite workflow 自体の挙動（worktree 入場ゲート・規約文書・レビュー記述法）に関する知見で、プロジェクトドメインの経験則ではない。assert の絞り込みや stderr の扱いは既存の Wiki ページが網羅しているため新規ページを作らない
