@@ -13,6 +13,7 @@
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=679, broken_refs=0（矛盾の意味比較は今回新規作成した 1 ページと関連ページに限定。全ページ間の意味比較は未実施で、全体の矛盾ゼロとして扱わない）
 
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=682, broken_refs=0（今回はページを新規作成・更新していないため矛盾の意味比較は実施していない。全体の矛盾ゼロとして扱わない）
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=682, broken_refs=0（矛盾の意味比較は今回更新した 2 ページの追記分に限定。全ページ間の比較は未実施）
 
 ## 2026-10-01
 
