@@ -2,6 +2,8 @@
 
 ## 2026-10-03
 
+* **Skip**: [20261003T021736Z-pr-3637.md](raw/reviews/20261003T021736Z-pr-3637.md) — レビュー指摘なし。プラグイン runtime の修正は helper と回帰テストへ実装済みで、Wiki に昇格する経験則なし
+
 * **Create**: [cd の中に mktemp -d を入れ子にすると失敗時に cwd が一時ディレクトリ扱いになり trap の rm -rf が作業ツリーを消す](pages/anti-patterns/nested-mktemp-in-cd-turns-failure-into-cwd-deletion.md) — [修正結果](raw/fixes/20261003T004841Z-pr-3635.md)と[レビュー結果](raw/reviews/20261003T004319Z-pr-3635.md)から新規ページ化
 * **Create**: [テスト fixture の前提ガードは return 1 だけにせず原因を ERROR で出す](pages/patterns/test-fixture-guards-print-error-before-return.md) — [レビュー結果](raw/reviews/20261003T004319Z-pr-3635.md)から新規ページ化
 * **Create**: [CI 設定を grep で検査するときは matrix の行だけでなく job が実際に走る条件も固定する](pages/heuristics/ci-workflow-static-check-pins-job-execution-not-only-matrix.md) — [レビュー結果](raw/reviews/20261003T004319Z-pr-3635.md)と[再レビュー結果](raw/reviews/20261003T005948Z-pr-3635-c2.md)から新規ページ化
