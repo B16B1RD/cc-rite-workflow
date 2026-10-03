@@ -39,9 +39,15 @@ sources:
     resource: "raw/fixes/20260930T102641Z-pr-3516.md"
   - type: "reviews"
     resource: "raw/reviews/20260930T105948Z-pr-3516.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261003T101839Z-pr-3649.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261003T115113Z-pr-3649.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261003T100405Z-pr-3649.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T12:10:17Z" }
+generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-10-03T12:15:50.525051+00:00" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T12:25:07+09:00" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:42:47Z" }
@@ -136,6 +142,10 @@ Issue が具体的な 1 件だけを挙げていても、それは「この 1 �
 - [形状検証 gate の allowlist 化は複数行 bypass・上流 degraded 値・コメント同期をセットで棚卸しする](./allowlist-gate-hardening-checklist.md)
 - [reviewer の regression 主張は revert test (git show / git diff) で PR 由来か pre-existing かを独立検証する](./reviewer-regression-claim-revert-test-attribution.md)
 
+## 変種: 検索式の一致と実際の操作を区別する
+
+リポジトリや state の解決処理を棚卸しするとき、ファイル単位で検索語があるかを見るだけでは足りない。同じファイルの中でリポジトリ読取、共有 state の書込、配布 helper のファイル名構築が混在するため、個々の式を残して操作ごとに分類する。配布ファイル名の構築は state の解決呼出しに数えず、実呼出しの有無と除外理由を記録する。これにより、検索の全数性を維持しながら誤った分類だけを訂正できる。
+
 ## ソース
 
 - [復旧手順 pointer 追加](../../raw/fixes/20260609T230419Z-pr-1332.md)
@@ -156,3 +166,7 @@ Issue が具体的な 1 件だけを挙げていても、それは「この 1 �
 - [選択の言い回しと表の字面](../../raw/reviews/20260930T101757Z-pr-3516.md)
 - [数える条件を成果物へ書いた修正](../../raw/fixes/20260930T102641Z-pr-3516.md)
 - [同じ条件を確認側へ渡して収束した記録](../../raw/reviews/20260930T105948Z-pr-3516.md)
+
+- [棚卸しの分類を確認した記録](../../raw/fixes/20261003T101839Z-pr-3649.md)
+- [棚卸しの分類を確認した記録](../../raw/fixes/20261003T115113Z-pr-3649.md)
+- [棚卸しの分類を確認した記録](../../raw/reviews/20261003T100405Z-pr-3649.md)

@@ -36,6 +36,14 @@
 * **Skip**: [レビュー・修正記録](raw/reviews/20261003T031143Z-pr-3638.md) — 一時的なレビュー完了・CI成功の記録であり、新たな経験則はない
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=700, broken_refs=0
 
+* **Update**: [「網羅」を主張する列挙は grep 全数棚卸し + scope note で構造的に収束させる](pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md) — 検索式ごとの操作分類と配布ファイル名の除外理由を統合
+* **Skip**: [20261003T105940Z-pr-3649.md](raw/fixes/20261003T105940Z-pr-3649.md) — detector-candidate: cwd の変更は helper の引数で受け、単一 bash 呼出しの形検査を保つ
+* **Skip**: [20261003T112840Z-pr-3649.md](raw/fixes/20261003T112840Z-pr-3649.md) — detector-candidate: 旧呼出し fixture の移行後も新しい必須引数の否定検査を保つ
+* **Skip**: [20261003T103744Z-pr-3649.md](raw/reviews/20261003T103744Z-pr-3649.md) — detector-candidate: 呼出し契約を変えるときは既存の形検査とテスト fixture を同期する
+* **Skip**: [20261003T111532Z-pr-3649.md](raw/reviews/20261003T111532Z-pr-3649.md) — detector-candidate: 実行場所の固定を helper へ渡し、形検査を弱めずに契約を検証する
+* **Skip**: [20261003T114552Z-pr-3649.md](raw/reviews/20261003T114552Z-pr-3649.md) — 指摘なしの完了確認のみで、新たな経験則なし
+* **Skip**: [20261003T120257Z-pr-3649.md](raw/reviews/20261003T120257Z-pr-3649.md) — 解消済み指摘と最終検証の確認のみで、新たな経験則なし
+
 ## 2026-10-02
 
 * **lint:warning** — 機械検査: stale=66, orphans=0, missing_concept=0, unregistered_raw=693, broken_refs=0, descriptive_number_ref=0。全ページのカタログを読み、タイトル類似候補なし、概要類似候補の二つの本文は異なる契約で矛盾ではないと確認。今回はページを変更していない。全668ページ間の本文の意味比較は未実施のため、全体の矛盾件数は未判定。
