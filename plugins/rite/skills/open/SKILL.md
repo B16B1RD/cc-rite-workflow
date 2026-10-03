@@ -523,7 +523,8 @@ Issue body から「What / Why / Where / Acceptance Criteria」を抽出。
 rationale: references/rationale.md#plan-self-review
 
 ```bash
-bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number}
+cd "{execution_cwd}" || exit 1
+bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number} --repo {owner_repo} || exit $?
 ```
 
 | `complexity=` | アクション |

@@ -16,6 +16,10 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TARGET="$SCRIPT_DIR/../issue-complexity-lane.sh"
 TEST_DIR="$(mktemp -d)"
+TEST_REPO="$TEST_DIR/repo"
+mkdir -p "$TEST_REPO"
+git init -q "$TEST_REPO"
+git -C "$TEST_REPO" remote add origin https://github.com/owner/repo.git
 PASS=0
 FAIL=0
 
@@ -42,7 +46,7 @@ assert_not_contains() {
 }
 
 # body を差し替えた gh shim を作り、その PATH で helper を実行して stderr を返す。
-# `--repo` を明示するので owner/repo 解決経路 (git remote / gh repo view) には入らない。
+# 明示 repo と fixture の origin を一致させる。
 LANE_STDERR=""
 LANE_RC=0
 run_lane_with_body() {
@@ -59,17 +63,18 @@ case "$1 $2" in
     # helper は SSH host alias 環境で別リポジトリを引かないよう -R を必ず明示する契約。
     # shim 側で検査しないと -R を落とす回帰が素通りする。
     case "$*" in *" -R "*) ;; *) echo "gh shim: -R が指定されていません: $*" >&2; exit 1 ;; esac
+    case "$*" in *" -R owner/repo "*) ;; *) echo "Could not resolve to an issue or pull request" >&2; exit 1 ;; esac
     cat "$RITE_TEST_BODY_FILE"; exit 0 ;;
   *) echo "unexpected gh invocation: $*" >&2; exit 1 ;;
 esac
 GH_SHIM
   chmod +x "$bindir/gh"
-  LANE_STDERR=$(RITE_TEST_BODY_FILE="$TEST_DIR/body.txt" PATH="$bindir:$PATH" \
+  LANE_STDERR=$(cd "$TEST_REPO" && RITE_TEST_BODY_FILE="$TEST_DIR/body.txt" PATH="$bindir:$PATH" \
     bash "$TARGET" --issue 42 --repo owner/repo "$@" 2>&1)
   LANE_RC=$?
 }
 
-# --repo を渡さない経路 (production の pr-review 1.3.2 / issue-implement 5.0.C は渡さない)。
+# --repo 不在の呼出しは cwd から対象を推測せず停止する。
 # 非 git ディレクトリで実行し gh repo view も失敗させることで owner/repo 解決を全滅させる。
 run_lane_without_repo() {
   local bindir="$TEST_DIR/bin-norepo" cwd="$TEST_DIR/nongit"
@@ -100,7 +105,7 @@ printf 'gh: authentication required \033[31m\ngh: second line \302\233 X\n' >&2
 exit 1
 GH_SHIM
   chmod +x "$bindir/gh"
-  LANE_STDERR=$(PATH="$bindir:$PATH" bash "$TARGET" --issue 42 --repo owner/repo 2>&1)
+  LANE_STDERR=$(cd "$TEST_REPO" && PATH="$bindir:$PATH" bash "$TARGET" --issue 42 --repo owner/repo 2>&1)
   LANE_RC=$?
 }
 
@@ -324,6 +329,22 @@ assert_not_contains "TC-3.3h: 複数の表行を連結して complexity_invalid 
 
 echo "=== fail-safe: 情報欠落は全経路で full へ倒れる (AC-2 / T-02) ==="
 
+echo "=== repository context: 隣の repo を黙って使わない ==="
+foreign_repo="$TEST_DIR/foreign"
+git init -q "$foreign_repo"
+git -C "$foreign_repo" remote add origin https://github.com/other/project.git
+run_lane_with_body '**Complexity**: S'
+LANE_STDERR=$(cd "$foreign_repo" && RITE_TEST_BODY_FILE="$TEST_DIR/body.txt" PATH="$TEST_DIR/bin:$PATH" bash "$TARGET" --issue 42 --repo owner/repo 2>&1); LANE_RC=$?
+[ "$LANE_RC" -eq 1 ] && pass "repo 不一致は非ゼロで止まる" || fail "repo 不一致を正常扱いしない (rc=$LANE_RC)"
+assert_contains "食い違いの原因を名指しする" "$LANE_STDERR" "repository context mismatch"
+assert_not_contains "食い違いを full fallback にしない" "$LANE_STDERR" "COMPLEXITY_LANE="
+LANE_STDERR=$(cd "$foreign_repo" && PATH="$TEST_DIR/bin:$PATH" bash "$TARGET" --issue 42 2>&1); LANE_RC=$?
+[ "$LANE_RC" -eq 1 ] && pass "--repo 不在で cwd に推測を委ねない" || fail "--repo 不在を正常扱いしない (rc=$LANE_RC)"
+assert_not_contains "--repo 不在で full fallback にしない" "$LANE_STDERR" "COMPLEXITY_LANE="
+LANE_STDERR=$(cd "$TEST_DIR" && PATH="$TEST_DIR/bin:$PATH" bash "$TARGET" --issue 42 --repo owner/repo 2>&1); LANE_RC=$?
+[ "$LANE_RC" -eq 1 ] && pass "cwd repo 解決不能は停止する" || fail "cwd repo 解決不能を正常扱いしない (rc=$LANE_RC)"
+assert_contains "解決不能の原因を出す" "$LANE_STDERR" "cannot resolve cwd repository"
+
 # reason 語彙は helper docstring が SoT。各 reason が確かに full へ倒れることを個別に pin する
 # (まとめて 1 件だけ検証すると、特定 reason だけが light へ倒れる回帰を見逃す)。
 
@@ -448,12 +469,9 @@ assert_contains "TC-4.18d: それでも崩れた記法として行番号は報�
 # --repo を渡さない）にある唯一の reason で、他 4 reason と違い --repo 明示では到達しない。
 # ここを runtime で pin しないと、guard を light 固定にする mutant が素通りする。
 run_lane_without_repo
-assert_contains "TC-4.9a: owner/repo 解決不能は repo_unresolved" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=repo_unresolved"
-assert_contains "TC-4.9b: repo_unresolved は FALLBACK marker を伴う" "$LANE_STDERR" "COMPLEXITY_LANE_FALLBACK=1; reason=repo_unresolved"
-assert_contains "TC-4.9c: repo_unresolved は人間向け WARNING を伴う" "$LANE_STDERR" "⚠️ Complexity レーン判定のフォールバック"
-assert_not_contains "TC-4.9d: repo_unresolved で light へ倒さない" "$LANE_STDERR" "COMPLEXITY_LANE=light"
-[ "$LANE_RC" -eq 0 ] && pass "TC-4.9e: repo_unresolved でも exit code は 0" \
-  || fail "TC-4.9e: repo_unresolved でも exit code は 0 (実際: $LANE_RC)"
+assert_contains "TC-4.9a: 明示 repo 不在は repo_unresolved" "$LANE_STDERR" "repo_unresolved"
+assert_not_contains "TC-4.9b: 解決不能を fallback にしない" "$LANE_STDERR" "COMPLEXITY_LANE="
+[ "$LANE_RC" -eq 1 ] && pass "TC-4.9c: 解決不能で停止" || fail "TC-4.9c: rc=$LANE_RC"
 
 run_lane_with_failing_gh
 assert_contains "TC-4.10: gh 失敗は issue_fetch_failed" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=issue_fetch_failed"
@@ -469,6 +487,38 @@ assert_not_contains "TC-4.12c: gh stderr の C1 (CSI U+009B) を素通ししな�
 assert_contains "TC-4.12d: gh stderr の行構造を保つ" "$LANE_STDERR" "$(printf '\n  gh: second line')"
 [ "$LANE_RC" -eq 0 ] && pass "TC-4.13: issue_fetch_failed でも exit code は 0" \
   || fail "TC-4.13: issue_fetch_failed でも exit code は 0 (実際: $LANE_RC)"
+
+# 散文中の実呼出しを実行し、helper の失敗を consumer が吸収しないことを確かめる。
+for consumer in open pr-review issue-implement; do
+  skill="$SCRIPT_DIR/../../skills/$consumer/SKILL.md"
+  block=$(awk '
+    /^[[:space:]]*```bash/ { body=""; inside=1; next }
+    /^[[:space:]]*```/ {
+      if (inside && body ~ /scripts\/issue-complexity-lane.sh --issue/) { printf "%s", body; exit }
+      inside=0; next
+    }
+    inside { body=body $0 "\n" }
+  ' "$skill")
+  [ -n "$block" ] || { fail "$consumer の実呼出し block が無い"; continue; }
+  for mode in mismatch authentication; do
+    execution_cwd="$foreign_repo"; bindir="$TEST_DIR/bin"
+    [ "$mode" = authentication ] && execution_cwd="$TEST_REPO" && bindir="$TEST_DIR/bin-fail"
+    printf '%s\n' "$block" | sed \
+      -e "s|{execution_cwd}|$execution_cwd|g" \
+      -e "s|{plugin_root}|$SCRIPT_DIR/../..|g" \
+      -e 's|{issue_number}|42|g' -e 's|{owner_repo}|owner/repo|g' > "$TEST_DIR/consumer.sh"
+    printf '\necho CONSUMER_CONTINUED\n' >> "$TEST_DIR/consumer.sh"
+    LANE_STDERR=$(PATH="$bindir:$PATH" bash "$TEST_DIR/consumer.sh" 2>&1); LANE_RC=$?
+    if [ "$mode" = mismatch ]; then
+      [ "$LANE_RC" -eq 1 ] && pass "$consumer: context 失敗が停止へ伝播" || fail "$consumer: rc=$LANE_RC"
+      assert_not_contains "$consumer: context 失敗後に続行しない" "$LANE_STDERR" "CONSUMER_CONTINUED"
+    else
+      [ "$LANE_RC" -eq 0 ] && pass "$consumer: 認証失敗 fallback を保全" || fail "$consumer: rc=$LANE_RC"
+      assert_contains "$consumer: 認証失敗は issue_fetch_failed" "$LANE_STDERR" "reason=issue_fetch_failed"
+      assert_contains "$consumer: fallback 後に続行できる" "$LANE_STDERR" "CONSUMER_CONTINUED"
+    fi
+  done
+done
 
 # gh 不在。PATH を空ディレクトリだけにして command -v gh を外す。bash は PATH 探索を経ずに
 # 起動できるよう絶対パスで呼ぶ (PATH="/nonexistent" bash ... だと bash 自体が見つからず、

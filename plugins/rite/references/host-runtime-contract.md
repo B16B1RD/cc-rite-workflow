@@ -40,7 +40,11 @@
 
 ### 作業先と所有者
 
-`git rev-parse --show-toplevel` が意図した worktree と一致し、branch と `git worktree list --porcelain` も一致することを確認する。これは shell の cd 成功だけでは足りない。後続の全実行・編集・子エージェントに同じ作業先を指定し、復旧後にも再検証する。main checkout の dirty を破棄・自動搬送せず、既存の衝突ゲートに従う。
+最外側 skill の入口で対象 repository の `{owner_repo}`（slash 形式）と `{execution_cwd}`（実 worktree の絶対パス）を解決する。`git rev-parse --show-toplevel` が意図した worktree と一致し、branch、origin の owner/repo、`git worktree list --porcelain` を照合する。解決不能・対象不一致は後続操作の前に非ゼロで停止する。nested skill はこの組を引き継ぐ。worktree 入場・復旧・cleanup による作業先変更時は新しい絶対パスで再照合する。
+
+後続の全 shell は tool の workdir を `{execution_cwd}` に固定する。workdir 引数がない実行面では各 invocation 内でその絶対パスへ `cd` する。編集パスを絶対指定し、子エージェントにも同じ作業先と repository を渡す。前回の shell の `cd` や親の入場を別 tool call / 子の cwd とみなさない。main checkout の dirty を破棄・自動搬送せず、既存の衝突ゲートに従う。
+
+**理由**: repository 指定だけではローカルの HEAD・state・worktree は固定されず、配布 helper の絶対パスだけでは API 対象も固定されない。入口で対象を一度解決し全操作へ渡すことで、API とローカル操作を同じ repository に揃える。各 helper に別の cwd override を増やさない。Complexity helper は `--repo` の明示値を cwd の remote 解決結果と照合し、不一致・解決不能を full fallback にせず停止する。照合後の認証・rate limit 等の取得失敗は従来の full fallback を保つ。候補と再実行方法は [Repository Context Inventory](repository-context-inventory.md)。
 
 共有 state root は [state-path-resolve.sh](../hooks/state-path-resolve.sh) で解決し、session ID の検証は [Session ID Validation Contract](session-id-validation-contract.md) に従う。非対応 ID を UUID らしく加工したり、共通の固定値に落としたりしない。helper ごとの受理条件が異なる場合は全 consumer が受理する経路だけを採用する。
 
@@ -58,7 +62,7 @@ Claude の native SessionStart の payload ID を当該 hook process の環境�
 
 ### 入口と工程境界
 
-最外側 skill の最初の state / queue 操作より前に、配布 plugin root と実際の cwd を解決する。native hook の登録・発火・事後条件を確認できるときだけ `auto`、自動発火がない実行面では `explicit` を選ぶ。同じ session / event で両方を実行しない。登録状況が不明なら、まずホストの hook 一覧で確認する。ホストの trust/permission は正式な UI に従い、helper は設定を書き換えない。
+最外側 skill の最初の state / queue 操作より前に、配布 plugin root と上記の `{owner_repo}` / `{execution_cwd}` を解決する。native hook の登録・発火・事後条件を確認できるときだけ `auto`、自動発火がない実行面では `explicit` を選ぶ。同じ session / event で両方を実行しない。登録状況が不明なら、まずホストの hook 一覧で確認する。ホストの trust/permission は正式な UI に従い、helper は設定を書き換えない。
 
 ```bash
 bash {plugin_root}/hooks/host-runtime.sh init --mode {runtime_mode} --cwd "{execution_cwd}"
