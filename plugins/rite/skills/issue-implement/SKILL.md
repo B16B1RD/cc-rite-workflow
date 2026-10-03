@@ -47,6 +47,8 @@ rationale: references/rationale.md#test-file-discipline
 対象 Issue の**宣言 Complexity** からレーンを決める。同じ helper が 5.1.0.1 と 5.1.0.8 の両方に供給する。
 rationale: references/rationale.md#complexity-read-once
 
+`{owner_repo}` は最外側 skill 入口で一度解決して保持した対象 identity を使う。nested 呼出しでは引き継ぎ、現在 cwd から再解決して上書きしない。固定した作業先へ移ってもこの値は変えない。
+
 ```bash
 cd "{execution_cwd}" || exit 1
 bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number} --repo {owner_repo} || exit $?

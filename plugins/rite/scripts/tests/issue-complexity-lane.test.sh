@@ -506,9 +506,10 @@ for consumer in open pr-review issue-implement; do
     printf '%s\n' "$block" | sed \
       -e "s|{execution_cwd}|$execution_cwd|g" \
       -e "s|{plugin_root}|$SCRIPT_DIR/../..|g" \
-      -e 's|{issue_number}|42|g' -e 's|{owner_repo}|owner/repo|g' > "$TEST_DIR/consumer.sh"
+      -e 's|{issue_number}|42|g' -e 's|{owner_repo}|$ENTRY_OWNER_REPO|g' > "$TEST_DIR/consumer.sh"
     printf '\necho CONSUMER_CONTINUED\n' >> "$TEST_DIR/consumer.sh"
-    LANE_STDERR=$(PATH="$bindir:$PATH" bash "$TEST_DIR/consumer.sh" 2>&1); LANE_RC=$?
+    ENTRY_OWNER_REPO=$(cd "$TEST_REPO" && bash "$SCRIPT_DIR/../../hooks/scripts/lib/git-remote.sh" resolve-owner-repo | tr '\t' '/')
+    LANE_STDERR=$(ENTRY_OWNER_REPO="$ENTRY_OWNER_REPO" PATH="$bindir:$PATH" bash "$TEST_DIR/consumer.sh" 2>&1); LANE_RC=$?
     if [ "$mode" = mismatch ]; then
       [ "$LANE_RC" -eq 1 ] && pass "$consumer: context 失敗が停止へ伝播" || fail "$consumer: rc=$LANE_RC"
       assert_not_contains "$consumer: context 失敗後に続行しない" "$LANE_STDERR" "CONSUMER_CONTINUED"
@@ -520,14 +521,22 @@ for consumer in open pr-review issue-implement; do
   done
 done
 
-# gh 不在。PATH を空ディレクトリだけにして command -v gh を外す。bash は PATH 探索を経ずに
-# 起動できるよう絶対パスで呼ぶ (PATH="/nonexistent" bash ... だと bash 自体が見つからず、
-# gh_missing 経路ではなく起動失敗を測ってしまう)。
+# gh だけを PATH から除き、repository 照合に必要な実ツールを残す。
 _empty_bin="$TEST_DIR/empty-bin"
 mkdir -p "$_empty_bin"
-LANE_STDERR=$(PATH="$_empty_bin" "$(command -v bash)" "$TARGET" --issue 42 --repo owner/repo 2>&1); LANE_RC=$?
-assert_contains "TC-4.14: gh 不在は gh_missing" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=gh_missing"
-assert_not_contains "TC-4.15: gh 不在で light へ倒さない" "$LANE_STDERR" "COMPLEXITY_LANE=light"
+for tool in bash dirname git tr awk; do
+  ln -s "$(command -v "$tool")" "$_empty_bin/$tool"
+done
+LANE_STDERR=$(cd "$TEST_REPO" && PATH="$_empty_bin" "$(command -v bash)" "$TARGET" --issue 42 --repo owner/repo 2>&1); LANE_RC=$?
+assert_contains "TC-4.14: 一致した context では gh_missing を保全" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=gh_missing"
+[ "$LANE_RC" -eq 0 ] && pass "gh 不在・一致で full 成功" || fail "gh 不在・一致 rc=$LANE_RC"
+LANE_STDERR=$(cd "$foreign_repo" && PATH="$_empty_bin" "$(command -v bash)" "$TARGET" --issue 42 --repo owner/repo 2>&1); LANE_RC=$?
+assert_contains "gh 不在でも不一致を検出" "$LANE_STDERR" "repo_mismatch"
+assert_not_contains "gh 不在で不一致を fallback にしない" "$LANE_STDERR" "COMPLEXITY_LANE="
+[ "$LANE_RC" -eq 1 ] && pass "gh 不在・不一致で停止" || fail "gh 不在・不一致 rc=$LANE_RC"
+LANE_STDERR=$(cd "$TEST_REPO" && PATH="$_empty_bin" "$(command -v bash)" "$TARGET" --issue 42 2>&1); LANE_RC=$?
+assert_contains "gh 不在でも明示対象欠落を検出" "$LANE_STDERR" "repo_unresolved"
+[ "$LANE_RC" -eq 1 ] && pass "gh 不在・明示対象欠落で停止" || fail "gh 不在・対象欠落 rc=$LANE_RC"
 
 echo "=== docstring が reason 語彙の SoT であること ==="
 

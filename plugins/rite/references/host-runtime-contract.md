@@ -40,6 +40,8 @@
 
 ### 作業先と所有者
 
+最外側の skill 入口で、意図した repository の cwd から owner/repo を一度だけ解決し、`{owner_repo}` として保持する。nested skill とその helper へは保持した値を渡す。helper の呼出し直前や調査で移動した cwd から対象 identity を再解決・上書きしない。再開時も保存した作業先・PR の repository と照合して引き継ぎ、照合できなければ停止する。helper 内の cwd repository 解決は保持した対象との一致検査にだけ使う。
+
 最外側 skill の入口で対象 repository の `{owner_repo}`（slash 形式）と `{execution_cwd}`（実 worktree の絶対パス）を解決する。`git rev-parse --show-toplevel` が意図した worktree と一致し、branch、origin の owner/repo、`git worktree list --porcelain` を照合する。解決不能・対象不一致は後続操作の前に非ゼロで停止する。nested skill はこの組を引き継ぐ。worktree 入場・復旧・cleanup による作業先変更時は新しい絶対パスで再照合する。
 
 後続の全 shell は tool の workdir を `{execution_cwd}` に固定する。workdir 引数がない実行面では各 invocation 内でその絶対パスへ `cd` する。編集パスを絶対指定し、子エージェントにも同じ作業先と repository を渡す。前回の shell の `cd` や親の入場を別 tool call / 子の cwd とみなさない。main checkout の dirty を破棄・自動搬送せず、既存の衝突ゲートに従う。

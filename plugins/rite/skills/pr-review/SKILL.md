@@ -500,6 +500,8 @@ Extract subsections (技術的決定事項, スコープ外, etc.) under the "�
 
 **light** (XS / S) か **full** (M / L / XL、fail-safe) を決める。判定入力は Issue の**宣言 Complexity** のみ。判定は helper へ委譲する（ステップ 1.3 で Issue 番号を特定できなかった場合は helper を呼ばず `full` として扱い、`⚠️ Complexity レーン判定のフォールバック: reason=issue_number_missing。フル装備 (M+ 相当) で実行します。` を出力する):
 
+`{owner_repo}` は最外側 skill 入口で一度解決して保持した対象 identity を使う。nested 呼出しでは引き継ぎ、現在 cwd から再解決して上書きしない。固定した作業先へ移ってもこの値は変えない。
+
 ```bash
 cd "{execution_cwd}" || exit 1
 bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number} --repo {owner_repo} || exit $?

@@ -135,8 +135,6 @@ emit_full_fallback() {
   exit 0
 }
 
-command -v gh >/dev/null 2>&1 || emit_full_fallback gh_missing
-
 # API 対象だけを戻しても state / worktree は隣 repo のままになる。
 # 入口の identity を cwd から置換せず、両方が一致してから取得する。
 [ -n "$OWNER_REPO" ] || {
@@ -153,6 +151,8 @@ if [ "$(printf '%s' "$OWNER_REPO" | tr '[:upper:]' '[:lower:]')" != "$(printf '%
   printf 'ERROR: issue-complexity-lane: repo_mismatch: repository context mismatch: expected=%s; cwd_repo=%s; cwd=%s\n' "$OWNER_REPO" "$_cwd_repo" "$PWD" | neutralize_ctrl --keep-newline >&2
   exit 1
 fi
+
+command -v gh >/dev/null 2>&1 || emit_full_fallback gh_missing
 
 # 取得失敗と「body が空の Issue」を区別する。gh の rc を捨てて本文の空判定だけで倒すと、
 # 認証切れ (fetch 失敗) が complexity_absent として報告され、原因の切り分けができなくなる。
