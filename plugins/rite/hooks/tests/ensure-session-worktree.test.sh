@@ -407,6 +407,7 @@ printf '.rite/\n' >> "$M/.git/info/exclude"
 # Explicit fixture-only session ownership; never inherit the runner's state root.
 fixture_sid=550e8400-e29b-41d4-a716-446655440042
 other_sid=550e8400-e29b-41d4-a716-446655440043
+enable_runtime_process_fixture "$M/runtime-bin"
 host_fixture() (
   unset RITE_STATE_ROOT CLAUDE_SESSION_ID
   export CLAUDE_CODE_SESSION_ID="$fixture_sid"

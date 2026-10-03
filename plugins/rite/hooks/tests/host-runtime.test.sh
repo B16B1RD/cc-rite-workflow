@@ -22,6 +22,7 @@ unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID CODEX_THREAD_ID GROK_SESSION_ID R
 export RITE_HOST=codex CODEX_THREAD_ID=12345678-1234-4234-8234-123456789abc
 export TEST_ROOT
 export PATH="$TEST_ROOT/bin:$PATH"
+enable_runtime_process_fixture "$TEST_ROOT/bin"
 cat > "$TEST_ROOT/replica.md" <<'BODY'
 ## 📜 rite 作業メモリ
 

@@ -11,6 +11,7 @@ cleanup() { rm -rf "$ROOT"; }
 trap cleanup EXIT
 cd "$ROOT"
 export RITE_STATE_ROOT="$ROOT" WM_PLUGIN_ROOT="$PLUGIN_ROOT"
+enable_runtime_process_fixture "$ROOT/runtime-bin"
 SID_C=aaaaaaaa-1111-2222-3333-444444444444
 SID_X=bbbbbbbb-1111-2222-3333-444444444444
 SID_G=cccccccc-1111-2222-3333-444444444444
