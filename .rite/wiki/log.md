@@ -2,6 +2,9 @@
 
 ## 2026-10-03
 
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=701, broken_refs=0
+* **lint:scope** — 今回ページ変更なし。全ページの同一タイトル・本文の重複なし。方針逆転の全本文精査は未実施。番号参照は0件。陳腐化と意図的skipは informational 指標。
+
 * **Skip**: [20261003T035025Z-pr-3639.md](raw/reviews/20261003T035025Z-pr-3639.md) — レビュー指摘なし。sandbox 除外は plugin helper と回帰テストへ実装済みで、Wiki に昇格するドメイン経験則なし
 
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=697, broken_refs=0
