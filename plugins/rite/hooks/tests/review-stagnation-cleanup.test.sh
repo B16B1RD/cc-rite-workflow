@@ -720,7 +720,7 @@ finally:
 # Python bytecode rewritten by a test run after verification does not stop the
 # commit or the next review; an ignored non-bytecode file in the same input
 # directory still does.
-def bytecode_fixture(command):
+def bytecode_fixture(command, tracked_runtime=False):
     f = Fixture()
     f.env.pop('PYTHONDONTWRITEBYTECODE', None)
     with open(f.root / '.git/info/exclude', 'a') as exclude:
@@ -728,6 +728,9 @@ def bytecode_fixture(command):
     (f.root / 'pkg').mkdir()
     (f.root / 'pkg/m.py').write_text('x = 1\n')
     f.run(['git', 'add', 'pkg/m.py'])
+    if tracked_runtime:
+        (f.root / '.rite/plugin-root').write_text('plugin before verification\n')
+        f.run(['git', 'add', '-f', '.rite/plugin-root'])
     f.commit()
     f.cycle()
     plan = f.plan()
@@ -810,6 +813,58 @@ try:
     check(after_change.returncode != 0 and 'HEAD content differs from verified fix tree' in after_change.stderr
           and 'wrong working directory' not in after_change.stderr,
           'review-start in the recorded worktree still refuses content that differs from the verified fix tree')
+finally:
+    f.close()
+
+# Runtime state must not change the verified tree when its ignore rules change.
+for action in ('ignore', 'add', 'change', 'delete', 'tracked'):
+    f = bytecode_fixture('test -s source.txt', tracked_runtime=action == 'tracked')
+    try:
+        runtime = f.root / '.rite'
+        runtime.mkdir(exist_ok=True)
+        marker = runtime / 'plugin-root'
+        if action != 'add':
+            marker.write_text('plugin before verification\n')
+        if action == 'ignore':
+            exclude = f.root / '.git/info/exclude'
+            exclude.write_text(exclude.read_text().replace('.rite/\n', ''))
+        f.scope('verify')
+        f.commit()
+        if action == 'ignore':
+            (runtime / '.gitignore').write_text('*\n')
+        elif action == 'delete':
+            marker.unlink()
+        else:
+            marker.write_text('plugin after verification\n')
+        if action == 'tracked':
+            f.run(['git', 'add', '-f', '.rite/plugin-root'])
+            f.commit()
+        fixes = len(f.state()['review_run']['fixes'])
+        f.start()
+        run = f.state()['review_run']
+        check(len(run['fixes']) == fixes + 1 and 'pending_fix' not in run,
+              'review-start accepts verified code after runtime state action: ' + action)
+    finally:
+        f.close()
+
+# Unignored runtime state is excluded even before the ignore file exists.
+f = Fixture()
+try:
+    (f.root / '.git/info/exclude').write_text('')
+    fingerprint = [sys.executable, '-c',
+                   'import importlib, sys; sys.path.insert(0, sys.argv[1]); '
+                   'print(importlib.import_module("review-stagnation").tree_fingerprint())',
+                   str(plugin / 'hooks/scripts/lib')]
+    before = f.run(fingerprint).stdout
+    marker = f.root / '.rite/plugin-root'
+    for content in ('plugin one\n', 'plugin two\n', None):
+        if content is None:
+            marker.unlink()
+        else:
+            marker.write_text(content)
+        check(f.run(fingerprint).stdout == before, 'unignored runtime marker does not affect the tree fingerprint')
+    (f.root / '.rite/.gitignore').write_text('*\n')
+    check(f.run(fingerprint).stdout == before, 'creating runtime ignore rules does not affect the tree fingerprint')
 finally:
     f.close()
 

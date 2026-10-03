@@ -1090,6 +1090,8 @@ def tree_fingerprint():
     names = subprocess.check_output(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"]).decode().split("\0")
     entries = []
     for name in sorted(set(names) - {""}):
+        if name.startswith(".rite/"):
+            continue
         path = Path(name)
         if path.is_symlink():
             entries.append([name, "link", os.readlink(path)])
