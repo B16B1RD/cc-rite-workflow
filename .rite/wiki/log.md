@@ -19,6 +19,9 @@
 * **Skip**: [20261002T234827Z-pr-3634.md](raw/reviews/20261002T234827Z-pr-3634.md) — detector-candidate: 内部継続シグナルの契約表同期は既存整合検査とプラグイン機構で保証する
 * **lint:warning**: 孤児・欠落・壊れた参照は0件、陳腐化66件、意図的skipの未登録raw696件。今回ページ変更なし。同テーマ候補の詳細に矛盾なし。全ページの方針逆転の精査は未実施、検査helperからBroken pipe警告を観測（読出statusは成功）。
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=696, broken_refs=0
+* **Skip**: [レビュー・修正記録](raw/fixes/20261003T030243Z-pr-3638.md) — detector-candidate: 疑似runtime fixtureは実プロセス祖先をモデル化し、実runtimeのないCI環境で回帰検証する。実装と回帰テストへ組込み済み
+* **Skip**: [レビュー・修正記録](raw/reviews/20261003T025757Z-pr-3638.md) — detector-candidate: 疑似runtime fixtureは実プロセス祖先をモデル化し、実runtimeのないCI環境で回帰検証する。実装と回帰テストへ組込み済み
+* **Skip**: [レビュー・修正記録](raw/reviews/20261003T031143Z-pr-3638.md) — 一時的なレビュー完了・CI成功の記録であり、新たな経験則はない
 
 ## 2026-10-02
 
