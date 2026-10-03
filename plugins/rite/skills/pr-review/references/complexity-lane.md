@@ -71,14 +71,15 @@ cap 適用**後**に落とすフィルタとして実装すると、これらの
 | reason | 状況 | なぜ full へ倒すのが安全側か |
 |--------|------|--------------------------|
 | `gh_missing` | `gh` が PATH 上に無い | Complexity を読む手段が無い |
-| `repo_unresolved` | owner/repo を解決できず `-R` を付けて `gh` を呼べない | 別リポジトリの Issue を誤って読むより読まない方が安全 |
 | `issue_fetch_failed` | `gh issue view` が失敗（認証切れ / rate limit / Issue 不在） | 宣言値が不明 |
 | `complexity_absent` | どの記法からも**英字トークンを取り出せない**（宣言行が無い / 崩れた記法 = lowercase key・全角コロン・リスト項目化・太字なしの表セル / `{complexity}` のような未展開 placeholder と `<!-- ... -->` / 値行を持たない `## 複雑度` 節 — **記法 1 と 3 は値の先頭に英字を要求し、記法 2 は `{` `<` を値の開始と認めず節探索を次見出しで止めるため、同じ記入漏れが記法や見出し語の言語によって別 reason へ分裂しない**） | rite 外で作られた Issue 等。宣言が無いものを小さいと決めつけない |
 | `complexity_invalid` | 英字トークンは取り出せたが XS/S/M/L/XL のいずれでもない（`Medium` / `Small` / `XSmall` / `ZZ` 等） | 誤記を小さい側へ解釈しない |
 | `issue_number_missing` | 関連 Issue を特定できず helper を呼べない（consumer 側） | 対象 Issue が分からなければ宣言値も存在しない |
-| `helper_failed` | helper が marker を出さずに非ゼロ終了した（consumer 側） | 判定結果が得られていない |
+| `helper_failed` | helper が正常終了したが marker を出さない（consumer 側） | 判定結果が得られていない |
 
-helper 側 5 reason の語彙は [issue-complexity-lane.sh](../../../scripts/issue-complexity-lane.sh) の docstring が SoT。consumer 側 2 reason は helper が marker を出せない / 起動されない状況そのものを指すため helper 内では表現できず、[SKILL.md](../SKILL.md) ステップ 1.3.2 に置く（[cycle-scope.md](./cycle-scope.md#fail-safe-は必ずフルレビューへ倒す) の `helper_failed` と同型）。
+repo_unresolved / repo_mismatch はレーン未決定のまま非ゼロ終了する。consumer は停止し、helper_failed に変換しない。対象リポジトリと cwd の照合は [Host Runtime Contract](../../../references/host-runtime-contract.md#作業先と所有者) に従う。
+
+helper 側 4 fallback reason の語彙は [issue-complexity-lane.sh](../../../scripts/issue-complexity-lane.sh) の docstring が SoT。consumer 側 2 reason は helper が marker を出せない / 起動されない状況そのものを指すため helper 内では表現できず、[SKILL.md](../SKILL.md) ステップ 1.3.2 に置く（[cycle-scope.md](./cycle-scope.md#fail-safe-は必ずフルレビューへ倒す) の `helper_failed` と同型）。
 
 **`full` が保守的な側であるとは限らない consumer が存在する**: レビュー側は `full` = reviewer を減らさない = 安全側だが、`issue-implement` 5.1.0.1 の並列実装ゲートでは `full` = 並列 sub-agent を許可する = 攻撃的な側になる。そのため同ゲートは `COMPLEXITY_LANE=full` 単独ではなく **`complexity=` の存在（= `COMPLEXITY_LANE_FALLBACK` の不在）** を判定キーにし、fail-safe 経路を順次実装へ倒している。**新規 consumer は `full` を「重い側」と仮定せず、必ず `COMPLEXITY_LANE_FALLBACK` を見ること。**
 

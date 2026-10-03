@@ -621,14 +621,16 @@ assert 'nb creator failure writes no tracker' '[null,null]' \
   "$(jq -c '[.adoption.records[].tracker]' "$work/nb-create-fail-state/.rite/state/adoption-7-sweep.json" 2>/dev/null || true)"
 
 # The complexity helper reads the expanded bodies; gh is a local mock, never the CLI.
-mkdir "$work/lane-bin"
+mkdir "$work/lane-bin" "$work/lane-repo"
+git init -q "$work/lane-repo"
+git -C "$work/lane-repo" remote add origin https://github.com/example/repo.git
 printf '#!/bin/bash\nprintf "%%s\\n" "$*" >> "$MOCK_LOG"\ncat "$MOCK_BODY"\n' > "$work/lane-bin/gh"
 chmod +x "$work/lane-bin/gh"
 run_lane() {
   local name="$1" rc=0
   : > "$work/$name-lane.argv"
-  MOCK_BODY="$work/$name-lane.md" MOCK_LOG="$work/$name-lane.argv" PATH="$work/lane-bin:$PATH" \
-    bash "$PLUGIN_ROOT/scripts/issue-complexity-lane.sh" --issue 7 --repo example/repo > /dev/null 2> "$work/$name-lane.err" || rc=$?
+  (cd "$work/lane-repo" && MOCK_BODY="$work/$name-lane.md" MOCK_LOG="$work/$name-lane.argv" PATH="$work/lane-bin:$PATH" \
+    bash "$PLUGIN_ROOT/scripts/issue-complexity-lane.sh" --issue 7 --repo example/repo > /dev/null 2> "$work/$name-lane.err") || rc=$?
   assert "$name lane exit status" 0 "$rc"
   assert "$name lane reads the Issue once with -R" 'issue view 7 -R example/repo --json body --jq .body' "$(cat "$work/$name-lane.argv")"
 }

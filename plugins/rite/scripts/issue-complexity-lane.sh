@@ -17,12 +17,15 @@
 #     5.1.0.1 の並列実装ゲートと 5.1.0.8 の生産量制約の両方へ供給する)
 #
 # Usage:
-#   bash issue-complexity-lane.sh --issue <n> [--repo <owner/repo>]
+#   bash issue-complexity-lane.sh --issue <n> --repo <owner/repo> [--cwd <absolute-path>]
 #
 #   --issue  Issue 番号 (数値必須)。
-#   --repo   owner/repo (slash 形式)。省略時は hooks/scripts/lib/git-remote.sh resolve-owner-repo
-#            → `gh repo view` の順で解決する。`gh` には常に -R を明示する
+#   --repo   入口で解決した owner/repo (必須)。cwd の origin と一致すること。
+#            `gh` には常に -R を明示する。
 #            (省略すると SSH host alias 環境で別リポジトリを引く — references/gh-cli-patterns.md)。
+#
+#   --cwd    実行場所を絶対パスで固定する。省略時は現在の cwd を照合する。
+#            skill は入口で保持した execution_cwd を明示する。
 #
 # Complexity の抽出元は Issue body のみ (flow-state は complexity フィールドを持たない)。
 # リポジトリ内に 3 つの記法が併存するため**すべて**を受理する — 一部だけ読むと、他の記法で
@@ -47,7 +50,8 @@
 # Fallback reason 語彙 (SoT。skills/pr-review/SKILL.md ステップ 1.3.2 /
 # skills/pr-review/references/complexity-lane.md の reason 表と同期):
 #   gh_missing            — gh が PATH 上に無い
-#   repo_unresolved       — owner/repo を解決できず -R を付けて gh を呼べない
+#   repo_unresolved       — 明示 repo / cwd の origin を解決できない (停止、fallback しない)
+#   repo_mismatch         — 明示 repo と cwd の origin が異なる (停止、fallback しない)
 #   issue_fetch_failed    — gh issue view が失敗した (認証切れ / rate limit / Issue 不在)、
 #                           **および** その stderr 捕捉用 tempfile を確保できなかった
 #                           (取得に必要な資源が揃わない点で同じ帰結。sibling の
@@ -66,13 +70,14 @@
 # 上記に加え、**本 script では表現できない** consumer 側の reason が 2 つある。いずれも本 script を
 # 呼べない / 呼んだが marker が得られない状況そのものを指すため、caller 側 (SKILL.md) に置く:
 #   issue_number_missing  — 関連 Issue を特定できず --issue を渡せない (本 script は未起動)
-#   helper_failed         — 本 script が marker を出さずに非ゼロ終了した (usage error 等)
+#   helper_failed         — 本 script が正常終了したが marker を出さない (consumer 側)
 #
-# 全 fallback reason は **full へ倒れる** (reason は分岐を変えない)。欠落時の安全側は常に
+# repo_unresolved / repo_mismatch は停止する。それ以外の全 fallback reason は **full へ倒れる** (reason は分岐を変えない)。欠落時の安全側は常に
 # 「儀式を減らさない方」= full である。詳細: complexity-lane.md「fail-safe は必ず full へ倒す」。
 #
 # Exit codes:
 #   0 = レーン決定完了 (light / full のいずれも正常終了)
+#   1 = repository context error (レーンを出さず停止)
 #   2 = usage error (--issue 欠落 / 非数値 / 未知フラグ)
 #
 # Why fail-safe instead of fail-loud:
@@ -98,6 +103,8 @@ source "$_icl_dir/../hooks/control-char-neutralize.sh"
 
 ISSUE_NUMBER=""
 OWNER_REPO=""
+EXECUTION_CWD=""
+CWD_GIVEN=0
 
 # `shift 2` は使わない。値なしフラグが argv 末尾に来ると n > $# で shift が $# を変えずに rc=1 を
 # 返し、set -e 非設定 + ${2:-} で nounset も発火しない本 script では while を抜けられず hang する
@@ -108,6 +115,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --issue) ISSUE_NUMBER="${2:-}"; shift; shift ;;
     --repo)  OWNER_REPO="${2:-}"; shift; shift ;;
+    --cwd)   EXECUTION_CWD="${2:-}"; CWD_GIVEN=1; shift; shift ;;
     *) echo "ERROR: issue-complexity-lane: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
@@ -133,19 +141,34 @@ emit_full_fallback() {
   exit 0
 }
 
-command -v gh >/dev/null 2>&1 || emit_full_fallback gh_missing
+# API 対象だけを戻しても state / worktree は隣 repo のままになる。
+# 入口の identity を cwd から置換せず、両方が一致してから取得する。
+[ -n "$OWNER_REPO" ] || {
+  echo "ERROR: issue-complexity-lane: repo_unresolved: --repo is required; cwd cannot select the target" >&2
+  exit 1
+}
+if [ "$CWD_GIVEN" -eq 1 ]; then
+  case "$EXECUTION_CWD" in
+    /*) ;;
+    *) echo "ERROR: issue-complexity-lane: repo_unresolved: --cwd must be an absolute path" >&2; exit 1 ;;
+  esac
+  cd "$EXECUTION_CWD" || {
+    echo "ERROR: issue-complexity-lane: repo_unresolved: cannot enter --cwd" >&2
+    exit 1
+  }
+fi
+_or_line=$(bash "$_icl_dir/../hooks/scripts/lib/git-remote.sh" resolve-owner-repo) || {
+  echo "ERROR: issue-complexity-lane: repo_unresolved: cannot resolve cwd repository" >&2
+  exit 1
+}
+IFS=$'\t' read -r _or_owner _or_repo <<< "$_or_line"
+_cwd_repo="$_or_owner/$_or_repo"
+if [ "$(printf '%s' "$OWNER_REPO" | tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$_cwd_repo" | tr '[:upper:]' '[:lower:]')" ]; then
+  printf 'ERROR: issue-complexity-lane: repo_mismatch: repository context mismatch: expected=%s; cwd_repo=%s; cwd=%s\n' "$OWNER_REPO" "$_cwd_repo" "$PWD" | neutralize_ctrl --keep-newline >&2
+  exit 1
+fi
 
-if [ -z "$OWNER_REPO" ]; then
-  _or_line=$(bash "$_icl_dir/../hooks/scripts/lib/git-remote.sh" resolve-owner-repo 2>/dev/null) || _or_line=""
-  if [ -n "$_or_line" ]; then
-    IFS=$'\t' read -r _or_owner _or_repo <<< "$_or_line"
-    [ -n "$_or_owner" ] && [ -n "$_or_repo" ] && OWNER_REPO="$_or_owner/$_or_repo"
-  fi
-fi
-if [ -z "$OWNER_REPO" ]; then
-  OWNER_REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || OWNER_REPO=""
-fi
-[ -n "$OWNER_REPO" ] || emit_full_fallback repo_unresolved
+command -v gh >/dev/null 2>&1 || emit_full_fallback gh_missing
 
 # 取得失敗と「body が空の Issue」を区別する。gh の rc を捨てて本文の空判定だけで倒すと、
 # 認証切れ (fetch 失敗) が complexity_absent として報告され、原因の切り分けができなくなる。

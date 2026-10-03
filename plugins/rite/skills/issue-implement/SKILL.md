@@ -47,11 +47,15 @@ rationale: references/rationale.md#test-file-discipline
 対象 Issue の**宣言 Complexity** からレーンを決める。同じ helper が 5.1.0.1 と 5.1.0.8 の両方に供給する。
 rationale: references/rationale.md#complexity-read-once
 
+`{owner_repo}` は最外側 skill 入口で一度解決して保持した対象 identity を使う。nested 呼出しでは引き継ぎ、現在 cwd から再解決して上書きしない。固定した作業先へ移ってもこの値は変えない。
+
 ```bash
-bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number}
+bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number} --repo {owner_repo} --cwd "{execution_cwd}"
 ```
 
-> **Reference**: 設計根拠（レーン境界 / 何を制約し何を制約しないか / 情報欠落時に必ず `full` へ倒す理由）は [complexity-lane.md](../pr-review/references/complexity-lane.md) が SoT。reason 語彙は helper docstring が SoT。**reason は分岐を変えない** — 全 reason が `full` に落ち WARNING を伴う。**helper が非ゼロ終了した / `COMPLEXITY_LANE=` marker を観測できない場合も `full` として扱い**、`⚠️ Complexity レーン判定のフォールバック: reason=helper_failed。フル装備 (M+ 相当) で実行します。` を出力する（consumer 側の既定。silent fallback 禁止）。
+repo context の規約は [Host Runtime Contract](../../references/host-runtime-contract.md#作業先と所有者)。helper の非ゼロ終了（repo_unresolved / repo_mismatch を含む）は直ちに停止し、full fallback として吸収しない。marker 不在だけは以下の既存 consumer 規約を適用する。
+
+> **Reference**: 設計根拠（レーン境界 / 何を制約し何を制約しないか / 情報欠落時に必ず `full` へ倒す理由）は [complexity-lane.md](../pr-review/references/complexity-lane.md) が SoT。reason 語彙は helper docstring が SoT。**reason は分岐を変えない** — 全 reason が `full` に落ち WARNING を伴う。**正常終了した helper の `COMPLEXITY_LANE=` marker を観測できない場合も `full` として扱い**、`⚠️ Complexity レーン判定のフォールバック: reason=helper_failed。フル装備 (M+ 相当) で実行します。` を出力する（consumer 側の既定。silent fallback 禁止）。
 
 | `COMPLEXITY_LANE` + `complexity=` | 5.1.0.1 並列実装ゲート | 5.1.0.8 生産量制約 |
 |---|---|---|

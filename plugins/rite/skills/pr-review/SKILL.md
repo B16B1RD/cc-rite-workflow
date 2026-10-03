@@ -500,11 +500,15 @@ Extract subsections (技術的決定事項, スコープ外, etc.) under the "�
 
 **light** (XS / S) か **full** (M / L / XL、fail-safe) を決める。判定入力は Issue の**宣言 Complexity** のみ。判定は helper へ委譲する（ステップ 1.3 で Issue 番号を特定できなかった場合は helper を呼ばず `full` として扱い、`⚠️ Complexity レーン判定のフォールバック: reason=issue_number_missing。フル装備 (M+ 相当) で実行します。` を出力する):
 
+`{owner_repo}` は最外側 skill 入口で一度解決して保持した対象 identity を使う。nested 呼出しでは引き継ぎ、現在 cwd から再解決して上書きしない。固定した作業先へ移ってもこの値は変えない。
+
 ```bash
-bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number}
+bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number} --repo {owner_repo} --cwd "{execution_cwd}"
 ```
 
-> **Reference**: 設計根拠は [complexity-lane.md](references/complexity-lane.md) が SoT。`COMPLEXITY_LANE_FALLBACK=1; reason=` の helper 側 reason 語彙（`gh_missing` / `repo_unresolved` / `issue_fetch_failed` / `complexity_absent` / `complexity_invalid`）は helper docstring が SoT。**reason は分岐を変えない** — 全 reason が下表の `full` に落ち、全 reason が WARNING を伴う。**helper が非ゼロ終了した / `COMPLEXITY_LANE=` marker を観測できない場合も `full` として扱い**、`⚠️ Complexity レーン判定のフォールバック: reason=helper_failed。フル装備 (M+ 相当) で実行します。` を出力する。
+repo context の規約は [Host Runtime Contract](../../references/host-runtime-contract.md#作業先と所有者)。helper の非ゼロ終了（repo_unresolved / repo_mismatch を含む）は直ちに停止し、full fallback として吸収しない。marker 不在だけは以下の既存 consumer 規約を適用する。
+
+> **Reference**: 設計根拠は [complexity-lane.md](references/complexity-lane.md) が SoT。`COMPLEXITY_LANE_FALLBACK=1; reason=` の helper 側 reason 語彙（`gh_missing` / `issue_fetch_failed` / `complexity_absent` / `complexity_invalid`）は helper docstring が SoT。**reason は分岐を変えない** — 全 reason が下表の `full` に落ち、全 reason が WARNING を伴う。**正常終了した helper の `COMPLEXITY_LANE=` marker を観測できない場合も `full` として扱い**、`⚠️ Complexity レーン判定のフォールバック: reason=helper_failed。フル装備 (M+ 相当) で実行します。` を出力する。
 rationale: references/design-rationale.md#complexity-lane-fallback-loud
 
 | `COMPLEXITY_LANE` | reviewer 上限 | 検証 mandate | 適用される Complexity |

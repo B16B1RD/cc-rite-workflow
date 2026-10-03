@@ -522,8 +522,10 @@ Issue body から「What / Why / Where / Acceptance Criteria」を抽出。
 確定 Complexity を helper から読む。XS はレビューせず 3.4 へ（ユーザー向け追加出力なし）。S 以上は計画を 1 回レビューし、指摘を承認前の計画へ反映する。batch / standalone とも同一。反映後に再レビューしない。
 rationale: references/rationale.md#plan-self-review
 
+`{owner_repo}` は最外側 skill 入口で一度解決して保持した対象 identity を使う。nested 呼出しでは引き継ぎ、現在 cwd から再解決して上書きしない。固定した作業先へ移ってもこの値は変えない。
+
 ```bash
-bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number}
+bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number} --repo {owner_repo} --cwd "{execution_cwd}"
 ```
 
 | `complexity=` | アクション |
