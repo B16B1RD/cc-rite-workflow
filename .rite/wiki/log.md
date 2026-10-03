@@ -4,6 +4,8 @@
 
 * **Skip**: [20261003T153744Z-pr-3652.md](raw/reviews/20261003T153744Z-pr-3652.md) — 今回のテスト件数と充足判定は一時的な検証記録で、追加の経験則を含まない
 
+* **lint:clean**: 矛盾 0 / 孤児 0 / 欠落概念 0 / 壊れた参照 0（未登録 raw 711 は informational）
+
 ## 2026-10-03
 
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=701, broken_refs=0
