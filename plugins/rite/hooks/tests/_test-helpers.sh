@@ -103,6 +103,26 @@ _helpers_resolve_repo_root() {
   (cd "$script_dir/../../../.." && pwd)
 }
 
+# Synthetic session IDs need a matching long-lived runtime ancestor on CI.
+# Only the test runner's ancestry response is replaced; process probes stay real.
+enable_runtime_process_fixture() {
+  local fixture_dir="${1:?fixture directory required}"
+  mkdir -p "$fixture_dir"
+  export RITE_TEST_RUNTIME_PID="$$" RITE_TEST_REAL_PS
+  RITE_TEST_REAL_PS=$(command -v ps)
+  cat > "$fixture_dir/ps" <<'PS'
+#!/bin/bash
+if [ "$#" -eq 6 ] && [ "$1" = -p ] && [ "$2" = "$RITE_TEST_RUNTIME_PID" ] &&
+   [ "$3" = -o ] && [ "$4" = ppid= ] && [ "$5" = -o ] && [ "$6" = comm= ]; then
+  printf '1 %s\n' "${RITE_HOST:-claude}"
+else
+  exec "$RITE_TEST_REAL_PS" "$@"
+fi
+PS
+  chmod +x "$fixture_dir/ps"
+  export PATH="$fixture_dir:$PATH"
+}
+
 # A missing list must stop the caller even without `set -e`; otherwise the test
 # runs with the launching session's identity and can still pass. The directory is
 # derived without dirname(1) because some callers source this file under a PATH

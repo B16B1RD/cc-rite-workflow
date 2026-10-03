@@ -596,7 +596,11 @@ Two helper-driven patterns bracket the session-worktree lifecycle:
   double-starting), and `/rite:cleanup` releases it. Claims live under
   `.rite/state/issue-claims/`, kept out of diffs by the nested `.rite/.gitignore`
   (`*` plus wiki negations) rather than by any root entry; liveness reuses the flow-state heartbeat
-  (`active=true` ∧ `updated_at` within 2h) rather than a new heartbeat file. A live
+  (`active=true` ∧ `updated_at` within 2h) rather than a new heartbeat file, and
+  requires the recorded `holder_pid` process to exist. Claims without `holder_pid`
+  keep the heartbeat-only check. The PID belongs to the ancestor Claude/Codex/Grok
+  process, or the outermost invoking shell for a standalone CLI call, rather than
+  the short-lived hook shell. A live
   `other` claim is surfaced via AskUserQuestion — never an unattended steal.
 - **Lazy reap** (`pr-cycle-cleanup.sh` Step 5): normal cleanup removes the worktree
   immediately; reap only collects **abnormally-orphaned** worktrees, and only when a
