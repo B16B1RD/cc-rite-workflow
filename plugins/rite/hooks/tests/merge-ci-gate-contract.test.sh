@@ -1,7 +1,7 @@
 #!/bin/bash
 # Static contract tests for the fail-closed merge CI gate: /rite:merge must fail closed when CI is
 # unhealthy, distinguish executed failures from jobs that never ran, and expose
-# only an explicit override. Pending checks wait in-process (15s / 540s cap) then
+# only an explicit override. Pending checks wait in-process (15s / 540s per block), resume while pending, then
 # rejoin the same classifier. The skill is prose-driven, so grep-pin the routing
 # and classification invariants that an LLM executes, and execute the extracted
 # step-1 bash against gh/sleep stubs.
@@ -141,7 +141,11 @@ assert_grep "wait loop emits MERGE_CHECKS_WAIT started" "$MERGE" \
 assert_grep "wait loop sleeps 15 seconds" "$MERGE" '^    sleep 15$'
 assert_grep "wait budget increments by 15" "$MERGE" 'waited=\$\(\(waited \+ 15\)\)'
 assert_grep "wait budget cap is 540" "$MERGE" 'waited" -lt 540'
-assert_grep "timeout cap emit is merge not-ready" "$MERGE" 'CI checks still pending after 540s'
+assert_grep "pending boundary emits continuation" "$MERGE" '\[merge:ci-wait-continue\]'
+assert_grep "continuation keeps the same arguments" "$MERGE" '同じ引数（`--force-ci` の有無を含む）'
+assert_grep "continuation does not advance to later gates" "$MERGE" '継続中はステップ 1.1 以降へ進まず'
+assert_grep "continuation has no overall retry cap" "$MERGE" '総待機上限・再実行回数上限は設けない'
+assert_not_grep "pending is not a timeout failure" "$MERGE" 'CI checks still pending after 540s'
 assert_grep "force-ci pending path skips the wait loop" "$MERGE" \
   'checks が pending \+ `force_ci == true`.*待ち loop に入らない'
 timeout_prev=$(awk '
@@ -175,19 +179,22 @@ extract_step1_bash() {
 }
 
 run_step1() {
-  # args: scenario_csv, arguments_placeholder, out_var_name, err_var_name, rc_var_name
+  # args: scenario_csv, arguments_placeholder, existing_sandbox (optional; preserves gh cursor)
   local scenario="$1" arguments="$2"
   local sandbox stub_dir script
-  sandbox=$(mktemp -d "${TMPDIR:-/tmp}/merge-ci-gate-XXXXXX") || {
-    echo "ERROR: mktemp failed" >&2
-    return 1
-  }
+  sandbox="${3:-}"
+  if [ -z "$sandbox" ]; then
+    sandbox=$(mktemp -d "${TMPDIR:-/tmp}/merge-ci-gate-XXXXXX") || {
+      echo "ERROR: mktemp failed" >&2
+      return 1
+    }
+    echo 0 > "$sandbox/gh.count"
+    printf '%s\n' "$scenario" > "$sandbox/scenario"
+  fi
   stub_dir="$sandbox/bin"
   mkdir -p "$stub_dir"
   : > "$sandbox/gh.log"
   : > "$sandbox/sleep.log"
-  echo 0 > "$sandbox/gh.count"
-  printf '%s\n' "$scenario" > "$sandbox/scenario"
   cat > "$stub_dir/gh" <<'STUB'
 #!/bin/bash
 echo "$*" >> "$MERGE_CI_SANDBOX/gh.log"
@@ -207,6 +214,12 @@ if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
   case "$mode" in
     pending2)
       printf '%s\n' '{"mergeable":"MERGEABLE","mergeStateStatus":"BLOCKED","isDraft":false,"headRefName":"fix/x","statusCheckRollup":[{"__typename":"CheckRun","name":"tests","status":"IN_PROGRESS","conclusion":null},{"__typename":"CheckRun","name":"lint","status":"QUEUED","conclusion":null}]}'
+      ;;
+    pending1)
+      printf '%s\n' '{"mergeable":"MERGEABLE","mergeStateStatus":"BLOCKED","isDraft":false,"headRefName":"fix/x","statusCheckRollup":[{"__typename":"CheckRun","name":"tests","status":"IN_PROGRESS","conclusion":null}]}'
+      ;;
+    cancelled)
+      printf '%s\n' '{"mergeable":"MERGEABLE","mergeStateStatus":"UNSTABLE","isDraft":false,"headRefName":"fix/x","statusCheckRollup":[{"__typename":"CheckRun","name":"tests","status":"COMPLETED","conclusion":"CANCELLED"}]}'
       ;;
     behind)
       printf '%s\n' '{"mergeable":"MERGEABLE","mergeStateStatus":"BEHIND","isDraft":false,"headRefName":"fix/x","statusCheckRollup":[]}'
@@ -304,20 +317,50 @@ assert "T-03 gh pr merge was not called" "0" "$STEP1_MERGE"
 rm -rf "$STEP1_SANDBOX"
 
 run_step1 "pending2" "1"
-if printf '%s\n' "$STEP1_OUT" | grep -c >/dev/null '\[merge:not-ready\]'; then
-  pass "T-04 timeout emits [merge:not-ready]"
-else
-  fail "T-04 timeout did not emit [merge:not-ready] (out=$STEP1_OUT)"
-fi
-if printf '%s\n' "$STEP1_ERR" | grep -c >/dev/null 'tests' && printf '%s\n' "$STEP1_ERR" | grep -c >/dev/null 'lint'; then
-  pass "T-04 timeout stderr lists pending check names"
-else
-  fail "T-04 timeout stderr missing pending check names (err=$STEP1_ERR)"
-fi
+assert "T-04 boundary emits one continuation" "1" "$(printf '%s\n' "$STEP1_OUT" | grep -c '^\[merge:ci-wait-continue\]$' || true)"
+assert "T-04 boundary reports current pending count" "1" "$(printf '%s\n' "$STEP1_OUT" | grep -c '^\[CONTEXT\] MERGE_CHECKS_WAIT=continue pending=2$' || true)"
+assert "T-04 boundary never emits not-ready" "0" "$(printf '%s\n' "$STEP1_OUT" | grep -c '^\[merge:not-ready\]$' || true)"
+assert "T-04 boundary is not an ERROR" "" "$STEP1_ERR"
+assert "T-04 boundary returns successfully" "0" "$STEP1_RC"
 assert "T-04 sleep ran 36 times (540/15)" "36" "$STEP1_SLEEP"
 assert "T-04 last MERGE_CHECKS_STATE is pending" "pending" "$(last_state)"
 assert "T-04 gh pr merge was not called" "0" "$STEP1_MERGE"
 rm -rf "$STEP1_SANDBOX"
+
+# Preserve the acquisition cursor across two separate blocks; sleep is stubbed.
+long_pending=$(printf 'pending2,%.0s' {1..45})
+run_step1 "${long_pending}healthy2" "1"
+assert "long CI first block sleeps 36 times" "36" "$STEP1_SLEEP"
+assert "long CI first block requests continuation" "1" "$(printf '%s\n' "$STEP1_OUT" | grep -c '^\[merge:ci-wait-continue\]$' || true)"
+run_step1 "" "1" "$STEP1_SANDBOX"
+assert "long CI second block detects healthy" "healthy" "$(last_state)"
+assert "long CI second block completes 11 minutes of simulated sleep" "8" "$STEP1_SLEEP"
+assert "long CI completion does not request continuation" "0" "$(printf '%s\n' "$STEP1_OUT" | grep -c '^\[merge:ci-wait-continue\]$' || true)"
+assert "long CI never merges inside the wait block" "0" "$STEP1_MERGE"
+rm -rf "$STEP1_SANDBOX"
+
+run_step1 "pending2,pending1" "1"
+assert "boundary count reflects latest snapshot" "1" "$(printf '%s\n' "$STEP1_OUT" | grep -c '^\[CONTEXT\] MERGE_CHECKS_WAIT=continue pending=1$' || true)"
+rm -rf "$STEP1_SANDBOX"
+
+for outcome in cancelled fail malformed; do
+  # The next block first sees pending, then observes the terminal state/fetch error.
+  prefix=$(printf 'pending2,%.0s' {1..38})
+  run_step1 "${prefix}${outcome}" "1"
+  run_step1 "" "1" "$STEP1_SANDBOX"
+  assert "$outcome after boundary sleeps once then stops" "1" "$STEP1_SLEEP"
+  assert "$outcome after boundary does not request continuation" "0" "$(printf '%s\n' "$STEP1_OUT" | grep -c '^\[merge:ci-wait-continue\]$' || true)"
+  case "$outcome" in
+    cancelled) assert "cancel after boundary is unhealthy" "unhealthy" "$(last_state)" ;;
+    malformed) assert "unknown after boundary stops waiting" "unknown" "$(last_state)" ;;
+    fail)
+      assert "fetch error after boundary stops nonzero" "1" "$STEP1_RC"
+      assert "fetch error after boundary emits not-ready" "1" "$(printf '%s\n' "$STEP1_OUT" | grep -c '^\[merge:not-ready\]$' || true)"
+      assert_grep "fetch error after boundary emits ERROR" "$STEP1_SANDBOX/stderr" 'ERROR: PR/CI 状態を取得できないためマージしません'
+      ;;
+  esac
+  rm -rf "$STEP1_SANDBOX"
+done
 
 run_step1 "pending2,malformed" "1"
 assert "T-05 last MERGE_CHECKS_STATE is unknown" "unknown" "$(last_state)"
