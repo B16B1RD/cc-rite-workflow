@@ -97,6 +97,13 @@ assert_grep 'report retains failure details even when pending' "$REVIEW" 'failed
 # The snapshot remains non-blocking; finalization has a separate bounded gate.
 cat > "$scratch/bin/gh" <<'STUB'
 #!/bin/bash
+if [ "$1" = api ]; then
+  if [ "$2" != graphql ]; then printf '%s\n' '[[]]'; exit 0; fi
+  n=$(cat "$CI_SCRATCH/query-count")
+  if [ "$n" -eq 1 ]; then fixture="$CI_SCRATCH/first.json"; else fixture="$CI_SCRATCH/later.json"; fi
+  jq '{data:{repository:{pullRequest:{headRefOid:.headRefOid,baseRefName:"develop",baseRef:{branchProtectionRule:{requiresStatusChecks:true,requiredStatusCheckContexts:(if (.statusCheckRollup|length)==0 then [] else ["tests (macos)"] end),requiredStatusChecks:[]}},commits:{nodes:[{commit:{oid:.headRefOid,statusCheckRollup:{contexts:{nodes:.statusCheckRollup,pageInfo:{hasNextPage:false,endCursor:null}}}}}]}}}}}' "$fixture"
+  exit 0
+fi
 printf '%s\n' "$*" >> "$CI_SCRATCH/final-query"
 n=0
 if [ -f "$CI_SCRATCH/query-count" ]; then n=$(cat "$CI_SCRATCH/query-count"); fi
