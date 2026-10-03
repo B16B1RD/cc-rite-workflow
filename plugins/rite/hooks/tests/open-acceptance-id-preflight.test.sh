@@ -4,7 +4,7 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../../../.." && pwd)
 python3 - "$root" <<'PY'
-import os, subprocess, sys, tempfile
+import json, os, subprocess, sys, tempfile
 from pathlib import Path
 root = Path(sys.argv[1])
 reference = root / 'plugins/rite/skills/open/references/acceptance-id-preflight.md'
@@ -55,6 +55,14 @@ else:
     result, body, calls = run(original)
     check(result.returncode == 0 and body == '## 受入条件\n- [ ] AC-1: A\n- [ ] AC-2: B\n', 'missing items become ordered explicit IDs')
     check(calls == ['issue view', 'issue edit', 'issue view', 'issue comment'], 'fresh verification follows apply before recording')
+    # The returned body replaces the entry snapshot used by the downstream reader.
+    returned = next(line.split('=', 1)[1] for line in result.stdout.splitlines() if line.startswith('OPEN_AC_ISSUE_JSON='))
+    context = json.loads(returned)
+    check(context == {'number': 42, 'body': body}, 'verified fresh body replaces the retained entry context')
+    (work / 'retained').write_text(context['body'])
+    downstream = subprocess.run(['bash', str(root / 'plugins/rite/scripts/acceptance-criteria-check.sh'), 'extract', '--body-file', str(work / 'retained')], text=True, capture_output=True)
+    check(downstream.returncode == 0 and downstream.stdout.strip() == 'AC-1,AC-2', 'downstream strict reader accepts the refreshed retained body')
+    check('OPEN_AC_ISSUE_JSON=' in reference.read_text() and 'ステップ 1.1 で保持した Issue 本文' in reference.read_text(), 'distributed reference requires replacing the retained Issue body')
     check('Issue #42 / 付与 ID: AC-1,AC-2' in (work / 'comment').read_text(), 'assignment has a persistent Issue/ID record')
     original = '前文\r\n## 5. Acceptance Criteria\r\n- [ ] AC-1: A\r\n- [ ] B\r\n### AC-3: C\r\n- [ ] D\r\n```\r\n- [ ] 例\r\n```\r\n## Other\r\n- [ ] untouched\r\n'
     result, body, calls = run(original)

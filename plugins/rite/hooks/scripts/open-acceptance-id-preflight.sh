@@ -5,10 +5,12 @@
 # --repo is held at the outer entry; --cwd is validated inside this helper.
 # Exit: 0 unchanged or repaired and recorded; 1 check/update failure; 2 usage.
 # Output: OPEN_AC_PREFLIGHT=unchanged|failed; OPEN_AC_IDS_ASSIGNED on recorded repair.
+# Success also emits OPEN_AC_ISSUE_JSON={number,body} for the retained entry context.
 # Safe-writer failure reasons and strict-reader diagnostics remain visible.
 set -euo pipefail
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 plugin_root=$(cd "$script_dir/../.." && pwd)
+source "$plugin_root/hooks/control-char-neutralize.sh"
 issue="" owner_repo="" execution_cwd=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -43,6 +45,14 @@ stop_ac() {
   echo "[CONTEXT] OPEN_AC_PREFLIGHT=failed; issue=$issue; reason=$1" >&2
   exit 1
 }
+emit_body() {
+  python3 - "$issue" "$1" <<'PY_BODY'
+import json, sys
+from pathlib import Path
+body = Path(sys.argv[2]).read_bytes().decode('utf-8')
+print('OPEN_AC_ISSUE_JSON=' + json.dumps({'number': int(sys.argv[1]), 'body': body}, ensure_ascii=False))
+PY_BODY
+}
 bash "$safe" fetch --issue "$issue" > "$scratch/fetch"
 cat "$scratch/fetch"
 original=$(sed -n 's/^tmpfile_read=//p' "$scratch/fetch")
@@ -51,11 +61,12 @@ length=$(sed -n 's/^original_length=//p' "$scratch/fetch")
 [ -n "$original" ] && [ -f "$original" ] && [ -n "$candidate" ] && [ -n "$length" ] \
   || stop_ac issue_body_fetch_failed
 if bash "$reader" extract --body-file "$original" > "$scratch/ids" 2> "$scratch/check"; then
-  cat "$scratch/check" >&2
+  cat "$scratch/check" | neutralize_ctrl --keep-newline >&2
+  emit_body "$original"
   echo "[CONTEXT] OPEN_AC_PREFLIGHT=unchanged; issue=$issue"
   exit 0
 fi
-cat "$scratch/check" >&2
+cat "$scratch/check" | neutralize_ctrl --keep-newline >&2
 python3 - "$original" "$candidate" > "$scratch/added" <<'PY'
 import re, sys
 from pathlib import Path
@@ -133,3 +144,4 @@ printf '%s\n' "受入条件の ID 欠落を入口で補いました。Issue #$is
 gh issue comment "$issue" -R "$owner_repo" --body-file "$scratch/record" \
   || stop_ac assignment_record_failed
 echo "[CONTEXT] OPEN_AC_IDS_ASSIGNED=1; issue=$issue; ids=$added"
+emit_body "$scratch/fresh"
