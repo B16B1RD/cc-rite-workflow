@@ -681,9 +681,10 @@ okf_version: "0.2"
 | [cd の中に mktemp -d を入れ子にすると失敗時に cwd が一時ディレクトリ扱いになり trap の rm -rf が作業ツリーを消す](pages/anti-patterns/nested-mktemp-in-cd-turns-failure-into-cwd-deletion.md) | anti-patterns | TEST_ROOT=$(cd "$(mktemp -d)" && pwd -P) は mktemp が失敗しても失敗せず、cd に空文字が渡って rc 0 のまま cwd に留まる。EXIT trap が rm -rf で TEST_ROOT を消すテストでは、checkout や未コミット変更ごと失う。mktemp と cd を 2 ステップに分けて失敗をその場で止める。 | 2026-10-03T01:15:00Z | high |
 | [テスト fixture の前提ガードは return 1 だけにせず原因を ERROR で出す](pages/patterns/test-fixture-guards-print-error-before-return.md) | patterns | set -e 下で fixture 構築のガードが return 1 だけで失敗すると、出力ゼロで終了し、CI の失敗サマリは原因を拾えない。各ガードを ERROR で始まる 1 行つきの失敗にすれば、サマリの grep が原因を示す。 | 2026-10-03T01:15:00Z | medium |
 | [CI 設定を grep で検査するときは matrix の行だけでなく job が実際に走る条件も固定する](pages/heuristics/ci-workflow-static-check-pins-job-execution-not-only-matrix.md) | heuristics | ジョブが両 OS で走ることを静的検査で守るとき、matrix 行と continue-on-error の不在だけを見ると、runs-on の固定化や job の if: false で片方の OS が消えても検査を通る。runs-on が matrix 値を参照することと、job 直下に実行条件が無いことも固定する。 | 2026-10-03T01:15:00Z | medium |
+| [リリースノートの項目はコミット件名の内部用語を写さず、利用者に見える効果で書く](pages/heuristics/release-note-entry-states-user-visible-effect.md) | heuristics | CHANGELOG の項目をコミット件名から起こすと、実装内部の用語（待機を区切る単位の名前など）がそのまま残り、利用者には何が変わったのかが読み取れない。項目は「利用者の操作で何が起きなくなった／できるようになったか」を主語に書き、内部用語は実装との照合にだけ使う。 | 2026-10-03T04:50:00Z | medium |
 ## 統計
 
-- 総ページ数: 671
-- ドメイン別: patterns=143, heuristics=335, anti-patterns=193
-- 最終更新: 2026-10-03T01:15:00Z
+- 総ページ数: 672
+- ドメイン別: patterns=143, heuristics=336, anti-patterns=193
+- 最終更新: 2026-10-03T04:50:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
