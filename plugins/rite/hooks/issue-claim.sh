@@ -13,7 +13,7 @@
 #   check   --issue N [--session UUID]                      classify: own|free|other|stale
 #
 # Data contract (`<shared-root>/.rite/state/issue-claims/issue-{N}.json`):
-#   {"schema_version":1,"issue_number":N,"session_id":"...","worktree":"<abs|''>","claimed_at":"ISO8601Z"}
+#   {"schema_version":1,"issue_number":N,"session_id":"...","worktree":"<abs|''>","claimed_at":"ISO8601Z","holder_pid":N}
 #   Claims live under `.rite/state/`, which the nested `.rite/.gitignore` (`*` plus
 #   wiki negations, written by gitignore-ensure.sh from session-start.sh /
 #   flow-state.sh / work-memory-update.sh / `/rite:setup`) keeps untracked. No root
@@ -22,7 +22,8 @@
 #
 # Liveness (NO new heartbeat — reuses flow-state `updated_at`): a claim is LIVE
 # when the holder's per-session flow-state has `active=true` AND `updated_at`
-# within 7200s (2h). The 2h threshold + `parse_iso8601_to_epoch` are sourced
+# within 7200s (2h), and its recorded holder_pid still exists. Claims without a
+# PID retain the heartbeat-only check. The 2h threshold + `parse_iso8601_to_epoch` are sourced
 # from `session-ownership.sh` (single source of truth). `flow-state.sh set`
 # refreshes `updated_at` on every phase transition, so that IS the heartbeat.
 #
@@ -76,11 +77,17 @@ source "$SCRIPT_DIR/session-identity.sh"
 _resolve_current_session_id() { resolve_strict_session_id "$STATE_ROOT" "${1:-}"; }
 
 # Is the holding session live? claim is LIVE when the holder's flow-state has
-# active=true AND updated_at within CLAIM_STALE_SECONDS. Reads the holder's
+# active=true AND updated_at within CLAIM_STALE_SECONDS AND its recorded PID
+# exists (when present). Reads the holder's
 # per-session state via flow-state.sh (passing the shared STATE_ROOT). rc 0=live.
 _holder_is_live() {
-  local holder="$1"
+  local holder="$1" file="$2" pid
   [ -n "$holder" ] || return 1
+  pid=$(jq -r '.holder_pid // empty' "$file" 2>/dev/null) || return 1
+  if [ -n "$pid" ]; then
+    case "$pid" in 0|*[!0-9]*) return 1 ;; esac
+    kill -0 "$pid" 2>/dev/null || return 1
+  fi
   local active updated epoch now
   active=$(RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" \
             get --session "$holder" --field active --default "false" 2>/dev/null) || active="false"
@@ -109,16 +116,39 @@ _classify() {
   # Empty/corrupt holder → reclaimable (treat as stale).
   [ -n "$holder" ] || { printf 'stale'; return 0; }
   if [ -n "$current" ] && [ "$holder" = "$current" ]; then printf 'own'; return 0; fi
-  if _holder_is_live "$holder"; then printf 'other'; else printf 'stale'; fi
+  if _holder_is_live "$holder" "$file"; then printf 'other'; else printf 'stale'; fi
+}
+
+# Hook shells and command-substitution shells end before the session does.
+# Follow their ancestry to the runtime; standalone CLI calls use the outermost
+# invoking shell. A selected runtime with no visible ancestor is an error, not
+# a reason to record the hook itself or assume a holder is alive.
+_resolve_holder_pid() {
+  local pid="$$" parent comm shell_pid="" runtime_rc=0 process
+  while [ "$pid" -gt 1 ]; do
+    process=$(ps -p "$pid" -o ppid= -o comm=) || return 1
+    read -r parent comm <<< "$process"
+    case "$parent" in ''|*[!0-9]*) return 1 ;; esac
+    case "${comm##*/}" in
+      claude|codex|grok) printf '%s\n' "$pid"; return 0 ;;
+      bash|sh|dash|zsh|ksh|fish) [ "$pid" = "$$" ] || shell_pid="$pid" ;;
+    esac
+    [ "$parent" != "$pid" ] || return 1
+    pid="$parent"
+  done
+  resolve_runtime_session_id >/dev/null || runtime_rc=$?
+  [ "$runtime_rc" -eq 2 ] && [ -n "$shell_pid" ] || return 1
+  printf '%s\n' "$shell_pid"
 }
 
 # Build the claim JSON for the current session.
 _build_json() {
-  local issue="$1" sid="$2" worktree="$3" now
+  local issue="$1" sid="$2" worktree="$3" now pid
+  pid=$(_resolve_holder_pid) || { echo "ERROR: cannot resolve claim holder process PID" >&2; return 1; }
   now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   jq -nc --argjson sv 1 --argjson issue "$issue" --arg sid "$sid" \
-         --arg wt "$worktree" --arg ts "$now" \
-    '{schema_version:$sv, issue_number:$issue, session_id:$sid, worktree:$wt, claimed_at:$ts}'
+         --arg wt "$worktree" --arg ts "$now" --argjson pid "$pid" \
+    '{schema_version:$sv, issue_number:$issue, session_id:$sid, worktree:$wt, claimed_at:$ts, holder_pid:$pid}'
 }
 
 # Acquire the short-lived claims critical section with portable atomic mkdir.
@@ -222,7 +252,7 @@ _atomic_claim_steal() {
   if [ "$rc" -eq 0 ]; then
     cur=$(_claim_holder "$file")
     if [ "$cur" != "$expected" ]; then rc=10
-    elif _holder_is_live "$cur"; then rc=10
+    elif _holder_is_live "$cur" "$file"; then rc=10
     else mv -f "$tmp" "$file" || rc=$?
     fi
     _claims_lock_release || [ "$rc" -ne 0 ] || rc=1

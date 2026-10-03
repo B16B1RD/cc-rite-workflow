@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import stat
 import subprocess
+import sys
 import tempfile
 import uuid
 
@@ -1086,10 +1087,33 @@ def plan_gate(state, plan, session, allow_replan=False):
     plan_specification(state, plan, allow_replan)
 
 
+def sandbox_untracked():
+    scope = importlib.import_module("review-fix-scope")
+    names = subprocess.check_output(["git", "ls-files", "--others", "--exclude-standard", "-z"]).decode().split("\0")
+    excluded = {}
+    for name in filter(None, names):
+        try:
+            if not stat.S_ISLNK(os.lstat(name).st_mode):
+                excluded[name] = scope.sandbox_mask(name)
+        except OSError:
+            continue
+    stubs = [name for name, mask in excluded.items() if mask == "stub"]
+    if stubs:
+        print("WARNING: review-stagnation: " + str(len(stubs)) + " sandbox stub file(s) (0 bytes, no write permission) excluded"
+              + " from verification tree; user action: delete them by hand once no sandboxed command is running: "
+              + " ".join(json.dumps(name, ensure_ascii=False) for name in stubs), file=sys.stderr)
+    return {name for name, mask in excluded.items() if mask}
+
+
 def tree_fingerprint():
+    excluded = sandbox_untracked()
     names = subprocess.check_output(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"]).decode().split("\0")
     entries = []
     for name in sorted(set(names) - {""}):
+        if name in excluded:
+            continue
+        if name.startswith(".rite/"):
+            continue
         path = Path(name)
         if path.is_symlink():
             entries.append([name, "link", os.readlink(path)])
@@ -1123,7 +1147,9 @@ def verified(state, plan, result, paths):
 def advance(state, session, current_head):
     run, context = current(state, session, completed=True, check_head=False)
     gate(state, session, check_head=False)
-    require(not subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=normal"]).strip(),
+    excluded = {b"?? " + os.fsencode(name) for name in sandbox_untracked()}
+    status = subprocess.check_output(["git", "status", "--porcelain", "-z", "--untracked-files=all"])
+    require(all(entry in excluded for entry in status.split(b"\0") if entry),
             "next review requires a committed clean verified tree")
     if current_head == context["commit_sha"]:
         # A rereview of the same commit cannot count as another fix.

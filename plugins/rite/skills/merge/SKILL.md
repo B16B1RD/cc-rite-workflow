@@ -57,7 +57,7 @@ Ready/merge 可否の権威判定はここ (`gh pr view`) に一本化する。�
 rationale: references/rationale.md#no-flow-state-prereq
 
 rationale: references/rationale.md#ci-wait-bounded
-本ステップ 1 の bash block は Bash ツール `timeout: 600000` で実行する（既定 120 秒だと待ち上限 540 秒に届く前に打ち切られる）。
+本ステップ 1 の bash block は Bash ツール `timeout: 600000` で実行する（既定 120 秒だと 1 block の待機 540 秒に届く前に打ち切られる）。
 ```bash
 force_ci=false
 case " {arguments} " in *" --force-ci "*) force_ci=true ;; esac
@@ -103,16 +103,20 @@ if [ "$checks_state" = "pending" ] && [ "$force_ci" = "false" ]; then
     [ -n "$checks_state" ] || checks_state=unknown
   done
   if [ "$checks_state" = "pending" ]; then
-    pending_names=$(printf '%s' "$pr_json" | jq -r '[.statusCheckRollup[] | select(
+    pending_n=$(printf '%s' "$pr_json" | jq -r '[.statusCheckRollup[] | select(
         (.__typename == "CheckRun" and .status != "COMPLETED") or
         (.__typename == "StatusContext" and (.state == "PENDING" or .state == "EXPECTED"))
-      ) | (.name // .context // "?")] | join(", ")')
-    echo "ERROR: CI checks still pending after 540s: $pending_names" >&2
-    echo "[merge:not-ready]"
+      )] | length')
+    echo "[CONTEXT] MERGE_CHECKS_STATE=$checks_state"
+    echo "[CONTEXT] MERGE_CHECKS_WAIT=continue pending=$pending_n"
+    echo "[merge:ci-wait-continue]"
+    exit 0
   fi
   echo "[CONTEXT] MERGE_CHECKS_STATE=$checks_state"
 fi
 ```
+
+**`[merge:ci-wait-continue]` を受領したら、同じ引数（`--force-ci` の有無を含む）でステップ 1 の bash block を再実行する。総待機上限・再実行回数上限は設けない。継続中はステップ 1.1 以降へ進まず、caller に終端 sentinel を返さない。** sentinel が無くなったら、最新の PR 情報と `MERGE_CHECKS_STATE` の最終行で下表の既存分類へ進む。
 
 ### ステップ 1.1: reviewed HEAD / 受入条件 inspect
 
@@ -173,10 +177,11 @@ bash "{plugin_root}/hooks/scripts/ready-reviewed-head-gate.sh" \
 
 | 状態 | アクション |
 |------|-----------|
+| `[merge:ci-wait-continue]` | ステップ 1 の bash block を同じ引数で再実行する。ステップ 1.1 以降へ進まず、caller に戻らない |
 | `isDraft == true` | `[merge:not-ready]` emit + 「先に `/rite:ready {pr_number}` を実行してください」案内 + 終了 |
 | `mergeable != "MERGEABLE"` | 再判定は可逆なので、原因 (`mergeStateStatus`) を表示・既存 work memory に記録して、下記「非 MERGEABLE の再判定」の bash で 1 回だけ自動再判定する。再度非 MERGEABLE なら bash が `[merge:not-ready]` を emit して終了する（`CONFLICTING` のときだけ理由 marker を併記）。`MERGEABLE` に戻れば以降の行で判定を続ける。`CONFLICTING` の解消は [base 取り込み](../fix/references/fix-plan.md#base-取り込み) の手順で行う |
 | `mergeable == "MERGEABLE"` + checks 0 件 | CI 未設定リポジトリとして従来どおりステップ 2 へ |
-| `mergeable == "MERGEABLE"` + checks が pending + `force_ci == false` | 上の bash が待ち loop を実行済み。`MERGE_CHECKS_STATE` の**最終行**で既存分類へ合流する。最終行がまだ `pending`（上限到達）なら `[merge:not-ready]` emit + 「checks の完了を待って再実行」と表示して終了（未完了 check 名は bash が stderr 済み） |
+| `mergeable == "MERGEABLE"` + checks が pending + `force_ci == false` | 上の bash が待ち loop を実行済み。`MERGE_CHECKS_STATE` の**最終行**で既存分類へ合流する。`[merge:ci-wait-continue]` があれば同じ block を再実行し、pending を理由に `[merge:not-ready]` は出さない |
 | checks が pending + `force_ci == true` | 待ち loop に入らない。未完了 check の一覧を表示した後、ステップ 2 へ |
 | `mergeable == "MERGEABLE"` + `mergeStateStatus == "UNSTABLE"`（checks unhealthy）+ `force_ci == false` | 下記「CI red の分類」を実行して内訳を表示し、`[merge:not-ready]` emit + `/rite:merge --force-ci {pr_number}` を案内して終了。ステップ 2 の `gh pr merge` は実行しない |
 | checks unhealthy + `force_ci == true` | 下記分類と内訳表示を省略せず実行した後、ステップ 2 へ |

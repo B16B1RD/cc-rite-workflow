@@ -596,7 +596,11 @@ Two helper-driven patterns bracket the session-worktree lifecycle:
   double-starting), and `/rite:cleanup` releases it. Claims live under
   `.rite/state/issue-claims/`, kept out of diffs by the nested `.rite/.gitignore`
   (`*` plus wiki negations) rather than by any root entry; liveness reuses the flow-state heartbeat
-  (`active=true` ∧ `updated_at` within 2h) rather than a new heartbeat file. A live
+  (`active=true` ∧ `updated_at` within 2h) rather than a new heartbeat file, and
+  requires the recorded `holder_pid` process to exist. Claims without `holder_pid`
+  keep the heartbeat-only check. The PID belongs to the ancestor Claude/Codex/Grok
+  process, or the outermost invoking shell for a standalone CLI call, rather than
+  the short-lived hook shell. A live
   `other` claim is surfaced via AskUserQuestion — never an unattended steal.
 - **Lazy reap** (`pr-cycle-cleanup.sh` Step 5): normal cleanup removes the worktree
   immediately; reap only collects **abnormally-orphaned** worktrees, and only when a
@@ -846,7 +850,10 @@ copied）はそのまま通す。サイズやモードを読めないエント�
 例外: `hooks/scripts/lib/review-fix-scope.py` の `verify` は `git status` ではなく
 `git ls-files --others --exclude-standard` で未追跡を列挙するため、同じ機構ベース規則（`stat` で
 キャラクタデバイス、`lstat` で 0 バイト・書込ビット全落ちの通常ファイル、stat 失敗は残す、除外した
-スタブは stderr WARNING）を Python 側にも持つ。規則を変えるときは両方を同時に更新する。
+スタブは stderr WARNING）を Python 側にも持つ。
+`hooks/scripts/lib/review-stagnation.py` はこの Python 判定を共有し、次 cycle 開始時の
+dirty 判定と tree 指紋で未追跡のマスクを除外する。symlink は除外しない。
+規則を変えるときは shell と Python の両方を同時に更新する。
 
 共通 git dir の直下（`*.lock`）に残ったスタブの lock は `hooks/session-start.sh` が main checkout での
 セッション開始時に検知し、パスと手動削除の手順を hook の stderr に WARNING として書く。直下以外の lock は

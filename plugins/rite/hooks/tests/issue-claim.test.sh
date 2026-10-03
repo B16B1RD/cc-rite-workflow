@@ -21,7 +21,13 @@ SID_A="aaaaaaaa-1111-2222-3333-444444444444"
 SID_B="bbbbbbbb-5555-6666-7777-888888888888"
 
 cleanup_dirs=()
-cleanup() { local d; for d in "${cleanup_dirs[@]:-}"; do [ -n "$d" ] && rm -rf "$d"; done; return 0; }
+cleanup_pids=()
+cleanup() {
+  local d pid
+  for pid in "${cleanup_pids[@]:-}"; do [ -z "$pid" ] || { kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; }; done
+  for d in "${cleanup_dirs[@]:-}"; do [ -n "$d" ] && rm -rf "$d"; done
+  return 0
+}
 trap cleanup EXIT
 
 ROOT=$(make_sandbox --branch develop)
@@ -99,6 +105,19 @@ rc=0; bash "$IC" claim --session "$SID_A" --issue abc >/dev/null 2>&1 || rc=$?; 
 rc=0; bash "$IC" check --session "$SID_A" --issue 0 >/dev/null 2>&1 || rc=$?; assert "TC-12 zero rc 1" "1" "$rc"
 
 echo "=== TC-13: env-first resolution in _resolve_current_session_id (no --session path) ==="
+# The identity fixture selects a runtime even on CI hosts with no agent process.
+runtime_stub=$(mktemp -d)
+cleanup_dirs+=("$runtime_stub")
+real_ps=$(command -v ps)
+cat > "$runtime_stub/ps" <<'PS_EOF'
+#!/bin/bash
+if [ "${4:-}" = ppid= ] && [ "$2" = "$FIXTURE_RUNTIME_PID" ]; then
+  printf '1 claude\n'
+else
+  exec "$REAL_PS" "$@"
+fi
+PS_EOF
+chmod +x "$runtime_stub/ps"
 # Regression guard for the env-first precedence flip (review F-01). All TCs above pass --session,
 # so the env/file branch was never exercised — issue-claim.sh's env-first reorder was a dead guard
 # (mutation: reverting it to file-first kept every TC green). This pins env-first directly.
@@ -108,7 +127,8 @@ echo "=== TC-13: env-first resolution in _resolve_current_session_id (no --sessi
 rm -f "$ROOT/.rite/state/issue-claims/issue-710.json" 2>/dev/null || true
 printf '%s' "$SID_B" > "$ROOT/.rite-session-id"   # shared file says SID_B (stale)
 mk_active "$SID_A" 710                              # env session SID_A is the live one
-env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$SID_A" bash "$IC" claim --issue 710 >/dev/null 2>&1
+env -u CLAUDE_SESSION_ID PATH="$runtime_stub:$PATH" REAL_PS="$real_ps" FIXTURE_RUNTIME_PID="$$" \
+  CLAUDE_CODE_SESSION_ID="$SID_A" bash "$IC" claim --issue 710 >/dev/null 2>&1
 assert "TC-13 no-override claim holder is env sid (SID_A), not stale file sid (SID_B)" \
   "$SID_A" "$(jq -r .session_id "$ROOT/.rite/state/issue-claims/issue-710.json")"
 # Part 2: env-absent fallback resolves the FILE sid (SID_B) — proven by holder==SID_B AND check==own
@@ -214,6 +234,84 @@ printf '%s\n' '%s' > "$lockdir/pid"
 printf '%s\n' 'malformed owner' > "$lockdir/process_start"
 assert "TC-18 malformed PID residue is reclaimed" "released" "$(release "$SID_RESIDUE" 971)"
 assert "TC-18 claim is removed after malformed residue recovery" "free" "$(check "$SID_RESIDUE" 971)"
+
+echo "=== TC-19: hook exit preserves a live runtime holder; another session is refused ==="
+# Model a hook -> invoking shell -> runtime ancestry while using a real process
+# for the holder, so both recording and kill -0 are exercised independently.
+pid_stub=$(mktemp -d)
+cleanup_dirs+=("$pid_stub")
+real_ps=$(command -v ps)
+sleep 60 & holder_pid=$!
+cleanup_pids+=("$holder_pid")
+cat > "$pid_stub/ps" <<'PS_EOF'
+#!/bin/bash
+if [ "${4:-}" = ppid= ]; then
+  case "$2" in
+    "$FIXTURE_HOLDER_PID") printf '1 %s\n' "${FIXTURE_HOLDER_COMM:-claude}" ;;
+    "$FIXTURE_SHELL_PID") printf '%s bash\n' "$FIXTURE_HOLDER_PID" ;;
+    *) printf '%s bash\n' "$FIXTURE_SHELL_PID" ;;
+  esac
+else
+  exec "$REAL_PS" "$@"
+fi
+PS_EOF
+chmod +x "$pid_stub/ps"
+mk_active "$SID_A" 980
+out=$(PATH="$pid_stub:$PATH" REAL_PS="$real_ps" FIXTURE_HOLDER_PID="$holder_pid" \
+  FIXTURE_SHELL_PID="$$" bash "$IC" claim --session "$SID_A" --issue 980)
+assert "TC-19 claim acquired by hook" "claimed" "$out"
+pid_claim="$ROOT/.rite/state/issue-claims/issue-980.json"
+assert "TC-19 ancestor runtime PID recorded instead of exited hook" "$holder_pid" "$(jq -r .holder_pid "$pid_claim")"
+kill -0 "$holder_pid"
+assert "TC-19 fresh active holder" "true" "$(jq -r .active "$ROOT/.rite/sessions/$SID_A.flow-state")"
+assert "TC-19 live check after hook exits" "other" "$(check "$SID_B" 980)"
+before=$(cat "$pid_claim")
+rc=0; out=$(bash "$IC" claim --session "$SID_B" --issue 980 2>/dev/null) || rc=$?
+assert "TC-19 live claim refusal" "10" "$rc"
+assert "TC-19 live claim prints other" "other" "$out"
+assert "TC-19 live claim unchanged" "$before" "$(cat "$pid_claim")"
+
+echo "=== TC-20: dead runtime holder is stale despite fresh active state; steal succeeds ==="
+kill "$holder_pid"
+wait "$holder_pid" 2>/dev/null || true
+cleanup_pids=()
+if kill -0 "$holder_pid" 2>/dev/null; then fail "TC-20 holder PID disappeared"; else pass "TC-20 holder PID disappeared"; fi
+assert "TC-20 heartbeat unchanged and fresh" "true" "$(jq -r .active "$ROOT/.rite/sessions/$SID_A.flow-state")"
+assert "TC-20 dead holder check" "stale" "$(check "$SID_B" 980)"
+rc=0; out=$(bash "$IC" claim --session "$SID_B" --issue 980 2>"$ROOT/dead-steal.err") || rc=$?
+assert "TC-20 steal succeeds through locked recheck" "0" "$rc"
+assert "TC-20 steal prints claimed" "claimed" "$out"
+assert_grep "TC-20 stale-steal message" "$ROOT/dead-steal.err" 'stole stale claim'
+assert "TC-20 new owner recorded" "$SID_B" "$(jq -r .session_id "$pid_claim")"
+
+echo "=== TC-21: PID-less legacy claims retain heartbeat classification ==="
+mk_active "$SID_A" 981
+claim "$SID_A" 981 >/dev/null
+legacy_claim="$ROOT/.rite/state/issue-claims/issue-981.json"
+jq 'del(.holder_pid)' "$legacy_claim" > "$legacy_claim.tmp" && mv "$legacy_claim.tmp" "$legacy_claim"
+assert "TC-21 no PID in legacy record" "false" "$(jq 'has("holder_pid")' "$legacy_claim")"
+assert "TC-21 fresh legacy is other" "other" "$(check "$SID_B" 981)"
+jq --arg t "$PAST" '.updated_at=$t' "$ROOT/.rite/sessions/$SID_A.flow-state" > "$ROOT/aged-state.tmp"
+mv "$ROOT/aged-state.tmp" "$ROOT/.rite/sessions/$SID_A.flow-state"
+assert "TC-21 aged legacy is stale" "stale" "$(check "$SID_B" 981)"
+
+echo "=== TC-22: standalone CLI records the invoking shell; invisible runtime fails loudly ==="
+sleep 60 & shell_holder=$!
+cleanup_pids+=("$shell_holder")
+out=$(PATH="$pid_stub:$PATH" REAL_PS="$real_ps" FIXTURE_HOLDER_PID="$shell_holder" \
+  FIXTURE_SHELL_PID="$$" FIXTURE_HOLDER_COMM=bash bash "$IC" claim --session "$SID_A" --issue 982)
+assert "TC-22 standalone claim acquired" "claimed" "$out"
+assert "TC-22 outer invoking shell PID recorded" "$shell_holder" "$(jq -r .holder_pid "$ROOT/.rite/state/issue-claims/issue-982.json")"
+rc=0
+PATH="$pid_stub:$PATH" REAL_PS="$real_ps" FIXTURE_HOLDER_PID="$shell_holder" \
+  FIXTURE_SHELL_PID="$$" FIXTURE_HOLDER_COMM=bash RITE_HOST=claude CLAUDE_CODE_SESSION_ID="$SID_A" \
+  bash "$IC" claim --session "$SID_A" --issue 983 > "$ROOT/invisible.out" 2> "$ROOT/invisible.err" || rc=$?
+assert "TC-22 invisible selected runtime fails" "1" "$rc"
+assert_grep "TC-22 process resolution diagnostic" "$ROOT/invisible.err" 'cannot resolve claim holder process PID'
+if [ -f "$ROOT/.rite/state/issue-claims/issue-983.json" ]; then fail "TC-22 unresolved runtime creates no claim"; else pass "TC-22 unresolved runtime creates no claim"; fi
+kill "$shell_holder"
+wait "$shell_holder" 2>/dev/null || true
+cleanup_pids=()
 
 print_summary "$(basename "$0")" \
   "Drift hint: issue-claim.sh §7 — claim/release/check; liveness reuses session-ownership.sh 2h threshold + parse_iso8601_to_epoch; noclobber + portable mkdir-lock atomicity; stale-steal CAS via _atomic_claim_steal; _resolve_current_session_id env-first."

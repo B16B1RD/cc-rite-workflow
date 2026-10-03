@@ -10,6 +10,7 @@ Claude Code・Codex・Grok Build の 3 ホストで rite workflow を実際に�
 | ランチャー契約 | `bash tests/rite-dev.test.sh` | `scripts/rite-dev` が引数・設定・終了コードをスタブへ正しく渡す | する |
 | 配布 shell 契約 | `bash plugins/rite/hooks/tests/run-tests.sh` | runtime helper、state/claim/queue、レビュー回収ゲート、worktree の内部契約 | する |
 | 検証道具の契約 | `bash tests/runtime-e2e.test.sh` | `prepare.sh` の隔離と `results.py` の集計（pass / fail / unverified の区別） | する |
+| 配布配置の契約 | `bash tests/install-layout.test.sh` | cache 配置 + `installed_plugins.json`（プロジェクトに `plugins/rite` なし）から plugin root が解決し、SessionStart hook が起動する | する（ubuntu / macOS） |
 | **実ホスト E2E** | **この README の対話セッション** | **ホストが共通 skill を実行し、GitHub とローカル状態が期待どおりになる** | **しない** |
 
 この README が扱うのは最後の「実ホスト E2E」だけである。CI はモデルを起動しないので、実機成功は人が実行して記録するしかない。
