@@ -354,8 +354,28 @@ step_ci_completion_check() {
       echo "[CONTEXT] REVIEW_CI_FINAL=error; reason=classification_failed"
       return 1
     fi
+    if [ "$ci_state" = unknown ]; then
+      echo "ERROR: CI completion check has unknown check state" >&2
+      echo "[CONTEXT] REVIEW_CI_FINAL=error; reason=state_unknown"
+      return 1
+    fi
+    # Required settings and app metadata must be acquired successfully. This
+    # review-only classification leaves the shared merge classifier unchanged.
+    if ! ci_classified=$(python3 "$plugin_root/scripts/review-required-ci.py" "$owner_repo" "$pr_number" "$ci_sha") ||
+       ! ci_state=$(printf '%s' "$ci_classified" | jq -er '.state'); then
+      echo "[CONTEXT] REVIEW_CI_FINAL=error; reason=required_set_unavailable"
+      return 1
+    fi
     case "$ci_state" in
       healthy|none)
+        local ci_saved
+        ci_saved=$(mktemp "${input}.ci-XXXXXX") || return 1
+        if ! jq --argjson ci "$ci_classified" '.ci_status = $ci' "$input" > "$ci_saved" ||
+           ! mv "$ci_saved" "$input"; then
+          rm -f "$ci_saved"
+          echo "[CONTEXT] REVIEW_CI_FINAL=error; reason=ci_status_save_failed"
+          return 1
+        fi
         printf '%s' "$ci_classified" | jq -c --arg sha "$ci_sha" '. + {commit_sha:$sha}' || return 1
         printf '[CONTEXT] REVIEW_CI_FINAL=passed; state=%s; waited=%s\n' "$ci_state" "$waited"
         return 0 ;;

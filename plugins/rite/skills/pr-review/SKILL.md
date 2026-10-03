@@ -1599,7 +1599,7 @@ If reviewers have written items in the "仕様への疑問" section, first settl
 2. **5.3.0.M 実測必須ゲート** — **`scripts/review-measured-gate.sh` を実行する**。分類は helper。Claude は判定しない。SoT: [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) / [assessment-rules.md §5.3.0.M](../fix/references/assessment-rules.md)。
 3. **5.3.0.C 帰結クラス降格政策** — 分類 map の Write と `scripts/review-class-demotion-gate.sh`。`blocking=0` なら本ゲート全体を skip。A=0 で exclusion なし B を降格し、exclusion 付き B は blocking 維持。SoT: [severity-levels.md §帰結クラス軸](../../references/severity-levels.md#帰結クラス軸-consequence-class) / [assessment-rules.md §5.3.0.C](../fix/references/assessment-rules.md)。
 4. **5.3.0.A 受入条件の最終整合検査** — `scripts/acceptance-criteria-check.sh final` を実行する。判定行の AC-ID 集合・対象判定と reviewers[] の整合、未充足行の finding が降格後も blocking に残ることを検査し、未検証 AC を 8.0 / 8.1 へ渡す。
-5. **5.3.0.CI 確定前の全 CI job 確認** — 暫定 mergeable は同一 reviewed commit の全 job 完了・非失敗を確認してから確定する。fix-needed は取得・待機しない。
+5. **5.3.0.CI 確定前の必須 CI check 確認** — 暫定 mergeable は GitHub の必須集合を取得し、同一 reviewed commit の必須 check 完了・非失敗を確認してから確定する。非必須失敗は warnings として保存する。fix-needed は取得・待機しない。
 6. **5.3.1-5.3.7** を降格後の `全指摘事項` に適用。件数は marker とゲート後 JSON から読む（再分類しない）。
 5.3.0 / 5.3.0.M / 5.3.0.C / 5.3.0.A / 5.3.0.CI を 5.3.1 の前に飛ばすことは **禁止**。
 rationale: references/design-rationale.md#5.3-execution-order-why
@@ -1792,7 +1792,7 @@ bash {plugin_root}/scripts/acceptance-criteria-check.sh final \
 `acceptance_final_retry_count` は int、初期 0。reroll を始める直前に +1 する。reroll 内で再実行する 5.3.0.M / 5.3.0.C は、それぞれ既存の `measured_gate_retry_count` / `class_gate_retry_count` を引き継ぐ。
 rationale: references/design-rationale.md#acceptance-reviewer
 
-#### 5.3.0.CI 確定前の全 CI job 確認
+#### 5.3.0.CI 確定前の必須 CI check 確認
 
 5.3.0.A の後、統合レポート（5.4）・保存（6.1.a / `review-finish`）・最終 `[review:mergeable]` の前に毎 cycle 実行する。5.3.0.M / 5.3.0.C の `mergeable` は候補分類であり、本ゲート成功前に確定として公開しない。開始時の 1.2.5.C snapshot は reviewer の初期情報のまま維持し、完了判定には再利用しない。
 
@@ -1802,13 +1802,15 @@ bash {plugin_root}/scripts/pr-review-step.sh ci-completion-check \
   --input {review_tmp_dir}/rite-review-result-{pr_number}.json
 ```
 
-helper はレビュー JSON の commit と毎回取得した PR HEAD を照合し、`pr-checks-classify.sh` で job ごとの結果を読む。workflow 全体の成功表示や必須 check の subset で代用しない。`continue-on-error` の job も失敗なら止める。pending は 15 秒間隔・上限 540 秒（merge の 1 block と同じ）で再取得し、失敗 job と実行中 job が混在する場合も全 job の完了まで待つ。wait/poll の明示引数は通常省略し、上限を超えた確認を成功へ切り替える用途には使わない。
+helper はレビュー JSON の commit と毎回取得した PR HEAD を照合する。内部の `python3 {plugin_root}/scripts/review-required-ci.py {owner_repo} {pr_number} {reviewed_sha}` が PR の base branch に有効な ruleset（全ページ）と classic branch protection の必須 status check 集合を取得・合流し、app 制約付き check は app metadata も照合する。両 API の正常応答で集合が空と確認できた場合だけ必須なしとする。設定・metadata の取得不能、不正応答、分類不明は `[review:error]` 停止であり、非必須への fallback は禁止。状態分類は `pr-checks-classify.sh` を使う。
+
+必須 check の失敗は停止し、必須 pending / 欠落は 15 秒間隔・上限 540 秒で再取得する。非必須の失敗・pending は待機/停止条件にせず、失敗を `.warnings[]`（job 名・結論・詳細 URL）へ保持する。`continue-on-error` も必須なら失敗として止める。wait/poll の明示引数は通常省略し、上限を超えた確認を成功へ切り替える用途には使わない。成功時だけ helper が provisional JSON の `.ci_status` を最新結果へ更新し、他の実測/AC/判定フィールドは保持する。
 
 呼び出し前に現在の work 計測区間を閉じ、待機を `external_wait` として開始する。終了コードにかかわらず区間を閉じ、後続作業で work を開く。Bash の実行上限は待機上限を含む 600000ms とし、途中 yield 後も完了を回収する。fix-needed は helper が取得・待機せず skip する。取得・分類不明、HEAD 不一致、上限到達は未確認の停止であり、CI を成功扱いしない。
 
 | 観測 | Action |
 |---|---|
-| rc=0 + `REVIEW_CI_FINAL=passed; state=healthy` または `state=none` | 全 job 完了・非失敗、または check 0 件。stdout の最新 JSON を `{ci_status}`、その `.state` を `{ci_state}` に保持し、5.3.8 → 5.4 → 6.1.a へ進む |
+| rc=0 + `REVIEW_CI_FINAL=passed; state=healthy` または `state=none` | 必須 check が完了・非失敗、または必須なし。非必須失敗は warnings として保持。stdout の最新 JSON を `{ci_status}`、その `.state` を `{ci_state}` に保持し、5.3.8 → 5.4 → 6.1.a へ進む |
 | rc=0 + `REVIEW_CI_FINAL=skipped; reason=fix_needed` | 修正が必要なので CI を待たず、既存の fix-needed の報告・保存へ進む |
 | rc=1 + `REVIEW_CI_FINAL=failed; reason=unhealthy` | 最終 mergeable を出力せず、下記の CI 失敗回収へ進む。report/save は実行しない |
 | その他の非ゼロ、`REVIEW_CI_FINAL=error`、成功 marker 不在 | 診断を保持し `[review:error]` で停止。report/save は実行しない。取得不能・期限超過を再生成で迂回しない |
@@ -1818,7 +1820,7 @@ helper はレビュー JSON の commit と毎回取得した PR HEAD を照合�
 1. stdout の failed job 証跡（対象 SHA・job 名・結論・詳細 URL）を保持する。GitHub の同じ owner/repo の Actions 詳細 URL から確認した run ID / job ID で `gh run view {run_id} -R {owner_repo} --job {job_id} --log-failed` を取得する。ログを取得できない場合は `[review:error]` で停止する。CI の自動 rerun は行わない。
 2. テスト失敗は Test、workflow / 実行基盤は DevOps の選定済み担当 reviewer を再生成する。未選定担当が必要なら `[review:error]` で停止し、selection / manifest は変更せず保持する。cycle 開始後の名簿は固定であり、担当の追加は承認を得た正規 `review-restart` の再選定へ委ねる。元 prompt に最新 `{ci_status}` と失敗ログを添え、job の失敗を根拠に原因・実差分への帰属を独立検証し、実測アンカー付きの指摘として返すよう依頼する。一律 blocking や親による finding 創作はしない。原 raw を保持し、新 raw の別ファイルを回収する。再生成不能なら `[review:error]` で停止する。
 3. 再回収した担当について completion → likelihood → AC 検証を行い、通常の統合・単一 JSON authoring → measured-gate → class gate → AC 最終整合 → CI 再確認へ戻る。他 reviewer の raw / disposition は保持する。検証失敗なら `[review:error]` で停止し、report/save は実行しない。CI を理由とする再生成は producer 形式エラーの再試行回数とは別に管理する。
-4. 実測付き指摘が blocking となれば fix-needed で既存修正経路へ進む。CI 失敗が継続し blocking 0 の場合は、最終 mergeable を出力せず `[review:error]` で停止し、report/save は実行しない。変更に帰属しない失敗も、解消を確認できるまで mergeable の例外にしない。
+4. 実測付き指摘が blocking となれば fix-needed で既存修正経路へ進む。CI 失敗が継続し blocking 0 の場合は、最終 mergeable を出力せず `[review:error]` で停止し、report/save は実行しない。必須 check の変更に帰属しない失敗も、解消を確認できるまで mergeable の例外にしない。
 
 ### 5.3.8 Fix-Introduced Finding Attribution
 
@@ -1860,7 +1862,7 @@ bash {plugin_root}/scripts/pr-review-step.sh attribution-write --pr {pr_number} 
 絵文字は `skills/reviewers/SKILL.md` の方針。ヘッダと重要 WARNING のみ。
 テンプレート本文は [references/integrated-report-templates.md](references/integrated-report-templates.md)。
 
-**`### CI` は通常・verification 両モードと E2E で常に表示する**。以下の表示内容を `{ci_status_summary}` に埋める。ステップ 1.2.5.C の `{ci_status}` から対象 SHA・state を表示し、healthy は 1 行要約、pending は「未完了」、none は「check なし」、unknown は原因を併記する。failed があれば集約 state に関係なく job 名・結論・詳細 URL を列挙する。
+**`### CI` は通常・verification 両モードと E2E で常に表示する**。以下の表示内容を `{ci_status_summary}` に埋める。5.3.0.CI 成功時は保存 JSON の `.ci_status`（fix-needed の skip 時は 1.2.5.C の snapshot）から対象 SHA・state を表示し、healthy は 1 行要約、pending は「未完了」、none は最終結果なら「必須 check なし」、snapshot なら「check なし」、unknown は原因を併記する。failed があれば集約 state に関係なく job 名・結論・詳細 URL を列挙する。 `.warnings[]` の非必須失敗も「非必須 CI 警告」として同じ証跡を列挙する。Ready ゲート・review receipt の検証は変更しない。
 
 **Template selection:**
 
