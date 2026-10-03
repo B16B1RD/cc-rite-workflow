@@ -32,6 +32,21 @@ Past version sections carry none either — they have already been stripped.
 
 ## [Unreleased]
 
+## [0.19.4] - 2026-10-03
+
+### Fixed
+
+- **Review start with a sandbox stub present** — `/rite:pr-review` can start the next review even when a sandbox stub exists.
+- **Issue claim hand-over from an abnormally terminated holder** — `/rite:open` and related skills take over an Issue without waiting for the work of a holder that terminated abnormally.
+- **Review stagnation verification across runtime-state changes** — the comparison against already-verified code no longer stops when runtime state changes.
+- **`/rite:merge` CI wait** — the CI wait continues across block boundaries.
+
+### Changed
+
+- **macOS tests run as a 3-shard blocking gate** — heavy tests start first and each shard can be run on its own.
+- **Review stagnation tests split into 3 files** — the verification is divided by concern.
+- **Marketplace-install hook launch check in CI** — CI verifies on ubuntu and macOS that hooks start from a marketplace-style layout.
+
 ## [0.19.3] - 2026-10-02
 
 ### Fixed
@@ -1237,6 +1252,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.19.4]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.3...v0.19.4
 [0.19.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.2...v0.19.3
 [0.19.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.1...v0.19.2
 [0.19.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.0...v0.19.1

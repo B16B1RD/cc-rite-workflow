@@ -30,6 +30,21 @@ blocking gate として実行する。
 
 ## [Unreleased]
 
+## [0.19.4] - 2026-10-03
+
+### 修正
+
+- **sandbox スタブが残っていても次のレビューを開始できる** — sandbox スタブがあっても `/rite:pr-review` が次のレビューを開始できる。
+- **異常終了した Issue 保持者の作業を待たずに引き継げる** — 異常終了した保持者の作業を待たず、`/rite:open` などが Issue を引き継ぐ。
+- **実行時状態の変化で review stagnation の検証済みコード照合が止まらない** — 実行時状態が変わっても、検証済みコードとの照合が止まらない。
+- **`/rite:merge` の CI 待機をブロック境界で継続する** — CI 待機がブロック境界をまたいで続く。
+
+### 変更
+
+- **macOS テストを 3 shard の blocking gate にする** — 重いテストを先に起動し、shard ごとに実行できる。
+- **review stagnation の検証を 3 ファイルに分割する** — 検証を関心ごとに分ける。
+- **マーケットプレイス配置からの hook 起動を CI で検証する** — ubuntu / macOS で、マーケットプレイス形式の配置から hook が起動できることを検証する。
+
 ## [0.19.3] - 2026-10-02
 
 ### 修正
@@ -1234,6 +1249,7 @@ v0.4.0 では値は silent に無視されます。機能的な代替はあり�
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.19.4]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.3...v0.19.4
 [0.19.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.2...v0.19.3
 [0.19.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.1...v0.19.2
 [0.19.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.0...v0.19.1
