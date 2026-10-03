@@ -44,6 +44,9 @@
 * **Skip**: [20261003T114552Z-pr-3649.md](raw/reviews/20261003T114552Z-pr-3649.md) — 指摘なしの完了確認のみで、新たな経験則なし
 * **Skip**: [20261003T120257Z-pr-3649.md](raw/reviews/20261003T120257Z-pr-3649.md) — 解消済み指摘と最終検証の確認のみで、新たな経験則なし
 
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=707, broken_refs=0
+* **lint:scope** — 全ページのタイトル類似と同一ドメインの概要重複を比較し該当なし。更新した棚卸しページは既存の結論と整合。方針逆転の全本文精査は未実施。番号参照は0件。陳腐化と意図的skipは informational 指標。
+
 ## 2026-10-02
 
 * **lint:warning** — 機械検査: stale=66, orphans=0, missing_concept=0, unregistered_raw=693, broken_refs=0, descriptive_number_ref=0。全ページのカタログを読み、タイトル類似候補なし、概要類似候補の二つの本文は異なる契約で矛盾ではないと確認。今回はページを変更していない。全668ページ間の本文の意味比較は未実施のため、全体の矛盾件数は未判定。
