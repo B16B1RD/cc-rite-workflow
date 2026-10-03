@@ -5,6 +5,9 @@
 * **Update**: [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) — macOS 3 shard の時間・排他的配置・失敗伝播の実測を統合
 
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=693, broken_refs=0
+* **Skip**: [20261003T000100Z-pr-3634-cycle2.md](raw/reviews/20261003T000100Z-pr-3634-cycle2.md) — detector-candidate: 内部継続シグナルの契約表同期は既存整合検査とプラグイン機構で保証する
+* **Skip**: [20261002T235141Z-pr-3634-fix.md](raw/reviews/20261002T235141Z-pr-3634-fix.md) — detector-candidate: 内部継続シグナルの契約表同期は既存整合検査とプラグイン機構で保証する
+* **Skip**: [20261002T234827Z-pr-3634.md](raw/reviews/20261002T234827Z-pr-3634.md) — detector-candidate: 内部継続シグナルの契約表同期は既存整合検査とプラグイン機構で保証する
 
 ## 2026-10-02
 
