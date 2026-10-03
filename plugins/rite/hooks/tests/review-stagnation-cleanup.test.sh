@@ -744,6 +744,101 @@ def bytecode_fixture(command, tracked_runtime=False):
     return f
 
 
+# Sandbox anchors may appear or disappear between verification and the next review.
+for action in ('same-head', 'add', 'delete'):
+    f = Fixture() if action == 'same-head' else bytecode_fixture('test -s source.txt')
+    try:
+        if action == 'same-head':
+            f.cycle()
+            f.plan()
+            f.scope()
+        stubs = [f.root / '.sandbox-stub', f.root / 'sandbox dir' / 'quote"tab\tline\n']
+        stubs[1].parent.mkdir()
+        def add_stubs():
+            for stub in stubs:
+                stub.touch()
+                stub.chmod(0o444)
+        if action != 'add':
+            add_stubs()
+        f.scope('verify')
+        if action == 'add':
+            add_stubs()
+        elif action == 'delete':
+            for stub in stubs:
+                stub.unlink()
+        if action != 'same-head':
+            f.commit()
+        before = f.state()['review_run']
+        result = f.start()
+        after = f.state()['review_run']
+        if action != 'delete':
+            check('2 sandbox stub file(s)' in result.stderr
+                  and all(json.dumps(str(p.relative_to(f.root)), ensure_ascii=False) in result.stderr for p in stubs),
+                  'sandbox stubs are named and counted on stderr: ' + action)
+        check(len(after['fixes']) == len(before['fixes']) + (action != 'same-head'),
+              'only a changed verified HEAD counts as a fix: ' + action)
+        check(('pending_fix' in after) == (action == 'same-head'),
+              'stub changes preserve the verified tree and consume only a committed fix: ' + action)
+    finally:
+        f.close()
+
+
+# Real untracked and tracked changes must still stop the next cycle, even beside a stub.
+for kind in ('writable-empty', 'readonly-nonempty', 'stub-link', 'device-link', 'staged-stub', 'tracked-change'):
+    f = bytecode_fixture('test -s source.txt')
+    try:
+        f.scope('verify')
+        f.commit()
+        stub = f.root / '.sandbox-stub'
+        stub.touch()
+        stub.chmod(0o444)
+        other = f.root / 'sandbox dir' / 'real change'
+        other.parent.mkdir()
+        if kind == 'stub-link':
+            other.symlink_to(stub)
+        elif kind == 'device-link':
+            other.symlink_to('/dev/null')
+        elif kind == 'tracked-change':
+            (f.root / 'source.txt').write_text('uncommitted change\n')
+        else:
+            other.write_text('content' if kind == 'readonly-nonempty' else '')
+            if kind in ('readonly-nonempty', 'staged-stub'):
+                other.chmod(0o444)
+            if kind == 'staged-stub':
+                f.run(['git', 'add', str(other.relative_to(f.root))])
+        before = f.state()
+        f.reject(lambda: f.start(ok=False), 'real change remains dirty: ' + kind,
+                 'next review requires a committed clean verified tree')
+        check(f.state() == before, 'a rejected dirty tree preserves the review state: ' + kind)
+    finally:
+        f.close()
+
+
+f = Fixture()
+try:
+    probe = [sys.executable, '-c', '''
+import importlib, os, stat, sys
+from unittest.mock import patch
+sys.path.insert(0, sys.argv[1])
+stagnation = importlib.import_module("review-stagnation")
+scope = importlib.import_module("review-fix-scope")
+with patch.object(scope.os, "stat", side_effect=PermissionError):
+    assert not stagnation.sandbox_untracked(), "stat failures must not be excluded"
+real_stat = os.stat
+def device_stat(path, *args, **kwargs):
+    if str(path) == "device":
+        return os.stat_result((stat.S_IFCHR | 0o666, 0, 0, 1, 0, 0, 0, 0, 0, 0))
+    return real_stat(path, *args, **kwargs)
+with patch.object(scope.os, "stat", side_effect=device_stat):
+    assert stagnation.sandbox_untracked() == {"device"}, "only a real device is excluded"
+''', str(plugin / 'hooks/scripts/lib')]
+    (f.root / 'device').touch()
+    (f.root / 'link').symlink_to('device')
+    f.run(probe)
+finally:
+    f.close()
+
+
 def import_pkg(f):
     f.run([sys.executable, '-c', 'import sys; sys.path.insert(0, "pkg"); import m'])
 

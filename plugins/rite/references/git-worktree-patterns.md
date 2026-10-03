@@ -850,7 +850,10 @@ copied）はそのまま通す。サイズやモードを読めないエント�
 例外: `hooks/scripts/lib/review-fix-scope.py` の `verify` は `git status` ではなく
 `git ls-files --others --exclude-standard` で未追跡を列挙するため、同じ機構ベース規則（`stat` で
 キャラクタデバイス、`lstat` で 0 バイト・書込ビット全落ちの通常ファイル、stat 失敗は残す、除外した
-スタブは stderr WARNING）を Python 側にも持つ。規則を変えるときは両方を同時に更新する。
+スタブは stderr WARNING）を Python 側にも持つ。
+`hooks/scripts/lib/review-stagnation.py` はこの Python 判定を共有し、次 cycle 開始時の
+dirty 判定と tree 指紋で未追跡のマスクを除外する。symlink は除外しない。
+規則を変えるときは shell と Python の両方を同時に更新する。
 
 共通 git dir の直下（`*.lock`）に残ったスタブの lock は `hooks/session-start.sh` が main checkout での
 セッション開始時に検知し、パスと手動削除の手順を hook の stderr に WARNING として書く。直下以外の lock は
