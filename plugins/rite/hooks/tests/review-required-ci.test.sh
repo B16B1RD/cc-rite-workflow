@@ -3,7 +3,7 @@
 set -euo pipefail
 PLUGIN_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 python3 - "$PLUGIN_ROOT" <<'PY'
-import copy,json,os,pathlib,subprocess,sys,tempfile
+import copy,json,os,pathlib,shlex,shutil,subprocess,sys,tempfile
 plugin=pathlib.Path(sys.argv[1]); checks=0
 
 def check(condition,label):
@@ -68,6 +68,19 @@ print((r/file).read_text())
  check(not (root/'waits').exists(),'optional failure no wait')
  calls=[json.loads(line) for line in (root/'calls').read_text().splitlines()]
  check(any('repos/owner/repo/rules/branches/release%2Fa?per_page=100' in call and '--paginate' in call and '--slurp' in call for call in calls),'base encoded and all rules pages requested')
+ for tool in ('jq','mv'):
+  setup()
+  executable=shutil.which(tool,path=env['PATH'])
+  injected=root/'bin'/tool
+  predicate='[[ "$*" == *".ci_status = "* ]]' if tool=='jq' else 'true'
+  injected.write_text('#!/bin/bash\nif '+predicate+"; then\n echo 'fixture: CI JSON save denied' >&2\n exit 1\nfi\nexec "+shlex.quote(executable)+' "$@"\n')
+  injected.chmod(0o755)
+  try:
+   result=gate(False)
+   check('reason=ci_status_save_failed' in result.stdout,tool+' save error classified')
+   check('CI JSON save denied' in result.stderr,tool+' injection reached save branch')
+   check(not list(root.glob('result.json.ci-*')),tool+' save tempfile removed')
+  finally:injected.unlink()
  setup([node('required'),node('advisory','PENDING')]);gate(True);check(not (root/'waits').exists(),'optional pending no wait')
  setup([node('required','FAILURE'),node('advisory','PENDING')]);gate(False);check(not (root/'waits').exists(),'required failure does not wait on optional pending')
  for source in ('graphql.json','rules.json'):
