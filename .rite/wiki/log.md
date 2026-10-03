@@ -47,6 +47,11 @@
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=707, broken_refs=0
 * **lint:scope** — 全ページのタイトル類似と同一ドメインの概要重複を比較し該当なし。更新した棚卸しページは既存の結論と整合。方針逆転の全本文精査は未実施。番号参照は0件。陳腐化と意図的skipは informational 指標。
 
+* **Skip**: [20261003T143941Z-pr-3651.md](raw/reviews/20261003T143941Z-pr-3651.md) — detector-candidate: 必須CIの取得失敗停止と警告保存はhelper・回帰テストで強制する
+* **Skip**: [20261003T141413Z-pr-3651.md](raw/reviews/20261003T141413Z-pr-3651.md) — detector-candidate: CI索引名と契約テストの一致は順序assertionで検出する
+* **Skip**: [20261003T142143Z-pr-3651.md](raw/fixes/20261003T142143Z-pr-3651.md) — detector-candidate: jq/mv保存失敗時の停止・入力保持・一時ファイル回収は注入テストで検証する
+
+
 ## 2026-10-02
 
 * **lint:warning** — 機械検査: stale=66, orphans=0, missing_concept=0, unregistered_raw=693, broken_refs=0, descriptive_number_ref=0。全ページのカタログを読み、タイトル類似候補なし、概要類似候補の二つの本文は異なる契約で矛盾ではないと確認。今回はページを変更していない。全668ページ間の本文の意味比較は未実施のため、全体の矛盾件数は未判定。
