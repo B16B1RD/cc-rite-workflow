@@ -130,6 +130,8 @@ State が `closed` の場合は AskUserQuestion で「再オープンして作�
 
 What / Why / Where / Scope の充足度で A-D 評価。C/D の場合は AskUserQuestion で「既存情報で開始 / Issue を編集してから再実行 / 中止」を選択。
 
+実装前に [受入条件 ID の入口検査](references/acceptance-id-preflight.md) を必ず実行し、非ゼロなら原因を表示して停止する。
+
 ### 1.4 設定読込 (language / multi_session)
 
 `rite-config.yml` の `language` field を取得し `[CONTEXT] WORKFLOW_LANGUAGE=` marker として emit。ステップ 4 の commit message テンプレで参照される。
