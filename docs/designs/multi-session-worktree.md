@@ -179,10 +179,10 @@ multi_session:
 同一 Issue への二重着手防止。**`multi_session.enabled` に依らず常時有効**（Decision Log D-3）。
 
 - パス: `<共有root>/.rite/state/issue-claims/issue-{N}.json`（`.rite/state/` は gitignore 済みのため新 gitignore エントリ不要）。
-- 内容: `{"schema_version":1, "issue_number":N, "session_id":"...", "worktree":"<abs path|''>", "claimed_at":"ISO8601Z"}`。
+- 内容: `{"schema_version":1, "issue_number":N, "session_id":"...", "worktree":"<abs path|''>", "claimed_at":"ISO8601Z", "holder_pid":N}`。
 - サブコマンド: `claim | release | check --issue N`。CLI 規約・診断出力は `flow-state.sh` を踏襲、session_id 解決は既存ヘルパーを再利用。
 - **原子性**: noclobber（`set -C`）での claim ファイル作成。stale 奪取パスのみ `issue-claims/.lock` への flock（`_atomic_write` と同型）。
-- **liveness 判定（新ヒープビートを作らない）**: claim 存在 ∧ 保持セッションの flow-state が `active=true` ∧ `updated_at` が 7200s（2h）以内。
+- **liveness 判定（新ヒープビートを作らない）**: claim 存在 ∧ 保持セッションの flow-state が `active=true` ∧ `updated_at` が 7200s（2h）以内 ∧ 記録された `holder_pid` のプロセスが存在する。PID のない旧形式は従来の時刻判定を維持する。PID は短命な hook シェルではなく祖先の Claude/Codex/Grok プロセス（通常 CLI では最外の呼出し元シェル）を記録する。
   `session-ownership.sh` の stale 閾値と `parse_iso8601_to_epoch` を source 再利用。`flow-state.sh set` が全 phase 遷移で `updated_at` を更新する既存挙動がそのまま heartbeat。
 - **取得**: pr:open Step 1.6。**解放**: cleanup Step 11-12。**session-end では解放しない**（クラッシュ後の再開可能性を残す。残骸は stale 判定 + reap が回収）。
 - 他セッションの live claim 検出時は**常に AskUserQuestion**（無人での奪取はしない）。
