@@ -54,7 +54,7 @@ resolves within the distributed plugin and does not require this development lau
 
 ### Reproduce host workflow validation
 
-Follow the [three-host validation guide](tests/runtime-e2e/README.md) to prepare an offline fixture, create a dedicated GitHub repository, and run the same draft, merge, and interrupted-recovery scenarios on each host. The guide includes copyable prompts, direct distribution setup, and evidence records. Run `bash tests/runtime-e2e.test.sh` for the preparation/reporting contract; CI runs it separately from the launcher and existing hook suites. A green CI result does not certify live host execution. Record unavailable hosts or authentication as unverified and keep integration completion pending.
+Follow the [three-host validation guide](tests/runtime-e2e/README.md) to prepare an offline fixture, create a dedicated GitHub repository, and run the same draft, merge, and interrupted-recovery scenarios on each host. The guide includes copyable prompts, direct distribution setup, and evidence records. Run `bash tests/runtime-e2e.test.sh` for the preparation/reporting contract; CI runs it separately from the launcher and existing hook suites. `bash tests/install-layout.test.sh` rebuilds the marketplace install layout (cache directory plus `installed_plugins.json`, no `plugins/rite` in the project) under a throwaway `HOME` and starts the SessionStart hook from it; CI runs it as the `install-layout` job on ubuntu and macOS. A green CI result does not certify live host execution. Record unavailable hosts or authentication as unverified and keep integration completion pending.
 
 ## How to Contribute
 

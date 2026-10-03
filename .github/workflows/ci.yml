@@ -8,6 +8,9 @@ name: CI
 #
 # Job split rationale:
 #   - `test` is the OS matrix (the suites are what actually differ by platform).
+#   - `install-layout` rebuilds the marketplace install layout (cache directory +
+#     installed_plugins.json, no plugins/rite in the project) and starts a hook from
+#     it, on ubuntu and macOS.
 #   - `shellcheck` is OS-independent, so it runs once on ubuntu only.
 #
 # macOS is intentionally run with Homebrew bash 5 (rite requires bash 4+) but
@@ -241,6 +244,55 @@ jobs:
           fi
           summary "" "Slowest hook suite files (seconds):" '```' "$slowest" '```'
 
+  # The `test` job runs from a checkout, where plugins/rite sits under the working
+  # directory. A marketplace install has no plugins/rite; the plugin root comes from a
+  # cache directory recorded in installed_plugins.json. This job rebuilds that layout
+  # under a throwaway HOME and starts the SessionStart hook from it, on both OSes.
+  install-layout:
+    name: install layout (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 1
+
+      # Same bash 5 setup as the `test` job: rite requires bash 4+, macOS ships 3.2.
+      - name: Install bash 5 on macOS (keep BSD coreutils)
+        if: runner.os == 'macOS'
+        run: |
+          brew install bash
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+
+      - name: Verify required tools (bash, jq, git)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for tool in bash jq git; do
+            command -v "$tool" >/dev/null 2>&1 || { echo "::error::required tool not available: $tool"; exit 1; }
+          done
+
+      - name: Run install layout test
+        shell: bash
+        run: bash tests/install-layout.test.sh 2>&1 | tee install-layout-tests.log
+
+      - name: Summarize install layout failures
+        if: failure()
+        run: |
+          set +e
+          {
+            echo "### ❌ Install layout failures — ${{ matrix.os }}"
+            echo '```'
+            grep -E 'FAIL|^ERROR: |[0-9]+ passed, [0-9]+ failed' install-layout-tests.log || echo '(no failure markers captured — see full job log)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   shellcheck:
     name: shellcheck
     runs-on: ubuntu-latest
@@ -267,7 +319,7 @@ jobs:
           set -u
           shellcheck --version
           mapfile -t files < <(find plugins/rite -name '*.sh' -type f | sort)
-          files+=(tests/rite-dev.test.sh tests/runtime-e2e.test.sh tests/runtime-e2e/prepare.sh)
+          files+=(tests/rite-dev.test.sh tests/runtime-e2e.test.sh tests/runtime-e2e/prepare.sh tests/install-layout.test.sh)
           echo "shellcheck targets: ${#files[@]} files"
           # One scan at the lowest threshold captures every finding for the report.
           report=$(shellcheck --severity=style --format=json "${files[@]}" 2>/dev/null || true)
