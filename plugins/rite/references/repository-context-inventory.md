@@ -22,7 +22,7 @@ rg -n 'issue-complexity-lane.sh|git-remote.sh|state-path-resolve' "{plugin_root}
 
 | Consumer | 必須入力 | 確認 |
 |---|---|---|
-| `skills/open/SKILL.md` | `--issue` と `--repo "{owner_repo}"`、固定 cwd | helper が repository 不一致で止まったら open を続けない |
+| `skills/open/SKILL.md` | `--issue` と保持した `--repo {owner_repo}`、絶対 `--cwd "{execution_cwd}"` | helper が repository 不一致で止まったら open を続けない |
 | `skills/issue-implement/SKILL.md` | 同上 | 不一致を full fallback として実装へ流さない |
 | `skills/pr-review/SKILL.md` | 同上 | 不一致を full fallback としてレビューへ流さない |
 
@@ -45,7 +45,7 @@ bash "{plugin_root}/hooks/tests/complexity-lane-contract.test.sh"
 | `state-path-resolve.sh` | target/linked は target の main root、foreign は foreign root |
 | `state-path-resolve.sh <target絶対パス>` | どの cwd でも target root |
 | `git rev-parse --show-toplevel` | target / foreign / linked の各実 worktree |
-| Complexity helper の repository 明示 / 省略 | target/linked + `--repo fixture/target` は light。foreign + target 明示は非ゼロ停止し Issue API を呼ばない。`--repo` 省略もどの cwd でも非ゼロ停止 |
+| Complexity helper の repository 明示 / 省略 | target/linked + `--repo fixture/target` は light。foreign 開始 cwd でも `--cwd` に target の絶対パスを渡せば light。foreign + target 明示は非ゼロ停止し Issue API を呼ばない。`--repo` 省略もどの cwd でも非ゼロ停止 |
 | shim が認証 / rate limit エラーを返す | repository 照合成功後の取得失敗は従来の `issue_fetch_failed` full fallback |
 
 この測定は各候補の内部処理全体を実行した証拠ではない。上記 R/S/W の解決 primitive と全 Complexity consumer の呼出し条件を確認する。書込 helper 全体を foreign repository で起動せず、候補表のコード位置を読んで明示 cwd / path と暗黙呼出しを区別する。

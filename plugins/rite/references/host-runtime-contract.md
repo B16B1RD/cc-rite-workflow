@@ -40,13 +40,13 @@
 
 ### 作業先と所有者
 
-最外側の skill 入口で、意図した repository の cwd から owner/repo を一度だけ解決し、`{owner_repo}` として保持する。nested skill とその helper へは保持した値を渡す。helper の呼出し直前や調査で移動した cwd から対象 identity を再解決・上書きしない。再開時も保存した作業先・PR の repository と照合して引き継ぎ、照合できなければ停止する。helper 内の cwd repository 解決は保持した対象との一致検査にだけ使う。
+最外側の skill 入口で、意図した repository の cwd から owner/repo を一度だけ解決し、`{owner_repo}` として保持する。nested skill とその helper へは保持した値を渡す。helper の呼出し直前や調査で移動した cwd から対象 identity を再解決・上書きしない。再開時も保存した作業先・PR の repository と照合して引き継ぎ、照合できなければ停止する。Complexity helper 内の cwd repository 解決は保持した対象との一致検査にだけ使う。他の既存 helper は固定した対象 cwd で repository を解決する契約を維持し、その結果で入口の保持値を上書きしない。
 
 最外側 skill の入口で対象 repository の `{owner_repo}`（slash 形式）と `{execution_cwd}`（実 worktree の絶対パス）を解決する。`git rev-parse --show-toplevel` が意図した worktree と一致し、branch、origin の owner/repo、`git worktree list --porcelain` を照合する。解決不能・対象不一致は後続操作の前に非ゼロで停止する。nested skill はこの組を引き継ぐ。worktree 入場・復旧・cleanup による作業先変更時は新しい絶対パスで再照合する。
 
 後続の全 shell は tool の workdir を `{execution_cwd}` に固定する。workdir 引数がない実行面では各 invocation 内でその絶対パスへ `cd` する。編集パスを絶対指定し、子エージェントにも同じ作業先と repository を渡す。前回の shell の `cd` や親の入場を別 tool call / 子の cwd とみなさない。main checkout の dirty を破棄・自動搬送せず、既存の衝突ゲートに従う。
 
-**理由**: repository 指定だけではローカルの HEAD・state・worktree は固定されず、配布 helper の絶対パスだけでは API 対象も固定されない。入口で対象を一度解決し全操作へ渡すことで、API とローカル操作を同じ repository に揃える。各 helper に別の cwd override を増やさない。Complexity helper は `--repo` の明示値を cwd の remote 解決結果と照合し、不一致・解決不能を full fallback にせず停止する。照合後の認証・rate limit 等の取得失敗は従来の full fallback を保つ。候補と再実行方法は [Repository Context Inventory](repository-context-inventory.md)。
+**理由**: repository 指定だけではローカルの HEAD・state・worktree は固定されず、配布 helper の絶対パスだけでは API 対象も固定されない。入口で対象を一度解決し全操作へ渡すことで、API とローカル操作を同じ repository に揃える。Complexity の単一 Bash 呼出しは `--cwd "{execution_cwd}"` を渡し、helper 内で絶対パスを検証して移動する。Complexity helper は `--repo` の明示値を固定先 cwd の remote 解決結果と照合し、不一致・解決不能を full fallback にせず停止する。照合後の認証・rate limit 等の取得失敗は従来の full fallback を保つ。候補と再実行方法は [Repository Context Inventory](repository-context-inventory.md)。
 
 共有 state root は [state-path-resolve.sh](../hooks/state-path-resolve.sh) で解決し、session ID の検証は [Session ID Validation Contract](session-id-validation-contract.md) に従う。非対応 ID を UUID らしく加工したり、共通の固定値に落としたりしない。helper ごとの受理条件が異なる場合は全 consumer が受理する経路だけを採用する。
 

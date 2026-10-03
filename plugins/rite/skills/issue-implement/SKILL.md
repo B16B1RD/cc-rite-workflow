@@ -50,8 +50,7 @@ rationale: references/rationale.md#complexity-read-once
 `{owner_repo}` は最外側 skill 入口で一度解決して保持した対象 identity を使う。nested 呼出しでは引き継ぎ、現在 cwd から再解決して上書きしない。固定した作業先へ移ってもこの値は変えない。
 
 ```bash
-cd "{execution_cwd}" || exit 1
-bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number} --repo {owner_repo} || exit $?
+bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number} --repo {owner_repo} --cwd "{execution_cwd}"
 ```
 
 repo context の規約は [Host Runtime Contract](../../references/host-runtime-contract.md#作業先と所有者)。helper の非ゼロ終了（repo_unresolved / repo_mismatch を含む）は直ちに停止し、full fallback として吸収しない。marker 不在だけは以下の既存 consumer 規約を適用する。

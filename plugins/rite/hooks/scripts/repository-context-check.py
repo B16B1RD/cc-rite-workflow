@@ -56,10 +56,6 @@ def tokens(line):
     return list(lexer)
 
 
-def stopping_tail(parts, status):
-    return parts[-3:] == ["||", "exit", status]
-
-
 def check_file(path, label):
     findings = []
     calls = 0
@@ -75,45 +71,34 @@ def check_file(path, label):
         if line.strip() != fence:
             block.append((number, line))
             continue
-        pinned = False
-        straight_line = True
+        logical_commands = []
         for source_line, command in commands(block):
             try:
                 parts = tokens(command)
             except ValueError:
+                parts = None
+            if parts or parts is None:
+                logical_commands.append((source_line, command, parts))
+        for source_line, command, parts in logical_commands:
+            if parts is None:
                 if HELPER in command:
                     calls += 1
                     findings.append((source_line, "unparseable helper invocation"))
-                pinned = False
-                continue
-            if not parts:
-                continue
-            if parts[0] in {"if", "elif", "else", "fi", "for", "while", "until", "case", "esac", "do", "done", "function", "{"} or any(p in {"(", ")"} for p in parts):
-                straight_line = False
-            # Only a straight-line command establishes the cwd; a cd in an if,
-            # subshell or another command's string cannot establish this boundary.
-            if straight_line and parts == ["cd", "{execution_cwd}", "||", "exit", "1"]:
-                pinned = True
                 continue
             helper_call = len(parts) > 1 and parts[0] == "bash" and parts[1].endswith("/" + HELPER)
             if helper_call:
                 calls += 1
                 reasons = []
-                if not pinned:
-                    reasons.append("missing same-block cd {execution_cwd} || exit 1")
-                repo_count = parts.count("--repo")
-                if repo_count != 1 or parts[parts.index("--repo") + 1:parts.index("--repo") + 2] != ["{owner_repo}"]:
-                    reasons.append("missing explicit --repo {owner_repo}")
-                if not stopping_tail(parts, "$?") or any(p in {"||", "&&", ";", "|", "(", ")"} for p in parts[:-3]):
-                    reasons.append("helper failure must propagate with || exit $?")
+                for flag, value in (("--repo", "{owner_repo}"), ("--cwd", "{execution_cwd}")):
+                    if parts.count(flag) != 1 or parts[parts.index(flag) + 1:parts.index(flag) + 2] != [value]:
+                        reasons.append("missing explicit " + flag + " " + value)
+                if len(logical_commands) != 1 or any(p in {"||", "&&", ";", "|", "&", "(", ")"} for p in parts):
+                    reasons.append("helper must be the single top-level command; its exit status must propagate")
                 if reasons:
                     findings.append((source_line, "; ".join(reasons)))
             elif any(part.endswith("/" + HELPER) for part in parts):
                 calls += 1
-                findings.append((source_line, "helper invocation must be a direct bash command with || exit $?"))
-            # Any intervening executable line could change scope or cwd. The
-            # boundary must stay adjacent, rather than accepting a distant cd.
-            pinned = False
+                findings.append((source_line, "helper invocation must be a single direct bash command"))
         block = None
     if block is not None:
         findings.append((block[0][0] if block else 1, "unclosed operational shell fence"))

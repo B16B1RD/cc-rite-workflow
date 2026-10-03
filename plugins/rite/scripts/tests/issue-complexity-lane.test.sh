@@ -488,7 +488,14 @@ assert_contains "TC-4.12d: gh stderr の行構造を保つ" "$LANE_STDERR" "$(pr
 [ "$LANE_RC" -eq 0 ] && pass "TC-4.13: issue_fetch_failed でも exit code は 0" \
   || fail "TC-4.13: issue_fetch_failed でも exit code は 0 (実際: $LANE_RC)"
 
-# 散文中の実呼出しを実行し、helper の失敗を consumer が吸収しないことを確かめる。
+# 実呼出し block の終了値を測り、入口identityを保持したままforeign開始cwdを固定する。
+run_lane_with_body "**Complexity**: S"
+for invalid_cwd in relative "" "$TEST_DIR/absent"; do
+  run_lane_with_body "**Complexity**: S" --cwd "$invalid_cwd"
+  [ "$LANE_RC" -eq 1 ] && pass "不正な実行場所で停止" || fail "不正な実行場所: rc=$LANE_RC"
+  assert_not_contains "不正な実行場所はレーンを出さない" "$LANE_STDERR" "COMPLEXITY_LANE="
+done
+ENTRY_OWNER_REPO=$(cd "$TEST_REPO" && bash "$SCRIPT_DIR/../../hooks/scripts/lib/git-remote.sh" resolve-owner-repo | tr '\t' '/')
 for consumer in open pr-review issue-implement; do
   skill="$SCRIPT_DIR/../../skills/$consumer/SKILL.md"
   block=$(awk '
@@ -500,19 +507,23 @@ for consumer in open pr-review issue-implement; do
     inside { body=body $0 "\n" }
   ' "$skill")
   [ -n "$block" ] || { fail "$consumer の実呼出し block が無い"; continue; }
-  for mode in mismatch authentication; do
+  for mode in mismatch pinned authentication; do
     execution_cwd="$foreign_repo"; bindir="$TEST_DIR/bin"
+    [ "$mode" = pinned ] && execution_cwd="$TEST_REPO"
     [ "$mode" = authentication ] && execution_cwd="$TEST_REPO" && bindir="$TEST_DIR/bin-fail"
     printf '%s\n' "$block" | sed \
       -e "s|{execution_cwd}|$execution_cwd|g" \
       -e "s|{plugin_root}|$SCRIPT_DIR/../..|g" \
       -e 's|{issue_number}|42|g' -e 's|{owner_repo}|$ENTRY_OWNER_REPO|g' > "$TEST_DIR/consumer.sh"
-    printf '\necho CONSUMER_CONTINUED\n' >> "$TEST_DIR/consumer.sh"
-    ENTRY_OWNER_REPO=$(cd "$TEST_REPO" && bash "$SCRIPT_DIR/../../hooks/scripts/lib/git-remote.sh" resolve-owner-repo | tr '\t' '/')
-    LANE_STDERR=$(ENTRY_OWNER_REPO="$ENTRY_OWNER_REPO" PATH="$bindir:$PATH" bash "$TEST_DIR/consumer.sh" 2>&1); LANE_RC=$?
+    # A single tool block returns the helper status; only success permits the next phase.
+    LANE_STDERR=$(cd "$foreign_repo" && ENTRY_OWNER_REPO="$ENTRY_OWNER_REPO" RITE_TEST_BODY_FILE="$TEST_DIR/body.txt" PATH="$bindir:$PATH" bash "$TEST_DIR/consumer.sh" 2>&1); LANE_RC=$?
+    [ "$LANE_RC" -eq 0 ] && LANE_STDERR="$LANE_STDERR CONSUMER_CONTINUED"
     if [ "$mode" = mismatch ]; then
       [ "$LANE_RC" -eq 1 ] && pass "$consumer: context 失敗が停止へ伝播" || fail "$consumer: rc=$LANE_RC"
       assert_not_contains "$consumer: context 失敗後に続行しない" "$LANE_STDERR" "CONSUMER_CONTINUED"
+    elif [ "$mode" = pinned ]; then
+      [ "$LANE_RC" -eq 0 ] && pass "$consumer: foreign 開始 cwd から入口の固定先で成功" || fail "$consumer: rc=$LANE_RC"
+      assert_contains "$consumer: 固定先の Issue を取得" "$LANE_STDERR" "COMPLEXITY_LANE=light; complexity=S"
     else
       [ "$LANE_RC" -eq 0 ] && pass "$consumer: 認証失敗 fallback を保全" || fail "$consumer: rc=$LANE_RC"
       assert_contains "$consumer: 認証失敗は issue_fetch_failed" "$LANE_STDERR" "reason=issue_fetch_failed"

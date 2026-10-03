@@ -525,8 +525,7 @@ rationale: references/rationale.md#plan-self-review
 `{owner_repo}` は最外側 skill 入口で一度解決して保持した対象 identity を使う。nested 呼出しでは引き継ぎ、現在 cwd から再解決して上書きしない。固定した作業先へ移ってもこの値は変えない。
 
 ```bash
-cd "{execution_cwd}" || exit 1
-bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number} --repo {owner_repo} || exit $?
+bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number} --repo {owner_repo} --cwd "{execution_cwd}"
 ```
 
 | `complexity=` | アクション |
