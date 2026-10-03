@@ -2,6 +2,10 @@
 
 ## 2026-10-03
 
+* **Create**: [cd の中に mktemp -d を入れ子にすると失敗時に cwd が一時ディレクトリ扱いになり trap の rm -rf が作業ツリーを消す](pages/anti-patterns/nested-mktemp-in-cd-turns-failure-into-cwd-deletion.md) — [修正結果](raw/fixes/20261003T004841Z-pr-3635.md)と[レビュー結果](raw/reviews/20261003T004319Z-pr-3635.md)から新規ページ化
+* **Create**: [テスト fixture の前提ガードは return 1 だけにせず原因を ERROR で出す](pages/patterns/test-fixture-guards-print-error-before-return.md) — [レビュー結果](raw/reviews/20261003T004319Z-pr-3635.md)から新規ページ化
+* **Create**: [CI 設定を grep で検査するときは matrix の行だけでなく job が実際に走る条件も固定する](pages/heuristics/ci-workflow-static-check-pins-job-execution-not-only-matrix.md) — [レビュー結果](raw/reviews/20261003T004319Z-pr-3635.md)と[再レビュー結果](raw/reviews/20261003T005948Z-pr-3635-c2.md)から新規ページ化
+
 * **Update**: [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) — macOS 3 shard の時間・排他的配置・失敗伝播の実測を統合
 
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=693, broken_refs=0

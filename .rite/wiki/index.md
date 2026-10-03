@@ -678,9 +678,12 @@ okf_version: "0.2"
 | [手順の要約を直すときは、その文言を固定しているテストも同時に直す](pages/heuristics/summary-phrase-edit-updates-pinning-tests.md) | heuristics | 手順が掲げる要約の文言を直すときは、その文言を正規表現で固定しているテストも同じ変更に含める。直す前にその文言でテストを検索し、検証の最後で初めて欠落に気づいて範囲を取り直す手戻りを避ける。 | 2026-10-01T04:06:42Z | medium |
 | [停止で終える分岐から sub-skill を呼ぶときは、sub-skill が張った完了 handoff を phase を変えずに消してから止まる](pages/patterns/stop-path-clears-subskill-completion-handoff.md) | patterns | 停止で終える分岐の手前に sub-skill を呼ぶ経路を足すと、sub-skill が戻りで張る完了 handoff が残り、Stop hook が停止を完了経路へ差し戻す。停止通知の前に handoff なしの set で消し、その set は phase を現在値のまま書く。 | 2026-10-01T16:55:00Z | high |
 | [手順書の分岐行に書く理由欄は参照先 skill の停止規則を読み直してから書き、対になる記述を同時に揃える](pages/heuristics/branch-row-rationale-must-match-referenced-skill-behavior.md) | heuristics | 手順書の分岐表に行を足すとき、行き先が正しくても理由欄の断定（失敗ではない・条件が残ったときに限って止まる等）が参照先 skill の実挙動より広いと、実行者が誤読して転記や停止報告を省く。理由欄は参照先の停止規則を読み直して限定し、同じ節で対になる記述（default 行と失敗理由欄など）は片側だけ直さず同時に開いて揃える。 | 2026-10-02T03:10:00+09:00 | high |
+| [cd の中に mktemp -d を入れ子にすると失敗時に cwd が一時ディレクトリ扱いになり trap の rm -rf が作業ツリーを消す](pages/anti-patterns/nested-mktemp-in-cd-turns-failure-into-cwd-deletion.md) | anti-patterns | TEST_ROOT=$(cd "$(mktemp -d)" && pwd -P) は mktemp が失敗しても失敗せず、cd に空文字が渡って rc 0 のまま cwd に留まる。EXIT trap が rm -rf で TEST_ROOT を消すテストでは、checkout や未コミット変更ごと失う。mktemp と cd を 2 ステップに分けて失敗をその場で止める。 | 2026-10-03T01:15:00Z | high |
+| [テスト fixture の前提ガードは return 1 だけにせず原因を ERROR で出す](pages/patterns/test-fixture-guards-print-error-before-return.md) | patterns | set -e 下で fixture 構築のガードが return 1 だけで失敗すると、出力ゼロで終了し、CI の失敗サマリは原因を拾えない。各ガードを ERROR で始まる 1 行つきの失敗にすれば、サマリの grep が原因を示す。 | 2026-10-03T01:15:00Z | medium |
+| [CI 設定を grep で検査するときは matrix の行だけでなく job が実際に走る条件も固定する](pages/heuristics/ci-workflow-static-check-pins-job-execution-not-only-matrix.md) | heuristics | ジョブが両 OS で走ることを静的検査で守るとき、matrix 行と continue-on-error の不在だけを見ると、runs-on の固定化や job の if: false で片方の OS が消えても検査を通る。runs-on が matrix 値を参照することと、job 直下に実行条件が無いことも固定する。 | 2026-10-03T01:15:00Z | medium |
 ## 統計
 
-- 総ページ数: 668
-- ドメイン別: patterns=142, heuristics=334, anti-patterns=192
-- 最終更新: 2026-10-02T16:08:32Z
+- 総ページ数: 671
+- ドメイン別: patterns=143, heuristics=335, anti-patterns=193
+- 最終更新: 2026-10-03T01:15:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
