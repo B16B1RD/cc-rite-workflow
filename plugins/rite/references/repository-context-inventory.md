@@ -234,7 +234,7 @@ Complexity の三つの consumer は固定 cwd だけでは repo 引数を持た
 | `hooks/scripts/lib/git-remote.sh` (1) | `url=$(git config --get remote.origin.url 2>/dev/null)` | R | 壊れない（固定cwd）、除外 | 入口・helperの対象cwdを固定すると同じorigin。非固定単体foreignでは別repoへ解決され壊れる |
 | `hooks/scripts/lib/git-remote.sh` (2) | `echo "ERROR: git-remote.sh: unknown subcommand '${1:-}' (expected: resolve-owner-repo)" >&2` | R | 呼出し対象外 | 診断・usage・参照文字列で実操作しない |
 | `hooks/scripts/lib/rite-config-path.sh` (1) | `top=$(cd "$dir" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null) ¦¦ top=""` | W | 壊れない（明示対象）、除外 | 式の対象パスへ git -C / cd / resolver引数で固定。引数が入口の対象であることを保持 |
-| `hooks/scripts/lib/rite-config-path.sh` (2) | `resolver="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/state-path-resolve.sh"` | S | 壊れない（固定cwd）、除外 | 既存入口の対象cwdで共有state rootを解決。非固定単体foreignでは別stateへ解決され壊れる |
+| `hooks/scripts/lib/rite-config-path.sh` (2) | `resolver="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/state-path-resolve.sh"` | 対象外 | 呼出し対象外（配布パス探索） | 実行中helperの配布パスからresolverのファイル名を組み立てる式。state rootの解決は後続のresolver呼出しが明示したdirで行う |
 | `hooks/scripts/lib/rite-config-path.sh` (3) | `printf 'main checkout root を解決できません (state-path-resolve.sh rc=%s, dir=%s)\n' "$rc" "$dir" >&2` | S | 呼出し対象外 | 診断・usage・参照文字列で実操作しない |
 | `hooks/scripts/lib/worktree-git.sh` (1) | `wt_head=$(git -C "$worktree" rev-parse --abbrev-ref HEAD 2>"${rev_parse_err:-/dev/null}")` | W | 壊れない（明示対象）、除外 | 式の対象パスへ git -C / cd / resolver引数で固定。引数が入口の対象であることを保持 |
 | `hooks/scripts/lib/worktree-git.sh` (2) | `echo "ERROR: git -C '$worktree' rev-parse --abbrev-ref HEAD が失敗しました (rc=$wt_head_rc)" >&2` | W | 呼出し対象外 | 診断・usage・参照文字列で実操作しない |
