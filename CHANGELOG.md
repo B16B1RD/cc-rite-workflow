@@ -39,7 +39,7 @@ Past version sections carry none either — they have already been stripped.
 - **Review start with a sandbox stub present** — `/rite:pr-review` can start the next review even when a sandbox stub exists.
 - **Issue claim hand-over from an abnormally terminated holder** — `/rite:open` and related skills take over an Issue without waiting for the work of a holder that terminated abnormally.
 - **Review stagnation verification across runtime-state changes** — the comparison against already-verified code no longer stops when runtime state changes.
-- **`/rite:merge` CI wait** — the CI wait continues across block boundaries.
+- **`/rite:merge` waits for a long-running CI to finish** — the wait no longer stops as not-ready while checks are still pending.
 
 ### Changed
 
