@@ -8,6 +8,7 @@
 * **Skip**: [20261003T000100Z-pr-3634-cycle2.md](raw/reviews/20261003T000100Z-pr-3634-cycle2.md) — detector-candidate: 内部継続シグナルの契約表同期は既存整合検査とプラグイン機構で保証する
 * **Skip**: [20261002T235141Z-pr-3634-fix.md](raw/reviews/20261002T235141Z-pr-3634-fix.md) — detector-candidate: 内部継続シグナルの契約表同期は既存整合検査とプラグイン機構で保証する
 * **Skip**: [20261002T234827Z-pr-3634.md](raw/reviews/20261002T234827Z-pr-3634.md) — detector-candidate: 内部継続シグナルの契約表同期は既存整合検査とプラグイン機構で保証する
+* **lint:warning**: 孤児・欠落・壊れた参照は0件、陳腐化66件、意図的skipの未登録raw696件。今回ページ変更なし。同テーマ候補の詳細に矛盾なし。全ページの方針逆転の精査は未実施、検査helperからBroken pipe警告を観測（読出statusは成功）。
 
 ## 2026-10-02
 
