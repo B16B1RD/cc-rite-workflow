@@ -22,6 +22,7 @@
 * **Skip**: [レビュー・修正記録](raw/fixes/20261003T030243Z-pr-3638.md) — detector-candidate: 疑似runtime fixtureは実プロセス祖先をモデル化し、実runtimeのないCI環境で回帰検証する。実装と回帰テストへ組込み済み
 * **Skip**: [レビュー・修正記録](raw/reviews/20261003T025757Z-pr-3638.md) — detector-candidate: 疑似runtime fixtureは実プロセス祖先をモデル化し、実runtimeのないCI環境で回帰検証する。実装と回帰テストへ組込み済み
 * **Skip**: [レビュー・修正記録](raw/reviews/20261003T031143Z-pr-3638.md) — 一時的なレビュー完了・CI成功の記録であり、新たな経験則はない
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=700, broken_refs=0
 
 ## 2026-10-02
 
