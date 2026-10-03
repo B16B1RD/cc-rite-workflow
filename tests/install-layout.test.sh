@@ -19,8 +19,11 @@ for tool in jq git; do
 done
 
 # Resolve symlinks once (macOS mktemp lives under /var -> /private/var) so every
-# path comparison below is between real paths.
-TEST_ROOT=$(cd "$(mktemp -d)" && pwd -P)
+# path comparison below is between real paths. Two steps: nesting mktemp inside cd
+# turns a failed mktemp into cd "" (rc 0, stays in the cwd), and the trap below
+# would then delete the cwd.
+TEST_ROOT=$(mktemp -d) || exit 1
+TEST_ROOT=$(cd "$TEST_ROOT" && pwd -P) || exit 1
 trap 'rm -rf "$TEST_ROOT"' EXIT
 PASS=0
 FAIL=0
