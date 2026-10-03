@@ -2,6 +2,9 @@
 
 ## 2026-10-03
 
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=701, broken_refs=0
+* **lint:scope** — 今回の新規ページを含め全ページのタイトル衝突なし。方針逆転の全本文精査は未実施。番号参照は0件。陳腐化と意図的skipは informational 指標。
+
 * **Create**: [リリースノートの項目はコミット件名の内部用語を写さず、利用者に見える効果で書く](pages/heuristics/release-note-entry-states-user-visible-effect.md) — レビュー結果（リリース準備）を新規ページ化
 * **Update**: [リリースノートの項目はコミット件名の内部用語を写さず、利用者に見える効果で書く](pages/heuristics/release-note-entry-states-user-visible-effect.md) — fix 結果（書き換えの記録）を統合
 * **Update**: [リリースノートの項目はコミット件名の内部用語を写さず、利用者に見える効果で書く](pages/heuristics/release-note-entry-states-user-visible-effect.md) — 差分スコープのレビュー結果（解消の確認）を統合
