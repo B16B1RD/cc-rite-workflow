@@ -1000,6 +1000,11 @@ _fu_priority="Medium"
 _fu_body_jq='
   def dash: if . == null or . == "" then "—" else tostring end;
   def quote: tostring | split("\n") | map("> " + .) | join("\n");
+  # acceptance is a string. Only explicit checklist items delimit criteria;
+  # ordinary newlines remain part of the original criterion text.
+  def acceptance_lines:
+    (if startswith("- [ ] ") then ltrimstr("- [ ] ") | split("\n- [ ] ") else [.] end)
+    | to_entries | map("- [ ] AC-\(.key + 1): \(.value)");
   . as $v | $v.record as $r | ($v.action == "investigate") as $inv
   | [$cands[] | select(.id as $i | $v.ids | index($i))] as $mine
   | ($mine | map(select(.kind == "finding"))) as $f
@@ -1014,7 +1019,7 @@ _fu_body_jq='
        else "- 引用なし（契約が未確定の疑義）" end),
       "", "## 根拠", "",
       (if ($r.evidence // "") != "" then $r.evidence else "未確定: \($r.reason | dash)" end),
-      "", "## 受入条件", "", "- [ ] \($r.acceptance)" ]
+      "", "## 受入条件", "" ] + ($r.acceptance | acceptance_lines)
     + (if $inv then
         [ "", "## 調査", "",
           "- 命題: \($r.proposition.claim | dash)",

@@ -1232,6 +1232,43 @@ else
   fail "T-46 プレビュー本文と起票本文が一致しない"
 fi
 
+# AC IDs are assigned by the writer; the real strict reader must accept the body.
+extract_out=$(bash "$PLUGIN_ROOT/scripts/acceptance-criteria-check.sh" extract --body-file "$preview"); extract_rc=$?
+assert "T-46 AC writer: single condition ID" "- [ ] AC-1: テストの受入条件" "$(sed -n '/^- \[ \] AC-/p' "$preview")"
+assert "T-46 AC writer: strict reader exit" "0" "$extract_rc"
+assert "T-46 AC writer: strict reader IDs" "AC-1" "$extract_out"
+
+# A string may contain explicit checklist criteria. Keep text and order intact.
+for ac_case in multiple continuation; do
+  reset_stubs
+  r=$(new_root "t46-ac-$ac_case")
+  put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-01","reviewer":"test-reviewer","severity":"LOW","file":"a.md","line":1,"description":"first","suggestion":"fix"}]}'
+  auto_adopt --base develop --pr 9 --owner acme --repo demo --source-issue 42 --state-root "$r"
+  if [ "$ac_case" = multiple ]; then
+    ac_text=$'- [ ] first: `value`\n- [ ] second 日本語\n- [ ] third $literal'
+    expected=$'- [ ] AC-1: first: `value`\n- [ ] AC-2: second 日本語\n- [ ] AC-3: third $literal'
+    ids=AC-1,AC-2,AC-3
+  else
+    ac_text=$'first line\n  continuation 日本語'
+    expected=$'- [ ] AC-1: first line\n  continuation 日本語'
+    ids=AC-1
+  fi
+  jq --arg text "$ac_text" '.adoption.records[0].acceptance = $text' "$AUTO_ADOPTION" > "$TMP_ROOT/ac-record.json"
+  ADOPT_MODE=manual
+  preview="$TMP_ROOT/t46-ac-$ac_case.md"
+  run_target "$r" --adoption "$TMP_ROOT/ac-record.json" --preview-body "$preview"
+  assert "T-46 $ac_case preview exit" "0" "$RC"
+  actual=$(sed -n '/^## 受入条件$/,/^## 出典$/p' "$preview" | sed '1,2d;$d' | sed '${/^$/d;}')
+  assert "T-46 $ac_case criterion text/order preserved" "$expected" "$actual"
+  extract_out=$(bash "$PLUGIN_ROOT/scripts/acceptance-criteria-check.sh" extract --body-file "$preview"); extract_rc=$?
+  assert "T-46 $ac_case real strict reader exit" "0" "$extract_rc"
+  assert "T-46 $ac_case real strict reader IDs" "$ids" "$extract_out"
+  run_target "$r" --adoption "$TMP_ROOT/ac-record.json"
+  assert "T-46 $ac_case filing exit" "0" "$RC"
+  if cmp -s "$preview" "$STUB_DIR/body.md"; then pass "T-46 $ac_case preview equals filed body"; else fail "T-46 $ac_case preview differs"; fi
+  ADOPT_MODE=auto
+done
+
 echo "--- T-47: --preview-body でも 0 件・全件起票済み・既存は従来の skip で終わる ---"
 reset_stubs
 r=$(new_root t47)
@@ -2332,7 +2369,7 @@ assert "T-85 契約の節" "1" "$(grep -cxF '## 契約' "$STUB_DIR/body-60.md")"
 assert_grep "T-85 契約の引用元" "$STUB_DIR/body-60.md" '^- 引用元: `pr`$'
 assert_grep "T-85 契約の原文を引用する" "$STUB_DIR/body-60.md" "^> ${PR_CONTRACT_LINE}\$"
 assert "T-85 根拠" "再現: 空の入力で exit 0 になる" "$(awk '/^## 根拠$/ { getline; getline; print; exit }' "$STUB_DIR/body-60.md")"
-assert "T-85 受入条件" "- [ ] Given 空の入力, When 実行する, Then exit 1 になる" "$(awk '/^## 受入条件$/ { getline; getline; print; exit }' "$STUB_DIR/body-60.md")"
+assert "T-85 受入条件" "- [ ] AC-1: Given 空の入力, When 実行する, Then exit 1 になる" "$(awk '/^## 受入条件$/ { getline; getline; print; exit }' "$STUB_DIR/body-60.md")"
 assert_grep "T-85 対象 commit" "$STUB_DIR/body-60.md" "^- 対象 commit: \`${TEST_HEAD}\`\$"
 assert_grep "T-85 元 Issue へ起票した番号をまとめてコメント" "$GH_COMMENT_LOG" 'issue comment 42'
 assert "T-85 判定済み記録" "pr=9" "$(cat "$r/$JUDGED_RECORD_REL" 2>/dev/null)"
@@ -2451,7 +2488,7 @@ assert "T-87 タイトルは調査" "follow-up: PR #9 の調査（残存する�
 assert_grep "T-87 命題" "$STUB_DIR/body.md" '^- 命題: 空の入力が通る$'
 assert_grep "T-87 到達条件とその出所" "$STUB_DIR/body.md" '^- 到達条件: tool "" を実行する（出所: a.md:3）$'
 assert_grep "T-87 完了条件" "$STUB_DIR/body.md" '^- 完了条件: exit code を観測した$'
-assert_grep "T-87 受入条件" "$STUB_DIR/body.md" '^- \[ \] Given 空の入力, When 実行する, Then exit 1 になる$'
+assert_grep "T-87 受入条件" "$STUB_DIR/body.md" '^- \[ \] AC-1: Given 空の入力, When 実行する, Then exit 1 になる$'
 assert_grep "T-87 未確定の根拠は理由を書く" "$STUB_DIR/body.md" '^未確定: 再現できていない$'
 assert_grep "T-87 採否の出口" "$STUB_DIR/body.md" '^- 採否: DIAGNOSE / investigate（origin=pre_existing）$'
 
