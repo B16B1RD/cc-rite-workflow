@@ -4398,3 +4398,5 @@ T02:22:43+09:00 — review ingest (skip pages)
   detail: "作成前の図の判定規則はプラグイン本文と回帰テストに反映済み。独立したプロジェクトドメイン経験則なし。"
 
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=726, broken_refs=0
+
+* **Skip**: [確認版照合の検証記録](raw/reviews/20261004T174709Z-pr-3676.md) — 確認版照合の手順と生成検証はプラグインへ反映済み。追加のドメイン経験則なし。
