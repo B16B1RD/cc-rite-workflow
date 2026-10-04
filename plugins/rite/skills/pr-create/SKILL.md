@@ -704,6 +704,8 @@ echo "[CONTEXT] PR_CREATE_WORKDIR=$pr_workdir"
 3. 新規生成または描き直しで SVG を選んだときだけ `{PR_CREATE_WORKDIR}/diagram.svg` ← テーマ中立の図。本文の参照と添付は同じ絶対パスを使う。再掲時は書かない
 4. `{PR_CREATE_WORKDIR}/attachments.json` ← その SVG の絶対パス配列。再掲・図なし・Mermaid は必ず `[]` を書く
 
+(C) の前に [読みやすさ点検](../../references/body-readability-check.md) を title / body と本文参照のローカル SVG に実行する。共通の図条件検査を通過した本文だけを対象にし、書き直し後も再検査して作成用ファイルへ反映する。
+
 **(C) gh pr create（単一 bash block）**
 
 > `{PR_CREATE_WORKDIR}` は (A) の CONTEXT marker から literal 置換し、冒頭で `pr_workdir` に束縛する。以降は `$pr_workdir` のみ。title は変数経由（bash に inline しない）。cleanup は **signal-specific trap**（空 body / 空 title / `gh` 失敗 / SIGINT/TERM/HUP）。空 title / 空 body は対称にガードする。[bash-trap-patterns.md](../../references/bash-trap-patterns.md#signal-specific-trap-template)

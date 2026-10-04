@@ -263,6 +263,8 @@ File 列のセルが実パス ⇔ (`/` を含む、または `.` + 英数字の�
 
 ### 4.3 Issue 作成 + Projects 登録
 
+作成前に [読みやすさ点検](../../references/body-readability-check.md) をタイトル・本文と本文参照のローカル SVG に実行する。本文ファクトチェックと共通の図条件検査を通過した本文だけを対象にし、書き直し後も再検査する。
+
 `create-issue-with-projects.sh` に委譲（Issue 作成 + Projects 追加 + status / priority / complexity 設定を 1 ステップで実行）。実 interface は JSON 単一引数 + body は tmpfile 経由（canonical SoT: [`issue-create-with-projects.md`](../../references/issue-create-with-projects.md)）:
 
 > **フィールド名のローカライズ配線**: `rite-config.yml` の `github.projects.fields.{status,priority,complexity}.name`（任意）を読み取り、`{field_name_status}` / `{field_name_priority}` / `{field_name_complexity}` に展開する。未設定のキーは空文字とする（priority / complexity は helper 側で内蔵の英日エイリアス + 英語正準名にフォールバックし、status は `hooks/scripts/lib/projects-status-config.sh` の候補（`ステータス` → `Status`）で解決するため、日本語フィールド名 Project でもゼロ設定で解決する）。これらは helper 入力 JSON の `projects.field_names` に additive に詰められる。
@@ -445,7 +447,7 @@ echo "[CONTEXT] DECOMPOSE_WORKDIR=$workdir"
 
 **(B) body / spec の生成（Write tool）**
 
-分解経路の親も共通選択表に従う。親に SVG を付けるときは spec.json の `parent.attachments` に絶対パスを書く（省略時は `[]`）。Sub-Issue も本文単独で変更範囲が分かる図を置く（既存図で足りれば再掲可）。新規 SVG とローカル SVG の再掲は各 `sub_issues[i].attachments` に絶対パスを渡す。既存添付 URL / Mermaid の再掲は `[]`。Step 4.2 の上段要約・契約層と共通の図条件の作成前検査 Bash を親と各子の body ファイルに実行し、違反時は (C) を呼ばず当該本文を再生成する。
+分解経路の親も共通選択表に従う。親に SVG を付けるときは spec.json の `parent.attachments` に絶対パスを書く（省略時は `[]`）。Sub-Issue も本文単独で変更範囲が分かる図を置く（既存図で足りれば再掲可）。新規 SVG とローカル SVG の再掲は各 `sub_issues[i].attachments` に絶対パスを渡す。既存添付 URL / Mermaid の再掲は `[]`。Step 4.2 の上段要約・契約層と共通の図条件の作成前検査 Bash を親と各子の body ファイルに実行し、違反時は (C) を呼ばず当該本文を再生成する。 通過後は [読みやすさ点検](../../references/body-readability-check.md) を親と各子のタイトル・本文と各本文参照のローカル SVG に独立して実行し、更新を spec と body に反映してから (C) へ進む。
 
 直前の `[CONTEXT] DECOMPOSE_WORKDIR=` から `{DECOMPOSE_WORKDIR}` を読み取り、以下を **Write tool** で書く（heredoc を使わない）:
 
