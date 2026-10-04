@@ -28,6 +28,9 @@
 
 * **Skip**: [レビュー結果](raw/reviews/20261004T170548Z-pr-3675.md) — ワークフローの生成規則と検証はプラグインへ反映済みで、独立したプロジェクトドメイン経験則がない。
 
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=728, broken_refs=0
+* 矛盾の再検証は今回変更した知見を対象とする。ページ本文の変更はなく、新しい矛盾はない。
+
 
 ## 2026-10-03
 
