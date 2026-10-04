@@ -21,6 +21,7 @@
 
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=721, broken_refs=0
 * **Skip**: [20261004T132800Z-pr-3663.md](raw/reviews/20261004T132800Z-pr-3663.md) — 単一の文言変更の検証記録。詳細除外の指示は共通 reference に実装済みで、独立した経験則の追加はない
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=725, broken_refs=0
 
 ## 2026-10-03
 
