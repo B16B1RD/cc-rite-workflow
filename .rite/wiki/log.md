@@ -4400,3 +4400,5 @@ T02:22:43+09:00 — review ingest (skip pages)
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=726, broken_refs=0
 
 * **Skip**: [確認版照合の検証記録](raw/reviews/20261004T174709Z-pr-3676.md) — 確認版照合の手順と生成検証はプラグインへ反映済み。追加のドメイン経験則なし。
+
+* **Lint (auto)** — stale=67, orphans=0, broken_refs=0, descriptive_number_ref=0。機械検査の読取は完了。ページ追加・更新なし。全ページの意味的な矛盾比較は未実施。
