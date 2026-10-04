@@ -169,15 +169,18 @@ SoT で、本ログには保持しない。
 
 ## lint-parser-first-line
 
-ステップ 8.3 の parser は 1 行目の `^Lint: contradictions=` regex のみに依存する。2 行目以降の
-disambiguator 追加は互換性に影響しない。全行 scan + 最初の match は、lint 側の preamble /
-debug / banner 混入に対する resilience。stdout 空は lint 契約（0 件でも `Lint:` 1 行必須）に
-反する異常経路（syntax error / 未捕捉 fatal / SIGPIPE / OOM）。lint 総出力は 3 行でも、parser
-が依存するのは `^Lint:` の data 行だけ。format mismatch を silent に 0 件と誤認しないために
-anomaly 計上する。
+ステップ 8.3 はエラー・正常 sentinel の欠落を成功 data 行より先に検査する。応答を
+確認できないのに 0 件へ fallback すると、比較できなかった状態が「問題なし」に見える。
+全行 scan + 最初の `^Lint:` match は preamble/debug 混入への互換性として正常経路に残す。
+正常時の 6 フィールドと 3 行 return は保持し、比較の件数は log に残す。
 
-Skill ツール呼び出しはシェル exit code を返さない。以降の「stdout」は Skill 応答テキストを
-指し、lint 内部の中間出力（`pages_list=` 等）ではない。
+Skill ツール呼び出しはシェル exit code を返さないため、判定対象は Skill 応答テキストである。
+
+## pending-comparison
+
+取り込み済み raw の再列挙だけでは、中断直前に書いたページを再開時の比較から落とす。
+書き込み前に変更先を保存し、正常比較後まで保持すると、write 中断と lint 中断の双方で
+対象を失わない。共有の Wiki を変更する操作は既存 ingest lock で直列化する。
 
 ## n-unregistered-not-warning
 

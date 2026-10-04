@@ -233,13 +233,24 @@ fi
 | `n_pages_created` | 0 | ステップ 4 で「新規ページ作成」決定ごとに +1 |
 | `n_pages_updated` | 0 | ステップ 4 で「既存ページ更新」決定ごとに +1 |
 | `n_skipped` | 0 | ステップ 4 で「スキップ」決定ごとに +1 |
-| `n_warnings` | 0 | ステップ 8.5 で Lint の検出件数合計（`n_stale` / `n_unregistered_raw` を除く 4 カテゴリ）を加算。加えて ステップ 8.3 の Lint 実行異常検出時 `n_warnings += 1` と `n_lint_anomaly += 1` を並行加算 |
-| `n_lint_anomaly` | 0 | ステップ 8.3 step 1/3/4 (ERROR 行検出 / stdout 空 / regex mismatch) でそれぞれ +1。`n_warnings` と並行加算 |
+| `n_warnings` | 0 | ステップ 8.5 で Lint の検出件数合計（`n_stale` / `n_unregistered_raw` を除く 4 カテゴリ）を加算。Lint 実行異常は件数への fallback ではなく停止する |
+| `n_lint_anomaly` | 0 | 正常経路では 0。Lint 実行異常は完了レポートへ進まず停止 |
 | `n_dedup_removed` | 0 | ステップ 6 の各 helper 呼び出しが出力する `dedup_removed=` の値を加算 |
 | `n_contradictions` / `n_stale` / `n_orphans` / `n_missing_concept` / `n_unregistered_raw` / `n_broken_refs` | 0 | ステップ 8.3 step 2 (6 フィールド regex match) で Lint stdout から抽出 |
 
 `n_stale` と `n_unregistered_raw` と `n_dedup_removed` は informational で `n_warnings` には加算しない。`auto_lint=false` で 8.2-8.5 が skip されても、本ステップの 0 初期化でステップ 9 の placeholder 残留は起きない。
 rationale: references/rationale.md#informational-counters
+
+### 2.1.c 変更一覧の保持
+
+ステップ 1.4 の ingest lock を保持したまま、`state-path-resolve.sh` が返す共有 root の `.rite/state/wiki-lint-pending.json` を `changed_pages_file` とする。内容は repo-root 相対のページパスを持つ JSON 配列。新規取り込みは最初の Raw Source / ページ変更**より前**に `[]` を Write して読み直す。既存ファイルがある場合は中断した比較対象として読み、破棄・空への再初期化をしない。読取/JSON 解析/保存失敗は比較不能として停止する。
+
+ページの Write/Edit に進む前に、その書き込み先パスを重複除去して一覧へ保存・読み直し、保存できたことを確認してから書く（書き込み途中の中断でも検査対象を失わない）。ページ書き込みが失敗した場合は取り込みを止め、準備済み対象を保持する。ステップ 8.2 に進む前には、全対象の書き込み成功・実在を確認する。新規/更新/複数 raw の統合だけを含め、skip した raw、index.md、log.md は含めない。変更リストはステップ 4 の推測カウンタや `ingested: false` の再列挙で作り直さない。
+
+再開はこの一覧を引き継ぎ、まだ書き込みが済んでいない対象があれば既存作業メモリと raw 本文から書き込みを完了させる。既に `ingested: true` の raw によるページも比較し終えるまで対象に残す。複数セッション間も ingest lock の下で扱い、一覧があるのに raw 0 件として早期終了しない。`auto_lint=false` の明示設定ではこの一覧を自動検査成功として消さず、再度有効化したときに検査する。
+rationale: references/rationale.md#pending-comparison
+
+一覧の読取・保存・ページ書込・再開時の書込確認に失敗した場合も、8.3 の比較不能時と同じ停止処理（原因表示・lock 解放・失敗 marker・継続 handoff 解除）を適用する。保存一覧が非空のときは Wiki 無効・未初期化による早期 return で成功を返さず、この停止処理を使う。
 
 ### 2.2 候補 Raw Source の列挙 (worktree ベース)
 
@@ -348,7 +359,7 @@ fi
 [ -n "$cat_err" ] && rm -f "$cat_err"
 ```
 
-**処理対象が 0 件の場合**: 早期 return:
+**処理対象が 0 件の場合**: `changed_pages_file` が存在する場合は早期 return せず、保存した一覧（`[]` も含む）を使ってステップ 8 の Lint へ進む。一覧も無い場合のみ lock を解放して早期 return:
 
 ```
 未 Ingest の Raw Source は見つかりませんでした。
@@ -479,7 +490,7 @@ rationale: references/rationale.md#related-page-literal
 
 ## ステップ 5: ページの書き込み
 
-ステップ 4 で決定したアクション (新規 / 更新) を、ブランチ戦略に応じて適用する。
+ステップ 4 で決定したアクション (新規 / 更新) を、ブランチ戦略に応じて適用する。各ページの Write/Edit 前に 2.1.c の変更一覧へ書き込み先を保存し、保存検証後だけ書く。失敗したら比較不能として停止する。
 
 ### 5.0 LLM が実行すべき具体的手順 (worktree ベース)
 
@@ -977,11 +988,11 @@ echo "auto_lint=$auto_lint"
 
 ### 8.2 Lint エンジンの呼び出し
 
-LLM は `skill: "rite:wiki-lint", args: "--auto"` 形式で `/rite:wiki-lint` を `--auto` モードで呼び出す。`--auto` モードの契約:
+LLM は `skill: "rite:wiki-lint", args: "--auto --changed-pages-file {changed_pages_file}"` 形式で `/rite:wiki-lint` を `--auto` モードで呼び出す。`--auto` モードの契約:
 
 - `Lint: contradictions={n}, stale={n}, orphans={n}, missing_concept={n}, unregistered_raw={n}, broken_refs={n}` 形式の 1 行 + `<!-- skill return signal: caller must continue next step -->` + `<!-- [lint:returned-to-caller:auto] -->` HTML コメント sentinel の 3 行を出力する (0 件でも必ず出力)
 - log.md への追記は lint.md 側がブランチ状態を判定し自律実行する
-- 常に exit 0 (非ブロッキング)
+- 正常な比較完了時のみ exit 0。比較不能は `WIKI_CONTRADICTION_CHECK=failed; reason=...` と `ERROR:` を返し、正常 return sentinel は出さない。`changed_pages_file` は 2.1.c の絶対パスを渡す。全対象の書き込み成功を確認できない、または一覧を渡せない場合は呼出しを成功扱いにせず停止する。
 rationale: references/rationale.md#lint-parser-first-line
 
 呼び出し時の CWD は常に dev ブランチ。wiki-lint のステップ 8.2 が log.md の書き込み先を決め（`separate_branch` では worktree 内）、wiki-lint のステップ 8.3 が追記して `wiki-lint-log-commit.sh` で commit する（`--auto` かつ `separate_branch` では commit のみで、push は本スキルのステップ 8.6 が行う）。Skill return 後、本スキルの 8.3 → 8.4 → 8.5 → 8.6 → ステップ 9 の順。
@@ -990,44 +1001,10 @@ rationale: references/rationale.md#lint-parser-first-line
 
 LLM は Skill 応答テキスト (= `lint.md` ステップ 9.2 の最終 stdout) を会話コンテキストからパースする。**Skill 応答テキストの内容**で成否を判定する。
 
-判定優先順位 (step 番号は **項目の論理的役割の名称** であり実行順とは異なる):
+**最初に失敗を検査し、成功 regex より優先する**:
 
-```
-優先 1: step 2 (6 フィールド regex match) を試行
-  ├─ match 成功 → 6 変数を抽出して continue (step 1 / 3 / 4 は skip)
-  └─ match 失敗 → 優先 2 へ
-
-優先 2: step 1 (ERROR 行 scan) を試行
-  ├─ ERROR: 行検出 → n_warnings += 1, n_lint_anomaly += 1, 6 変数を 0 fallback
-  └─ ERROR 行なし → 優先 3 へ
-
-優先 3: step 3 (stdout 空 check) を試行
-  ├─ stdout 空 → n_warnings += 1, n_lint_anomaly += 1, 6 変数を 0 fallback
-  └─ stdout 非空 → 優先 4 へ
-
-優先 4: step 4 (format mismatch fallback)
-  └─ n_warnings += 1, n_lint_anomaly += 1, 6 変数を 0 fallback
-```
-
-通常時は step 2 のみで完結する。
-
-1. **ERROR 行の検出**: Skill 応答テキストに `ERROR:` で始まる任意行 (例: `ERROR: 未知の branch_strategy 値を検出しました`) が含まれるかを検査する。検出時:
-
-   - `n_warnings += 1` + `n_lint_anomaly += 1`
-   - 6 変数 (`n_contradictions` 等) はすべて `0` に fallback
-   - stderr に WARNING を出力 (検出行を 4 スペース prefix で展開):
-
-     ```
-     WARNING: /rite:wiki-lint --auto の Skill 応答テキストに ERROR: 行を検出しました（Lint 実行失敗）。
-       検出行: {error_line_first1line}
-       考えられる原因: lint.md 内の echo "ERROR: ..." 経由の fail-fast 経路が発火
-       Ingest 完了レポートには「Lint 結果: 実行失敗」と表示します。
-       対処: /rite:wiki-lint を手動実行してエラー内容を確認してください。
-     ```
-
-   - ステップ 8.4 では「Lint 結果: 実行失敗（ERROR: 行検出のため詳細取得不可）」と表示
-
-2. **stdout のパース** (優先 1): exit 0 の場合、stdout の **全行を上から scan し、最初に以下の正規表現にマッチした行から** 6 つの変数を抽出する: `^Lint: contradictions=([0-9]+), stale=([0-9]+), orphans=([0-9]+), missing_concept=([0-9]+), unregistered_raw=([0-9]+), broken_refs=([0-9]+)$`
+1. 応答に `WIKI_CONTRADICTION_CHECK=failed` または `ERROR:` 行がある、stdout が空、正常 return signal / `[lint:returned-to-caller:auto]` が無い、あるいは下の regex に一致する行が無い場合は、比較完了を確認できない。6 変数の 0 fallback・警告だけの続行はしない。原因と未処理の対象を示し、`wiki-ingest-lock.sh release` を実行し、`[CONTEXT] WIKI_CONTRADICTION_CHECK=failed; reason=lint_response_unverified` を caller へ返して **停止**する。保存一覧とローカル Wiki commit は保持する。ステップ 8.4-8.6 / 9 と `[ingest:returned-to-caller]` は実行しない。cleanup 呼出元もステップ 10 以降へ進まない。比較再開には保存一覧をそのまま渡す。呼出元が cleanup でない場合も、残存 `WIKICHAIN:cleanup:*` を既存 `flow-state.sh consume-handoff` で解除してから停止する（別種の handoff は変更しない）。解除失敗は原因を出して停止し、完了扱いにしない。
+2. **stdout のパース**: 失敗検査を通過した場合だけ、stdout の全行から最初に次の regex に一致する行を抽出する: `^Lint: contradictions=([0-9]+), stale=([0-9]+), orphans=([0-9]+), missing_concept=([0-9]+), unregistered_raw=([0-9]+), broken_refs=([0-9]+)$`
 
    | 変数 | regex group |
    |------|-------------|
@@ -1038,34 +1015,8 @@ LLM は Skill 応答テキスト (= `lint.md` ステップ 9.2 の最終 stdout)
    | `n_unregistered_raw` | group 5 |
    | `n_broken_refs` | group 6 |
 
-3. **stdout が空の場合**: **Lint 実行失敗として扱う**:
-
-   - `n_warnings += 1` + `n_lint_anomaly += 1`
-   - 6 変数を `0` に fallback
-   - stderr に WARNING を出力:
-
-     ```
-     WARNING: /rite:wiki-lint --auto の stdout が空でした（Lint 実行失敗）。
-       期待される出力: Lint: contradictions=N, stale=N, orphans=N, missing_concept=N, unregistered_raw=N, broken_refs=N
-       考えられる原因: lint.md の bash syntax error / 未捕捉 fatal error / SIGPIPE / OOM
-       Ingest 完了レポートには「Lint 結果: 実行失敗」と表示します。
-       対処: /rite:wiki-lint を手動実行してエラー内容を確認してください。
-     ```
-
-   - ステップ 8.4 では「Lint 結果: 実行失敗（stdout が空のため詳細取得不可）」と表示
-
-4. **stdout のどの行も regex にマッチしない場合**: フォーマット変更の警告として扱う:
-
-   - `n_warnings += 1` + `n_lint_anomaly += 1` (format drift を Lint 異常経路として計上)
-   - 6 変数を `0` に fallback
-   - stderr に WARNING を出力 (stdout 先頭 3 行を 4 スペース prefix で展開):
-
-     ```
-     WARNING: /rite:wiki-lint --auto の出力形式が期待と異なります（stdout のいずれの行も 6 フィールド regex にマッチしませんでした）。
-       stdout の先頭 3 行:
-         {lint_stdout_first3lines}
-       期待される形式: Lint: contradictions=N, stale=N, orphans=N, missing_concept=N, unregistered_raw=N, broken_refs=N
-     ```
+正常時は 2 で得た既存 6 フィールドを使い、ステップ 8.4 へ進む。比較対象/候補/除外/本文比較数は lint の log.md エントリを完了レポートへ転記する。検出された矛盾の WARNING と、検査を完了できなかったエラーを区別する。
+rationale: references/rationale.md#lint-parser-first-line
 
 ### 8.4 Ingest 完了レポートへの統合
 
@@ -1077,11 +1028,11 @@ Lint 結果: 矛盾 {n_contradictions} 件 / 陳腐化 {n_stale} 件 / 孤児 {n
 
 **全カテゴリが 0 件の場合** (`n_contradictions + n_stale + n_orphans + n_missing_concept + n_unregistered_raw + n_broken_refs == 0`): 「Lint 結果: 問題なし」とのみ表示する。1 件以上検出された場合は必ず全カテゴリを表示する (`n_stale` / `n_unregistered_raw` は informational だが表示判定には含める)。
 
-ERROR / stdout 空 / regex mismatch 経路では「Lint 結果: 実行失敗（{原因}）」と表示する。
+比較不能経路は完了レポートへ進まず、8.3 の停止通知を出す。
 
 ### 8.5 `n_warnings` カウンタへの加算
 
-**ステップ 8.3 step 2 (6 フィールド regex match 成功) 経路でのみ実行する**。step 1/3/4 は 8.3 内で加算済みのため skip。step 2 経路のみ `n_warnings` に Lint 検出件数合計を加算する:
+**ステップ 8.3 step 2 (失敗検査通過 + 6 フィールド regex match 成功) 経路でのみ実行する**。失敗時は停止して到達しない。step 2 経路のみ `n_warnings` に Lint 検出件数合計を加算する:
 
 ```
 n_warnings += n_contradictions + n_orphans + n_missing_concept + n_broken_refs
@@ -1094,7 +1045,7 @@ rationale: references/rationale.md#n-unregistered-not-warning
 
 ### 8.6 Wiki push の集約（wiki push batch/defer）
 
-**`auto_lint` の値に関わらず必ず実行する**（ステップ 8.1 参照）。蓄積されたローカル commit（0 件のこともある）をまとめて 1 回だけ push する。`same_branch` では本ステップは no-op:
+**正常経路は `auto_lint` の値に関わらず必ず実行する**（ステップ 8.1 参照）。比較不能で停止した場合は実行しない。蓄積されたローカル commit（0 件のこともある）をまとめて 1 回だけ push する。`same_branch` では本ステップは no-op:
 rationale: references/rationale.md#push-defer-1941
 
 ```bash
@@ -1138,6 +1089,10 @@ fi
 ---
 
 ## ステップ 9: 完了レポート
+
+### 9.0.c 比較対象の解放
+
+自動 Lint の正常 return と比較完了の記録を確認し、ステップ 8.6 が終了した場合だけ、lock を保持したまま `changed_pages_file` を削除する。削除失敗は比較対象を保持して停止し、完了 signal は出さない。`auto_lint=false` では削除しない。検査未完了の保存一覧を「raw 処理済み」の理由で消してはならない。
 
 ### 9.0 Ingest セッション lock の解放
 
@@ -1229,7 +1184,7 @@ Wiki Ingest が完了しました。
 
 「未登録 raw」行は `auto_lint=false` の場合も `0` 件として展開する (ステップ 2.1 で 0 初期化済みの値)。
 
-**等式**: `n_warnings = n_contradictions + n_orphans + n_missing_concept + n_broken_refs + n_lint_anomaly`。step 2 成功時は `n_lint_anomaly=0`。step 1/3/4 では 4 カテゴリは 0 fallback だが `n_lint_anomaly >= 1` のため `n_warnings >= 1`。
+**等式**: `n_warnings = n_contradictions + n_orphans + n_missing_concept + n_broken_refs + n_lint_anomaly`。正常時は `n_lint_anomaly=0`。比較不能時は 0 fallback や完了レポートへ進まず停止する。
 
 `{wiki_push_line}` の展開ルール (ステップ 8.6 の `[CONTEXT] WIKI_INGEST_PUSH=` を上から評価し最初の一致を採用):
 
@@ -1273,6 +1228,7 @@ rationale: references/rationale.md#returned-to-caller
 
 | エラー | 対処 |
 |--------|------|
+| 自動矛盾検査の入力/一覧保存/書き込み/選定/比較失敗、応答不明 | lock を解放し、保存一覧と local commit を保持して停止。`WIKI_CONTRADICTION_CHECK=failed` を caller へ渡す。正常完了 signal を出さない |
 | `wiki.enabled: false` | 早期 return（ステップ 1.1。版数検査・migration とも不発動） |
 | `wiki-okf-migrate.sh` 非ゼロ（ステップ 1.5） | exit 1 で fail-loud。`okf_version` は bump されない。原因除去後に再実行 |
 | `lib/wiki-config.sh` 読込失敗 (helper 不在 / 解決失敗) | exit 1 で fail-fast（`[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1`。設定を判定できないまま無効扱いへ倒さない。plugin のインストール状態を確認するか `/rite:setup` を再実行、ステップ 1.1） |
