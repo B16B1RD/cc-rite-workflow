@@ -22,6 +22,8 @@
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=721, broken_refs=0
 * **Skip**: [20261004T132800Z-pr-3663.md](raw/reviews/20261004T132800Z-pr-3663.md) — 単一の文言変更の検証記録。詳細除外の指示は共通 reference に実装済みで、独立した経験則の追加はない
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=725, broken_refs=0
+* **Skip**: [レビュー結果](raw/reviews/20261004T162540Z-pr-3674.md) — テスト変更時の選定規則はプラグイン本文に反映済み。追加のプロジェクトドメイン経験則なし。
+
 
 ## 2026-10-03
 
