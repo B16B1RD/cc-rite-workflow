@@ -3,6 +3,8 @@
 #
 # Responsibility: 「現 run の results dir に、本 cycle の commit SHA と同じ
 # measured_gate.commit_sha を持つレビュー結果 JSON が実在するか」を決定論的に判定する。
+# New review_context receipts also require complete reviewer selection/execution
+# records. Legacy receipts without context and both fields retain the SHA gate.
 # 構造的に検出できない failure mode — ステップ 5.3.0.M〜6.1.a を**区間ごと** skip した cycle —
 # を塞ぐための独立した観測点。
 #
@@ -20,6 +22,7 @@
 #   [CONTEXT] REVIEW_SAVE_GATE=degraded; reason=save_result_json_undecidable   (exit 0)
 #   [CONTEXT] REVIEW_SAVE_GATE_FAILED=1; reason=save_result_json_absent; expected_sha=<sha> (exit 1)
 #   [CONTEXT] REVIEW_SAVE_GATE_FAILED=1; reason=gate_record_mismatch; expected_sha=<sha> (exit 1)
+#   [CONTEXT] REVIEW_SAVE_GATE_FAILED=1; reason=execution_record_invalid; expected_sha=<sha> (exit 1)
 #
 #   成功時に `REVIEW_SAVE_GATE=pass` を名乗らないのは、本 helper が marker 層の 3 arm すべてから
 #   呼ばれるため — degraded に降りた marker 層の直後に pass を重ねると、caller の「degraded を
@@ -189,6 +192,7 @@ fi
 
 # ---- 現 run の JSON を走査し、本 cycle の commit SHA を持つものを探す ---------------
 found=""
+execution_record_invalid=0
 payload_sha_found=0
 seen=""
 seen_count=0
@@ -264,6 +268,27 @@ if [ -d "$results_dir" ]; then
         and ([.measured_gate.blocking, .measured_gate.demoted, .measured_gate.anchor_undetermined]
              | all(type == "number" and . >= 0 and . == floor))
       ' "$f" 2>/dev/null) || gate_valid=false
+      # New cycles always have review_context. Preserve legacy receipts without
+      # context/metadata; any supplied new metadata must satisfy the full contract.
+      execution_valid=$(jq -r '
+        def text: type == "string" and test("\\S");
+        if has("review_context") or has("reviewer_selection") or has("reviewer_execution") then
+          .reviewers as $roster |
+          (.reviewers | type == "array" and length > 0 and all(.[]; text))
+          and ($roster | length == (unique | length))
+          and (.reviewer_selection | type == "array" and length > 0)
+          and (all(.reviewer_selection[];
+            (.reviewer | text) and (.selected | type == "boolean")
+            and (.selection_reason | text)
+            and (if .selected then has("exclusion_reason") and .exclusion_reason == null
+                 else (.exclusion_reason | text) end)))
+          and ([.reviewer_selection[].reviewer] | length == (unique | length))
+          and ([.reviewer_selection[] | select(.selected) | .reviewer] | sort) == ($roster | sort)
+          and (.reviewer_execution | type == "array" and length > 0)
+          and (all(.reviewer_execution[]; (.reviewer | text) and (.model | text) and (.effort | text)))
+          and ([.reviewer_execution[].reviewer] | sort) == ($roster | sort)
+        else true end
+      ' "$f" 2>/dev/null) || execution_valid=false
       sha=$(_scrub "$sha" | tr '[:upper:]' '[:lower:]')
       gate_sha=$(_scrub "$gate_sha" | tr '[:upper:]' '[:lower:]')
       if [ -z "$sha" ]; then
@@ -286,13 +311,20 @@ if [ -d "$results_dir" ]; then
       [ -n "$jq_err" ] && [ -s "$jq_err" ] && jq_msg=$(_scrub "$(head -1 "$jq_err")")
       sha_display="commit_sha=<jq 読取失敗 rc=$jq_rc${jq_msg:+: $jq_msg}>"
     fi
+    if [ "${execution_valid:-false}" != true ] && [ -n "$sha" ]; then
+      sha_display="$sha_display, selection/execution record=<欠落または不正>"
+    fi
     seen="${seen}    - ${bn} (${sha_display})
 "
     seen_count=$((seen_count + 1))
     if [ -n "$sha" ] && _sha_matches "$sha" "$commit_sha"; then
       payload_sha_found=1
       if [ "${gate_valid:-false}" = "true" ] && [ -n "${gate_sha:-}" ] && _sha_matches "$gate_sha" "$commit_sha"; then
-        found="$bn"
+        if [ "${execution_valid:-false}" = "true" ]; then
+          found="$bn"
+        else
+          execution_record_invalid=1
+        fi
       fi
     fi
   done <<< "$(printf '%s\n' "$find_raw" | LC_ALL=C sort)"
@@ -311,11 +343,17 @@ echo "  現 run に実在する JSON ($seen_count 件):" >&2
 if [ "$seen_count" -gt 0 ]; then printf '%s' "$seen" >&2; else echo "    (なし)" >&2; fi
 echo "  切り分け: 一覧が空なら ステップ 5.3.0.M〜6.1.a を**区間ごと**実行していないか、6.1.a の保存自体が失敗しています (会話の LOCAL_SAVE_FAILED を確認)。非空で commit_sha がすべて古いなら、区間は走ったが本 cycle 分の保存だけが落ちています。" >&2
 echo "    ただし会話の LOCAL_SAVE_FAILED の reason が mktemp_failure で始まるなら原因は \${TMPDIR} です。6.1.a は結果 JSON を \${TMPDIR} 上の一時ファイル経由で書くため、上記「探索先」(保存先ディレクトリ) が健全でも保存は落ち続け、再実行では収束しません — 復旧するのは探索先ではなく \${TMPDIR} です。それ以外の reason は 6.1.a 自身が出した「対処:」行が正しい復旧先を名指ししているのでそちらに従ってください (例: mkdir_failure は探索先の親、write_failure は渡した JSON body)。" >&2
-echo "  ACTION: ステップ 6.1.a を **step 0 から** 実行してください。step 2 (保存 helper) だけを実行しては**なりません** — step 0 が emit する REVIEW_CYCLE_ID / NONBLOCKING_PENDING_MARKER を欠くと 8.0.3 が前 cycle の値を見て誤 pass します。" >&2
+if [ "$execution_record_invalid" -eq 1 ]; then
+  echo "  ACTION: 保存済みの選定・実行条件が欠落または不正です。[review:error] で停止し、result / manifest / raw を保持して /rite:recover で再開してください。receipt を書き換えたり値を推測して再保存してはいけません。" >&2
+else
+ echo "  ACTION: ステップ 6.1.a を **step 0 から** 実行してください。step 2 (保存 helper) だけを実行しては**なりません** — step 0 が emit する REVIEW_CYCLE_ID / NONBLOCKING_PENDING_MARKER を欠くと 8.0.3 が前 cycle の値を見て誤 pass します。" >&2
 echo "    会話に本 cycle の REVIEW_SAVE_PENDING_MARKER / REVIEW_SAVE_PENDING_ID が 1 つも無い場合は、marker と id の生成元である ステップ 5.3.0.M step 2 から実行してください。" >&2
 echo "    続けて {post_comment_mode} に応じて 6.1.b または 6.1.c も再実行してから ステップ 8.0 を再評価してください。" >&2
+fi
 echo "  ⚠️ 本 gate を pass せずに ステップ 8.1 の result pattern を emit してはなりません。" >&2
-if [ "$payload_sha_found" -eq 1 ]; then
+if [ "$execution_record_invalid" -eq 1 ]; then
+  echo "[CONTEXT] REVIEW_SAVE_GATE_FAILED=1; reason=execution_record_invalid; expected_sha=$commit_sha" >&2
+elif [ "$payload_sha_found" -eq 1 ]; then
   echo "[CONTEXT] REVIEW_SAVE_GATE_FAILED=1; reason=gate_record_mismatch; expected_sha=$commit_sha" >&2
 else
   echo "[CONTEXT] REVIEW_SAVE_GATE_FAILED=1; reason=save_result_json_absent; expected_sha=$commit_sha" >&2

@@ -742,6 +742,8 @@ rationale: references/design-rationale.md#acceptance-reviewer
 
 ### 3.3 Confirm Reviewers
 
+候補を絞る前の一致・追加結果（incremental の対象外、cap、ユーザー除外を含む）を保持し、最終構成の各候補を `reviewer_selection[]` に記録する: `reviewer`（`*-reviewer`）、`selected`（boolean）、`selection_reason`（候補となった実際のルール・一致ファイル）、`exclusion_reason`（除外分岐の理由。選定済みは `null`）。選定ロジックは変えず、除外候補を記録から落とさない。
+
 **E2E flow detection**: `/rite:iterate` 経由の E2E では本ステップの pre-flight レビュアー構成確認 `AskUserQuestion`（末尾「オプション」の選択）を skip する。判定は `skills/ready/SKILL.md` Phase 2.1 と同型の flow-state。helper 失敗時は standalone（確認を出す）に fail-safe する:
 rationale: references/design-rationale.md#e2e-confirm-skip
 
@@ -861,7 +863,7 @@ bash {plugin_root}/scripts/pr-review-step.sh review-start --pr {pr_number} --hea
 
 返った `review_context`（実 session / run / PR / cycle / HEAD）と `selected_reviewers` を保持する。counter 更新はこの操作だけが担い、同一 HEAD・名簿の collecting 再開では加算しない。`review_context.commit_sha` とステップ 1.2.5 の対象 SHA が異なれば停止する。`review_cycle` に manifest / content / result のパスがある場合は [recover の再開表](../recover/SKILL.md#review-cycle-の再開) に従う。completed の最終ゲート再開では本 start を再実行せず、保存結果を読んで未完了のステップ 6〜8 へ戻る。
 
-固定した context ごとに `REVIEW_TMP_DIR/rite-review-{session_id}-{run_id}-{pr_number}-{cycle_count}/` を使用する。初回 spawn 前に manifest の名簿・context と全員の pending entry を Write し、各回収後に同じファイルを更新する。中断後も成功結果を保持して不足分だけ回収する。入力・raw が失われた場合は原因とパスを報告し、同一 cycle の不足結果を再取得する。
+固定した context ごとに `REVIEW_TMP_DIR/rite-review-{session_id}-{run_id}-{pr_number}-{cycle_count}/` を使用する。初回 spawn 前に manifest の名簿・context と全員の pending entry を Write し、各回収後に同じファイルを更新する。 `reviewer_selection` も同じ manifest に Write し、再開時は Read して保持する。中断後も成功結果を保持して不足分だけ回収する。入力・raw が失われた場合は原因とパスを報告し、同一 cycle の不足結果を再取得する。
 
 Issue に関連付いたレビュー開始直後に [停滞診断の時計](../../references/review-stagnation.md) の共有ブロック `review-clock-open`（同参照の Bash ブロック名。時計の CLI 動詞は `review-clock` だけ）を `clock_kind=work` で実行する。CI・外部待ちへ入る前に区間を閉じ、待機区分で開き直す。中断復帰は同参照の回復規則を適用し、未閉区間を実作業と推測しない。時計の保存失敗は `[review:error]`。関連 Issue がない standalone レビューは仕様入力を持たないため診断を開始せず、既存のレビュー経路を維持する。
 
@@ -1183,7 +1185,9 @@ WARNING は stderr、JSON line は stdout。drift は **non-blocking** で ス�
 bash {plugin_root}/scripts/pr-review-step.sh completion-gate --manifest {reviewer_completions_file}
 ```
 
-非ゼロなら flow-state / raw 結果を保持して caller の失敗経路へ戻る。ゲート pass 後のみ以下の統合を実行する。
+非ゼロなら flow-state / raw 結果を保持して caller の失敗経路へ戻る。各回収時、manifest の当該 entry に `model` / `effort` をホストが返した実効実行 metadata から書く。各値を取得できなければ文字列 `"不明"` にする（片方だけ取得できる場合も個別に判定）。要求した設定値・profile の既定値・子の自己申告から補完しない。retry は最終回収した agent の値に置き換え、初回値を流用しない。
+
+ゲート pass 後のみ以下の統合を実行する。
 **⚠️ Scope**: 今回新たに検出した指摘だけを集める。diff 外の修正済みは除外。未対応は再検出。
 **Recommendation classification extraction**:
 「### 推奨事項」の **全** item から `分類: <actionable|design_confirmation|boundary>` を抜き、`recommendation_items` として保持する:
@@ -1648,6 +1652,7 @@ incremental cycle でも途中から JSON を直接 Write して保存へ進ん�
 `/rite:fix` の各独立境界で hard error になる。
 
 **step 1: レビュー結果 JSON の生成 (本 review cycle で唯一の JSON authoring site)**
+保存 JSON の追加項目（step 1 で必須）: manifest を Read し、`reviewer_selection` をそのまま転記、全回収 entry の `{reviewer, model, effort}` を `reviewer_execution[]` に転記する。両配列は空・省略不可。選定された候補と実行記録の名前は `reviewers[]` と各1件ずつ一致させる。保存後の 8.0.4 は新しい記録（`review_context` あり）で理由・実行条件の欠落/不正を拒否する。`review_context` と両追加項目のない過去形式は既存の receipt 検証を維持する。
 [review-result-schema.md](../../references/review-result-schema.md) に従う JSON を **Write tool で `{review_tmp_dir}/rite-review-result-{pr_number}.json` に保存**する。`{review_tmp_dir}` は `[CONTEXT] REVIEW_TMP_DIR=` をリテラル置換する。
 rationale: references/design-rationale.md#json-single-authoring-site
 
@@ -2502,6 +2507,7 @@ bash {plugin_root}/scripts/pr-review-step.sh save-gate --save-pending-marker "{s
 
 - `pass`（marker 層、`reason=save_pending_marker_absent`）→ 6.1.a が本 cycle で完走した証拠。`[CONTEXT] REVIEW_SAVE_JSON_OK=1; pr={n}; result_json={basename}`（positive 層、reason を持たない observability marker）→ 本 cycle の結果 JSON が現 run に実在し、どのファイルで通ったかを開示する。両方が出れば `**Check**` へ。
 - `degraded` → marker が使えない環境（`..._placeholder_residue` / `..._unavailable`）、または positive 検査の入力・環境が揃わない（`save_result_json_undecidable`）。**当該層の機械強制のみ**を skip する — marker 層が degraded でも positive 層は通常どおり実行される（入力が marker に依存しないため）。
+- `reason=execution_record_invalid` → 保存済み receipt の選定・実行条件が欠落/不正。`[review:error]` で停止し、保存結果・manifest・raw を保持して `/rite:recover` を案内する。保存済み JSON を書き換えたり値を推測して再保存しない。
 - bash が `exit 1`（`REVIEW_SAVE_GATE_FAILED=1`）→ ステップ 6.1.a へ戻る（**会話に本 cycle の `REVIEW_SAVE_PENDING_MARKER` / `REVIEW_SAVE_PENDING_ID` が 1 つも無い場合の戻り先は ステップ 5.3.0.M step 2**。helper の ACTION 行が SoT）。**ステップ 8.1 へ進んではならない**。`reason=save_pending_marker_present` は 6.1.a が本 cycle で走っていない証拠、`reason=save_result_json_absent` は「区間ごと未実行」または「本 cycle 分だけ未保存」で、後者は helper が出す JSON 一覧（期待 SHA と実在ファイルの `commit_sha`）で切り分ける。**helper が marker を 1 つも出さずに非ゼロ終了した場合**（`exit 2` = 未知オプション / rc=127 = helper 不在・版 skew）は 6.1.a へ戻さず `[review:error]` を stdout に出力して停止する（skill 定義のバグ / プラグイン破損であり 6.1.a の再実行では収束しない。ステップ 5.3.0.M step 3 の同型行と同じ扱い）。
 
 **Check**: `[CONTEXT] REVIEW_SAVE_DONE=1; ...` の `marker=` が **本 cycle の `REVIEW_SAVE_PENDING_MARKER`** と一致するか。空 marker の degraded では 5.3.0.M step 2 より後ろの `REVIEW_SAVE_DONE` を採る。Pre-Check `pass` でも省略しない。
