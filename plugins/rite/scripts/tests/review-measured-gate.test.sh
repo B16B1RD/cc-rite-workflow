@@ -1018,6 +1018,48 @@ else
 fi
 
 echo ""
+# gate fixture だけでは、その入力を作る LLM 向け規則の削除を検出できない。
+# 実際に注入される fenced mandate と base の先行判定を契約として検査する。
+# モデルの実行を代替するテストではなく、保証反証手順が消える回帰を捕捉する。
+echo "--- PR body claim authoring contract ---"
+claim_lane="$SCRIPT_DIR/../../skills/pr-review/references/complexity-lane.md"
+claim_base="$SCRIPT_DIR/../../agents/_reviewer-base.md"
+awk '
+  /^## Reviewer mandate（軽量レーン適用時に注入する本文）$/ { section=1; next }
+  section && /^## / { exit }
+  section && /^```$/ { if (fenced) exit; fenced=1; next }
+  fenced { print }
+' "$claim_lane" > "$TEST_DIR/claim-mandate.md"
+awk '
+  /^### Mutation experiments and verification / { section=1; next }
+  section && /^### / { exit }
+  section { print }
+' "$claim_base" > "$TEST_DIR/claim-experiment.md"
+awk '
+  /^### 契約対応の判定手順$/ { section=1; next }
+  section && /^### / { exit }
+  section { print }
+' "$claim_base" > "$TEST_DIR/claim-admission.md"
+
+assert_claim_contract() {
+  if grep -Eq "$3" "$2"; then pass "$1"; else fail "$1"; fi
+}
+assert_claim_contract "注入本文で主張ごとの小さな反証を要求" "$TEST_DIR/claim-mandate.md" \
+  'PR 本文の保証主張 1 件につき.*反証する小さな mutation を実施'
+assert_claim_contract "反証の報告は Issue の同文欠落だけでは降格しない" "$TEST_DIR/claim-mandate.md" \
+  'テストが通れば.*実測アンカー付きで報告.*同じ文が無いという理由だけで契約外・アンカー不適格へ落とさない'
+assert_claim_contract "保証支持時は照合指摘を作らない" "$TEST_DIR/claim-mandate.md" \
+  '主張が裏付けられれば照合由来の指摘は出しません'
+assert_claim_contract "無主張時は従来の契約対応だけを対象にする" "$TEST_DIR/claim-mandate.md" \
+  '保証主張が無い場合の mutation は従来の契約対応の未 pin に限ります'
+assert_claim_contract "軽量の実験対象と M+ の従来範囲を base で区別" "$TEST_DIR/claim-experiment.md" \
+  'XS/S 軽量レーン.*保証主張 1 件ごとの小さな反証 mutation.*全スイートの複製実行は必須にしない.*無主張時と M\+ の実験範囲は従来どおり'
+assert_claim_contract "base の先行判定は保証反証を既存採否へ渡す" "$TEST_DIR/claim-admission.md" \
+  'XS/S 軽量レーンの PR 本文保証主張.*先に原文と対応テスト.*保証主張の正しさの欠陥.*実測アンカー.*既存の採否・帰結クラス判定へ渡す.*同じ保証が無いという理由だけで契約外として降格しない'
+assert_claim_contract "base の保証支持・無主張・M+ 対照を維持" "$TEST_DIR/claim-admission.md" \
+  '主張の裏付けに成功した場合は照合由来の指摘を出さない.*無主張の軽量レーンと M\+ には以下の従来判定を適用'
+
+echo ""
 # PR 本文の保証主張への反証は Issue 契約の記載有無で落とさない。
 # 実際に旧パスへ戻した入力に対する検査結果をアンカーへ渡す。
 echo "--- PR body claim counterexample ---"
