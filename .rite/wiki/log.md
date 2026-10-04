@@ -4379,3 +4379,5 @@ T02:22:43+09:00 — review ingest (skip pages)
 * **Skip**: [検証記録](raw/reviews/20261004T120010Z-pr-3661.md) — SVG実読手順はプラグインに反映済み。追加のドメイン経験則なし
 * **Skip**: [検証記録](raw/fixes/20261004T121509Z-pr-3661.md) — SVG実読手順はプラグインに反映済み。追加のドメイン経験則なし
 * **Skip**: [検証記録](raw/reviews/20261004T123719Z-pr-3661.md) — SVG実読手順はプラグインに反映済み。追加のドメイン経験則なし
+
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=724, broken_refs=0
