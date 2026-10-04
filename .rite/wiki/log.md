@@ -4387,3 +4387,5 @@ T02:22:43+09:00 — review ingest (skip pages)
 - at: "2026-10-04T16:03:00Z"
   action: "skip"
   detail: "作成前の図の判定規則はプラグイン本文と回帰テストに反映済み。独立したプロジェクトドメイン経験則なし。"
+
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=726, broken_refs=0
