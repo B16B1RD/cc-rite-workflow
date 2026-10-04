@@ -5,6 +5,11 @@
 * **Skip**: [20261003T153744Z-pr-3652.md](raw/reviews/20261003T153744Z-pr-3652.md) — 今回のテスト件数と充足判定は一時的な検証記録で、追加の経験則を含まない
 
 * **lint:clean**: 矛盾 0 / 孤児 0 / 欠落概念 0 / 壊れた参照 0（未登録 raw 711 は informational）
+* **Skip**: [検証記録](raw/fixes/20261003T163826Z-pr-3653.md) — rite workflow の検証記録であり、挙動はプラグインの helper・契約・試験へ組み込み済みのためドメイン Wiki へ重複追加しない
+* **Skip**: [検証記録](raw/fixes/20261004T011000Z-pr-3653.md) — rite workflow の検証記録であり、挙動はプラグインの helper・契約・試験へ組み込み済みのためドメイン Wiki へ重複追加しない
+* **Skip**: [検証記録](raw/reviews/20261003T162140Z-pr-3653.md) — rite workflow の検証記録であり、挙動はプラグインの helper・契約・試験へ組み込み済みのためドメイン Wiki へ重複追加しない
+* **Skip**: [検証記録](raw/reviews/20261003T171205Z-pr-3653.md) — rite workflow の検証記録であり、挙動はプラグインの helper・契約・試験へ組み込み済みのためドメイン Wiki へ重複追加しない
+* **Skip**: [検証記録](raw/reviews/20261004T012319Z-pr-3653.md) — rite workflow の検証記録であり、挙動はプラグインの helper・契約・試験へ組み込み済みのためドメイン Wiki へ重複追加しない
 
 ## 2026-10-03
 
