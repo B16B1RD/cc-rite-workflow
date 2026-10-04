@@ -57,7 +57,7 @@ bash "$safe" fetch --issue "$issue" > "$scratch/fetch"
 cat "$scratch/fetch"
 original=$(sed -n 's/^tmpfile_read=//p' "$scratch/fetch")
 candidate=$(sed -n 's/^tmpfile_write=//p' "$scratch/fetch")
-length=$(sed -n 's/^original_length=//p' "$scratch/fetch")
+length=$(sed -n 's/^original_length=[[:space:]]*//p' "$scratch/fetch" | sed 's/[[:space:]]*$//')
 [ -n "$original" ] && [ -f "$original" ] && [ -n "$candidate" ] && [ -n "$length" ] \
   || stop_ac issue_body_fetch_failed
 if bash "$reader" extract --body-file "$original" > "$scratch/ids" 2> "$scratch/check"; then

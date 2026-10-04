@@ -4,7 +4,7 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../../../.." && pwd)
 python3 - "$root" <<'PY'
-import json, os, subprocess, sys, tempfile
+import json, os, shlex, shutil, subprocess, sys, tempfile
 from pathlib import Path
 root = Path(sys.argv[1])
 reference = root / 'plugins/rite/skills/open/references/acceptance-id-preflight.md'
@@ -16,7 +16,16 @@ with tempfile.TemporaryDirectory(prefix='rite-open-ac-test-') as temp:
     subprocess.run(['git', 'init', '-q', str(work)], check=True)
     subprocess.run(['git', '-C', str(work), 'remote', 'add', 'origin', 'git@github.com:o/r.git'], check=True)
     (work / 'bin').mkdir()
-    gh = work / 'bin/gh'
+    wc = work / 'bin/wc'
+    wc.write_text("#!/bin/bash\n" +
+                  "count=$(" + shlex.quote(shutil.which('wc')) + " \"$@\") || exit $?\n" +
+                  "case \"${BYTE_COUNT_STYLE:-plain}\" in\n" +
+                  " padded) printf '      %s\\n' \"$count\" ;;\n" +
+                  " invalid) printf 'x%s\\n' \"$count\" ;;\n" +
+                  " internal) printf '1 %s\\n' \"$count\" ;;\n" +
+                  " *) printf '%s\\n' \"$count\" ;;\nesac\n")
+    wc.chmod(0o755)
+    gh = work / 'bin/gh' 
     gh.write_text('''#!/usr/bin/env python3
 import os, sys
 from pathlib import Path
@@ -37,11 +46,11 @@ else:
     script = work / 'preflight.sh'
     script.write_text(block.replace('{execution_cwd}', str(work)))
     env = dict(os.environ, PATH=str(work / 'bin') + os.pathsep + os.environ['PATH'], AC_TEST_DIR=str(work))
-    def run(body, failure=False):
+    def run(body, failure=False, byte_count_style="plain"):
         (work / 'body').write_bytes(body.encode())
         (work / 'calls').write_text('')
         (work / 'comment').unlink(missing_ok=True)
-        actual_env = dict(env, EDIT_FAIL='yes' if failure else 'no')
+        actual_env = dict(env, EDIT_FAIL='yes' if failure else 'no', BYTE_COUNT_STYLE=byte_count_style)
         result = subprocess.run(['bash', str(script)], cwd=work, env=actual_env, text=True, capture_output=True)
         return result, (work / 'body').read_bytes().decode(), (work / 'calls').read_text().splitlines()
     def check(ok, message):
@@ -67,6 +76,13 @@ else:
     original = '前文\r\n## 5. Acceptance Criteria\r\n- [ ] AC-1: A\r\n- [ ] B\r\n### AC-3: C\r\n- [ ] D\r\n```\r\n- [ ] 例\r\n```\r\n## Other\r\n- [ ] untouched\r\n'
     result, body, calls = run(original)
     check(result.returncode == 0 and body == original.replace('- [ ] B', '- [ ] AC-2: B').replace('- [ ] D', '- [ ] AC-4: D'), 'existing IDs, holes, CRLF, fence, headings and outside text are preserved')
+    for original, expected in [('## 受入条件\n- [ ] A\n- [ ] B\n', '## 受入条件\n- [ ] AC-1: A\n- [ ] AC-2: B\n'), ('## 受入条件\n- [ ] AC-1: A\n- [ ] B\n', '## 受入条件\n- [ ] AC-1: A\n- [ ] AC-2: B\n')]:
+        result, body, calls = run(original, byte_count_style='padded')
+        check(result.returncode == 0 and body == expected and calls == ['issue view', 'issue edit', 'issue view', 'issue comment'], 'BSD padded byte count preserves ID assignment and existing IDs')
+    for style in ['invalid', 'internal']:
+        original = '## 受入条件\n- [ ] A\n'
+        result, body, calls = run(original, byte_count_style=style)
+        check(result.returncode != 0 and body == original and 'issue edit' not in calls, 'non-numeric byte count remains rejected: '+style)
     original = '## 受入条件\n- [ ] AC-2: A\n## 受入基準\n- [ ] B\n- [ ] AC-1: C\n'
     result, body, calls = run(original)
     check(result.returncode == 0 and '- [ ] AC-3: B' in body, 'all existing section IDs are reserved before assigning')
