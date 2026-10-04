@@ -136,7 +136,7 @@ done
 # Pin the common structural gate and its callers, with negative controls.
 diagram_rules() {
   for rule in '流れ・関係・分岐・変更前後の構造を説明する変更では図を必須' \
-    '構造の説明を含まない次の2条件だけ' '`文言・数値のみの修正` / `調査結果の記録`' \
+    '構造の説明を含まない次の3条件だけ' '`文言・数値のみの修正` / `調査結果の記録` / `流れ・関係・分岐・変更前後の構造を説明しない変更`' \
     '当該本文の生成へ戻り' '違反を WARNING で続行しない' \
     '読みやすさの点検は、この検査を通過した本文だけ' '「親の図を参照」だけでは済ませない'; do
     require_literal "$1" "$rule" || return 1
@@ -146,7 +146,7 @@ if diagram_rules "$structure"; then pass 'mandatory/omission/hard-stop rules'; e
 for mutation in \
   'missing mandatory rule|/流れ・関係・分岐・変更前後の構造を説明する変更では図を必須/d' \
   'warning downgrade|s/違反を WARNING で続行しない/違反を WARNING で続行する/' \
-  'freeform omission|s/構造の説明を含まない次の2条件だけ/任意の理由/' \
+  'freeform omission|s/構造の説明を含まない次の3条件だけ/任意の理由/' \
   'reference-only child|/「親の図を参照」だけでは済ませない/d'; do
   label=${mutation%%|*}; sed "${mutation#*|}" "$structure" > "$work/diagram-mutant.md"
   if assert_mutant_changed "$label" "$structure" "$work/diagram-mutant.md"; then
@@ -170,10 +170,18 @@ for row in \
   'research|false|0|<!-- 図なし: 調査結果の記録 -->' \
   'English wording|false|0|<!-- No diagram: Wording or numeric changes only -->' \
   'English research|false|0|<!-- No diagram: Research results record -->' \
+  'nonstructural change|false|0|<!-- 図なし: 流れ・関係・分岐・変更前後の構造を説明しない変更 -->' \
+  'English nonstructural change|false|0|<!-- No diagram: Changes without flow, relationship, branching, or before-and-after structure explanations -->' \
+  'required nonstructural reason|true|1|<!-- 図なし: 流れ・関係・分岐・変更前後の構造を説明しない変更 -->' \
+  'English required nonstructural reason|true|1|<!-- No diagram: Changes without flow, relationship, branching, or before-and-after structure explanations -->' \
   'structural omission|true|1|<!-- 図なし: 文言・数値のみの修正 -->' \
   'unlisted reason|false|1|<!-- 図なし: 子 Issue だから -->' \
   'missing reason|false|1|No diagram' \
   'SVG reference|true|0|![範囲](https://example.invalid/diagram.svg)' \
+  'nested image description|true|0|![図。この変更は図の [名前]](path.svg)' \
+  'escaped image description|true|0|![図の \\] を含む説明](path.svg)' \
+  'bare closing bracket description|true|0|![図の ] を含む説明](path.svg)' \
+  'incomplete image reference|true|1|![図の [名前]]()' \
   'Mermaid fence|true|0|```mermaid\nflowchart LR\nA --> B\n```' \
   'diagram only in details|true|1|<details>\n![範囲](https://example.invalid/diagram.svg)' \
   'allowed plus extra reason|false|1|<!-- 図なし: 調査結果の記録、子 Issue だから -->'; do

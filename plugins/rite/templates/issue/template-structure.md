@@ -49,11 +49,11 @@ Issue は Meta の直後、PR は本文先頭に置く。以下は日本語例�
 
 ### 図の選択規則（Issue / PR 共通）
 
-流れ・関係・分岐・変更前後の構造を説明する変更では図を必須とする。図なしを許すのは、構造の説明を含まない次の2条件だけ: `文言・数値のみの修正` / `調査結果の記録`。単に「子 Issue である」「単純」「理由を書いた」では省略できない。
+流れ・関係・分岐・変更前後の構造を説明する変更では図を必須とする。図なしを許すのは、構造の説明を含まない次の3条件だけ: `文言・数値のみの修正` / `調査結果の記録` / `流れ・関係・分岐・変更前後の構造を説明しない変更`。単に「子 Issue である」「単純」「理由を書いた」では省略できない。
 
-作成前に全本文（単一 Issue・分解経路の親と各 Sub-Issue・PR）を検査する。必須の図が無い、または図なしコメントの条件が上記2条件に該当しない場合は作成 helper / `gh pr create` を呼ばず、当該本文の生成へ戻り、修正後に再検査する。違反を WARNING で続行しない。読みやすさの点検は、この検査を通過した本文だけを扱う。
+作成前に全本文（単一 Issue・分解経路の親と各 Sub-Issue・PR）を検査する。必須の図が無い、または図なしコメントの条件が上記3条件に該当しない場合は作成 helper / `gh pr create` を呼ばず、当該本文の生成へ戻り、修正後に再検査する。違反を WARNING で続行しない。読みやすさの点検は、この検査を通過した本文だけを扱う。
 
-作成前検査は次の Bash を本文ごとに実行する。`{body_file}` は生成した本文の絶対パス、`{diagram_required}` は変更が上記の構造を説明する場合 `true`、それ以外 `false`。この値は本文生成時の分類であり設定キーではない。非ゼロなら作成コマンドを呼ばず再生成する。英語の省略条件は `Wording or numeric changes only` / `Research results record`。
+作成前検査は次の Bash を本文ごとに実行する。`{body_file}` は生成した本文の絶対パス、`{diagram_required}` は変更が上記の構造を説明する場合 `true`、それ以外 `false`。この値は本文生成時の分類であり設定キーではない。非ゼロなら作成コマンドを呼ばず再生成する。英語の省略条件は `Wording or numeric changes only` / `Research results record` / `Changes without flow, relationship, branching, or before-and-after structure explanations`。
 
 ```bash
 body_file="{body_file}"
@@ -64,10 +64,10 @@ case "$body_file" in /*) ;; *) echo "ERROR: body_file must be absolute" >&2; exi
 case "$diagram_required" in true|false) ;; *) echo "ERROR: diagram_required must be true or false" >&2; exit 1 ;; esac
 awk -v required="$diagram_required" '
   /^<details>/ { exit }
-  /!\[[^]]+\]\([^)]+\)/ { diagram=1 }
+  /!\[.*\]\([^)]+\)/ { diagram=1 }
   /^[[:space:]]*```mermaid[[:space:]]*$/ { diagram=1 }
-  /^[[:space:]]*<!-- 図なし: (文言・数値のみの修正|調査結果の記録) -->[[:space:]]*$/ { allowed=1 }
-  /^[[:space:]]*<!-- No diagram: (Wording or numeric changes only|Research results record) -->[[:space:]]*$/ { allowed=1 }
+  /^[[:space:]]*<!-- 図なし: (文言・数値のみの修正|調査結果の記録|流れ・関係・分岐・変更前後の構造を説明しない変更) -->[[:space:]]*$/ { allowed=1 }
+  /^[[:space:]]*<!-- No diagram: (Wording or numeric changes only|Research results record|Changes without flow, relationship, branching, or before-and-after structure explanations) -->[[:space:]]*$/ { allowed=1 }
   END { if (!diagram && (required == "true" || !allowed)) exit 1 }
 ' "$body_file" || { echo "ERROR: 図が必須、または図なし条件が不適合。本文を再生成してください" >&2; exit 1; }
 ```
