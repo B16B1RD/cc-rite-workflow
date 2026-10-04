@@ -42,7 +42,7 @@ Past version sections carry none either — they have already been stripped.
 
 - **AC IDs on follow-up acceptance criteria** — `/rite:cleanup` assigns sequential AC IDs to single and multiple acceptance criteria of follow-up Issues while preserving their text.
 - **Non-required CI failures saved as warnings** — `/rite:pr-review` reads the required-check set from branch protection and active rulesets, stops on required-check failures or when the set cannot be fetched, and records non-required failures in `ci_status.warnings`.
-- **Repository misdetection from a shifted working directory** — helpers compare the target repository captured at entry with their working directory and stop instead of treating a check against a neighboring repository as a normal fallback.
+- **Complexity lane check stops on a repository mismatch** — the Complexity lane determination in `/rite:open`, `/rite:issue-implement` and `/rite:pr-review` compares the repository captured at entry with the origin of its working directory and stops on a mismatch or an unresolvable repository instead of falling back to the full lane.
 
 ## [0.19.4] - 2026-10-03
 

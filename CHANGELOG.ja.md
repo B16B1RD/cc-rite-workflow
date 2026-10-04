@@ -40,7 +40,7 @@ blocking gate として実行する。
 
 - **follow-up の受入条件に AC ID を付与する** — `/rite:cleanup` が作る follow-up Issue の単一・複数の受入条件に、本文を保ったまま連番 AC ID を付与する。
 - **非必須 CI の失敗を警告として保存する** — `/rite:pr-review` が branch protection と有効な ruleset から必須チェック集合を取得し、必須チェックの失敗や取得不能では停止し、非必須の失敗は `ci_status.warnings` に記録する。
-- **実行場所のずれによるリポジトリ誤判定を停止する** — helper が入口で保持した対象リポジトリと作業先を照合し、隣のリポジトリでの判定を正常な fallback として扱わず停止する。
+- **Complexity レーン判定がリポジトリ不一致で停止する** — `/rite:open`・`/rite:issue-implement`・`/rite:pr-review` の Complexity レーン判定が、入口で保持した対象リポジトリと作業先の origin を照合し、不一致・解決不能を full レーンへの fallback にせず停止する。
 
 ## [0.19.4] - 2026-10-03
 
