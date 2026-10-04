@@ -29,7 +29,7 @@ rationale: references/rationale.md#missing-row-gap
 | Security Expert | `security-reviewer.md` | `**/security/**`, `**/auth/**`, `auth*`, `crypto*`, `**/middleware/auth*` |
 | Application Expert | `application-reviewer.md` | `**/api/**`, `**/routes/**`, `**/handlers/**`, `**/controllers/**`, `**/services/**`, `openapi.*`, `swagger.*`, `**/*.css`, `**/*.scss`, `**/styles/**`, `**/components/**`, `*.jsx`, `*.tsx`, `*.vue`, `**/*.sh`, `**/hooks/**`, `**/db/**`, `**/models/**`, `**/migrations/**`, `**/*.sql`, `prisma/**`, `drizzle/**`; `**/*.ts`, `**/*.rs`, `**/*.go` with `interface`, `type`, `enum`, `class`, `struct` |
 | DevOps Expert | `devops-reviewer.md` | `.github/**`, `Dockerfile*`, `docker-compose*`, `*.yml` (CI), `Makefile` |
-| Test Expert | `test-reviewer.md` | `**/*.test.*`, `**/*.spec.*`, `**/test/**`, `**/__tests__/**`, `jest.config.*`, `vitest.config.*`, `cypress/**`, `playwright/**` |
+| Test Expert | `test-reviewer.md` | `**/*.test.*`, `**/*.spec.*`, `**/test/**`, `**/__tests__/**`, `jest.config.*`, `vitest.config.*`, `cypress/**`, `playwright/**`, `scripts/test-*`, `test-*.{js,ts,sh}`, `**/test-*.{js,ts,sh}` |
 | Dependencies Expert | `dependencies-reviewer.md` | `package.json`, `*lock*`, `requirements.txt`, `Pipfile`, `go.mod`, `Cargo.toml` |
 | Prompt Engineer | `prompt-engineer-reviewer.md` | `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`, and corresponding `.mdx` (`commands/**/*.mdx`, `skills/**/*.mdx`, `agents/**/*.mdx`) |
 | Technical Writer | `tech-writer-reviewer.md` | `**/*.md` (excluding `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`), `**/*.mdx` (excluding `commands/**/*.mdx`, `skills/**/*.mdx`, `agents/**/*.mdx`), `docs/**`, `documentation/**`, `**/README*`, `CHANGELOG*`, `CONTRIBUTING*`, `*.rst`, `*.adoc`, `i18n/**/*.md`, `i18n/**/*.mdx` (excluding `plugins/rite/i18n/**` — rite plugin's own translations are dogfooding artifacts) |
@@ -127,6 +127,8 @@ Analyze diff content for:
 
 **Note**: The above are representative keyword examples. The authoritative keyword list is defined in `skills/pr-review/SKILL.md` ステップ 2.3 ("Security keyword detection" section), and the authoritative file patterns are the Available Reviewers table above.
 
+**Test content rule（必須）**: content analysis の有効・無効やファイル名に関係なく、差分の追加・削除行がテストの assert・期待値・fixture を変更していれば `test` を `selection_type: mandatory` で追加・昇格する。用語を説明するだけの文書や変更のない context 行では発火しない。手順と関連差分の受渡しは `pr-review` ステップ 2.3 / 4.5 に従う。
+
 ### Phase 3: Select All Matching Reviewers
 
 ```text
@@ -172,7 +174,7 @@ Cap logic:
   - selected count <= effective_max  -> keep all (no narrowing, no omission display)
   - selected count >  effective_max  -> sort by the relevance ordering above, keep the top effective_max, drop the rest
       * NEVER drop a reviewer whose selection_type is `mandatory` (Security Expert when `mandatory: true`,
-        a Doc-Heavy-promoted tech-writer, or a fenced-block-triggered code-quality co-reviewer — see ステップ 2.2.1 / 3.2).
+        a test-content-triggered test reviewer, a Doc-Heavy-promoted tech-writer, or a fenced-block-triggered code-quality co-reviewer — see ステップ 2.2.1 / 3.2).
         If a mandatory reviewer would fall outside the top N, drop the next-lowest non-mandatory reviewer instead.
       * If the mandatory reviewer count alone already exceeds effective_max, keep ALL mandatory reviewers
         (intentionally exceed the cap) and drop non-mandatory reviewers down to zero. Never drop a mandatory

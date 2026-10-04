@@ -551,6 +551,12 @@ If the skill file (`skills/reviewers/SKILL.md`) is not found, fall back to the b
 
 `incremental` のとき: (1) パターンマッチ結果に `{prev_finders}` を **`selection_type: mandatory`** で合流させる。ただし `{prev_finders}` の `acceptance` は合流させない（ステップ 3.2.2 が cap 後に毎 cycle 追加する）（`recommended` は不可 — Phase 5 の cap が落とさないと保証するのは `mandatory` のみで、`recommended` は `max_reviewers` 超過時に落ちて「前サイクル finder は無条件に再起動」が破れる。昇格は `detected < recommended < mandatory` の高い側へのみ）。(2) ステップ 2.3 の sole-reviewer guard / ステップ 3.2 の Security Expert 条件 / ステップ 3.2.1 の cap とフロアは**すべて従来どおり適用する**。(3) 今サイクル対象外となった reviewer 名と理由を ステップ 5.4 の「レビュー範囲」section に記録する（silent な絞り込みは禁止）。**母集合は cycle 1 で選定された reviewer 集合**とし、そこから今サイクル起動しない名前を理由付きで列挙する（全 reviewer を母集合にすると PR に一度も関係しない reviewer が毎サイクル並び、今サイクルの起動集合を母集合にすると差分スコープが何名減らしたかが読めない）。ステップ 3.3 の「省略された reviewer 表示」には記録しない — 同 section は出力条件が `{dropped_count} > 0`、見出しが cap 超過を理由として固定されており、パターンマッチの候補にすら上がらない差分スコープ由来の除外を表現できない。
 
+**Test pattern fallback（2.1 の読込失敗時）**:
+
+| Reviewer | Agent | File Patterns (Primary) |
+|----------|-------|-------------------------|
+| Test Expert | `test-reviewer.md` | `**/*.test.*`, `**/*.spec.*`, `**/test/**`, `**/__tests__/**`, `jest.config.*`, `vitest.config.*`, `cypress/**`, `playwright/**`, `scripts/test-*`, `test-*.{js,ts,sh}`, `**/test-*.{js,ts,sh}` |
+
 **Pattern priority rules:**
 1. `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` -> Prompt Engineer (highest priority)
 2. Other `**/*.md` -> Technical Writer
@@ -563,6 +569,11 @@ If the skill file (`skills/reviewers/SKILL.md`) is not found, fall back to the b
 ### 2.3 Content Analysis (Supplementary Determination)
 
 diff 内容から追加の専門領域を判定する:
+
+**Test content detection（必須）**:
+- content analysis の有効・無効やファイル名に関係なく、差分の追加・削除行でテストの assert・期待値・fixture が変更されていれば、Test Expert を `selection_type: mandatory` で追加・昇格する（理由: テストの検証内容の変更）。
+- 用語を説明するだけの文書や変更のない context 行は対象外。該当したファイルを Test Expert の `{relevant_files}` に含め、対応する `{diff_content}` を渡す。
+- ステップ 3.2.1 の cap は既存 Phase 5 の mandatory 保護を適用し、ステップ 3.3 の「レビュアーを減らす」でも削除しない。
 
 **Security keyword detection:**
 - `password`, `token`, `secret`, `auth`, `crypto`, `hash`, `encrypt`, `decrypt`, `credential`, `api_key`, `private_key`, `cert`
@@ -674,11 +685,11 @@ Determine Security Expert selection based on the `review.security_reviewer` sett
 
 **Executable code extensions**: `.ts`, `.py`, `.go`, `.js`, `.jsx`, `.tsx`, `.rs`, `.java`, `.rb`, `.php`, `.c`, `.cpp`, `.sh`, etc.
 **Note**: Security キーワードは ステップ 2.3 のリストだけを使う。
-**Selection Type** は Security Expert を入れた理由。ステップ 3.3 の削除可否に使う:
+**Selection Type** は必須・推奨・検出で選定した理由。ステップ 3.3 の削除可否に使う:
 
 | Selection Type | Meaning | Removable in ステップ 3.3 |
 |---------------|---------|-------------------|
-| **`mandatory`** | `mandatory: true` in config | No (backward compatible) |
+| **`mandatory`** | Config requirement or Test content rule | No (backward compatible) |
 | **`recommended`** | Selected via file pattern match or `recommended_for_code_changes` | Yes (with warning) |
 | **`detected`** | Selected via keyword detection in ステップ 2.3 | Yes (with warning) |
 
@@ -784,13 +795,13 @@ standalone は `AskUserQuestion` で確認する。E2E は「オプション」�
 
 | Selection Type (from ステップ 3.2) | `{label}` Display | Description |
 |------|-----------|------|
-| **`mandatory`** | `[必須]` | `mandatory: true` in config; cannot be removed |
+| **`mandatory`** | `[必須]` | Config requirement or Test content rule; cannot be removed |
 | **`recommended`** | `[推奨]` | Selected via file pattern match or `recommended_for_code_changes`; can be removed with warning |
 | **`detected`** | `[検出]` | Selected via keyword detection in ステップ 2.3; can be removed with warning |
 | (other reviewers) | (empty) | Normal selection; can be removed freely |
 
 **Behavior when "Reduce reviewers" is selected:**
-The behavior depends on the Security Expert's selection type:
+Test Expert が Test content rule で `mandatory` のときは削除を拒否し、理由を表示して必須でない reviewer のみを削除候補にする。Security Expert は次の selection type の規則に従う:
 
 | Selection Type | Removable | Behavior |
 |---------------|-----------|----------|
@@ -1043,7 +1054,7 @@ Determine the error type from the completion notification (failure payload or ab
 
 | Placeholder | Source | Extraction Method |
 |---------------|--------|----------|
-| `{relevant_files}` | Changed file list from ステップ 1.2 | Extract only files matching the reviewer's Activation pattern。`REVIEW_CYCLE_SCOPE == incremental` のときは ステップ 2.2 と同じく `{cycle_scope_files}` の一覧から抽出する。**例外**: `incremental` かつ当該 reviewer が `{prev_finders}` 由来の `mandatory` 合流で、パターン一致が 0 件のときは `{cycle_scope_files}` の**全ファイル**を渡す（空で渡すと `{diff_content}` も空になり、mandate 4 が差分外の読み直しを禁じるため mandate 1 の解消検証すら実行できない prompt になる — 解消検証は自分の指摘箇所と fix の影響範囲の両方が読めて初めて成立する）。**`acceptance`** は Activation パターンと `REVIEW_CYCLE_SCOPE` に依らずステップ 1.2.3 の PR 全体の変更ファイルを渡す |
+| `{relevant_files}` | Changed file list from ステップ 1.2 | Extract only files matching the reviewer's Activation pattern。`REVIEW_CYCLE_SCOPE == incremental` のときは ステップ 2.2 と同じく `{cycle_scope_files}` の一覧から抽出する。**例外**: `incremental` かつ当該 reviewer が `{prev_finders}` 由来の `mandatory` 合流で、パターン一致が 0 件のときは `{cycle_scope_files}` の**全ファイル**を渡す（空で渡すと `{diff_content}` も空になり、mandate 4 が差分外の読み直しを禁じるため mandate 1 の解消検証すら実行できない prompt になる — 解消検証は自分の指摘箇所と fix の影響範囲の両方が読めて初めて成立する）。Test content rule 由来の **`test`** はパターン一致の有無に関係なくステップ 2.3 で特定したファイルを含め、空の差分を渡さない。**`acceptance`** は Activation パターンと `REVIEW_CYCLE_SCOPE` に依らずステップ 1.2.3 の PR 全体の変更ファイルを渡す |
 | `{ci_status}` / `{ci_state}` | ステップ 1.2.5.C | 対象 SHA・分類・check 名/状態/結論/詳細 URL・failed 一覧・取得不能理由を出力 JSON から渡す。CI の分類規則を再実装しない |
 | `{diff_content}` | Diff from ステップ 1.2 | **Varies by scale** (see below)。`REVIEW_CYCLE_SCOPE == incremental` のときは PR 全体の diff ではなく `{cycle_scope_files}` のファイルの `{cycle_base_sha}..HEAD` の diff を使う（取得コマンドは ステップ 1.2 の incremental 系。`{relevant_files}` が上記例外で全ファイルになった場合は `{cycle_scope_files}` 全ファイルの diff を渡す）。**`acceptance`** は `REVIEW_CYCLE_SCOPE` に依らず PR 全体の diff を scale 規則どおり渡す |
 | `{cycle_scope_mandate}` | [cycle-scope.md](references/cycle-scope.md#reviewer-mandate差分スコープ適用時に注入する本文) の Reviewer mandate 節 | **Conditional extraction**: `REVIEW_CYCLE_SCOPE == incremental` のときのみ、同節の fenced block 本文を抽出し `{previous_blocking_findings}` / `{cycle_base_sha}` / `{base_branch}` を埋めて注入する。`full` のときは空文字列（セクションごと省略）。**`reviewer_type == acceptance`** のときは `REVIEW_CYCLE_SCOPE` に依らず本文を注入せず、代わりに [reviewer-prompt-generator.md](references/reviewer-prompt-generator.md#受入条件確認の-mandate) の fenced block 本文を `{issue_number}` を埋めて注入する |
