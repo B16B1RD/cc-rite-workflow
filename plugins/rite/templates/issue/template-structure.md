@@ -302,13 +302,15 @@ Select ONE matching the Issue type. The type confirmed in `create.md` ステッ�
 1. Happy path: from UX/purpose
 2. Error path: from edge cases + constraints
 3. Boundary: from min/max/empty/null/duplicate/timeout
-4. Non-regression: when existing feature impact exists
+4. Non-regression: when existing feature impact exists, use actual user inputs and reference locations within the Goal scope; omit when existing features are unaffected
 5. Compatibility: when interface/public contract changes
 
 **AC writing rules**:
 - Given: Explicit preconditions (state/data/flag/role)
 - When: One specific action
 - Then: Observable outcomes only (status code, UI text, DB state, event, log)
+- Non-regression: exercise actual user inputs and reference locations (page URLs, real data), not fixtures alone. Fixtures may supplement these checks.
+- Compare non-regression AC coverage with the Goal: when it spans multiple reference locations, each must be represented. Point out missing coverage and add ACs for those locations, preserving one verification purpose per AC.
 - 1 AC = 1 verification purpose
 - Forbidden vague verbs: "appropriately", "correctly", "optimally"
 
