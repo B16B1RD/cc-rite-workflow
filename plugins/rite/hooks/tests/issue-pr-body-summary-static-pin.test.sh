@@ -87,7 +87,7 @@ summary_check() {
       printf 'OLD SUMMARY LABEL: %s\n' "$old" >&2; return 1
     fi
   done
-  awk '
+  LC_ALL=C awk '
     /^## 要約$/ { active=1; next }
     active && (/^```$/ || /^<details>$/) { active=0 }
     !active { next }
