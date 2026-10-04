@@ -19,9 +19,11 @@
 #   {
 #     "parent":     { "title": "string", "body_file": "path to raw body md",
 #                     "attachments": ["abs path"] },  # optional, default []
-#                                              # passed as issue.attachments on the
-#                                              # parent payload only; never on Sub-Issues
-#     "sub_issues": [ { "title": "string", "body_file": "path", "complexity": "XS|S|M|L|XL" } ],
+#     "sub_issues": [ { "title": "string", "body_file": "path",
+#                       "complexity": "XS|S|M|L|XL",
+#                       "attachments": ["abs path"] } ], # optional, default []
+#     # Each attachments array is passed as issue.attachments for that Issue.
+#     # Children never inherit the parent attachments.
 #     "labels_csv": "comma,separated",      # shared; parent prepends "epic"
 #     "projects": {
 #       "enabled": true,                    # default: true
@@ -131,7 +133,7 @@ labels_csv=$(spec_get '.labels_csv // ""')
 # build_payload <title> <body_file> <labels_json> <complexity> [attachments_json]
 # Constructs the create-issue-with-projects.sh JSON. Identical shape to the
 # original inline `jq -n` calls (issue / projects / options). Fifth arg is
-# parent-only; Sub-Issue callers omit it so attachments default to [].
+# the current Issue's attachments array; omitted attachments default to [].
 build_payload() {
   jq -n \
     --arg title "$1" \
@@ -213,6 +215,7 @@ while IFS= read -r sub_json; do
   sub_title=$(printf '%s' "$sub_json" | jq -r '.title')
   sub_body_file=$(printf '%s' "$sub_json" | jq -r '.body_file')
   sub_complexity=$(printf '%s' "$sub_json" | jq -r '.complexity')
+  sub_attachments=$(printf '%s' "$sub_json" | jq -c '.attachments // []')
   if [ ! -s "$sub_body_file" ]; then
     echo "WARNING: Sub-Issue '$sub_title' body が空、skip" >&2
     failed_count=$((failed_count + 1))
@@ -220,7 +223,7 @@ while IFS= read -r sub_json; do
     # stderr を helper_err_file へ分離する。`2>&1` だと partial-Projects
     # 失敗時の stderr ERROR が stdout JSON 前方へ混入し、直後の jq parse が壊れて
     # 実際には作成された Sub-Issue を failed_count に誤カウントする (silent data loss)。
-    sub_result=$(bash "$CREATE_SCRIPT" "$(build_payload "$sub_title" "$sub_body_file" "$sub_labels_json" "$sub_complexity")" 2>"$helper_err_file")
+    sub_result=$(bash "$CREATE_SCRIPT" "$(build_payload "$sub_title" "$sub_body_file" "$sub_labels_json" "$sub_complexity" "$sub_attachments")" 2>"$helper_err_file")
     create_rc=$?
     if [ $create_rc -ne 0 ]; then
       create_err=$(cat "$helper_err_file" 2>/dev/null)

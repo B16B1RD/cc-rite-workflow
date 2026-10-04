@@ -36,7 +36,8 @@ DECOMPOSE="$SANDBOX/scripts/decompose-issues.sh"
 
 # Stub: create-issue-with-projects.sh
 # - Emits a monotonically increasing issue_number from STUB_NUM_FILE.
-# - Fails (exit 1) when title == STUB_CREATE_FAIL_TITLE.
+# - Fails (exit 1) when title == STUB_CREATE_FAIL_TITLE, or an attachment
+#   matches STUB_UPLOAD_FAIL_PATH (simulated downstream upload failure).
 # - Logs "title=<t> labels=<l>" to STUB_CREATE_LOG for label assertions.
 cat > "$SANDBOX/scripts/create-issue-with-projects.sh" <<'STUB_CREATE'
 #!/bin/bash
@@ -49,6 +50,11 @@ attachments=$(printf '%s' "$payload" | jq -c '.issue.attachments // []')
 [ -n "${STUB_CREATE_LOG:-}" ] && printf 'title=%s labels=%s attachments=%s\n' "$title" "$labels" "$attachments" >> "$STUB_CREATE_LOG"
 if [ -n "${STUB_CREATE_FAIL_TITLE:-}" ] && [ "$title" = "$STUB_CREATE_FAIL_TITLE" ]; then
   echo "stub: forced create failure for $title" >&2
+  exit 1
+fi
+if [ -n "${STUB_UPLOAD_FAIL_PATH:-}" ] &&
+   jq -e --arg path "$STUB_UPLOAD_FAIL_PATH" 'index($path) != null' <<<"$attachments" >/dev/null; then
+  echo "stub: forced attachment upload failure for $title" >&2
   exit 1
 fi
 n=$(cat "$STUB_NUM_FILE")
@@ -342,6 +348,102 @@ assert_out_missing "PARENT_ISSUE_NUMBER" "T-05: no PARENT_ISSUE_NUMBER before fa
 assert_out_missing '"issue_number"' "T-05: no parent success JSON"
 mv "$TEST_DIR/stub_create.bak" "$SANDBOX/scripts/create-issue-with-projects.sh"
 chmod +x "$SANDBOX/scripts/create-issue-with-projects.sh"
+
+# -----------------------------------------------------------------
+echo "--- Test 12: parent and two children receive their own attachment arrays ---"
+wd12="$TEST_DIR/wd12"; mkdir -p "$wd12"
+printf '%s' "Parent" > "$wd12/parent.md"; printf '%s' "Sub 1" > "$wd12/s1.md"; printf '%s' "Sub 2" > "$wd12/s2.md"
+parent_svg12="$wd12/parent diagram.svg"
+sub1_svg12="$wd12/first child diagram.svg"; sub1_extra12="$wd12/first child detail.svg"
+sub2_svg12="$wd12/second child diagram.svg"
+for svg in "$parent_svg12" "$sub1_svg12" "$sub1_extra12" "$sub2_svg12"; do printf '<svg/>\n' > "$svg"; done
+spec12=$(build_spec "$wd12" "Epic12" "$wd12/parent.md" "refactor" \
+  "Sub One" "$wd12/s1.md" "M" "Sub Two" "$wd12/s2.md" "S")
+parent_expected12=$(jq -cn --arg p "$parent_svg12" '[$p]')
+sub1_expected12=$(jq -cn --arg a "$sub1_svg12" --arg b "$sub1_extra12" '[$a,$b]')
+sub2_expected12=$(jq -cn --arg p "$sub2_svg12" '[$p]')
+jq --argjson p "$parent_expected12" --argjson a "$sub1_expected12" --argjson b "$sub2_expected12" \
+  '.parent.attachments = $p | .sub_issues[0].attachments = $a | .sub_issues[1].attachments = $b' \
+  "$spec12" > "$spec12.tmp" && mv "$spec12.tmp" "$spec12"
+STUB_NUM_FILE="$TEST_DIR/num12"; echo 1200 > "$STUB_NUM_FILE"
+STUB_CREATE_LOG="$TEST_DIR/clog12"; : > "$STUB_CREATE_LOG"
+export STUB_NUM_FILE STUB_CREATE_LOG
+unset STUB_CREATE_FAIL_TITLE STUB_UPLOAD_FAIL_PATH STUB_LINK_FAIL_CHILD STUB_CREATE_PARTIAL_TITLE 2>/dev/null || true
+run_decompose "$spec12"
+assert_rc 0 "exit 0 with separate parent and child attachments"
+assert_out_contains "[CONTEXT] SUB_ISSUE_RESULT created=2 failed=0 link_failures=0" "both attached children counted as created"
+assert_out_contains "[CONTEXT] SUB_ISSUE_NUMBERS=1201 1202" "both attached child numbers listed"
+for title in "Epic12" "Sub One" "Sub Two"; do
+  case "$title" in
+    Epic12) expected="$parent_expected12" ;;
+    'Sub One') expected="$sub1_expected12" ;;
+    'Sub Two') expected="$sub2_expected12" ;;
+  esac
+  actual=$(grep "^title=$title " "$STUB_CREATE_LOG" | sed -n 's/.*attachments=//p')
+  if [ "$actual" = "$expected" ]; then
+    pass "$title receives its exact attachment array, preserving spaces and order"
+  else
+    fail "$title receives its exact attachment array (got: $actual)"; cat "$STUB_CREATE_LOG"
+  fi
+done
+unset STUB_CREATE_LOG
+
+# -----------------------------------------------------------------
+echo "--- Test 13: empty and omitted child attachments do not inherit parent attachments ---"
+wd13="$TEST_DIR/wd13"; mkdir -p "$wd13"
+printf '%s' "Parent" > "$wd13/parent.md"; printf '%s' "Sub 1" > "$wd13/s1.md"; printf '%s' "Sub 2" > "$wd13/s2.md"
+parent_svg13="$wd13/parent diagram.svg"; printf '<svg/>\n' > "$parent_svg13"
+spec13=$(build_spec "$wd13" "Epic13" "$wd13/parent.md" "refactor" \
+  "Sub Empty Attachments" "$wd13/s1.md" "M" "Sub Omitted Attachments" "$wd13/s2.md" "S")
+jq --arg p "$parent_svg13" '.parent.attachments = [$p] | .sub_issues[0].attachments = []' \
+  "$spec13" > "$spec13.tmp" && mv "$spec13.tmp" "$spec13"
+STUB_NUM_FILE="$TEST_DIR/num13"; echo 1300 > "$STUB_NUM_FILE"
+STUB_CREATE_LOG="$TEST_DIR/clog13"; : > "$STUB_CREATE_LOG"
+export STUB_NUM_FILE STUB_CREATE_LOG
+run_decompose "$spec13"
+assert_rc 0 "exit 0 with empty and omitted child attachments"
+assert_out_contains "[CONTEXT] SUB_ISSUE_RESULT created=2 failed=0 link_failures=0" "empty and omitted attachment children both created"
+for title in "Sub Empty Attachments" "Sub Omitted Attachments"; do
+  actual=$(grep "^title=$title " "$STUB_CREATE_LOG" | sed -n 's/.*attachments=//p')
+  if [ "$actual" = '[]' ]; then
+    pass "$title receives [] with a nonempty parent array"
+  else
+    fail "$title receives [] (got: $actual)"; cat "$STUB_CREATE_LOG"
+  fi
+done
+unset STUB_CREATE_LOG
+
+# -----------------------------------------------------------------
+echo "--- Test 14: child upload and create failures count as failed and processing continues ---"
+wd14="$TEST_DIR/wd14"; mkdir -p "$wd14"
+printf '%s' "Parent" > "$wd14/parent.md"
+for child in upload create success; do
+  printf '%s' "Child body" > "$wd14/$child.md"
+  printf '<svg/>\n' > "$wd14/$child diagram.svg"
+done
+spec14=$(build_spec "$wd14" "Epic14" "$wd14/parent.md" "refactor" \
+  "Sub Upload Fails" "$wd14/upload.md" "M" "Sub Create Fails" "$wd14/create.md" "S" \
+  "Sub Success" "$wd14/success.md" "S")
+jq --arg u "$wd14/upload diagram.svg" --arg c "$wd14/create diagram.svg" --arg s "$wd14/success diagram.svg" \
+  '.sub_issues[0].attachments = [$u] | .sub_issues[1].attachments = [$c] | .sub_issues[2].attachments = [$s]' \
+  "$spec14" > "$spec14.tmp" && mv "$spec14.tmp" "$spec14"
+STUB_NUM_FILE="$TEST_DIR/num14"; echo 1400 > "$STUB_NUM_FILE"
+STUB_LINK_LOG="$TEST_DIR/llog14"; : > "$STUB_LINK_LOG"
+STUB_UPLOAD_FAIL_PATH="$wd14/upload diagram.svg"; STUB_CREATE_FAIL_TITLE="Sub Create Fails"
+export STUB_NUM_FILE STUB_LINK_LOG STUB_UPLOAD_FAIL_PATH STUB_CREATE_FAIL_TITLE
+run_decompose "$spec14"
+assert_rc 0 "child upload/create failures remain non-blocking"
+assert_out_contains "[CONTEXT] PARENT_ISSUE_NUMBER=1400" "parent remains created despite child failures"
+assert_out_contains "[CONTEXT] SUB_ISSUE_RESULT created=1 failed=2 link_failures=0" "upload and create failures each increment failed count"
+assert_out_contains "[CONTEXT] SUB_ISSUE_NUMBERS=1401" "only later successful child is listed"
+assert_err_contains "stub: forced attachment upload failure for Sub Upload Fails" "downstream child upload diagnostic surfaced"
+assert_err_contains "stub: forced create failure for Sub Create Fails" "downstream child create diagnostic surfaced"
+if [ "$(cat "$STUB_LINK_LOG")" = 'link B16B1RD/cc-rite-workflow 1400<-1401' ]; then
+  pass "only successful child is linked"
+else
+  fail "only successful child is linked"; cat "$STUB_LINK_LOG"
+fi
+unset STUB_LINK_LOG STUB_UPLOAD_FAIL_PATH STUB_CREATE_FAIL_TITLE
 
 # -----------------------------------------------------------------
 echo "--- Test 6: usage / spec validation errors ---"

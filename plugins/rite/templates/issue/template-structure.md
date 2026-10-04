@@ -24,30 +24,61 @@ Issue は Meta の直後、PR は本文先頭に置く。以下は日本語例�
 ```markdown
 ## 要約
 
-**何が起きているか**: {前提知識なしで理解できる問題・背景を2〜3文}
+### 問題
 
-**何をするか**: {変更の要点を2〜3文}
+{前提知識なしで理解できる問題・背景を2〜3文}
 
-**見てほしい点**: {確認・レビューで注目する点を1〜2行}
+### 変更
 
-{条件に合う図。図なしのときは `<!-- 図なし: {理由} -->`}
+{変更の要点を2〜3文}
+
+### 期待する結果
+
+{変更によって得られる結果を2〜3文}
+
+{条件に合う図。図なしのときは `<!-- 図なし: {条件} -->`}
 
 **用語**:
 - {この本文で使う内部用語}: {初出の一言説明}
 ```
 
-- 3 ブロックは必須。内部用語が無ければ `**用語**:` とそのリストを省略する。各ブロックは3文以内を目安とする。
-- 内容源: Issue は What / Why と Goal → 問題・背景、Scope → 変更、AC / 制約 → 見てほしい点。PR は関連 Issue の問題と実際の差分・検証結果を使う。他リポジトリ名や内部機構名は説明なしに並べない。
-- タイトルは内部機構名を避け、変更の効果が読める文にする。Conventional Commits の type / scope は維持する。
+- 問題 / 変更 / 期待する結果の見出しと次行からの段落は必須。英語本文は `### Problem` / `### Change` / `### Expected result` の順。特定の確認依頼があるときだけ、任意の `### 見てほしい点`（英語: `### Specific request`）と段落を追加する。依頼が無ければ見出しごと出力しない。内部用語が無ければ `**用語**:` とそのリストを省略する。各ブロックは3文以内を目安とする。
+- 内容源: Issue は What / Why と Goal → 問題・背景、Scope → 変更、Goal / AC → 期待する結果。PR は関連 Issue の問題と実際の差分・検証結果を使う。他リポジトリ名や内部機構名は説明なしに並べない。
+- タイトルは内部機構名を避け、前提知識なしでタイトル単体から何のどんな変更かと効果が分かる文にする。Conventional Commits の type / scope は維持する。
 - 上段（Meta を含む details 外）に経緯識別子 `F-[0-9]+` / `cycle [0-9]+` / `[0-9a-fA-F]{7,}` / `PR #[0-9]+` / `Issue #[0-9]+` / `#[0-9]+` を書かない。PR の `Closes #N` 行のみ例外。残ったら生成をやり直し、作成前に再検査する。
 
 ### 図の選択規則（Issue / PR 共通）
+
+流れ・関係・分岐・変更前後の構造を説明する変更では図を必須とする。図なしを許すのは、構造の説明を含まない次の2条件だけ: `文言・数値のみの修正` / `調査結果の記録`。単に「子 Issue である」「単純」「理由を書いた」では省略できない。
+
+作成前に全本文（単一 Issue・分解経路の親と各 Sub-Issue・PR）を検査する。必須の図が無い、または図なしコメントの条件が上記2条件に該当しない場合は作成 helper / `gh pr create` を呼ばず、当該本文の生成へ戻り、修正後に再検査する。違反を WARNING で続行しない。読みやすさの点検は、この検査を通過した本文だけを扱う。
+
+作成前検査は次の Bash を本文ごとに実行する。`{body_file}` は生成した本文の絶対パス、`{diagram_required}` は変更が上記の構造を説明する場合 `true`、それ以外 `false`。この値は本文生成時の分類であり設定キーではない。非ゼロなら作成コマンドを呼ばず再生成する。英語の省略条件は `Wording or numeric changes only` / `Research results record`。
+
+```bash
+body_file="{body_file}"
+diagram_required="{diagram_required}"
+# diagram-body-check: details より前の図・図なし条件を検査
+case "$body_file" in /*) ;; *) echo "ERROR: body_file must be absolute" >&2; exit 1 ;; esac
+[ -s "$body_file" ] || { echo "ERROR: body file missing or empty" >&2; exit 1; }
+case "$diagram_required" in true|false) ;; *) echo "ERROR: diagram_required must be true or false" >&2; exit 1 ;; esac
+awk -v required="$diagram_required" '
+  /^<details>/ { exit }
+  /!\[[^]]+\]\([^)]+\)/ { diagram=1 }
+  /^[[:space:]]*```mermaid[[:space:]]*$/ { diagram=1 }
+  /^[[:space:]]*<!-- 図なし: (文言・数値のみの修正|調査結果の記録) -->[[:space:]]*$/ { allowed=1 }
+  /^[[:space:]]*<!-- No diagram: (Wording or numeric changes only|Research results record) -->[[:space:]]*$/ { allowed=1 }
+  END { if (!diagram && (required == "true" || !allowed)) exit 1 }
+' "$body_file" || { echo "ERROR: 図が必須、または図なし条件が不適合。本文を再生成してください" >&2; exit 1; }
+```
 
 | 選ぶ | 条件 |
 |---|---|
 | SVG（添付） | `svg_allowed=true` なら第一候補。構成図・グルーピング・注釈付き図・フロー・状態遷移・前後比較・データ構造に該当するとき |
 | Mermaid（本文内 fence） | `svg_allowed=false` のときのみ。フロー・状態遷移・シーケンス・小規模 ER（`erDiagram`） |
-| 図なし | ループ・状態遷移・前後比較・データ構造・構成図のいずれも無いとき。上段（`<details>` より前）に `<!-- 図なし: {理由} -->` を残す。理由を書けないときは図を描く |
+| 図なし | 構造の説明を含まず、上記の列挙条件のいずれかに該当するときだけ。上段（`<details>` より前）に `<!-- 図なし: {条件} -->` として該当条件を書く（英語本文では条件も翻訳） |
+
+子 Issue / PR も本文単独で変更範囲が分かる図を置く。既存図で足りれば再掲し、足りなければ自範囲の図を描く。「親の図を参照」だけでは済ませない。
 
 生成前に次の1行 bash で `svg_allowed` を取得する。`true` なら SVG を選び Mermaid に落とさない。2.99.0 未満は SVG 行を選ばず、Mermaid に落とす（警告不要）。解析不能時は WARNING を stderr に出して SVG を選ばない。
 
