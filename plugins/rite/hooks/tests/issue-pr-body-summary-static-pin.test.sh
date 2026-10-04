@@ -19,7 +19,7 @@ pin() {
   if require_literal "$1" "$2"; then pass "$2"; else fail "$2"; fi
 }
 for file in "$structure" "$pr_template"; do
-  for literal in '## 要約' '**何が起きているか**:' '**何をするか**:' '**見てほしい点**:' '**用語**:' '<details>' '<summary>'; do
+  for literal in '## 要約' '### 問題' '### 変更' '### 期待する結果' '**用語**:' '<details>' '<summary>'; do
     pin "$file" "$literal"
   done
   if awk '/^<summary>/ { getline; if ($0 != "") exit 1; found=1 } END { if (!found) exit 1 }' "$file"; then
@@ -56,9 +56,11 @@ pin "$pr_create" 'Mermaid fence'
 pin "$pr_create" 'ノードの追加・削除'
 pin "$pr_create" 'ラベルの文言変更だけでは描き直さない'
 pin "$pr_create" 'Issue の図から変わった点'
-pin "$pr_create" '親 Issue の図の {部分} を担当'
-pin "$pr_create" '<!-- 図なし: {理由} -->'
-pin "$pr_create" '関連 Issue に図が無く、選択表の図種に該当する'
+pin "$pr_create" '本文単独で変更範囲が分からない'
+pin "$pr_create" '既存図で足りる場合は以下の行で再掲可'
+pin "$pr_create" '<!-- 図なし: {条件} -->'
+pin "$pr_create" 'どの行にも該当しない場合は作成せず'
+pin "$pr_create" '関連 Issue に図が無く、共通規則で図が必須'
 pin "$pr_create" '新規生成または描き直し'
 pin "$pr_create" '関連 Issue 不在は「図が無く」'
 if grep -Fq -- 'Issue なしで PR を作る場合は図なし行へ' "$pr_create"; then fail 'deleted preface resurfaced'; else pass 'deleted preface absent'; fi
@@ -76,14 +78,118 @@ if awk '/^Closes / { closes=NR } /^<details>/ { details=NR } /^## 変更/ { chan
   pass 'PR closes outside details; changes inside'
 else fail 'PR section ordering'; fi
 
-# Prove the same pin detector fails on an actual deleted rule.
-sed '/^\*\*見てほしい点\*\*:/d' "$structure" > "$work/mutant.md"
-if assert_mutant_changed 'deleted summary rule' "$structure" "$work/mutant.md"; then
-  rc=0
-  require_literal "$work/mutant.md" '**見てほしい点**:' 2> "$work/mutation.err" || rc=$?
-  assert 'deleted literal returns 1' 1 "$rc"
-  assert_grep 'deleted literal reports MISSING RULE' "$work/mutation.err" '^MISSING RULE:'
-fi
+# Check actual summary layout, not just tokens anywhere in the document.
+# The same detector is used on real templates and mutated copies.
+summary_check() {
+  local file="$1"
+  for old in '**何が起きているか**:' '**何をするか**:' '**見てほしい点**:'; do
+    if grep -Fq -- "$old" "$file"; then
+      printf 'OLD SUMMARY LABEL: %s\n' "$old" >&2; return 1
+    fi
+  done
+  LC_ALL=C awk '
+    /^## 要約$/ { active=1; next }
+    active && (/^```$/ || /^<details>$/) { active=0 }
+    !active { next }
+    /^### (問題|変更|期待する結果)$/ {
+      expected[++n] = $0
+      if (n == 1 && $0 != "### 問題") bad=1
+      if (n == 2 && $0 != "### 変更") bad=1
+      if (n == 3 && $0 != "### 期待する結果") bad=1
+      if (getline <= 0 || $0 != "") bad=1
+      if (getline <= 0 || $0 == "" || $0 ~ /^(#|<!--)/) bad=1
+    }
+    /^### 見てほしい点$/ { bad=1 }
+    END { exit (bad || n != 3) }
+  ' "$file" || { echo 'INVALID SUMMARY LAYOUT' >&2; return 1; }
+}
+for file in "$structure" "$pr_template"; do
+  if summary_check "$file"; then pass "summary headings/order/paragraphs: ${file##*/}"; else fail "summary layout: ${file##*/}"; fi
+  pin "$file" '特定の確認依頼があるときだけ'
+  pin "$file" '依頼が無ければ見出しごと出力しない'
+  pin "$file" '### Problem'
+  pin "$file" '### Change'
+  pin "$file" '### Expected result'
+  pin "$file" 'タイトル単体から何のどんな変更か'
+  for mutation in \
+    'old label|s/^### 問題$/**何が起きているか**:/' \
+    'old label appended|$a\
+**何が起きているか**: stale' \
+    'missing heading|/^### 期待する結果$/d' \
+    'wrong order|s/^### 問題$/### 変更/' \
+    'paragraph absent|/^{変更の要点を2〜3文}$/d' \
+    'request always emitted|/^### 期待する結果$/i\
+### 見てほしい点'; do
+    label=${mutation%%|*}
+    sed "${mutation#*|}" "$file" > "$work/summary-mutant.md"
+    if assert_mutant_changed "${file##*/} $label" "$file" "$work/summary-mutant.md"; then
+      if summary_check "$work/summary-mutant.md" > /dev/null 2>&1; then fail "${file##*/} $label is not detected"; else pass "${file##*/} $label is detected"; fi
+    fi
+  done
+  sed 's/### Expected result/### Result/' "$file" > "$work/english-mutant.md"
+  if assert_mutant_changed "${file##*/} English heading" "$file" "$work/english-mutant.md"; then
+    rc=0; require_literal "$work/english-mutant.md" '### Expected result' 2> "$work/mutation.err" || rc=$?
+    assert 'missing English heading returns 1' 1 "$rc"
+    assert_grep 'missing heading reports MISSING RULE' "$work/mutation.err" '^MISSING RULE:'
+  fi
+done
+# Pin the common structural gate and its callers, with negative controls.
+diagram_rules() {
+  for rule in '流れ・関係・分岐・変更前後の構造を説明する変更では図を必須' \
+    '構造の説明を含まない次の2条件だけ' '`文言・数値のみの修正` / `調査結果の記録`' \
+    '当該本文の生成へ戻り' '違反を WARNING で続行しない' \
+    '読みやすさの点検は、この検査を通過した本文だけ' '「親の図を参照」だけでは済ませない'; do
+    require_literal "$1" "$rule" || return 1
+  done
+}
+if diagram_rules "$structure"; then pass 'mandatory/omission/hard-stop rules'; else fail 'diagram rules'; fi
+for mutation in \
+  'missing mandatory rule|/流れ・関係・分岐・変更前後の構造を説明する変更では図を必須/d' \
+  'warning downgrade|s/違反を WARNING で続行しない/違反を WARNING で続行する/' \
+  'freeform omission|s/構造の説明を含まない次の2条件だけ/任意の理由/' \
+  'reference-only child|/「親の図を参照」だけでは済ませない/d'; do
+  label=${mutation%%|*}; sed "${mutation#*|}" "$structure" > "$work/diagram-mutant.md"
+  if assert_mutant_changed "$label" "$structure" "$work/diagram-mutant.md"; then
+    if diagram_rules "$work/diagram-mutant.md" > /dev/null 2>&1; then fail "$label is not detected"; else pass "$label is detected"; fi
+  fi
+done
+pin "$PLUGIN_ROOT/templates/issue/default.md" '違反時は作成せず生成をやり直す'
+pin "$PLUGIN_ROOT/skills/issue-create/SKILL.md" '違反時は (C) を呼ばず当該本文を再生成する'
+pin "$PLUGIN_ROOT/skills/issue-create/SKILL.md" 'sub_issues[i].attachments'
+pin "$pr_create" '違反時は `gh pr create` を呼ばず当該本文を再生成する'
+for file in "$PLUGIN_ROOT/templates/issue/default.md" "$PLUGIN_ROOT/skills/issue-create/SKILL.md" "$pr_create"; do
+  if grep -Fq '**何が起きているか**:' "$file"; then fail "old label in $file"; else pass "old label absent: $file"; fi
+done
+
+# Run the exact shared pre-creation gate on generated-body fixtures.
+# The fake creator after the gate must never run for a rejected body.
+diagram_code=$(awk '/^body_file="\{body_file\}"$/ { active=1 } active && /^```/ { exit } active { print }' "$structure")
+[ -n "$diagram_code" ] || fail 'diagram body gate code exists'
+for row in \
+  'wording|false|0|<!-- 図なし: 文言・数値のみの修正 -->' \
+  'research|false|0|<!-- 図なし: 調査結果の記録 -->' \
+  'English wording|false|0|<!-- No diagram: Wording or numeric changes only -->' \
+  'English research|false|0|<!-- No diagram: Research results record -->' \
+  'structural omission|true|1|<!-- 図なし: 文言・数値のみの修正 -->' \
+  'unlisted reason|false|1|<!-- 図なし: 子 Issue だから -->' \
+  'missing reason|false|1|No diagram' \
+  'SVG reference|true|0|![範囲](https://example.invalid/diagram.svg)' \
+  'Mermaid fence|true|0|```mermaid\nflowchart LR\nA --> B\n```' \
+  'diagram only in details|true|1|<details>\n![範囲](https://example.invalid/diagram.svg)' \
+  'allowed plus extra reason|false|1|<!-- 図なし: 調査結果の記録、子 Issue だから -->'; do
+  IFS='|' read -r label required expected content <<< "$row"
+  body="$work/diagram-body.md"; printf '## 要約\n\n%b\n' "$content" > "$body"
+  code=${diagram_code//\{body_file\}/$body}; code=${code//\{diagram_required\}/$required}
+  printf '%s\nprintf "created\\n"\n' "$code" > "$work/diagram-check.sh"
+  rc=0; bash "$work/diagram-check.sh" > "$work/diagram-create.out" 2> "$work/diagram-check.err" || rc=$?
+  assert "diagram $label exit" "$expected" "$rc"
+  if [ "$expected" = 0 ]; then
+    assert "diagram $label reaches creator" created "$(cat "$work/diagram-create.out")"
+  else
+    assert "diagram $label never creates" '' "$(cat "$work/diagram-create.out")"
+    assert_grep "diagram $label asks for regeneration" "$work/diagram-check.err" '本文を再生成してください'
+  fi
+done
 
 # Prints the version gate line; a missing line is reported and returns 1 instead of ending the run.
 svg_gate_line() {
