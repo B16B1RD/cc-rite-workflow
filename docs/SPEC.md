@@ -77,9 +77,11 @@ The command prefix `rite` was chosen for:
 | `/rite:wiki-init` | Initialize Experience Wiki (branch, directories, templates) | None |
 | `/rite:wiki-query` | Search Wiki pages for heuristics by keyword and inject into context | `<keywords>` |
 | `/rite:wiki-ingest` | Extract heuristics from raw sources and update Wiki pages | `[source]` |
-| `/rite:wiki-lint` | Lint Wiki pages for contradictions, staleness (informational — not added to `n_warnings`), orphans, missing concepts (`missing_concept`), unregistered raw sources (`unregistered_raw`, informational — not added to `n_warnings`), and broken cross-refs | `[--auto] [--stale-days <N>]` |
+| `/rite:wiki-lint` | Lint Wiki pages for contradictions, staleness (informational — not added to `n_warnings`), orphans, missing concepts (`missing_concept`), unregistered raw sources (`unregistered_raw`, informational — not added to `n_warnings`), and broken cross-refs | `[--auto --changed-pages-file <absolute JSON path>] [--stale-days <N>]` |
 | `/rite:recover` | Resume interrupted work | `[issue_number]` |
 | `/rite:skill-suggest` | Analyze context and suggest applicable skills | `[--verbose\|--filter]` |
+
+`wiki-lint --auto` requires a JSON array of changed page paths. An explicit `[]` means no changed pages; manual lint still compares all pages. Auto lint screens all same-domain index summaries before comparing candidate bodies, records candidate/excluded counts, and stops ingestion and cleanup if comparison cannot finish.
 
 ---
 
