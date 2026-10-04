@@ -32,6 +32,18 @@ Past version sections carry none either — they have already been stripped.
 
 ## [Unreleased]
 
+## [0.19.5] - 2026-10-04
+
+### Added
+
+- **Missing acceptance-criterion IDs filled in before implementation** — `/rite:open` assigns IDs only to acceptance criteria that lack one, keeping existing IDs and text, and hands the refreshed Issue body to implementation; it stops on a strict ID check when the update fails.
+
+### Fixed
+
+- **AC IDs on follow-up acceptance criteria** — `/rite:cleanup` assigns sequential AC IDs to single and multiple acceptance criteria of follow-up Issues while preserving their text.
+- **Non-required CI failures saved as warnings** — `/rite:pr-review` reads the required-check set from branch protection and active rulesets, stops on required-check failures or when the set cannot be fetched, and records non-required failures in `ci_status.warnings`.
+- **Repository misdetection from a shifted working directory** — helpers compare the target repository captured at entry with their working directory and stop instead of treating a check against a neighboring repository as a normal fallback.
+
 ## [0.19.4] - 2026-10-03
 
 ### Fixed
@@ -1252,6 +1264,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.19.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.4...v0.19.5
 [0.19.4]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.3...v0.19.4
 [0.19.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.2...v0.19.3
 [0.19.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.1...v0.19.2
