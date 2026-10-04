@@ -113,11 +113,13 @@ for file in "$structure" "$pr_template"; do
   pin "$file" 'タイトル単体から何のどんな変更か'
   for mutation in \
     'old label|s/^### 問題$/**何が起きているか**:/' \
-    'old label appended|$a**何が起きているか**: stale' \
+    'old label appended|$a\
+**何が起きているか**: stale' \
     'missing heading|/^### 期待する結果$/d' \
     'wrong order|s/^### 問題$/### 変更/' \
     'paragraph absent|/^{変更の要点を2〜3文}$/d' \
-    'request always emitted|/^### 期待する結果$/i### 見てほしい点'; do
+    'request always emitted|/^### 期待する結果$/i\
+### 見てほしい点'; do
     label=${mutation%%|*}
     sed "${mutation#*|}" "$file" > "$work/summary-mutant.md"
     if assert_mutant_changed "${file##*/} $label" "$file" "$work/summary-mutant.md"; then
