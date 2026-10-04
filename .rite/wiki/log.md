@@ -2,6 +2,7 @@
 
 ## 2026-10-04
 
+* **Update**: [複数の独立した制約を1つの共有前提条件に総称すると片方だけの前提差異が握り潰される](pages/anti-patterns/changelog-shared-precondition-overgeneralization.md) — raw/reviews/20261004T022009Z-pr-3655.md と raw/fixes/20261004T022451Z-pr-3655.md と raw/reviews/20261004T022849Z-pr-3655.md を統合
 * **Skip**: [20261003T153744Z-pr-3652.md](raw/reviews/20261003T153744Z-pr-3652.md) — 今回のテスト件数と充足判定は一時的な検証記録で、追加の経験則を含まない
 
 * **lint:clean**: 矛盾 0 / 孤児 0 / 欠落概念 0 / 壊れた参照 0（未登録 raw 711 は informational）

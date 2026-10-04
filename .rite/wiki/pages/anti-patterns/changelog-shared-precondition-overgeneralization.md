@@ -13,9 +13,17 @@ sources:
     resource: "raw/reviews/20260721T063155Z-pr-1948.md"
   - type: "reviews"
     resource: "raw/reviews/20260721T064945Z-pr-1948-cycle2.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261004T022009Z-pr-3655.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261004T022451Z-pr-3655.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261004T022849Z-pr-3655.md"
 tags: ["changelog", "doc-heavy-review", "cross-reference", "precondition-granularity", "overgeneralization"]
 confidence: medium
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-21T16:45:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-04T02:35:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-04T02:35:00Z" }
 ---
 
 # 複数の独立した制約を1つの共有前提条件に総称すると片方だけの前提差異が握り潰される
@@ -35,6 +43,8 @@ CHANGELOG 等のドキュメントで、複数の環境制約や事象を1つの
 fix cycle 1 で修正を適用し、cycle 2（フルレビュー、スコープ縮退なし）で新規指摘 0 件の mergeable 判定に到達した（2 cycle 収束）。CHANGELOG の日英対訳（en/ja）整合性チェックは両言語版とも両 reviewer が実施し問題なし。
 
 **教訓**: 複数の事象・制約をドキュメントで1つの見出しや前提条件にまとめる際は、各事象が本当にその前提を共有しているかを実装（該当機能のコード分岐条件）と個別に突き合わせる。「関連する制約だからまとめて書く」という直感的な整理が、実際の依存関係の違いを覆い隠すことがある。Doc-Heavy PR Mode の cross-reference 検証はこの種の粒度ミスマッチを機械的に検出しうる（tech-writer が実装ファイルの分岐条件を Grep/Read で確認する手順が有効に機能した）。
+
+同じ総称化はリリース準備でコミット subject を要約するときにも起きる。ある Fixed エントリが「helpers が対象リポジトリと作業先を照合して停止する」と書かれていたが、実装を確認すると変更が及んだのは Complexity レーン判定の helper 1 つと、それを呼ぶ 3 つの skill だけで、他の helper は従来の契約のままだった。総称のままだと読者は全 helper の挙動が変わったと読む。修正では対象機能と呼び出し元 skill を名指しする文へ英日同時に差し替え、次のレビューで実装の停止経路・呼び出し箇所の数と一致することを grep で確かめて解消とした。コミット subject の抽象度をそのまま CHANGELOG に転記せず、差分から変更対象を特定して書く。
 
 ## 関連ページ
 
