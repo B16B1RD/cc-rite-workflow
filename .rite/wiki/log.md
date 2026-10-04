@@ -2,6 +2,12 @@
 
 ## 2026-10-04
 
+* **Skip**: [検証記録](raw/fixes/20261004T104636Z-pr-3660.md) — 修正と負例はプラグインの試験へ反映済み。追加のドメイン経験則なし
+* **Skip**: [検証記録](raw/fixes/20261004T110002Z-pr-3660.md) — 修正と負例はプラグインの試験へ反映済み。追加のドメイン経験則なし
+* **Skip**: [検証記録](raw/reviews/20261004T104013Z-pr-3660.md) — 修正と負例はプラグインの試験へ反映済み。追加のドメイン経験則なし
+* **Skip**: [検証記録](raw/reviews/20261004T105446Z-pr-3660.md) — 修正と負例はプラグインの試験へ反映済み。追加のドメイン経験則なし
+* **Skip**: [検証記録](raw/reviews/20261004T111102Z-pr-3660.md) — 修正と負例はプラグインの試験へ反映済み。追加のドメイン経験則なし
+
 * **Update**: [複数の独立した制約を1つの共有前提条件に総称すると片方だけの前提差異が握り潰される](pages/anti-patterns/changelog-shared-precondition-overgeneralization.md) — raw/reviews/20261004T022009Z-pr-3655.md と raw/fixes/20261004T022451Z-pr-3655.md と raw/reviews/20261004T022849Z-pr-3655.md を統合
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=716, broken_refs=0
 * **Skip**: [20261003T153744Z-pr-3652.md](raw/reviews/20261003T153744Z-pr-3652.md) — 今回のテスト件数と充足判定は一時的な検証記録で、追加の経験則を含まない
