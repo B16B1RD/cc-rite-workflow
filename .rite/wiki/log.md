@@ -4373,3 +4373,9 @@ T02:22:43+09:00 — review ingest (skip pages)
 - 2026-10-01T07:31:00Z | Ingest | raw 8件を既存 patterns 2ページへ統合。有効CLI・副作用境界の変異検査と、Git fixture の実体パス正規化の観測を追加。検出器化候補: 有効入力で拒否guardの副作用停止を検査する。別レーンの raw は対象外。
 
 - 2026-10-01T07:34:23.397711+00:00 | Lint | 全666ページの機械検査: stale=66（informational）、orphans=0、broken_refs=0、descriptive_refs=0、出典読取エラー0、missing_concept=0、skip済み未登録raw=679（informational）。今回の8 rawは全件出典登録済み。変更2ページと関連する実体パス・変異検査ページの内容に新たな矛盾なし。全ページペアの意味比較は未完了であり、全体 contradictions=0とは判定しない。自動Lint応答はこの未完了を異常1件として記録。
+
+## 2026-10-04
+
+* **Skip**: [検証記録](raw/reviews/20261004T120010Z-pr-3661.md) — SVG実読手順はプラグインに反映済み。追加のドメイン経験則なし
+* **Skip**: [検証記録](raw/fixes/20261004T121509Z-pr-3661.md) — SVG実読手順はプラグインに反映済み。追加のドメイン経験則なし
+* **Skip**: [検証記録](raw/reviews/20261004T123719Z-pr-3661.md) — SVG実読手順はプラグインに反映済み。追加のドメイン経験則なし
