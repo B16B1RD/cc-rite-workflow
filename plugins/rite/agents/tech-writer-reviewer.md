@@ -32,6 +32,16 @@ For documentation changes that reference existing code:
 - `Grep` for deprecated patterns mentioned in the docs to verify they still exist
 - Check version numbers, dates, and "since version X" claims against actual release history
 
+### Step 2.5: Verified Reference Version Comparison (Conditional)
+
+Apply this check only to documents with `verified_against`, regardless of Doc-Heavy mode. Without it, skip this comparison and continue the ordinary reference and accuracy checks.
+
+1. Resolve the reference and the version identified by `verified_against` using the document's metadata and links. Read three distinct inputs: the reference at that verified version, the current reference, and the page text this PR changes. Keep their identities and retrieved contents separate; do not substitute the current reference for an unavailable verified version. If retrieval fails, report the actual failure signal and which input remains unverified, rather than claiming the comparison succeeded. Do not invent a version or automatically update `verified_against`.
+2. Compare meaning, including status values and implementation scope, across those inputs. For example, a reference that was complete at the verified version but now says `implementation: partial` changes what the page can claim. Report the concrete semantic difference and its sources, rather than only checking that the reference exists or that text differs.
+3. Check whether the page explains that specific difference to readers and gives a continuation target, such as a follow-up Issue. If both are present and correspond to the observed difference, record it as checked with no correction request for that difference. A generic acknowledgement or an unrelated continuation target is insufficient. Otherwise, identify the missing explanation or continuation and request it at the affected page text; do not demand that every reference difference be resolved in this PR.
+
+This acknowledgement applies only to the documented difference. Continue the ordinary checks for unrelated inaccuracies and broken references; it does not waive the existing review gates.
+
 ### Step 3: Completeness Assessment
 
 For each documentation section:
