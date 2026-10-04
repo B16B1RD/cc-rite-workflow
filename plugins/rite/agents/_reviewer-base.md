@@ -54,6 +54,8 @@ rationale: ../skills/reviewers/references/reviewer-base-rationale.md#why-wrapper
 
 ### Mutation experiments and verification (worktree-only)
 
+**XS/S 軽量レーン**では、契約対応の未 pin に加え、PR 本文の保証主張 1 件ごとの小さな反証 mutation を対象にする。該当箇所と対応テストに限定し、全スイートの複製実行は必須にしない。無主張時と M+ の実験範囲は従来どおり。
+
 Reviewer が **mutation testing / verification experiment** (例: 「ある line を `return 1` から `exit 1` に変えたら test が失敗するか」) を実行する必要がある場合、**parent repo の working tree / branch を絶対に変更してはならない**。正規経路は以下の worktree-only pattern に限定される。`{plugin_root}` は、reviewer prompt が渡す本ファイルの絶対パスから末尾の `/agents/_reviewer-base.md` を除いたディレクトリ:
 
 ```bash
@@ -593,6 +595,8 @@ Hypothetical Exception Category 適用は不要 (コメント品質は security 
 本 Gate は **「テストが挙動を固定していない」型の指摘** — mutation 生存 (ある行を変異させてもスイートが green)、assert の検証力不足、pin 欠落 — に適用する。**本 Gate は finding を生む側ではない**: `test-reviewer.md` の Detection Process と Review Checklist (「Missing Critical Tests」等) は従来どおり finding を生み、本 Gate はその**後**に働いて severity を変えずに blocking 集合への帰属だけを決める。調査深度・報告義務・cycle 1 の徹底性はいずれも不変。
 
 ### 契約対応の判定手順
+
+**XS/S 軽量レーンの PR 本文保証主張**は、先に原文と対応テストの実行結果を照合する。主張を反証する mutation が生存した場合は、単なる網羅的 pin 強化ではなく**保証主張の正しさの欠陥**として実測アンカーを添付し、既存の採否・帰結クラス判定へ渡す。Issue の MUST / AC に同じ保証が無いという理由だけで契約外として降格しない。主張の裏付けに成功した場合は照合由来の指摘を出さない。無主張の軽量レーンと M+ には以下の従来判定を適用する。
 
 blocking か否かは「**その mutation が無効化するのは Issue 契約が規定する挙動か、実装内部の細部か**」で決まる。判定材料は Issue body に固定し、reviewer の主観に開かない:
 
