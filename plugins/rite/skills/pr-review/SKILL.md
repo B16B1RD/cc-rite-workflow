@@ -219,6 +219,8 @@ If the argument is omitted and there is no PR number in work memory, identify th
 bash {plugin_root}/scripts/pr-review-step.sh pr-view-current --owner-repo {owner_repo}
 ```
 
+取得に成功した JSON の `body` を PR 本文として保持し、ステップ 4.5 の `{pr_body}` に渡す。空文字列・null は空本文とする。取得失敗は空本文として吸収せず、既存のエラー処理に従う。
+
 **If no PR is found:**
 
 ```
@@ -1057,6 +1059,7 @@ Determine the error type from the completion notification (failure payload or ab
 | Placeholder | Source | Extraction Method |
 |---------------|--------|----------|
 | `{relevant_files}` | Changed file list from ステップ 1.2 | Extract only files matching the reviewer's Activation pattern。`REVIEW_CYCLE_SCOPE == incremental` のときは ステップ 2.2 と同じく `{cycle_scope_files}` の一覧から抽出する。**例外**: `incremental` かつ当該 reviewer が `{prev_finders}` 由来の `mandatory` 合流で、パターン一致が 0 件のときは `{cycle_scope_files}` の**全ファイル**を渡す（空で渡すと `{diff_content}` も空になり、mandate 4 が差分外の読み直しを禁じるため mandate 1 の解消検証すら実行できない prompt になる — 解消検証は自分の指摘箇所と fix の影響範囲の両方が読めて初めて成立する）。Test content rule 由来の **`test`** はパターン一致の有無に関係なくステップ 2.3 で特定したファイルを含め、空の差分を渡さない。**`acceptance`** は Activation パターンと `REVIEW_CYCLE_SCOPE` に依らずステップ 1.2.3 の PR 全体の変更ファイルを渡す |
+| `{pr_body}` | ステップ 1.1 の PR JSON `body` | 本文全体をそのまま渡す（details 内も含む）。空文字列・null は空文字列、PR 本文節は残す。差分スコープ・レーン・reviewer 種別によって省略しない |
 | `{ci_status}` / `{ci_state}` | ステップ 1.2.5.C | 対象 SHA・分類・check 名/状態/結論/詳細 URL・failed 一覧・取得不能理由を出力 JSON から渡す。CI の分類規則を再実装しない |
 | `{diff_content}` | Diff from ステップ 1.2 | **Varies by scale** (see below)。`REVIEW_CYCLE_SCOPE == incremental` のときは PR 全体の diff ではなく `{cycle_scope_files}` のファイルの `{cycle_base_sha}..HEAD` の diff を使う（取得コマンドは ステップ 1.2 の incremental 系。`{relevant_files}` が上記例外で全ファイルになった場合は `{cycle_scope_files}` 全ファイルの diff を渡す）。**`acceptance`** は `REVIEW_CYCLE_SCOPE` に依らず PR 全体の diff を scale 規則どおり渡す |
 | `{cycle_scope_mandate}` | [cycle-scope.md](references/cycle-scope.md#reviewer-mandate差分スコープ適用時に注入する本文) の Reviewer mandate 節 | **Conditional extraction**: `REVIEW_CYCLE_SCOPE == incremental` のときのみ、同節の fenced block 本文を抽出し `{previous_blocking_findings}` / `{cycle_base_sha}` / `{base_branch}` を埋めて注入する。`full` のときは空文字列（セクションごと省略）。**`reviewer_type == acceptance`** のときは `REVIEW_CYCLE_SCOPE` に依らず本文を注入せず、代わりに [reviewer-prompt-generator.md](references/reviewer-prompt-generator.md#受入条件確認の-mandate) の fenced block 本文を `{issue_number}` を埋めて注入する |
@@ -1426,6 +1429,8 @@ emit 形式 (Step 2 line で実装):
 `{doc_heavy_pr} == true` かつ tech-writer が reviewer 集合にいる場合だけ [Doc-Heavy 検証手順](references/doc-heavy-validation.md) を読み、検証結果と retained flags を確定する。それ以外はスキップし、ステップ 5.2 へ進む。
 
 ### 5.2 Cross-Validation
+
+本文照合の指摘は [照合手順](references/reviewer-prompt-generator.md) の「説明の欠陥」と「検査の欠陥」を保持する。同じ `file:line` でも根因と修正先が異なるため、本文修正とテスト追加を一件へ潰さない。各主張・実測範囲・照合結果を統合結果に残し、既存の重大度・採否・実測ゲートは変更しない。
 
 **Same file/line**: `file:line` で束ねる。2+ reviewer でも人数・severity を証拠の代わりにせず、対応確認（5.2.2）の前に High Confidence 扱いへ上げない。
 **Contradiction detection**: 同じ `file:line` で両立できない評価、**or the same root cause is assigned both `current-pr` and `follow-up` scope** → debate（有効時）または `AskUserQuestion`。
