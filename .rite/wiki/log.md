@@ -19,6 +19,8 @@
 * **Skip**: [検証記録](raw/reviews/20261003T171205Z-pr-3653.md) — rite workflow の検証記録であり、挙動はプラグインの helper・契約・試験へ組み込み済みのためドメイン Wiki へ重複追加しない
 * **Skip**: [検証記録](raw/reviews/20261004T012319Z-pr-3653.md) — rite workflow の検証記録であり、挙動はプラグインの helper・契約・試験へ組み込み済みのためドメイン Wiki へ重複追加しない
 
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=721, broken_refs=0
+
 ## 2026-10-03
 
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=701, broken_refs=0
