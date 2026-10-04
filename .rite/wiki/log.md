@@ -20,6 +20,7 @@
 * **Skip**: [検証記録](raw/reviews/20261004T012319Z-pr-3653.md) — rite workflow の検証記録であり、挙動はプラグインの helper・契約・試験へ組み込み済みのためドメイン Wiki へ重複追加しない
 
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=721, broken_refs=0
+* **Skip**: [20261004T132800Z-pr-3663.md](raw/reviews/20261004T132800Z-pr-3663.md) — 単一の文言変更の検証記録。詳細除外の指示は共通 reference に実装済みで、独立した経験則の追加はない
 
 ## 2026-10-03
 
