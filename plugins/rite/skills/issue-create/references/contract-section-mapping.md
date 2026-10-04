@@ -36,6 +36,9 @@ Rich template (Section 1-9) を生成する場合の 4 step 構成:
 
 各 Section の正規 template は [`templates/issue/template-structure.md`](../../../templates/issue/template-structure.md)、Complexity Gate の MUST/SHOULD/OMIT 判定は [`complexity-gate.md`](./complexity-gate.md) を参照。
 
+Step 4 のテンプレート適用時、既存機能への影響がある場合は Goal の対象と退行 AC の範囲を照合する。実際の利用者入力・参照箇所（ページの URL、実データ）を対象にし、fixture だけで目的全体を保証する条件にしない。複数の参照箇所に及ぶ目的は各箇所が AC に代表され、対応する T-xx があるかを確認する。不足する箇所を指摘し、その実参照を試す AC と T-xx を補う（1 AC = 1 検証目的）。既に範囲が対応していれば重複追加しない。既存機能に影響しない新規追加には退行 AC を生成しない。
+
+
 ## Step 2: Type → Type Core Section (Section 3) Mapping
 
 `skills/issue-create/SKILL.md` ステップ 4.1 の AskUserQuestion で確定した Type に基づき、Section 3 として include する Type Core Section を選択する:
@@ -59,7 +62,7 @@ Rich template (Section 1-9) を生成する場合の 4 step 構成:
 | Technical Implementation | 4.1 Target Files / 4.3 Interface / Data Contract / 4.4 Behavioral Requirements |
 | User Experience | 1 Goal / 3 Type Core (Feature scenarios) / 5 AC (Happy Path) |
 | Edge Cases | 5 AC (Boundary / Error) / 6 Test Specification |
-| Existing Feature Impact | 2 Scope (Out) / 4.2 Non-Target / 4.4 MUST NOT |
+| Existing Feature Impact | 2 Scope (Out) / 4.2 Non-Target / 4.4 MUST NOT / 5 AC (Non-regression) / 6 Test Specification |
 | Non-Functional Requirements | 4.5 Error Handling / Constraints / 5 AC (NFR outcome) / 6 Test Specification |
 | Tradeoffs | 1 Non-goal / 4.4 SHOULD / MAY / 9 Decision Log |
 
