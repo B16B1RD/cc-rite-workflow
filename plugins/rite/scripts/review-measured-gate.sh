@@ -36,6 +36,8 @@
 #   2. measured=false かつ gate 対象 scope (current-pr / follow-up) の finding を
 #      non_blocking_findings[] へ **append** で移送する (既存要素は保持)。
 #      scope=nit-noted は本ゲートの対象外のため非実測でも findings[] に残る
+#      軽量レーンの PR 本文保証主張への反証も正規形アンカーで判定する。
+#      Issue 契約に同じ文が無いという理由で降格するフィルタは設けない。
 #   3. 移送後の findings[] のうち gate 対象 scope の件数 (= blocking 件数) から
 #      overall_assessment と verdict を両方向で確定する (0 件 → mergeable / 1 件以上 → fix-needed)。
 #      **verdict は本 script が唯一の書き手**で、caller (pr-review.md ステップ 5.3.0.M step 1) は

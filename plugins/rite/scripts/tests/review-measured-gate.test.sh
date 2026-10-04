@@ -1018,6 +1018,44 @@ else
 fi
 
 echo ""
+# PR 本文の保証主張への反証は Issue 契約の記載有無で落とさない。
+# 実際に旧パスへ戻した入力に対する検査結果をアンカーへ渡す。
+echo "--- PR body claim counterexample ---"
+printf '%s\n' '[guide](old/path)' > "$TEST_DIR/claim.md"
+printf '%s\n' '#!/bin/bash' 'grep -q "obsolete label" "$1" && exit 1' 'exit 0' > "$TEST_DIR/weak-check.sh"
+claim_rc=0
+bash "$TEST_DIR/weak-check.sh" "$TEST_DIR/claim.md" || claim_rc=$?
+f="$TEST_DIR/claim-counterexample.json"
+mk_json "$f" "$(mk_finding F-claim HIGH current-pr "本文の『旧パスへ戻すと検査が落ちる』は反証された。Issue の MUST / AC に同じ文はない。<br>Verification: repro bash weak-check.sh claim.md => exit $claim_rc, old/path のリンクでもテストが通る")"
+run_gate "$f" --reject-preset-verification
+if [ "$claim_rc" -eq 0 ] && [ "$GATE_RC" -eq 0 ] && jq -e '
+  .verdict == "fix-needed" and .overall_assessment == "fix-needed"
+  and .measured_gate.blocking == 1 and .measured_gate.demoted == 0
+  and .findings[0].id == "F-claim" and .findings[0].severity == "HIGH"
+  and .findings[0].scope == "current-pr" and .findings[0].verification.measured
+  and (.non_blocking_findings | length) == 0' "$f" >/dev/null; then
+  pass "実測した本文主張の反証は blocking を維持"
+else fail "本文反証が降格: rc=$GATE_RC $GATE_STDERR"; fi
+
+f="$TEST_DIR/claim-unmeasured.json"
+mk_json "$f" "$(mk_finding F-claim HIGH current-pr '本文保証に疑問があるが実行していない')"
+run_gate "$f" --reject-preset-verification
+if [ "$GATE_RC" -eq 0 ] && jq -e '.measured_gate.blocking == 0 and .measured_gate.demoted == 1
+  and .non_blocking_findings[0].verification.measured == false' "$f" >/dev/null; then
+  pass "本文主張も実測アンカーなしなら従来どおり降格"
+else fail "本文主張がアンカー必須ゲートを迂回"; fi
+
+printf '%s\n' '#!/bin/bash' 'grep -q "old/path" "$1" && exit 1' 'exit 0' > "$TEST_DIR/strong-check.sh"
+claim_rc=0
+bash "$TEST_DIR/strong-check.sh" "$TEST_DIR/claim.md" || claim_rc=$?
+f="$TEST_DIR/claim-supported.json"
+mk_json "$f"
+run_gate "$f" --reject-preset-verification
+if [ "$claim_rc" -eq 1 ] && [ "$GATE_RC" -eq 0 ] && jq -e '.verdict == "mergeable"
+  and .measured_gate.blocking == 0 and (.findings | length) == 0' "$f" >/dev/null; then
+  pass "保証成立時の指摘0件は mergeable"
+else fail "保証成立時の判定を変更"; fi
+
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [ "$FAIL" -eq 0 ] || exit 1
 exit 0
