@@ -30,6 +30,18 @@ blocking gate として実行する。
 
 ## [Unreleased]
 
+## [0.19.5] - 2026-10-04
+
+### 追加
+
+- **実装前に受入条件の欠落 ID を補う** — `/rite:open` が ID の無い受入条件にだけ ID を付与し、既存の ID と本文を保ったまま更新後の Issue 本文を実装工程へ渡す。更新に失敗した場合は厳格な ID 検査で停止する。
+
+### 修正
+
+- **follow-up の受入条件に AC ID を付与する** — `/rite:cleanup` が作る follow-up Issue の単一・複数の受入条件に、本文を保ったまま連番 AC ID を付与する。
+- **非必須 CI の失敗を警告として保存する** — `/rite:pr-review` が branch protection と有効な ruleset から必須チェック集合を取得し、必須チェックの失敗や取得不能では停止し、非必須の失敗は `ci_status.warnings` に記録する。
+- **Complexity レーン判定がリポジトリ不一致で停止する** — `/rite:open`・`/rite:issue-implement`・`/rite:pr-review` の Complexity レーン判定が、入口で保持した対象リポジトリと作業先の origin を照合し、不一致・解決不能を full レーンへの fallback にせず停止する。
+
 ## [0.19.4] - 2026-10-03
 
 ### 修正
@@ -1249,6 +1261,7 @@ v0.4.0 では値は silent に無視されます。機能的な代替はあり�
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.19.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.4...v0.19.5
 [0.19.4]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.3...v0.19.4
 [0.19.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.2...v0.19.3
 [0.19.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.1...v0.19.2

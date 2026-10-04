@@ -130,6 +130,8 @@ State が `closed` の場合は AskUserQuestion で「再オープンして作�
 
 What / Why / Where / Scope の充足度で A-D 評価。C/D の場合は AskUserQuestion で「既存情報で開始 / Issue を編集してから再実行 / 中止」を選択。
 
+実装前に [受入条件 ID の入口検査](references/acceptance-id-preflight.md) を必ず実行し、非ゼロなら原因を表示して停止する。
+
 ### 1.4 設定読込 (language / multi_session)
 
 `rite-config.yml` の `language` field を取得し `[CONTEXT] WORKFLOW_LANGUAGE=` marker として emit。ステップ 4 の commit message テンプレで参照される。
@@ -522,8 +524,10 @@ Issue body から「What / Why / Where / Acceptance Criteria」を抽出。
 確定 Complexity を helper から読む。XS はレビューせず 3.4 へ（ユーザー向け追加出力なし）。S 以上は計画を 1 回レビューし、指摘を承認前の計画へ反映する。batch / standalone とも同一。反映後に再レビューしない。
 rationale: references/rationale.md#plan-self-review
 
+`{owner_repo}` は最外側 skill 入口で一度解決して保持した対象 identity を使う。nested 呼出しでは引き継ぎ、現在 cwd から再解決して上書きしない。固定した作業先へ移ってもこの値は変えない。
+
 ```bash
-bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number}
+bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number} --repo {owner_repo} --cwd "{execution_cwd}"
 ```
 
 | `complexity=` | アクション |
