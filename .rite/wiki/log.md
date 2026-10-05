@@ -12,6 +12,13 @@
 
 * **Lint 実行異常**: 全ページの意味比較は未完了。機械検査は陳腐化 67、孤児 0、欠落候補 0、未登録 skip 735、壊れた参照 0、番号参照 0。矛盾検査の完了は主張しない。
 
+* **Update**: [散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする](pages/heuristics/prose-cited-implementation-behavioral-verification.md) — [retrospectives の挙動検証記録](raw/retrospectives/20261004T211619Z-issue-3665.md)を統合
+* **Update**: [散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする](pages/heuristics/prose-cited-implementation-behavioral-verification.md) — [fixes の挙動検証記録](raw/fixes/20261005T011713Z-pr-3681.md)を統合
+* **Update**: [散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする](pages/heuristics/prose-cited-implementation-behavioral-verification.md) — [fixes の挙動検証記録](raw/fixes/20261005T005745Z-pr-3681.md)を統合
+* **Update**: [散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする](pages/heuristics/prose-cited-implementation-behavioral-verification.md) — [reviews の挙動検証記録](raw/reviews/20261004T234257Z-pr-3681.md)を統合
+* **Update**: [散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする](pages/heuristics/prose-cited-implementation-behavioral-verification.md) — [reviews の挙動検証記録](raw/reviews/20261005T011354Z-pr-3681.md)を統合
+* **Update**: [散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする](pages/heuristics/prose-cited-implementation-behavioral-verification.md) — [reviews の挙動検証記録](raw/reviews/20261005T012658Z-pr-3681.md)を統合
+
 ## 2026-10-04
 
 * **Skip**: [検証記録](raw/fixes/20261004T104636Z-pr-3660.md) — 修正と負例はプラグインの試験へ反映済み。追加のドメイン経験則なし

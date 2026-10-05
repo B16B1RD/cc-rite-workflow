@@ -20,14 +20,27 @@ sources:
     resource: "raw/reviews/20260927T161451Z-pr-3305.md"
   - type: "reviews"
     resource: "raw/reviews/20260930T165732Z-pr-3561.md"
+  - type: "retrospectives"
+    resource: "raw/retrospectives/20261004T211619Z-issue-3665.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261005T011713Z-pr-3681.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261005T005745Z-pr-3681.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261004T234257Z-pr-3681.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261005T011354Z-pr-3681.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261005T012658Z-pr-3681.md"
 tags: ["verification-protocol", "prose-implementation-sync", "regex", "behavioral-test", "attribution"]
 confidence: high
-generated: { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T17:01:22Z" }
+generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-10-05T01:39:35Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:27:52Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:39:40Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:16:02Z" }
   - { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T17:01:22Z" }
+  - { by: "rite-wiki-ingest/gpt-6", at: "2026-10-05T01:39:35Z" }
 ---
 
 # 散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする
@@ -87,6 +100,14 @@ canonical: helper を散文参照するときは「regex 実体ファイル (`.p
 
 正規表現に並ぶ語を一つの種別名でまとめると、その種別に入らない語まで同じ種別に読まれる。予約語と builtin が同じ列挙にあるときは、種別名を使わず列挙のまま書く。報告条件を、今回直した分岐だけを見て「だけ」と書くと、差分に無い分岐が同じ条件で報告する場合まで否定する文になる。限定は、報告する分岐をすべて読んでから付ける。
 
+### 保存された成果物と独立した期待結果による挙動主張の検証
+
+手順書が「書き込み後の本文を比較する」「検査ログを保存した」と述べる場合、helper の終了コードだけでは根拠にならない。失敗を警告して正常終了する helper もあるため、比較に使うローカル commit を固定し、その commit から本文とログの全エントリを読み戻す。中断からの再開では、処理済み raw と未 commit のページ・index・log の対応を先に確かめ、書き込みと commit を完了してから比較する。必須入力を追加した変更は、実行手順だけでなく公開引数表と概要も同じ条件へ揃える。
+
+「検査に成功した」と「問題を検出した」は別の観測である。入力欠落や比較未完了は停止、比較を完了して見つけた問題は件数として扱う。この違いは正常入力・明示的な空入力・欠落入力を実際の入口に与え、後続処理と保存記録まで観測して裏取りする。停止テストでは入口の Git 等の前提を準備し、停止前には遮断され、停止後には解除される対照を置く。
+
+実装の規則をそのまま期待結果へ写すと、同じ見逃しをテストにも持ち込む。意味比較は対象・条件・結論を独立して読んだ期待結果と照合し、分類先の違いや低い確信度で候補を落とさず、条件付きの例外を方針逆転と取り違えないことを確かめる。静的な契約テストには、実際に注入される規則の全除去・個別除去を当てる。手作りの指摘を渡して緑になるだけでは、その規則が消えた際の退行を検出した証拠にはならない。
+
 ## 関連ページ
 
 - [Documentation review は対応する実装側 (commands/scripts/templates) の grep verify を必須 step とする](./docs-review-implementation-grep-verification.md)
@@ -103,3 +124,10 @@ canonical: helper を散文参照するときは「regex 実体ファイル (`.p
 - [委譲の要約を helper の分岐の全組み合わせと照合したレビュー結果](../../raw/reviews/20260927T152733Z-pr-3299.md)
 - [一般化した散文と実装の例外の境界ずれを指摘したレビュー結果](../../raw/reviews/20260927T161451Z-pr-3305.md)
 - [種別名と限定が列挙と分岐より広かったレビュー結果](../../raw/reviews/20260930T165732Z-pr-3561.md)
+
+- [保存成果物と独立した挙動検証の記録](../../raw/retrospectives/20261004T211619Z-issue-3665.md)
+- [保存成果物と独立した挙動検証の記録](../../raw/fixes/20261005T011713Z-pr-3681.md)
+- [保存成果物と独立した挙動検証の記録](../../raw/fixes/20261005T005745Z-pr-3681.md)
+- [保存成果物と独立した挙動検証の記録](../../raw/reviews/20261004T234257Z-pr-3681.md)
+- [保存成果物と独立した挙動検証の記録](../../raw/reviews/20261005T011354Z-pr-3681.md)
+- [保存成果物と独立した挙動検証の記録](../../raw/reviews/20261005T012658Z-pr-3681.md)
