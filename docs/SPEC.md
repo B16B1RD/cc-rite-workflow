@@ -1809,7 +1809,7 @@ When `wiki.auto_ingest`, `wiki.auto_query`, or `wiki.auto_lint` are enabled, the
 | `wiki-ingest-trigger.sh` | `pr/pr-review.md` Phase 5.4.3 (post review), `pr/fix.md` Phase 5.4.6 (post fix), `skills/issue-close/SKILL.md` (Issue close) | Write a raw source file into `.rite/wiki/raw/{type}/` on the dev branch working tree (pure file writer, no git operations) |
 | `wiki-ingest-commit.sh` | Phase 6.5.W.2 (review), Phase 4.6.W.2 (fix), Phase 4.4.W.2 (close) — immediately after the trigger | Move pending raw sources onto the `wiki` branch and commit + push them **in a single shell process** with no dependency on Claude multi-step orchestration |
 | `/rite:wiki-ingest` | Manual or optional post-commit invocation | LLM-driven page integration: read accumulated raw sources, produce/update wiki pages, refresh `index.md` / `log.md` |
-| `/rite:wiki-lint --auto` | After each successful page integration (when `auto_lint: true`) | Validate Wiki consistency; surface warnings without blocking the workflow |
+| `/rite:wiki-lint --auto --changed-pages-file <absolute JSON path>` | After each successful page integration (when `auto_lint: true`) | Validate Wiki consistency; detected warnings remain nonblocking, while incomplete comparisons stop ingestion and cleanup |
 
 ### Phase X.X.W Mandatory Execution (shell commit refactor)
 
