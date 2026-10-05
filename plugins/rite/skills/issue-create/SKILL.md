@@ -231,7 +231,7 @@ Read tool で以下を読み込む:
 
 **Step 4: 上段・タイトル・図**
 
-`template-structure.md` の「上段要約」「図の選択規則」「契約層の折りたたみ」を適用する。タイトルは内部機構名より変更の効果を示す。What / Why・Scope・AC から3ブロックを生成し、用語は必要なときだけ説明する。経緯識別子禁止と Output Validation Checklist を作成前に検査する。
+`template-structure.md` の「上段要約」「図の選択規則」「契約層の折りたたみ」を適用する。タイトル単体で何のどんな変更かと効果が分かる文にする。What / Why・Scope・AC から問題 / 変更 / 期待する結果の見出し＋段落を生成し、特定の確認依頼は任意とする。用語は必要なときだけ説明する。経緯識別子禁止と Output Validation Checklist を作成前に検査する。
 
 **Target Files 実パス検査**（単一 Issue と Sub-Issue body。ステップ 5 の親仕様書は対象外）:
 
@@ -242,7 +242,7 @@ File 列のセルが実パス ⇔ (`/` を含む、または `.` + 英数字の�
 | 実パス 1 行以上 | 非パス行が混在しても通過。経緯識別子禁止と Checklist 他行を続けて実施する |
 | 実パス 0 行 | 当該 body を Write せず、Issue 作成 helper を呼ばない（単一: 4.3 の `create-issue-with-projects.sh`、分解: 5.3 (C) の `decompose-issues.sh`）。成果物をファイルにする案内を 1〜2 行出し、単一は 4.2、分解は 5.3 (B) の当該 Sub-Issue body 生成へ戻って再検査する。中止以外は workflow 終了しない |
 
-図の選択表に従い、`svg_allowed=true` なら SVG を第一候補として Write tool で `.svg` を生成する。図なしは上段に `<!-- 図なし: {理由} -->` を残す。**Write tool** で添付パス配列を JSON ファイルへ保存する（添付なしは `[]`）。その絶対パスを `{ATTACHMENTS_JSON_FILE}` として 4.3 へ渡す。添付 SVG は作成コマンドの終了まで保持する。
+図の選択表に従い、`svg_allowed=true` なら SVG を第一候補として Write tool で `.svg` を生成する。図なしは列挙条件に該当する場合だけ上段に `<!-- 図なし: {条件} -->` を残す。共通の作成前検査 Bash を本文に対して実行し、違反したら helper を呼ばず当該本文を再生成する。**Write tool** で添付パス配列を JSON ファイルへ保存する（添付なしは `[]`）。その絶対パスを `{ATTACHMENTS_JSON_FILE}` として 4.3 へ渡す。添付 SVG は作成コマンドの終了まで保持する。
 
 生成した body はそのまま Step 4.2.1 の検証を経て Step 4.3 で `create-issue-with-projects.sh` に tmpfile 経由で渡す。
 
@@ -262,6 +262,8 @@ File 列のセルが実パス ⇔ (`/` を含む、または `.` + 英数字の�
 自己矛盾候補（M 以上）は上表と**直交する軸**のため行にしない。上表のどの行に該当したかに関わらず、reference の「クラス 3」節が定める規則で独立に評価する（相乗り / 新規発行の分岐も同節が単一定義を持つ。ここに写すと consumer 間で転写漏れが起きるため参照に留める）。
 
 ### 4.3 Issue 作成 + Projects 登録
+
+作成前に [読みやすさ点検](../../references/body-readability-check.md) をタイトル・本文と本文参照のローカル SVG に実行する。本文ファクトチェックと共通の図条件検査を通過した本文だけを対象にし、書き直し後も再検査する。
 
 `create-issue-with-projects.sh` に委譲（Issue 作成 + Projects 追加 + status / priority / complexity 設定を 1 ステップで実行）。実 interface は JSON 単一引数 + body は tmpfile 経由（canonical SoT: [`issue-create-with-projects.md`](../../references/issue-create-with-projects.md)）:
 
@@ -445,20 +447,20 @@ echo "[CONTEXT] DECOMPOSE_WORKDIR=$workdir"
 
 **(B) body / spec の生成（Write tool）**
 
-分解経路の親も共通選択表に従う。親に SVG を付けるときは spec.json の `parent.attachments` に絶対パスを書く（省略時は `[]`）。Sub-Issue は親の図を再掲せず「親 Issue の図の {部分} を担当」と一文で指す。Step 4.2 の上段要約・契約層は適用する。
+分解経路の親も共通選択表に従う。親に SVG を付けるときは spec.json の `parent.attachments` に絶対パスを書く（省略時は `[]`）。Sub-Issue も本文単独で変更範囲が分かる図を置く（既存図で足りれば再掲可）。新規 SVG とローカル SVG の再掲は各 `sub_issues[i].attachments` に絶対パスを渡す。既存添付 URL / Mermaid の再掲は `[]`。Step 4.2 の上段要約・契約層と共通の図条件の作成前検査 Bash を親と各子の body ファイルに実行し、違反時は (C) を呼ばず当該本文を再生成する。 通過後は [読みやすさ点検](../../references/body-readability-check.md) を親と各子のタイトル・本文と各本文参照のローカル SVG に独立して実行し、更新を spec と body に反映してから (C) へ進む。
 
 直前の `[CONTEXT] DECOMPOSE_WORKDIR=` から `{DECOMPOSE_WORKDIR}` を読み取り、以下を **Write tool** で書く（heredoc を使わない）:
 
-1. `{DECOMPOSE_WORKDIR}/parent_body.md` ← Step 4.2 Step 4 の上段（要約 3 ブロックと図スロット。SVG なら `![説明]({DECOMPOSE_WORKDIR}/diagram.svg)` 参照、Mermaid なら fence、図なしなら `<!-- 図なし: {理由} -->`）を前置し、続けて §5.1 で生成し §5.1.1 の検査結果を反映した設計仕様書（`{spec_document}`）の raw 内容
+1. `{DECOMPOSE_WORKDIR}/parent_body.md` ← Step 4.2 Step 4 の上段（問題 / 変更 / 期待する結果の見出し＋段落と図スロット。SVG なら `![説明]({DECOMPOSE_WORKDIR}/diagram.svg)` 参照、Mermaid なら fence、図なしなら `<!-- 図なし: {条件} -->`）を前置し、続けて §5.1 で生成し §5.1.1 の検査結果を反映した設計仕様書（`{spec_document}`）の raw 内容
 2. 各 Sub-Issue について `{DECOMPOSE_WORKDIR}/sub_{i}_body.md`（i = 1..{sub_count}）← 各 Sub-Issue body の raw 内容（Step 4.2 の Implementation Contract フォーマットで生成する。各 Sub-Issue の確定 Complexity に応じて Complexity Gate を適用）
-3. `{DECOMPOSE_WORKDIR}/diagram.svg`（SVG 時のみ）← テーマ中立の図。parent_body の参照と spec の `attachments` は同じ絶対パスを使う。Mermaid・図なしでは書かない
+3. `{DECOMPOSE_WORKDIR}/diagram.svg`（SVG 時のみ）← テーマ中立の親の図。子の新規 SVG は `sub_{i}_diagram.svg` に書く。各本文の参照と対応する spec の `attachments` は同じ絶対パスを使う。Mermaid・図なし・既存添付 URL の再掲では書かない
 4. `{DECOMPOSE_WORKDIR}/spec.json` ← 下記スキーマ。`body_file` は上記で書いた絶対パスを指す:
 
 ```json
 {
   "parent": { "title": "{parent_title}", "body_file": "{DECOMPOSE_WORKDIR}/parent_body.md", "attachments": ["{DECOMPOSE_WORKDIR}/diagram.svg"] },
   "sub_issues": [
-    { "title": "{sub_1_title}", "body_file": "{DECOMPOSE_WORKDIR}/sub_1_body.md", "complexity": "{sub_1_complexity}" }
+    { "title": "{sub_1_title}", "body_file": "{DECOMPOSE_WORKDIR}/sub_1_body.md", "complexity": "{sub_1_complexity}", "attachments": ["{DECOMPOSE_WORKDIR}/sub_1_diagram.svg"] }
   ],
   "labels_csv": "{labels_csv}",
   "projects": {
@@ -473,7 +475,7 @@ echo "[CONTEXT] DECOMPOSE_WORKDIR=$workdir"
 }
 ```
 
-> `sub_issues` 配列は Sub-Issue 件数 `{sub_count}` だけ要素を持たせる（各反復で `{sub_N_title}` / `{sub_N_complexity}` と body ファイルパスを実値置換）。親 labels には helper が `epic` を自動付与する（spec へ付与不要）。親 complexity は helper 内で `XL` 固定。`parent.attachments` は例の SVG パスを実値置換し、親に SVG を付けないとき（Mermaid・図なし）は `[]` にする（省略時も `[]`）。Sub-Issue には載せない。
+> `sub_issues` 配列は Sub-Issue 件数 `{sub_count}` だけ要素を持たせる（各反復で `{sub_N_title}` / `{sub_N_complexity}` と body ファイルパスを実値置換）。親 labels には helper が `epic` を自動付与する（spec へ付与不要）。親 complexity は helper 内で `XL` 固定。`parent.attachments` は例の SVG パスを実値置換し、親に SVG を付けないとき（Mermaid・図なし）は `[]` にする（省略時も `[]`）。子も SVG を添付するときだけ対応する `sub_issues[i].attachments` に配列を渡し、それ以外は `[]`（省略時も `[]`）。添付ファイルは helper の終了まで保持する。
 
 **(C) helper 呼び出し（単一 bash block）**
 
@@ -490,7 +492,7 @@ bash {plugin_root}/scripts/decompose-issues.sh --spec "{DECOMPOSE_WORKDIR}/spec.
 
 LLM は以下を実行する:
 1. CONTEXT marker (`PARENT_ISSUE_NUMBER`, `SUB_ISSUE_NUMBERS`) を直前の bash 出力から読み取る
-2. `tmpfile_read` の内容を Read tool で取得し、Sub-Issues セクション追記版を `tmpfile_write` へ Write tool で書く。`parent.attachments` が非空のときは `tmpfile_read` の本文で `![` 参照が添付 URL に置換済みかを確認し、未置換なら 4.3 と同じ「添付失敗」報告（作成済み URL と、本文に残った参照と同じ絶対パスに一時 SVG を再生成し（`mkdir -p` で作業ディレクトリを再作成）、そのパスを `gh issue edit --attach` に渡して再添付する案内）を出す
+2. 各子の body を取得し、新規 SVG 添付時は参照が添付 URL に置換済みか確認する。未置換なら 4.3 と同じ添付失敗を報告する。`tmpfile_read` の内容を Read tool で取得し、Sub-Issues セクション追記版を `tmpfile_write` へ Write tool で書く。`parent.attachments` が非空のときは `tmpfile_read` の本文で `![` 参照が添付 URL に置換済みかを確認し、未置換なら 4.3 と同じ「添付失敗」報告（作成済み URL と、本文に残った参照と同じ絶対パスに一時 SVG を再生成し（`mkdir -p` で作業ディレクトリを再作成）、そのパスを `gh issue edit --attach` に渡して再添付する案内）を出す
 
 ### 5.5 Step 3: apply（別 bash block）
 

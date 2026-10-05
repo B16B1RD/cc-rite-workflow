@@ -82,7 +82,7 @@ Legend: `M` = MUST (required), `S` = SHOULD (recommended), `O` = OMIT (skip)
 | Section | Content | Complexity Gate Reference |
 |---------|---------|--------------------------|
 | 0. Meta | Type, Complexity | Always MUST |
-| 上段要約 | 問題・変更・見てほしい点、条件付き用語と図 | Always MUST |
+| 上段要約 | 問題・変更・期待する結果の見出し＋段落、任意の確認依頼、条件付き用語と図 | Always MUST |
 | 1. Goal | What to achieve + Non-goal | Always MUST |
 | 2. Scope | In Scope / Out of Scope | Always MUST |
 | 3. Type Core | Type-specific section (Feature/BugFix/Refactor/Chore/Docs) | XS: SHOULD, S+: MUST |
@@ -112,9 +112,12 @@ After generating the Issue body, verify all items:
 - [ ] Target Files の File 列に実パスが 1 行以上ある（「（コード変更なし）」「なし」「N/A」等の非パスのみは不可）
 - [ ] All MUST requirements are testable (no vague verbs)
 - [ ] No empty headings (remove section if no content)
-- [ ] 上段に「何が起きているか / 何をするか / 見てほしい点」があり、用語は内部用語があるときだけ含む（本文言語に合わせて翻訳）
+- [ ] 上段に `### 問題` / `### 変更` / `### 期待する結果` と次行からの段落があり、確認依頼は特定の依頼があるときだけ、用語は内部用語があるときだけ含む（本文言語に合わせて翻訳）
 - [ ] details 外に `F-[0-9]+` / `cycle [0-9]+` / `[0-9a-fA-F]{7,}` / `PR #[0-9]+` / `Issue #[0-9]+` / `#[0-9]+` が無い（PR の `Closes #N` 行のみ例外）。残存時は作成せず生成をやり直す
 - [ ] `<summary>` 直後に空行があり、採用した Section 1〜9 が `</details>` の内側にある。見出し・チェックボックス・`D-xx` 形式は不変
+- [ ] タイトル単体で前提知識なしに何のどんな変更かと効果が分かる
+- [ ] 流れ・関係・分岐・変更前後の構造には図があり、図なしは構造の説明を含まない `文言・数値のみの修正` / `調査結果の記録` / `流れ・関係・分岐・変更前後の構造を説明しない変更` の条件をコメントに書く場合だけ。違反時は作成せず生成をやり直す
+- [ ] 子 Issue も本文単独で変更範囲が分かる図（再掲可）があり、「親の図を参照」だけでは済ませない
 - [ ] 図は選択規則に従い、SVG は gh 2.99.0 以上のときだけ添付する
 
 ---

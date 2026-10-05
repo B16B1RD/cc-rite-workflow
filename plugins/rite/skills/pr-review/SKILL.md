@@ -219,6 +219,8 @@ If the argument is omitted and there is no PR number in work memory, identify th
 bash {plugin_root}/scripts/pr-review-step.sh pr-view-current --owner-repo {owner_repo}
 ```
 
+取得に成功した JSON の `body` を PR 本文として保持し、ステップ 4.5 の `{pr_body}` に渡す。空文字列・null は空本文とする。取得失敗は空本文として吸収せず、既存のエラー処理に従う。
+
 **If no PR is found:**
 
 ```
@@ -551,6 +553,12 @@ If the skill file (`skills/reviewers/SKILL.md`) is not found, fall back to the b
 
 `incremental` のとき: (1) パターンマッチ結果に `{prev_finders}` を **`selection_type: mandatory`** で合流させる。ただし `{prev_finders}` の `acceptance` は合流させない（ステップ 3.2.2 が cap 後に毎 cycle 追加する）（`recommended` は不可 — Phase 5 の cap が落とさないと保証するのは `mandatory` のみで、`recommended` は `max_reviewers` 超過時に落ちて「前サイクル finder は無条件に再起動」が破れる。昇格は `detected < recommended < mandatory` の高い側へのみ）。(2) ステップ 2.3 の sole-reviewer guard / ステップ 3.2 の Security Expert 条件 / ステップ 3.2.1 の cap とフロアは**すべて従来どおり適用する**。(3) 今サイクル対象外となった reviewer 名と理由を ステップ 5.4 の「レビュー範囲」section に記録する（silent な絞り込みは禁止）。**母集合は cycle 1 で選定された reviewer 集合**とし、そこから今サイクル起動しない名前を理由付きで列挙する（全 reviewer を母集合にすると PR に一度も関係しない reviewer が毎サイクル並び、今サイクルの起動集合を母集合にすると差分スコープが何名減らしたかが読めない）。ステップ 3.3 の「省略された reviewer 表示」には記録しない — 同 section は出力条件が `{dropped_count} > 0`、見出しが cap 超過を理由として固定されており、パターンマッチの候補にすら上がらない差分スコープ由来の除外を表現できない。
 
+**Test pattern fallback（2.1 の読込失敗時）**:
+
+| Reviewer | Agent | File Patterns (Primary) |
+|----------|-------|-------------------------|
+| Test Expert | `test-reviewer.md` | `**/*.test.*`, `**/*.spec.*`, `**/test/**`, `**/__tests__/**`, `jest.config.*`, `vitest.config.*`, `cypress/**`, `playwright/**`, `scripts/test-*`, `test-*.{js,ts,sh}`, `**/test-*.{js,ts,sh}` |
+
 **Pattern priority rules:**
 1. `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` -> Prompt Engineer (highest priority)
 2. Other `**/*.md` -> Technical Writer
@@ -563,6 +571,11 @@ If the skill file (`skills/reviewers/SKILL.md`) is not found, fall back to the b
 ### 2.3 Content Analysis (Supplementary Determination)
 
 diff 内容から追加の専門領域を判定する:
+
+**Test content detection（必須）**:
+- content analysis の有効・無効やファイル名に関係なく、差分の追加・削除行でテストの assert・期待値・fixture が変更されていれば、Test Expert を `selection_type: mandatory` で追加・昇格する（理由: テストの検証内容の変更）。
+- 用語を説明するだけの文書や変更のない context 行は対象外。該当したファイルを Test Expert の `{relevant_files}` に含め、対応する `{diff_content}` を渡す。
+- ステップ 3.2.1 の cap は既存 Phase 5 の mandatory 保護を適用し、ステップ 3.3 の「レビュアーを減らす」でも削除しない。
 
 **Security keyword detection:**
 - `password`, `token`, `secret`, `auth`, `crypto`, `hash`, `encrypt`, `decrypt`, `credential`, `api_key`, `private_key`, `cert`
@@ -674,11 +687,11 @@ Determine Security Expert selection based on the `review.security_reviewer` sett
 
 **Executable code extensions**: `.ts`, `.py`, `.go`, `.js`, `.jsx`, `.tsx`, `.rs`, `.java`, `.rb`, `.php`, `.c`, `.cpp`, `.sh`, etc.
 **Note**: Security キーワードは ステップ 2.3 のリストだけを使う。
-**Selection Type** は Security Expert を入れた理由。ステップ 3.3 の削除可否に使う:
+**Selection Type** は必須・推奨・検出で選定した理由。ステップ 3.3 の削除可否に使う:
 
 | Selection Type | Meaning | Removable in ステップ 3.3 |
 |---------------|---------|-------------------|
-| **`mandatory`** | `mandatory: true` in config | No (backward compatible) |
+| **`mandatory`** | Config requirement or Test content rule | No (backward compatible) |
 | **`recommended`** | Selected via file pattern match or `recommended_for_code_changes` | Yes (with warning) |
 | **`detected`** | Selected via keyword detection in ステップ 2.3 | Yes (with warning) |
 
@@ -730,6 +743,8 @@ Security / co-reviewer / sole-reviewer-guard のあと `max_reviewers` を適用
 rationale: references/design-rationale.md#acceptance-reviewer
 
 ### 3.3 Confirm Reviewers
+
+候補を絞る前の一致・追加結果（incremental の対象外、cap、ユーザー除外を含む）を保持し、最終構成の各候補を `reviewer_selection[]` に記録する: `reviewer`（`*-reviewer`）、`selected`（boolean）、`selection_reason`（候補となった実際のルール・一致ファイル）、`exclusion_reason`（除外分岐の理由。選定済みは `null`）。選定ロジックは変えず、除外候補を記録から落とさない。
 
 **E2E flow detection**: `/rite:iterate` 経由の E2E では本ステップの pre-flight レビュアー構成確認 `AskUserQuestion`（末尾「オプション」の選択）を skip する。判定は `skills/ready/SKILL.md` Phase 2.1 と同型の flow-state。helper 失敗時は standalone（確認を出す）に fail-safe する:
 rationale: references/design-rationale.md#e2e-confirm-skip
@@ -784,13 +799,13 @@ standalone は `AskUserQuestion` で確認する。E2E は「オプション」�
 
 | Selection Type (from ステップ 3.2) | `{label}` Display | Description |
 |------|-----------|------|
-| **`mandatory`** | `[必須]` | `mandatory: true` in config; cannot be removed |
+| **`mandatory`** | `[必須]` | Config requirement or Test content rule; cannot be removed |
 | **`recommended`** | `[推奨]` | Selected via file pattern match or `recommended_for_code_changes`; can be removed with warning |
 | **`detected`** | `[検出]` | Selected via keyword detection in ステップ 2.3; can be removed with warning |
 | (other reviewers) | (empty) | Normal selection; can be removed freely |
 
 **Behavior when "Reduce reviewers" is selected:**
-The behavior depends on the Security Expert's selection type:
+Test Expert が Test content rule で `mandatory` のときは削除を拒否し、理由を表示して必須でない reviewer のみを削除候補にする。Security Expert は次の selection type の規則に従う:
 
 | Selection Type | Removable | Behavior |
 |---------------|-----------|----------|
@@ -850,7 +865,7 @@ bash {plugin_root}/scripts/pr-review-step.sh review-start --pr {pr_number} --hea
 
 返った `review_context`（実 session / run / PR / cycle / HEAD）と `selected_reviewers` を保持する。counter 更新はこの操作だけが担い、同一 HEAD・名簿の collecting 再開では加算しない。`review_context.commit_sha` とステップ 1.2.5 の対象 SHA が異なれば停止する。`review_cycle` に manifest / content / result のパスがある場合は [recover の再開表](../recover/SKILL.md#review-cycle-の再開) に従う。completed の最終ゲート再開では本 start を再実行せず、保存結果を読んで未完了のステップ 6〜8 へ戻る。
 
-固定した context ごとに `REVIEW_TMP_DIR/rite-review-{session_id}-{run_id}-{pr_number}-{cycle_count}/` を使用する。初回 spawn 前に manifest の名簿・context と全員の pending entry を Write し、各回収後に同じファイルを更新する。中断後も成功結果を保持して不足分だけ回収する。入力・raw が失われた場合は原因とパスを報告し、同一 cycle の不足結果を再取得する。
+固定した context ごとに `REVIEW_TMP_DIR/rite-review-{session_id}-{run_id}-{pr_number}-{cycle_count}/` を使用する。初回 spawn 前に manifest の名簿・context と全員の pending entry を Write し、各回収後に同じファイルを更新する。 `reviewer_selection` も同じ manifest に Write し、再開時は Read して保持する。中断後も成功結果を保持して不足分だけ回収する。入力・raw が失われた場合は原因とパスを報告し、同一 cycle の不足結果を再取得する。
 
 Issue に関連付いたレビュー開始直後に [停滞診断の時計](../../references/review-stagnation.md) の共有ブロック `review-clock-open`（同参照の Bash ブロック名。時計の CLI 動詞は `review-clock` だけ）を `clock_kind=work` で実行する。CI・外部待ちへ入る前に区間を閉じ、待機区分で開き直す。中断復帰は同参照の回復規則を適用し、未閉区間を実作業と推測しない。時計の保存失敗は `[review:error]`。関連 Issue がない standalone レビューは仕様入力を持たないため診断を開始せず、既存のレビュー経路を維持する。
 
@@ -1043,7 +1058,8 @@ Determine the error type from the completion notification (failure payload or ab
 
 | Placeholder | Source | Extraction Method |
 |---------------|--------|----------|
-| `{relevant_files}` | Changed file list from ステップ 1.2 | Extract only files matching the reviewer's Activation pattern。`REVIEW_CYCLE_SCOPE == incremental` のときは ステップ 2.2 と同じく `{cycle_scope_files}` の一覧から抽出する。**例外**: `incremental` かつ当該 reviewer が `{prev_finders}` 由来の `mandatory` 合流で、パターン一致が 0 件のときは `{cycle_scope_files}` の**全ファイル**を渡す（空で渡すと `{diff_content}` も空になり、mandate 4 が差分外の読み直しを禁じるため mandate 1 の解消検証すら実行できない prompt になる — 解消検証は自分の指摘箇所と fix の影響範囲の両方が読めて初めて成立する）。**`acceptance`** は Activation パターンと `REVIEW_CYCLE_SCOPE` に依らずステップ 1.2.3 の PR 全体の変更ファイルを渡す |
+| `{relevant_files}` | Changed file list from ステップ 1.2 | Extract only files matching the reviewer's Activation pattern。`REVIEW_CYCLE_SCOPE == incremental` のときは ステップ 2.2 と同じく `{cycle_scope_files}` の一覧から抽出する。**例外**: `incremental` かつ当該 reviewer が `{prev_finders}` 由来の `mandatory` 合流で、パターン一致が 0 件のときは `{cycle_scope_files}` の**全ファイル**を渡す（空で渡すと `{diff_content}` も空になり、mandate 4 が差分外の読み直しを禁じるため mandate 1 の解消検証すら実行できない prompt になる — 解消検証は自分の指摘箇所と fix の影響範囲の両方が読めて初めて成立する）。Test content rule 由来の **`test`** はパターン一致の有無に関係なくステップ 2.3 で特定したファイルを含め、空の差分を渡さない。**`acceptance`** は Activation パターンと `REVIEW_CYCLE_SCOPE` に依らずステップ 1.2.3 の PR 全体の変更ファイルを渡す |
+| `{pr_body}` | ステップ 1.1 の PR JSON `body` | 本文全体をそのまま渡す（details 内も含む）。空文字列・null は空文字列、PR 本文節は残す。差分スコープ・レーン・reviewer 種別によって省略しない |
 | `{ci_status}` / `{ci_state}` | ステップ 1.2.5.C | 対象 SHA・分類・check 名/状態/結論/詳細 URL・failed 一覧・取得不能理由を出力 JSON から渡す。CI の分類規則を再実装しない |
 | `{diff_content}` | Diff from ステップ 1.2 | **Varies by scale** (see below)。`REVIEW_CYCLE_SCOPE == incremental` のときは PR 全体の diff ではなく `{cycle_scope_files}` のファイルの `{cycle_base_sha}..HEAD` の diff を使う（取得コマンドは ステップ 1.2 の incremental 系。`{relevant_files}` が上記例外で全ファイルになった場合は `{cycle_scope_files}` 全ファイルの diff を渡す）。**`acceptance`** は `REVIEW_CYCLE_SCOPE` に依らず PR 全体の diff を scale 規則どおり渡す |
 | `{cycle_scope_mandate}` | [cycle-scope.md](references/cycle-scope.md#reviewer-mandate差分スコープ適用時に注入する本文) の Reviewer mandate 節 | **Conditional extraction**: `REVIEW_CYCLE_SCOPE == incremental` のときのみ、同節の fenced block 本文を抽出し `{previous_blocking_findings}` / `{cycle_base_sha}` / `{base_branch}` を埋めて注入する。`full` のときは空文字列（セクションごと省略）。**`reviewer_type == acceptance`** のときは `REVIEW_CYCLE_SCOPE` に依らず本文を注入せず、代わりに [reviewer-prompt-generator.md](references/reviewer-prompt-generator.md#受入条件確認の-mandate) の fenced block 本文を `{issue_number}` を埋めて注入する |
@@ -1172,7 +1188,9 @@ WARNING は stderr、JSON line は stdout。drift は **non-blocking** で ス�
 bash {plugin_root}/scripts/pr-review-step.sh completion-gate --manifest {reviewer_completions_file}
 ```
 
-非ゼロなら flow-state / raw 結果を保持して caller の失敗経路へ戻る。ゲート pass 後のみ以下の統合を実行する。
+非ゼロなら flow-state / raw 結果を保持して caller の失敗経路へ戻る。各回収時、manifest の当該 entry に `model` / `effort` をホストが返した実効実行 metadata から書く。各値を取得できなければ文字列 `"不明"` にする（片方だけ取得できる場合も個別に判定）。要求した設定値・profile の既定値・子の自己申告から補完しない。retry は最終回収した agent の値に置き換え、初回値を流用しない。
+
+ゲート pass 後のみ以下の統合を実行する。
 **⚠️ Scope**: 今回新たに検出した指摘だけを集める。diff 外の修正済みは除外。未対応は再検出。
 **Recommendation classification extraction**:
 「### 推奨事項」の **全** item から `分類: <actionable|design_confirmation|boundary>` を抜き、`recommendation_items` として保持する:
@@ -1412,6 +1430,8 @@ emit 形式 (Step 2 line で実装):
 
 ### 5.2 Cross-Validation
 
+本文照合の指摘は [照合手順](references/reviewer-prompt-generator.md) の「説明の欠陥」と「検査の欠陥」を保持する。同じ `file:line` でも根因と修正先が異なるため、本文修正とテスト追加を一件へ潰さない。各主張・実測範囲・照合結果を統合結果に残し、既存の重大度・採否・実測ゲートは変更しない。
+
 **Same file/line**: `file:line` で束ねる。2+ reviewer でも人数・severity を証拠の代わりにせず、対応確認（5.2.2）の前に High Confidence 扱いへ上げない。
 **Contradiction detection**: 同じ `file:line` で両立できない評価、**or the same root cause is assigned both `current-pr` and `follow-up` scope** → debate（有効時）または `AskUserQuestion`。
 **Quality Signal 3**: 同じ `file:line` の矛盾評価。5.2.1 の帰結で発火する:
@@ -1637,6 +1657,7 @@ incremental cycle でも途中から JSON を直接 Write して保存へ進ん�
 `/rite:fix` の各独立境界で hard error になる。
 
 **step 1: レビュー結果 JSON の生成 (本 review cycle で唯一の JSON authoring site)**
+保存 JSON の追加項目（step 1 で必須）: manifest を Read し、`reviewer_selection` をそのまま転記、全回収 entry の `{reviewer, model, effort}` を `reviewer_execution[]` に転記する。両配列は空・省略不可。選定された候補と実行記録の名前は `reviewers[]` と各1件ずつ一致させる。保存後の 8.0.4 は新しい記録（`review_context` あり）で理由・実行条件の欠落/不正を拒否する。`review_context` と両追加項目のない過去形式は既存の receipt 検証を維持する。
 [review-result-schema.md](../../references/review-result-schema.md) に従う JSON を **Write tool で `{review_tmp_dir}/rite-review-result-{pr_number}.json` に保存**する。`{review_tmp_dir}` は `[CONTEXT] REVIEW_TMP_DIR=` をリテラル置換する。
 rationale: references/design-rationale.md#json-single-authoring-site
 
@@ -2491,6 +2512,7 @@ bash {plugin_root}/scripts/pr-review-step.sh save-gate --save-pending-marker "{s
 
 - `pass`（marker 層、`reason=save_pending_marker_absent`）→ 6.1.a が本 cycle で完走した証拠。`[CONTEXT] REVIEW_SAVE_JSON_OK=1; pr={n}; result_json={basename}`（positive 層、reason を持たない observability marker）→ 本 cycle の結果 JSON が現 run に実在し、どのファイルで通ったかを開示する。両方が出れば `**Check**` へ。
 - `degraded` → marker が使えない環境（`..._placeholder_residue` / `..._unavailable`）、または positive 検査の入力・環境が揃わない（`save_result_json_undecidable`）。**当該層の機械強制のみ**を skip する — marker 層が degraded でも positive 層は通常どおり実行される（入力が marker に依存しないため）。
+- `reason=execution_record_invalid` → 保存済み receipt の選定・実行条件が欠落/不正。`[review:error]` で停止し、保存結果・manifest・raw を保持して `/rite:recover` を案内する。保存済み JSON を書き換えたり値を推測して再保存しない。
 - bash が `exit 1`（`REVIEW_SAVE_GATE_FAILED=1`）→ ステップ 6.1.a へ戻る（**会話に本 cycle の `REVIEW_SAVE_PENDING_MARKER` / `REVIEW_SAVE_PENDING_ID` が 1 つも無い場合の戻り先は ステップ 5.3.0.M step 2**。helper の ACTION 行が SoT）。**ステップ 8.1 へ進んではならない**。`reason=save_pending_marker_present` は 6.1.a が本 cycle で走っていない証拠、`reason=save_result_json_absent` は「区間ごと未実行」または「本 cycle 分だけ未保存」で、後者は helper が出す JSON 一覧（期待 SHA と実在ファイルの `commit_sha`）で切り分ける。**helper が marker を 1 つも出さずに非ゼロ終了した場合**（`exit 2` = 未知オプション / rc=127 = helper 不在・版 skew）は 6.1.a へ戻さず `[review:error]` を stdout に出力して停止する（skill 定義のバグ / プラグイン破損であり 6.1.a の再実行では収束しない。ステップ 5.3.0.M step 3 の同型行と同じ扱い）。
 
 **Check**: `[CONTEXT] REVIEW_SAVE_DONE=1; ...` の `marker=` が **本 cycle の `REVIEW_SAVE_PENDING_MARKER`** と一致するか。空 marker の degraded では 5.3.0.M step 2 より後ろの `REVIEW_SAVE_DONE` を採る。Pre-Check `pass` でも省略しない。

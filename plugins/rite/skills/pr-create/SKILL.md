@@ -633,17 +633,17 @@ Example (Japanese): feat(pr): /rite:pr-create コマンドを実装
 
 Template file: `templates/pr/generic.md`
 
-Read: [`template-structure.md`](../../templates/issue/template-structure.md) の「上段要約」「図の選択規則」。関連 Issue の問題・実際の差分・検証結果から3ブロックと必要な用語を生成する。共通の経緯識別子禁止を検査し、残存時は作成前に生成をやり直す。`Closes #N` は details 外、変更・実装中の判断・検証・未完了項目・チェックリストは details 内に置き、`<summary>` 直後に空行を置く。
+Read: [`template-structure.md`](../../templates/issue/template-structure.md) の「上段要約」「図の選択規則」。関連 Issue の問題・実際の差分・検証結果から問題 / 変更 / 期待する結果の見出し＋段落と必要な用語を生成する。確認依頼は特定の依頼がある場合だけ追加する。タイトル単体で何のどんな変更かと効果が分かること、共通の図必須条件・図なし列挙条件の検査 Bash も本文に対して作成前に実行し、違反時は `gh pr create` を呼ばず当該本文を再生成する。共通の経緯識別子禁止を検査し、残存時は作成前に生成をやり直す。`Closes #N` は details 外、変更・実装中の判断・検証・未完了項目・チェックリストは details 内に置き、`<summary>` 直後に空行を置く。
 
-関連 Issue の図は次の排他表で決める。上から最初に一致した行だけを適用する。子判定は Issue 本文の `**Parent Issue**` 行の有無。関連 Issue 不在は「図が無く」に当たり、4・5 行目の図種判定で決める。ラベルの文言変更だけでは描き直さない。成功後の `gh pr view` URL 置換確認は新規 `--attach` 時のみ。
+関連 Issue の図は次の排他表で決める。上から最初に一致した行だけを適用する。子判定は Issue 本文の `**Parent Issue**` 行の有無。子であることは図の省略理由にしない。関連 Issue 不在は「図が無く」に当たり、4・5 行目の必須・省略条件判定で決める。ラベルの文言変更だけでは描き直さない。成功後の `gh pr view` URL 置換確認は新規 `--attach` 時のみ。
 
 | 条件 | 図 |
 |---|---|
-| 子 Issue（本文に `**Parent Issue**` がある） | 親の図を再掲せず「親 Issue の図の {部分} を担当」と一文 |
+| 子 Issue の PR で、既存図だけでは本文単独で変更範囲が分からない | 自範囲の図を描く。既存図で足りる場合は以下の行で再掲可。「親の図を参照」だけでは済ませない。SVG / Mermaid は共通選択表に従う |
 | 関連 Issue に図があり、ノードの追加・削除・関係（矢印・包含）の変化がある | 描き直し。選択表に従う。`svg_allowed=true` なら SVG、`svg_allowed=false` なら Mermaid。上段に「Issue の図から変わった点」を 1〜3 行書く |
 | 関連 Issue に図があり、構造は変わらない | 上段に再掲する。対象は添付 URL と Mermaid fence。3.4(B) で `diagram.svg` を書かず `attachments.json` を `[]` にする |
-| 関連 Issue に図が無く、選択表の図種に該当する | 新規生成。選択表に従う。`svg_allowed=true` なら SVG、`svg_allowed=false` なら Mermaid |
-| 図種に該当しない | 上段に `<!-- 図なし: {理由} -->` |
+| 関連 Issue に図が無く、共通規則で図が必須 | 新規生成。選択表に従う。`svg_allowed=true` なら SVG、`svg_allowed=false` なら Mermaid |
+| 構造の説明を含まず、共通規則の図なし列挙条件に該当する | 上段に `<!-- 図なし: {条件} -->`。どの行にも該当しない場合は作成せず図を生成して再検査 |
 
 本文言語は **Phase 3.1 と同じ**。
 
@@ -703,6 +703,8 @@ echo "[CONTEXT] PR_CREATE_WORKDIR=$pr_workdir"
 2. `{PR_CREATE_WORKDIR}/pr_body.md` ← Phase 3.2 で生成した PR body の raw 内容
 3. 新規生成または描き直しで SVG を選んだときだけ `{PR_CREATE_WORKDIR}/diagram.svg` ← テーマ中立の図。本文の参照と添付は同じ絶対パスを使う。再掲時は書かない
 4. `{PR_CREATE_WORKDIR}/attachments.json` ← その SVG の絶対パス配列。再掲・図なし・Mermaid は必ず `[]` を書く
+
+(C) の前に [読みやすさ点検](../../references/body-readability-check.md) を title / body と本文参照のローカル SVG に実行する。共通の図条件検査を通過した本文だけを対象にし、書き直し後も再検査して作成用ファイルへ反映する。
 
 **(C) gh pr create（単一 bash block）**
 

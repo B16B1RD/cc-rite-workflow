@@ -767,7 +767,7 @@ echo "[CONTEXT] PROJECTS_STATUS_UPDATED=$projects_status_updated"
 
 > **委譲モード**: 4-W が `[CONTEXT] CLEANUP_DELEGATED=1` **または `[CONTEXT] CLEANUP_WT=unknown`** を emit している場合、**本ステップ全体を実行しない**（config 読み取り bash・`WIKICHAIN` handoff の set・`Skill: rite:wiki-ingest` の invoke をいずれも行わない）。ガードの対象は config 読み取り bash 単体ではない — 実際に wiki-worktree へ commit するのは skill invoke であり、検出ブロックだけを skip すると `reason` が未計算のまま handoff set と invoke に到達しうる。pending raw source は wiki branch に保持されるため、ステップ 12 が未完了として列挙し、main checkout での `/rite:cleanup {pr_number}` 再実行へ委譲する（本項目は再実行で冪等に完了する）。
 
-`wiki.enabled` (default true) かつ `wiki.auto_ingest` (default false) で、pending raw source があれば実行。
+`wiki.enabled` (default true) かつ `wiki.auto_ingest` (default false) で、pending raw source または未完了の比較一覧があれば実行。保存一覧は、raw が取り込み済みでも比較完了まで保持する。
 
 ```bash
 # YAML 読み取りは canonical helper (実ファイル) に委譲する。skill 本文の fenced bash に
@@ -800,7 +800,9 @@ if [ -z "$reason" ]; then
     pending_count=$(git ls-tree -r --name-only "$ref" .rite/wiki/raw/ 2>/dev/null \
       | while read -r f; do git show "$ref":"$f" 2>/dev/null | grep -q 'ingested: false' && echo "$f"; done | wc -l)
   fi
-  [ "$pending_count" -eq 0 ] && reason="no_pending"
+  state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || exit 1
+  pending_comparison="$state_root/.rite/state/wiki-lint-pending.json"
+  [ "$pending_count" -eq 0 ] && [ ! -e "$pending_comparison" ] && reason="no_pending"
 fi
 
 if [ -n "$reason" ]; then
@@ -828,7 +830,37 @@ handoff セット後に invoke する:
 Skill: rite:wiki-ingest
 ```
 
-skill return 後、出力から以下のいずれかの sentinel を発火させる (ステップ 12 の表示判定に使用):
+**比較不能の停止ゲートを先に適用する**。ingest 出力に `WIKI_CONTRADICTION_CHECK=failed` があれば、通常の `ingest_error` へ変換しない。保存一覧を維持し、ingest lock を解放したことを確認してから次の停止ブロックを実行する:
+
+```bash
+# cleanup-contradiction-stop
+state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || exit 1
+fs_path=$(bash {plugin_root}/hooks/flow-state.sh path) || exit 1
+session_id=$(basename "$fs_path" .flow-state)
+[ -n "$session_id" ] || { echo "ERROR: cleanup の session_id を解決できません" >&2; exit 1; }
+queue_file="$state_root/.rite/state/run-queue-$session_id.json"
+# 呼出元へ戻る前にも batch watchdog が動くため、保存位置を変えず駆動を止める。
+if [ -e "$queue_file" ]; then
+  now_ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  queue_tmp=$(mktemp "$queue_file.stop-XXXXXX") || exit 1
+  if ! jq --arg now "$now_ts" '.active = false | .updated_at = $now' "$queue_file" > "$queue_tmp" \
+     || ! mv "$queue_tmp" "$queue_file"; then
+    rm -f "$queue_tmp"
+    echo "ERROR: 矛盾比較失敗後の batch 停止状態を保存できません" >&2
+    exit 1
+  fi
+fi
+bash {plugin_root}/hooks/flow-state.sh consume-handoff || exit 1
+echo "ERROR: Wiki の矛盾比較を完了できないため cleanup を停止します。保存一覧を使い /rite:cleanup {pr_number} で再開してください" >&2
+echo "[CONTEXT] WIKI_CONTRADICTION_CHECK=failed; source=cleanup"
+echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=contradiction_check_incomplete"
+exit 1
+```
+
+これは比較不能のときだけ実行する。正常経路の WIKICHAIN を途中で消してはならない。停止時はステップ 10-12、完了レポート、作業メモリ削除、`[cleanup:returned-to-caller]` を実行しない。`flow-state.sh set` を挟まず `consume-handoff` で継続強制を解除する。比較に失敗した後の再開は、保存した一覧を wiki-ingest へ引き継ぐ。raw の pending 数が 0 でも no_pending にしない。
+rationale: ../../references/stop-loop-continuation-contract.md#wikichain-handoff
+
+skill return 後、出力から以下のいずれかの sentinel を発火させる (上記の停止ゲートを通過した場合のみ。ステップ 12 の表示判定に使用):
 
 - 成功: `[CONTEXT] WIKI_INGEST_DONE=1; pr={pr_number}`
 - push 失敗併存 (ingest 出力に `push=failed`): 上記 + `[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; source=cleanup_step9`
@@ -837,7 +869,7 @@ skill return 後、出力から以下のいずれかの sentinel を発火させ
 - 失敗: `[CONTEXT] WIKI_INGEST_FAILED=1; reason=ingest_error`
 rationale: references/rationale.md#wiki-push-batch
 
-ingest の成否（skip 含む）に関わらずステップ 10 へ進む。
+ingest の成否（skip 含む）に関わらずステップ 10 へ進むのは、比較不能の停止ゲートを通過した既存経路だけ。比較不能は上記で停止する。
 
 ---
 

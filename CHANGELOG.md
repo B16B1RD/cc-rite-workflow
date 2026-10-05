@@ -32,6 +32,25 @@ Past version sections carry none either — they have already been stripped.
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-05
+
+### Added
+
+- **Headed summaries with diagrams for Issues and PRs** — The opening summary of generated Issues and PRs is split into Problem / Change / Expected result headings, and changes that explain a structure carry a diagram. The body is checked before creation and regenerated when it violates these rules.
+- **Reader check before creating Issues and PRs** — Only the title, the opening body, and the diagrams it references are handed to an independent reader to test comprehension, and unclear passages are rewritten automatically before creation.
+- **Regression acceptance criteria scoped to real references** — Issue generation aligns regression criteria with real inputs, every reference site, and the full goal, instead of narrow fixture-only conditions.
+- **Semantic comparison against the verified reference version** — For documents that carry `verified_against`, review compares the referenced source at that verified version with its current state and the changed page text, and flags explanations that no longer match.
+- **Reviewer selection rationale and effective model/effort recorded** — Review results store why each candidate reviewer was selected or excluded, plus the effective model and effort the host reports.
+- **PR body verification claims checked against measured scope** — The PR body is passed to review, and claimed verification is compared with the checks actually performed.
+- **Lightweight-lane falsification of PR body guarantees** — The lightweight review lane tries local mutations against each guarantee in the PR body and reports measured counterexamples.
+
+### Fixed
+
+- **Summary reader no longer demands detail-level exit conditions** — The opening-summary check no longer flags missing procedures, conditions, or exception handling that belong in the detailed sections.
+- **Pre-creation diagram check** — Markdown images whose alt text contains a closing bracket are detected, and a third listed omission condition — changes that do not explain flow, relationships, branching, or before/after structure — lets such changes omit the diagram by naming that condition.
+- **Test reviewer added to PRs that change tests** — PRs that change test content always include the test reviewer regardless of file naming patterns.
+- **Wiki automatic contradiction check** — The check is limited to changed pages and always runs; when comparison is impossible, ingest and cleanup stop and keep the saved page list for resumption.
+
 ## [0.19.5] - 2026-10-04
 
 ### Added
@@ -1264,6 +1283,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.20.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.5...v0.20.0
 [0.19.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.4...v0.19.5
 [0.19.4]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.3...v0.19.4
 [0.19.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.2...v0.19.3
