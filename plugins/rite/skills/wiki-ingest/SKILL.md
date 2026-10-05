@@ -359,7 +359,7 @@ fi
 [ -n "$cat_err" ] && rm -f "$cat_err"
 ```
 
-**処理対象が 0 件の場合**: `changed_pages_file` が存在する場合は早期 return せず、保存した一覧（`[]` も含む）を使ってステップ 8 の Lint へ進む。一覧も無い場合のみ lock を解放して早期 return:
+**処理対象が 0 件の場合**: `changed_pages_file` が存在する場合は早期 return せず、ステップ 5.0.r の未確定書き込みの回収へ進む。保存一覧が `[]` でもこの順序を守る。一覧も無い場合のみ lock を解放して早期 return:
 
 ```
 未 Ingest の Raw Source は見つかりませんでした。
@@ -514,6 +514,14 @@ rationale: references/rationale.md#related-page-literal
 6. **index.md の更新**: **手順 3 / 4 を実施した Raw Source についてのみ**、ステップ 6 に従い `wiki-index-update.sh` を bash で呼ぶ（LLM は Edit しない）。**skip 決定（手順 5）では実行しない**
    rationale: references/rationale.md#skip-no-index-update
 7. **log.md への追記**: ステップ 7 の指示に従い Edit で append-only 追加する
+
+### 5.0.r 未確定書き込みの回収
+
+保存一覧を使った再開では、ステップ 8 へ直行しない。既存 ingest lock を保持したまま、Wiki のローカル commit と未 commit 差分を読み、`ingested: true` 化した未 commit raw の全文、保存一覧のページ本文、index と log を照合する。raw の変更だけでページが未作成の場合も対象に含める。
+
+未 commit raw ごとに、ステップ 3/4 の統合判断とステップ 5.0 手順 1-7 を照合し、未実施の書き込みを完了する。既に書いた本文・sources・index・log は読み直して内容を確認し、同じ追記や記録を重複させない。書き込み先は引き続き 2.1.c で保存してから書く。skip は raw の skip 状態と log を確認する。raw と成果物の対応や統合の完了を確定できなければ、比較不能として停止し一覧を残す。
+
+回収後は通常と同じステップ 5.0.n → 5.1 / 5.2 を実行し、追加・更新した本文・index・log と raw を commit する。既に commit 済みなら変更なしを確認する。その後だけステップ 8 へ進む。保存一覧にあるページの今回の本文がローカル commit に含まれることを読み戻して確認し、未 commit のまま古い本文を比較しない。
 
 ### 5.0.c canonical commit message 契約
 

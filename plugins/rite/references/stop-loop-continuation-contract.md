@@ -37,6 +37,8 @@
 
 cleanup → wiki-ingest → wiki-lint の 2 段ネスト skill return 直後に LLM が turn を閉じる implicit stop が累積再発している。iterate ループの Stop-hook 継続保証と同型の one-shot handoff (`WIKICHAIN:cleanup:{pr}`) を移植し、チェーン途中で turn が閉じた場合は Stop hook が `WIKICHAIN:*` を consume して停止を差し戻し、残り step (ingest 残処理 → cleanup ステップ 10-12) の継続を強制する。自動矛盾検査を完了できない場合は例外として cleanup ステップ 9 で停止する。保存した変更一覧を保持し、ingest lock を解放した後、既存 `flow-state.sh consume-handoff` で WIKICHAIN を解除する。通常の ingest 失敗へ変換してステップ 10-12 や完了通知に進めない。再開は pending raw が 0 件でも保存一覧を比較する。通常の handoff 設定 site と terminal set は変えず、失敗時の consume だけを追加する。解除しないまま停止すると Stop hook が既存の継続指示を再注入するため、比較不能の停止は必ず解除後に行う。チェーンがステップ 12 まで完走した場合はステップ 12 末尾の `flow-state.sh set` (`--handoff` なし) が handoff を default-clear するため block は発生しない。consume は one-shot のため **handoff 軸では** 無限 block しない。batch 稼働中にチェーン途中で再停止した場合は watchdog が phase=cleanup かつ flow-state `active=true` なら cleanup 残りステップへ誘導し、cursor 前進へ飛ばない。
 
+比較不能で停止する場合は、自セッションの batch キューがあれば cursor・issues・mode を保持して `active=false` にする。handoff を解除するだけでは batch watchdog が cleanup を再駆動するため、この保存は caller への返却前に行う。`WIKI_CONTRADICTION_CHECK=failed` を cleanup から伝え、batch-run は成功や sentinel 不在より先に失敗として判定する。キューの前進と後続 Issue の開始を行わず、停止報告へ進む。通常のチェーンではキューを途中で停止させない。再開時は保存一覧と未 commit raw の成果物を回収し、通常の番号参照検査と commit を終えてから今回の本文を比較する。
+
 ## why-ready-sets-no-handoff
 
 `Stop` hook の **handoff 軸** は handoff マーカー (review↔fix ループ / cleanup wiki チェーン) が set されている時だけ停止を差し戻すが、ready は handoff をセットしない — ready はループの出口でありユーザー判断で merge へ進むためである。ready の継続保証は flow-state の `next_action` (resume 用) に委ねる。fork context の return 直後に LLM が turn を終了しても、state file に正しい `next_action` が残るため `/rite:recover` で復帰できる (defense-in-depth)。`--merge` batch 稼働中は watchdog が phase=`ready` なら `/rite:merge` へ誘導する。

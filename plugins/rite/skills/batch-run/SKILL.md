@@ -217,9 +217,15 @@ if [ "$cursor" -ge "$total" ]; then
   echo "[CONTEXT] RUN_NEXT=all-done; mode=$mode"
 else
   current=$(jq -r ".issues[$cursor]" "$queue_file")
-  # coarse スキップ: 既に CLOSED の Issue（= 処理済み）は open し直さず cursor を進める
+  # マージで Issue が閉じても、現在位置の cleanup が未完了なら先に再開する。
+  cleanup_pending=false
+  if [ -e "$fs_path" ]; then
+    cleanup_pending=$(jq -r --argjson issue "$current" '
+      .issue_number == $issue and .phase == "cleanup" and .active == true' "$fs_path") || exit 1
+  fi
+  # coarse スキップ: cleanup 未完了の現在位置以外の CLOSED Issue は処理済み。
   state=$(gh issue view "$current" -R {owner_repo} --json state --jq '.state' 2>/dev/null || echo "OPEN")
-  if [ "$state" = "CLOSED" ]; then
+  if [ "$state" = "CLOSED" ] && [ "$cleanup_pending" != "true" ]; then
     jq '.cursor += 1' "$queue_file" > "$queue_file.tmp" && mv "$queue_file.tmp" "$queue_file"
     echo "[CONTEXT] RUN_NEXT=skip-closed; issue=$current; new_cursor=$((cursor+1)); total=$total; mode=$mode"
   else
@@ -416,6 +422,7 @@ args: "{branch_name}"
 
 | Sentinel（`--merge` 時のみ） | アクション |
 |---------|-----------|
+| `WIKI_CONTRADICTION_CHECK=failed` | **最優先の失敗** → ステップ 8（段階=cleanup）。cleanup が保存した inactive キューを保持し、cursor を進めず後続 Issue を開始しない |
 | `[cleanup:returned-to-caller]` | この Issue 完了。下記 bash で cursor を +1 してステップ 1 へループ |
 | sentinel 不在（cleanup 途中で停止） | merge は既に完了済み（成功扱い）。下記 bash で cursor を +1 してステップ 1 へ進む（cleanup の未完分は `/rite:recover {current_issue}` で個別補完できる旨を表示） |
 

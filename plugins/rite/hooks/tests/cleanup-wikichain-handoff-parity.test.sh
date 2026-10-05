@@ -211,6 +211,7 @@ env = dict(os.environ, RITE_STATE_ROOT=str(work), RITE_HOST='codex', CODEX_THREA
 for key in ('CLAUDE_CODE_SESSION_ID', 'CLAUDE_SESSION_ID', 'GROK_SESSION_ID'):
     env.pop(key, None)
 fs = plugin / 'hooks/flow-state.sh'
+subprocess.run(['git', 'init', '-q', str(work)], check=True, capture_output=True)
 subprocess.run(['bash', str(fs), 'set', '--phase', 'cleanup', '--issue', '12',
                 '--branch', 'b', '--pr', '99', '--active', 'true', '--next', 'pending',
                 '--handoff', 'WIKICHAIN:cleanup:99', '--session', sid], env=env, check=True,
@@ -218,18 +219,44 @@ subprocess.run(['bash', str(fs), 'set', '--phase', 'cleanup', '--issue', '12',
 pending = work / '.rite/state/wiki-lint-pending.json'
 pending.parent.mkdir(parents=True, exist_ok=True)
 pending.write_text(json.dumps([page]))
+payload = json.dumps({'cwd': str(work), 'session_id': sid, 'stop_hook_active': False})
+hook_cmd = ['bash', str(plugin / 'hooks/stop-loop-continuation.sh')]
+control = subprocess.run(hook_cmd, input=payload, env=env, cwd=work, text=True, capture_output=True)
+assert control.returncode == 0 and json.loads(control.stdout)['decision'] == 'block', control
+assert 'ERROR:' not in control.stderr, control
+# The positive control consumes its one-shot marker; restore it before failure.
+subprocess.run(['bash', str(fs), 'set', '--phase', 'cleanup', '--issue', '12',
+                '--branch', 'b', '--pr', '99', '--active', 'true', '--next', 'pending',
+                '--handoff', 'WIKICHAIN:cleanup:99', '--session', sid], env=env, check=True,
+               capture_output=True, text=True)
+queue = work / '.rite/state' / ('run-queue-' + sid + '.json')
+queue_before = dict(issues=[12, 13], cursor=0, mode='merge', failed=[], outstanding=[],
+                    active=True, updated_at='2099-01-01T00:00:00Z')
+queue.write_text(json.dumps(queue_before))
 result = run(block(cleanup, '# cleanup-contradiction-stop').replace('{plugin_root}', str(plugin)).replace('{pr_number}', '99'), env)
 assert result.returncode == 1 and 'reason=contradiction_check_incomplete' in result.stdout
 assert 'returned-to-caller' not in result.stdout and pending.exists()
-payload = json.dumps({'cwd': str(work), 'session_id': sid, 'stop_hook_active': False})
 hook = subprocess.run(['bash', str(plugin / 'hooks/stop-loop-continuation.sh')], input=payload,
                       env=env, cwd=work, text=True, capture_output=True)
 assert hook.returncode == 0 and not hook.stdout.strip(), hook
+assert 'ERROR:' not in hook.stderr, hook
+queue_after = json.loads(queue.read_text())
+assert queue_after['active'] is False
+assert {k: v for k, v in queue_after.items() if k not in ('active', 'updated_at')} == {
+    k: v for k, v in queue_before.items() if k not in ('active', 'updated_at')}
+batch = (plugin / 'skills/batch-run/SKILL.md').read_text().split('## ステップ 6:', 1)[1].split('## ステップ 7:', 1)[0]
+assert batch.index('`WIKI_CONTRADICTION_CHECK=failed`') < batch.index('sentinel 不在')
+assert 'cursor を進めず後続 Issue を開始しない' in batch
 state = json.loads((work / '.rite/sessions' / (sid + '.flow-state')).read_text())
 assert state['phase'] == 'cleanup' and state['active'] is True and not state.get('handoff')
+batch_source = (plugin / 'skills/batch-run/SKILL.md').read_text()
+next_issue = block(batch_source, '# coarse スキップ: cleanup 未完了')
+next_issue = next_issue.replace('{plugin_root}', str(plugin)).replace('{owner_repo}', 'fixture/repo')
+result = run('gh() { echo CLOSED; }\n' + next_issue, env)
+assert result.returncode == 0 and 'RUN_NEXT=process; issue=12' in result.stdout, result
+assert json.loads(queue.read_text())['cursor'] == 0
 # Resume entry: no pending raw must not suppress a retained comparison list.
 (work / 'rite-config.yml').write_text('wiki:\n  enabled: true\n  auto_ingest: true\n  branch_name: wiki\n')
-subprocess.run(['git', 'init', '-q', str(work)], check=True, capture_output=True)
 collection = block(cleanup, 'wiki_enabled="true"; auto_ingest="false"')
 collection = collection.replace('{plugin_root}', str(plugin))
 result = run(collection, env)
@@ -237,6 +264,44 @@ assert result.returncode == 0 and 'wiki_ingest_reason=<run>' in result.stdout, r
 pending.unlink()
 result = run(collection, env)
 assert result.returncode == 0 and 'reason=no_pending' in result.stdout, result
+# Interrupt after an update/new write but before its commit: resume must compare
+# the new conclusion in Git, rather than silently reading the prior revision.
+resume = ingest.split('**処理対象が 0 件の場合**:', 1)[1].split('```', 1)[0]
+assert 'ステップ 5.0.r' in resume and 'ステップ 8 の Lint へ進む' not in resume
+recovery = ingest.split('### 5.0.r ', 1)[1].split('### 5.0.c ', 1)[0]
+assert '未 commit raw' in recovery and 'ステップ 5.0.n → 5.1 / 5.2' in recovery
+assert '重複させない' in recovery and '今回の本文がローカル commit に含まれる' in recovery
+git_env = dict(env, GIT_AUTHOR_NAME='Fixture', GIT_AUTHOR_EMAIL='fixture@example.invalid',
+               GIT_COMMITTER_NAME='Fixture', GIT_COMMITTER_EMAIL='fixture@example.invalid')
+def git(*args):
+    return subprocess.run(['git', *args], cwd=work, env=git_env, text=True,
+                          capture_output=True, check=True).stdout
+written = work / page
+written.parent.mkdir(parents=True, exist_ok=True)
+written.write_text('timeout permits continuation\n')
+git('add', '--', page)
+git('-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'baseline')
+written.write_text('timeout denies continuation\n')
+new_path = '.rite/wiki/pages/heuristics/new.md'
+(work / new_path).write_text('timeout denies continuation\n')
+pending.write_text(json.dumps([page, new_path]))
+assert 'denies' not in git('show', 'HEAD:' + page)
+precommit = subprocess.run(['bash', str(plugin / 'hooks/scripts/wiki-numref-precommit.sh'),
+                           '--repo-root', str(work)], env=git_env, cwd=work, text=True,
+                          capture_output=True)
+assert precommit.returncode == 0 and 'WIKI_INGEST_NUMREF=clean' in precommit.stdout, precommit
+git('add', '--', '.rite/wiki')
+git('-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'recover current bodies')
+for changed in json.loads(pending.read_text()):
+    assert git('show', 'HEAD:' + changed) == (work / changed).read_text()
+# Exit 0 from the existing log helper cannot prove that evidence was saved.
+log = work / '.rite/wiki/log.md'
+log.write_text('baseline evidence\n')
+git('add', '--', '.rite/wiki/log.md')
+git('-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'baseline evidence')
+log.write_text('baseline evidence\ncomparison evidence\n')
+assert 'comparison evidence' not in git('show', 'HEAD:.rite/wiki/log.md')
+assert '**自動モードの保存確認**' in lint and '今回生成したエントリ全文' in lint
 print('input, fatal return, Stop-hook boundary and pending-list resume passed')
 PYTEST
 if [ "$contract_rc" -eq 0 ]; then

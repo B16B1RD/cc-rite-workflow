@@ -834,8 +834,25 @@ Skill: rite:wiki-ingest
 
 ```bash
 # cleanup-contradiction-stop
+state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || exit 1
+fs_path=$(bash {plugin_root}/hooks/flow-state.sh path) || exit 1
+session_id=$(basename "$fs_path" .flow-state)
+[ -n "$session_id" ] || { echo "ERROR: cleanup の session_id を解決できません" >&2; exit 1; }
+queue_file="$state_root/.rite/state/run-queue-$session_id.json"
+# 呼出元へ戻る前にも batch watchdog が動くため、保存位置を変えず駆動を止める。
+if [ -e "$queue_file" ]; then
+  now_ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  queue_tmp=$(mktemp "$queue_file.stop-XXXXXX") || exit 1
+  if ! jq --arg now "$now_ts" '.active = false | .updated_at = $now' "$queue_file" > "$queue_tmp" \
+     || ! mv "$queue_tmp" "$queue_file"; then
+    rm -f "$queue_tmp"
+    echo "ERROR: 矛盾比較失敗後の batch 停止状態を保存できません" >&2
+    exit 1
+  fi
+fi
 bash {plugin_root}/hooks/flow-state.sh consume-handoff || exit 1
 echo "ERROR: Wiki の矛盾比較を完了できないため cleanup を停止します。保存一覧を使い /rite:cleanup {pr_number} で再開してください" >&2
+echo "[CONTEXT] WIKI_CONTRADICTION_CHECK=failed; source=cleanup"
 echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=contradiction_check_incomplete"
 exit 1
 ```

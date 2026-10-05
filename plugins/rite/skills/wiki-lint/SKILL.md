@@ -832,7 +832,9 @@ bash {plugin_root}/hooks/scripts/wiki-lint-log-commit.sh --branch-strategy "{bra
 helper の契約（SoT は helper docstring）: placeholder 残留（`{branch_strategy}` / `{mode}` / `{wiki_lint_msg_file}`）、メッセージファイルの不在・空、未置換メッセージ（全体が `{...}` または `{log_entry}` を含む）、未知の `branch_strategy` は exit 1 で止まる。commit 失敗は WARNING だけ出して exit 0 で続ける（非ブロッキング）。`rc=1` の WARNING は stdout の `reason=numref-hit` なら番号参照の拒否（hit 行の番号参照を書き直して再実行）、`reason=numref-error` なら検査自体の失敗（stderr の `WIKI_INGEST_NUMREF=error; reason=` または ERROR 行の原因を解消して再実行）、それ以外は環境または引数エラー（直前の stderr で原因を確認）を示す。helper が見つからないときは bash が非 0 で止まる（WARNING で skip しない）。`rc=6`（sandbox-mask）の WARNING が出たら、Edit と Write はやり直さず、上の 1 文だけを別の Bash tool call で `dangerouslyDisableSandbox: true` を付けて 1 回だけ再実行する（helper はこのときだけメッセージファイルを残す）。
 rationale: references/rationale.md#log-commit-helper
 
-**書き込み失敗時**: 検出結果は既に stdout に表示済みのため、log.md 追記失敗は WARNING を出して exit 0 で継続する (非ブロッキング契約維持)。
+4. **自動モードの保存確認**: helper は commit 失敗にも WARNING + exit 0 を返すため、終了コードだけで成功と判定しない。`separate_branch` は設定から取得した Wiki ブランチ、`same_branch` は `HEAD` の `.rite/wiki/log.md` を `git show` で読み戻し、今回生成したエントリ全文（pair ごとの理由・比較結果を含む）が commit に含まれることを照合する。読み戻せない、今回の記録が無い、追記・commit が未完了の場合は `ERROR:` と `WIKI_CONTRADICTION_CHECK=failed` を出して停止する。sandbox 再試行を行った場合も確認は必須。別ブランチの記録や未 commit のファイルで代用しない。
+
+**書き込み失敗時**: 手動は検出結果が既に stdout に表示済みのため、log.md 追記失敗は WARNING を出して exit 0 で継続する（既存の非ブロッキング契約）。自動は上の保存確認を満たせなければ比較不能として停止し、正常 return を出さない。helper 自体の終了コード契約は変えない。
 
 ---
 

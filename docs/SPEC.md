@@ -83,6 +83,8 @@ The command prefix `rite` was chosen for:
 
 `wiki-lint --auto` requires a JSON array of changed page paths. An explicit `[]` means no changed pages; manual lint still compares all pages. Auto lint screens all same-domain index summaries before comparing candidate bodies, records candidate/excluded counts, and stops ingestion and cleanup if comparison cannot finish.
 
+Resuming a saved comparison first reconciles unfinished writes and commits the current page bodies, index, and log. Auto lint verifies that its comparison evidence is present in the committed log. A failed comparison also stops an active batch queue without advancing its cursor; the saved queue and page list remain available for recovery.
+
 ---
 
 ## Workflow Overview
