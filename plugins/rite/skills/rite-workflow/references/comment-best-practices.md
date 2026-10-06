@@ -20,6 +20,8 @@ rite workflow 独自の主張 (Contract Rigour / Output Contract / Naming is doc
 
 「番号を辿っても得るものが少なく、辿る手間に見合わない」ため、永続成果物には番号を残さず、残すべき背景（Why）は**散文として成果物そのものに書く**。番号リンクは commit message / PR description（git/PR メタデータ）にのみ残す。永続成果物の裸の `#NNN` は一律禁止（次節）。
 
+コミットメッセージとコメントの日本語の散文は、記号の字形を [日本語文書の記号規定](../../../references/ja-symbol-style.md) に従って書く。
+
 ## 適用フェーズ
 
 | Phase | 適用箇所 |
