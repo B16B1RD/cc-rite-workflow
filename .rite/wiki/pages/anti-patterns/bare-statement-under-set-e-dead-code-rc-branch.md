@@ -19,14 +19,21 @@ sources:
     resource: "raw/reviews/20260913T090150Z-pr-2776.md"
   - type: "fixes"
     resource: "raw/fixes/20260929T050521Z-pr-3435-fix.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261006T114026Z-pr-3696.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261006T114805Z-pr-3696.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261006T115411Z-pr-3696.md"
 tags: ["bash", "rc-capture", "set-e", "silent-failure", "dead-code"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T05:45:52Z" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-10-06T21:10:00+09:00" }
 verified:
   - { by: "rite-wiki-ingest/gpt-6", at: "2026-09-08T09:16:17Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T06:20:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T09:12:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T05:45:52Z" }
+  - { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-10-06T21:10:00+09:00" }
 ---
 
 # set -euo pipefail 下の外部コマンド単独文は後続 rc 分岐を dead code 化する
@@ -143,3 +150,11 @@ parser が失敗の理由・対象パスを stdout JSON に出し、stderr に�
 - [変異ファイル生成の grep に || true を付けた修正のレビュー結果](../../raw/reviews/20260913T060046Z-pr-2772.md)
 - [抜き出し代入の grep に || true と空値の名前付き FAIL を足した修正のレビュー結果](../../raw/reviews/20260913T090150Z-pr-2776.md)
 - [設定ファイルの読み取りを素の代入で書いた fix 結果](../../raw/fixes/20260929T050521Z-pr-3435-fix.md)
+
+### 失敗を警告に変える処理を足すときも、失敗する文そのものを条件分岐で受ける
+
+止めたくない後始末（記録ファイルの `rm -f` など）に「失敗したら WARNING を出す」処理を足す場合も、同じ構造で壊れる。`rm -f "$f" 2>/dev/null` を単独文にして、次の行の `if [ -e "$f" ]; then echo WARNING ...; fi` で事後に確認する形は、`set -e` 下では `rm` が失敗した時点で hook が終了するため、WARNING の行に到達しない。`2>/dev/null` が診断も消すので、利用者には停止も警告も見えない。さらに hook が差し戻しの判断より前に終了するため、本来の継続処理（差し戻しの出力）まで失われる。事後の存在確認が真になるのは `rm` が成功したのにファイルが残る場合だけで、実質起きない。
+
+直し方は上の canonical と同じで、失敗する文を条件に置く: `if ! rm -f "$f" 2>/dev/null; then echo "WARNING: ..." >&2; fi`。この形なら失敗は握りつぶされず WARNING に変換され、後続の処理は続く。ここで `!` を付けてよいのは rc を使わず成否だけを見る場合に限る（rc を捕捉したいときは上の `if cmd; then rc=0; else rc=$?; fi`）。
+
+検出には、警告分岐を除去しても全テストが通るかを確かめる。失敗経路を通る回帰テスト（state ディレクトリを `chmod a-w` にして削除を失敗させ、差し戻しが維持され警告が出ることを確認する）を同時に置き、単独の `rm -f` に戻す変異でそのテストが落ちることを確認する。複数のレビュアーが同じ根因を独立に再現できたのは、失敗を起こす fixture（書込不可ディレクトリ）が単純で、終了コードと出力の有無だけで判定できたためである。

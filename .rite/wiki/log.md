@@ -4,6 +4,7 @@
 
 * **Update**: [集合一致 assert の抽出を固定 whitelist にすると「whitelist ∩ 各サイト」しか測れない](pages/anti-patterns/set-equality-assert-hollowed-by-whitelist-extraction.md) — ラベル行の抽出パターン走査に関する raw 5 件（レビュー結果 3 件・fix 結果 2 件）を統合。走査の対象・検査入力・検出条件の 3 段階で同じ空洞化が起きる点を追記
 * **Update**: [複数の独立した制約を1つの共有前提条件に総称すると片方だけの前提差異が握り潰される](pages/anti-patterns/changelog-shared-precondition-overgeneralization.md) — バージョンバンプの CHANGELOG に関する raw 3 件（レビュー結果 2 件・fix 結果 1 件）を統合。適用条件と許可範囲の取り違えの事例を追記
+* **Update**: [set -euo pipefail 下の外部コマンド単独文は後続 rc 分岐を dead code 化する](pages/anti-patterns/bare-statement-under-set-e-dead-code-rc-branch.md) — 停止ガードの削除失敗経路に関する raw 3 件（レビュー結果 2 件・fix 結果 1 件）を統合。失敗を警告に変える処理も、失敗する文そのものを条件分岐で受けないと到達しない点を追記
 * **lint:clean** — contradictions=0, stale=71, orphans=0, missing_concept=0, unregistered_raw=735, broken_refs=0
   - WIKI_CONTRADICTION_CHECK=complete; changed=2; screened=383; candidates=45; excluded=338; compared=45; elapsed_seconds=216; read_bytes=1111434
   - 全 193 ページの anti-patterns を変更 2 ページの本文と照合し、候補 45 組の全文を読んで比較した。タイトル衝突・方針逆転・重複情報は検出なし。陳腐化と意図的 skip 済み未登録 raw は informational。番号参照は 0 件。
