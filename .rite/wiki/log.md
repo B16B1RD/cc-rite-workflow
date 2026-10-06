@@ -767,6 +767,13 @@
   - page_a=`.rite/wiki/pages/patterns/procedure-bash-extracted-and-executed-by-test.md`; page_b=`.rite/wiki/pages/patterns/guidance-command-test-by-verbatim-execution.md`; decision=compared; reason=手順書の文書 pin と実行テストの使い分けは補完関係で、結論は対立しない
   - page_a=`.rite/wiki/pages/heuristics/mutation-axes-beyond-predicate.md` ほか 2 ページ; decision=excluded; reason=残る同じ分類の 603 組は、要約から本文の論点（除外 fixture・走査器の状態・手順書の実行テスト）と異なることを判断できた
 * **Update**: [手順書の bash 文は期待文字列で固定せず、抽出して実行するテストで固定する](pages/patterns/procedure-bash-extracted-and-executed-by-test.md) — 複数経路への検査の差し込みと文の境界での照合を、レビュー結果 2 件と fix 結果から統合
+* **lint:clean** — contradictions=0, stale=72, orphans=0, missing_concept=0, unregistered_raw=736, broken_refs=0
+  - WIKI_CONTRADICTION_CHECK=complete; changed=2; screened=529; candidates=3; excluded=526; compared=3; elapsed_seconds=420; read_bytes=unmeasured
+  - 変更 2 ページを、それぞれ同じ分類の全ページの要約（heuristics 336 件、anti-patterns 193 件）と照合し、候補 3 ページの本文を読んで比較した。タイトル衝突・方針逆転・重複情報は検出なし。index の登録 675 行と実在 675 ファイルは一致。番号参照は 0 件。
+  - page_a=`.rite/wiki/pages/heuristics/default-path-move-carries-incidental-guarantees.md`; page_b=`.rite/wiki/pages/heuristics/protection-colocated-with-target-not-config-state.md`; decision=compared; reason=ディレクトリ同梱の除外という解決策は共通するが、前者は既定パス移行時の副次保証の引き継ぎ、後者は設定ファイル依存の保護の置き場所で、結論は補完関係にあり対立しない
+  - page_a=`.rite/wiki/pages/heuristics/default-path-move-carries-incidental-guarantees.md`; page_b=`.rite/wiki/pages/anti-patterns/explicit-option-tests-bypass-default-resolution.md`; decision=compared; reason=既定値を通すテストが要るという同じ方向の主張で、対立しない
+  - page_a=`.rite/wiki/pages/anti-patterns/untracked-parent-ignore-invisible-from-linked-worktree.md`; page_b=`.rite/wiki/pages/heuristics/protection-colocated-with-target-not-config-state.md`; decision=compared; reason=後者の同梱方式を採ったときに残る linked worktree からの不可視という限界を前者が補う関係で、対立しない
+  - page_a=`.rite/wiki/pages/heuristics/default-path-move-carries-incidental-guarantees.md` ほか 1 ページ; decision=excluded; reason=残る同じ分類の 526 組は、要約から本文の論点（既定パス移行の副次保証・未追跡 ignore の不可視）と異なることを判断できた
 
 ## 2026-10-05
 
