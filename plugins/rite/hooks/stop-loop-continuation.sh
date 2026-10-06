@@ -253,6 +253,14 @@ if [ -z "$HANDOFF" ]; then
   exit 0
 fi
 
+# handoff による差し戻しは進捗なので、watchdog の連続停止の回数を数え直す。消さないと、
+# review 待ちで積んだ回数が上限 K を超えたまま残り、iterate 収束後の最後の停止が許可される。
+_wd_sidecar="$STATE_ROOT/.rite/state/run-queue-${SESSION_ID}.watchdog"
+rm -f "$_wd_sidecar" 2>/dev/null
+if [ -e "$_wd_sidecar" ]; then
+  echo "WARNING: batch watchdog sidecar を削除できませんでした ($_wd_sidecar)。回数を数え直せないため、iterate 収束後の停止が許可されるリスクがあります" >&2
+fi
+
 # handoff pending: 停止を差し戻す。handoff の prefix で reason を分岐する。
 # 継続 / WIKICHAIN / 未知 prefix の block 可否は「handoff 非空」の軸のみ。FINALIZE は
 # 直近 assistant に完了通知が既にあるとき差し戻さない（未出力 / 検査不能は差し戻す側）。

@@ -1153,6 +1153,63 @@ chmod u+w "$d/.rite/state"
 assert "T-12: 2nd still blocks (K cannot fire)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
 rm -f "$err" "$err2"
 
+# --- H-xx: a handoff block is progress, so it resets the watchdog count ---
+echo ""
+echo "=== H-01: count over K + terminal handoff → handoff block, then the next stop still blocks ==="
+d=$(new_sandbox)
+setup_watchdog_fs "$d" review 99
+jq -n '{cursor:0, updated_at:"2026-09-02T00:00:00Z", phase:"review", pr_number:"99", count:34}' > "$(sidecar_for "$d")"
+RITE_STATE_ROOT="$d" bash "$FS" set --phase review --issue 2502 --branch "fix/issue-2502-x" --pr 99 \
+  --next n --handoff "FINALIZE:review:mergeable:99" --session "$SID" >/dev/null
+out=$(run_stop "$d")
+assert "H-01: handoff stop blocks" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+if grep -qF "終了 sentinel (review:mergeable:99)" <<< "$(printf '%s' "$out" | jq -r '.reason // ""')"; then
+  pass "H-01: handoff stop carries the terminal-sentinel reason"
+else
+  fail "H-01: handoff stop lost the terminal-sentinel reason: $out"
+fi
+out=$(run_stop "$d")
+assert "H-01: next stop after the handoff blocks (batch watchdog)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+if grep -qF "queue_file=" <<< "$(printf '%s' "$out" | jq -r '.reason // ""')"; then
+  pass "H-01: next stop uses the batch frame"
+else
+  fail "H-01: next stop is not the batch frame: $out"
+fi
+
+echo ""
+echo "=== H-02: count restarts at 1 after a handoff block; K=3 still trips on the 4th stop ==="
+d=$(new_sandbox)
+setup_watchdog_fs "$d" review 99
+run_stop "$d" >/dev/null
+run_stop "$d" >/dev/null
+assert "H-02 setup: count=2" "2" "$(jq -r '.count' "$(sidecar_for "$d")")"
+RITE_STATE_ROOT="$d" bash "$FS" set --phase review --issue 2502 --branch "fix/issue-2502-x" --pr 99 \
+  --next n --handoff "/rite:fix 99" --session "$SID" >/dev/null
+out=$(run_stop "$d")
+assert "H-02: handoff stop blocks" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+assert "H-02: sidecar removed by the handoff block" "absent" "$([ -e "$(sidecar_for "$d")" ] && echo present || echo absent)"
+out=$(run_stop "$d")
+assert "H-02: next stop blocks" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+assert "H-02: sidecar count restarts at 1" "1" "$(jq -r '.count' "$(sidecar_for "$d")")"
+run_stop "$d" >/dev/null
+run_stop "$d" >/dev/null
+err=$(mktemp)
+out=$(run_stop "$d" "$err")
+assert "H-02: stop after K progress-less stops allows" "" "$out"
+rm -f "$err"
+
+echo ""
+echo "=== H-03: a pause record keeps an existing watchdog sidecar untouched ==="
+d=$(new_sandbox)
+setup_watchdog_fs "$d" review 99
+jq -n '{cursor:0, updated_at:"2026-09-02T00:00:00Z", phase:"review", pr_number:"99", count:2}' > "$(sidecar_for "$d")"
+RITE_STATE_ROOT="$d" bash "$FS" set --phase review --issue 2502 --branch "fix/issue-2502-x" --pr 99 \
+  --next n --handoff "/rite:fix 99" --session "$SID" >/dev/null
+RITE_STATE_ROOT="$d" bash "$FS" pause --session "$SID" >/dev/null 2>&1
+out=$(run_stop "$d")
+assert "H-03: paused stop is allowed" "" "$out"
+assert "H-03: sidecar count stays 2" "2" "$(jq -r '.count' "$(sidecar_for "$d")")"
+
 # --- P-xx: a recorded pause lets the turn stop without re-injection or watchdog ---
 # The record is always written by `flow-state.sh pause` (never placed by hand), so a writer/reader
 # path mismatch fails these cases instead of hiding behind a hand-made file.
