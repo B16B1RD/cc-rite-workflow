@@ -775,6 +775,9 @@
   - page_a=`.rite/wiki/pages/heuristics/default-path-move-carries-incidental-guarantees.md`; page_b=`.rite/wiki/pages/anti-patterns/explicit-option-tests-bypass-default-resolution.md`; decision=compared; reason=既定値を通すテストが要るという同じ方向の主張で、対立しない
   - page_a=`.rite/wiki/pages/anti-patterns/untracked-parent-ignore-invisible-from-linked-worktree.md`; page_b=`.rite/wiki/pages/heuristics/protection-colocated-with-target-not-config-state.md`; decision=compared; reason=後者の同梱方式を採ったときに残る linked worktree からの不可視という限界を前者が補う関係で、対立しない
   - page_a=`.rite/wiki/pages/heuristics/default-path-move-carries-incidental-guarantees.md` ほか 1 ページ; decision=excluded; reason=残る同じ分類の 526 組は、要約から本文の論点（既定パス移行の副次保証・未追跡 ignore の不可視）と異なることを判断できた
+* **lint:clean** — contradictions=0, stale=72, orphans=0, missing_concept=0, unregistered_raw=737, broken_refs=0
+  - WIKI_CONTRADICTION_CHECK=complete; changed=0; screened=0; candidates=0; excluded=0; compared=0; elapsed_seconds=60; read_bytes=unmeasured
+  - 今回の取り込みはページを作らず raw 1 件を skip したため、変更ページは 0 件で、比較の対象なし。index の登録 675 行と実在 675 ファイルは一致。番号参照は 0 件。
 
 ## 2026-10-05
 
