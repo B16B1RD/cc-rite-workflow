@@ -158,8 +158,8 @@ case "$mode" in
               item ~ /^#+[[:space:]]+AC-/ || item ~ /^[0-9]+[.)][[:space:]]+(AC-|\[)/) malformed = NR
           next
         }
-        if (match(item, /^AC-[0-9]+([:[:space:]]|$)/)) {
-          id = substr(item, 1, RLENGTH); sub(/[:[:space:]]+$/, "", id)
+        if (match(item, /^AC-[0-9]+(:|：|[[:space:]]|$)/)) {
+          id = substr(item, 1, RLENGTH); sub(/(:|：|[[:space:]])+$/, "", id)
           print "ID " id; items++
         } else malformed = NR
       }

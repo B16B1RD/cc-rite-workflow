@@ -142,6 +142,14 @@ run_131 "$TMP_ROOT/body-target.md"
 if [ "$RUN_RC" -eq 0 ] && grep -qF '[CONTEXT] ACCEPTANCE_SCOPE=target; ids=AC-1,AC-2' <<<"$RUN_OUT"; then pass "1.3.1 実行: 対象 Issue は target と AC 集合"; else fail "1.3.1 実行: target (rc=$RUN_RC out=$RUN_OUT)"; fi
 # 陽性対照: 抽出成功時は後段が削除するまで残るため、件数の glob が実際の mktemp 名に一致することを示す
 assert "1.3.1 実行: 抽出成功時は一時ファイルが残る (glob の陽性対照)" "1" "$(body_tmp_count)"
+printf '## 5. Acceptance Criteria\n\n### AC-1：見出し\n\n- [x] AC-2： 完了条件\n' > "$TMP_ROOT/body-fullwidth.md"
+cp "$TMP_ROOT/body-fullwidth.md" "$TMP_ROOT/body-fullwidth.before"
+run_131 "$TMP_ROOT/body-fullwidth.md"
+if [ "$RUN_RC" -eq 0 ] && grep -Fq '[CONTEXT] ACCEPTANCE_SCOPE=target; ids=AC-1,AC-2' <<<"$RUN_OUT" \
+  && cmp -s "$TMP_ROOT/body-fullwidth.md" "$TMP_ROOT/body-fullwidth.before"; then
+  pass "1.3.1 実行: 全角コロンの見出しとcheckboxを抽出し入力不変"
+else fail "1.3.1 fullwidth (rc=$RUN_RC out=$RUN_OUT)"; fi
+assert "1.3.1 実行: 全角コロンでも後段用の本文を保持" "1" "$(body_tmp_count)"
 printf '## 概要\n\n本文のみ\n' > "$TMP_ROOT/body-none.md"
 run_131 "$TMP_ROOT/body-none.md"
 if [ "$RUN_RC" -eq 0 ] && grep -qF 'ACCEPTANCE_SCOPE=skipped; reason=no_ac_section' <<<"$RUN_OUT" && ! grep -q 'review:error' <<<"$RUN_OUT"; then pass "1.3.1 実行: AC 節なしは skipped で続行"; else fail "1.3.1 実行: skipped (rc=$RUN_RC out=$RUN_OUT)"; fi
