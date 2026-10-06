@@ -85,7 +85,8 @@ LABEL_COLON = re.compile(LIST + r"(?:\*\*[^*]*[" + J + r"][^*]*\*\*|[^:*\n]*[" +
 LABEL_PERIOD = re.compile(LIST + r"\*\*[^*]+\*\*。")
 FIXED_LINE = re.compile(r"^\s*\*\*用語\*\*:\s*$|^\s*(?:Co-Authored-By|Signed-off-by):|^\s*\|?[\s:\-|]+\|?\s*$")
 CC_PREFIX = re.compile(r"^(?:feat|fix|docs|refactor|chore|test|perf|ci|build|style|revert)(?:\([^)]*\))?!?:\s")
-FENCE = re.compile(r"^\s*(```|~~~)")
+FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
+FENCE_CLOSE = re.compile(r"^\s*(`{3,}|~{3,})\s*$")
 
 CODE_SPAN = re.compile(r"(`+)(?:(?!\1).)+?\1")
 IMG_LINK = re.compile(r"!?\[([^\]]*)\]\([^)]*\)")
@@ -123,7 +124,7 @@ def half_width_symbol(s):
     return bool(re.search(r"\.\.\.|~|[\uff5e\uff65\u00b7\uff62\uff63\u201c\u201d]", s))
 
 findings = []
-in_fence = False
+fence = None
 in_comment = False
 start = 0
 if lines and lines[0].strip() == "---":
@@ -134,16 +135,20 @@ if lines and lines[0].strip() == "---":
 
 for idx in range(start, len(lines)):
     line = lines[idx]
-    if line.lstrip().startswith("<details>"):
-        break
-    if FENCE.match(line):
-        in_fence = not in_fence
+    if fence:
+        close = FENCE_CLOSE.match(line)
+        if close and close.group(1)[0] == fence[0] and len(close.group(1)) >= fence[1]:
+            fence = None
         continue
-    if in_fence:
+    opened = FENCE.match(line)
+    if opened:
+        fence = (opened.group(1)[0], len(opened.group(1)))
         continue
     if in_comment:
         in_comment = "-->" not in line
         continue
+    if line.startswith("<details>"):
+        break
     if line.lstrip().startswith("<!--") and "-->" not in line:
         in_comment = True
         continue

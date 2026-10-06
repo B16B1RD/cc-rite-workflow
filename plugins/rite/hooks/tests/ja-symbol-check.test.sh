@@ -54,6 +54,15 @@ run_check t01b ja $'本文はここ\n矯正済みの（詳細）\n/ 区切り(a)
 expect_eq "T-01 違反行が複数なら全行を出力する" "3:半角記号:/ 区切り(a)と説明/補足(b)" "$OUT"
 run_check t01c ja $'一行目(a)\n二行目(b)\n'
 expect_eq "T-01 2 行とも出力される" $'1:半角記号:一行目(a)\n2:半角記号:二行目(b)' "$OUT"
+# 記号ごとに、その記号だけを含む単独の入力で固定する（規則を外すと落ちる）
+for sym_line in '手順書/参考資料を読む' '10~20 件を直す' '省略する...のです' '手順[3]を読む' '"既存の行" は変えない'; do
+  run_check t01s ja "$sym_line"$'\n'
+  expect_eq "T-01 単独の半角記号を検出する: $sym_line" "1:半角記号:$sym_line" "$OUT"
+done
+for ok_line in '2026/01/01 に実施する' 'plugins/rite/a.md を読む'; do
+  run_check t01n ja "$ok_line"$'\n'
+  expect_eq "T-01 日付とパスのスラッシュは通る: $ok_line" "0" "$RC"
+done
 
 # T-02
 run_check t02 ja $'前置き\n- **用語**: 説明\n'
@@ -80,14 +89,32 @@ run_check t04d ja $'前置き\n<details>\n<summary>契約</summary>\n\n- **Given
 expect_eq "T-04 契約層（details 以降）の固定行は検査しない" "0" "$RC"
 run_check t04e ja $'English only (text)\n'
 expect_eq "T-04 日本語を含まない行は検査しない" "0" "$RC"
+# 日本語を含み、除外が無ければ検出される行で、除外ごとに固定する
+for case_body in \
+  $'```\n日本語(a)\n```\n' \
+  $'詳細は https://example.com/a(b) を参照\n' \
+  $'説明<a href="x(y)">リンク</a>\n' \
+  $'<!--\n図なし(a)\n-->\n' \
+  $'---\ntitle: 日本語(a)\n---\n本文\n' \
+  $'Co-Authored-By: 日本語(a) <a@b.c>\n'; do
+  run_check t04x ja "$case_body"
+  expect_eq "T-04 除外が効く: $(printf '%s' "$case_body" | head -n 2 | tr '\n' ' ')" "0" "$RC"
+done
+# 除外の内側の details やフェンス種別の混在で、以降の違反を見逃さない
+run_check t04f ja $'本文\n```html\n<details>\n```\n違反(a)です\n'
+expect_eq "T-04 フェンス内の details で走査が終わらない" "5:半角記号:違反(a)です" "$OUT"
+run_check t04g ja $'本文\n```\n~~~\n```\n違反(a)です\n'
+expect_eq "T-04 バッククォートのフェンスの中のチルダはフェンスを閉じない" "5:半角記号:違反(a)です" "$OUT"
+run_check t04h ja $'<!--\n<details>\n-->\n違反(a)です\n'
+expect_eq "T-04 コメント内の details で走査が終わらない" "4:半角記号:違反(a)です" "$OUT"
 
 # T-05: 文書側の配線（段落ごとに 1 回）
 section=$(awk '/^### 記号の作成前検査/{f=1;next} /^### /{f=0} f' "$STRUCTURE")
 expect_eq "T-05 記号検査の節に helper 呼び出しが 1 回" "1" "$(printf '%s\n' "$section" | grep -c 'ja-symbol-check.sh')"
 expect_eq "T-05 記号検査の節に作成 helper を呼ばず再生成する指示が 1 回" "1" "$(printf '%s\n' "$section" | grep -c '呼ばず')"
-line_diagram=$(grep -n '^### 図の選択規則' "$STRUCTURE" | head -1 | cut -d: -f1)
-line_symbol=$(grep -n '^### 記号の作成前検査' "$STRUCTURE" | head -1 | cut -d: -f1)
-line_fold=$(grep -n '^### 契約層の折りたたみ' "$STRUCTURE" | head -1 | cut -d: -f1)
+line_diagram=$(grep -n '^### 図の選択規則' "$STRUCTURE" | head -1 | cut -d: -f1 || true)
+line_symbol=$(grep -n '^### 記号の作成前検査' "$STRUCTURE" | head -1 | cut -d: -f1 || true)
+line_fold=$(grep -n '^### 契約層の折りたたみ' "$STRUCTURE" | head -1 | cut -d: -f1 || true)
 if [ -n "$line_diagram" ] && [ -n "$line_symbol" ] && [ -n "$line_fold" ] \
    && [ "$line_diagram" -lt "$line_symbol" ] && [ "$line_symbol" -lt "$line_fold" ]; then
   pass "T-05 記号検査の節は図の選択規則の後・契約層の折りたたみの前にある"
@@ -100,6 +127,39 @@ expect_eq "T-05 issue-create の記号検査参照が単一・分解の両経路
   "$(grep -c 'ja-symbol-check.sh\|記号の作成前検査' "$ISSUE_CREATE")"
 expect_eq "T-05 pr-create の記号検査参照が 1 回" "1" \
   "$(grep -c 'ja-symbol-check.sh\|記号の作成前検査' "$PR_CREATE")"
+expect_eq "T-05 節に WARNING で続行しない旨が 1 回" "1" "$(printf '%s\n' "$section" | grep -c 'WARNING で続行しない')"
+# 経路ごとに、違反時は作成を呼ばず再生成する文があり、記号検査が読みやすさ点検より前にある
+for site in "$ISSUE_CREATE" "$PR_CREATE"; do
+  while IFS= read -r site_line; do
+    case "$site_line" in
+      *呼ばず*再生成*) pass "T-05 作成を呼ばず再生成する文がある: ${site##*/}" ;;
+      *) fail "T-05 作成を呼ばず再生成する文が無い: ${site##*/}: ${site_line:0:60}" ;;
+    esac
+    before_symbol=${site_line%%記号の作成前検査*}
+    case "$before_symbol" in
+      *読みやすさ点検*) fail "T-05 記号検査が読みやすさ点検より前に無い: ${site##*/}" ;;
+      *) pass "T-05 記号検査が読みやすさ点検より前にある: ${site##*/}" ;;
+    esac
+  done < <(grep '記号の作成前検査' "$site")
+done
+# 節の bash ブロックを実際に実行する: 違反で非ゼロ、適合で 0、入力不正は再生成ではなく入力の修正を案内する
+sym_script=$(printf '%s\n' "$section" | awk '/^```bash/{f=1;next} /^```/{f=0} f')
+run_section() { # body_file language -> stdout+stderr と rc を SECTION_OUT / SECTION_RC に返す
+  local s="${sym_script//\{plugin_root\}/$PLUGIN_ROOT}"
+  s="${s//\{body_file\}/$1}"
+  s="${s//\{language\}/$2}"
+  SECTION_RC=0
+  SECTION_OUT=$(bash -c "$s" 2>&1) || SECTION_RC=$?
+}
+printf '変更内容(詳細)\n' > "$TMP/s_bad.md"; printf '変更内容（詳細）\n' > "$TMP/s_ok.md"
+run_section "$TMP/s_bad.md" ja
+expect_eq "T-05 節の bash: 違反で exit 1" "1" "$SECTION_RC"
+case "$SECTION_OUT" in *'記号規定の違反'*) pass "T-05 節の bash: 違反の案内を出す" ;; *) fail "T-05 節の bash: 違反の案内が無い [$SECTION_OUT]" ;; esac
+run_section "$TMP/s_ok.md" ja
+expect_eq "T-05 節の bash: 適合で exit 0" "0" "$SECTION_RC"
+run_section "relative.md" ja
+expect_eq "T-05 節の bash: 入力不正で exit 1" "1" "$SECTION_RC"
+case "$SECTION_OUT" in *'入力不正'*) pass "T-05 節の bash: 入力不正の案内を出す" ;; *) fail "T-05 節の bash: 入力不正の案内が無い [$SECTION_OUT]" ;; esac
 
 # T-06
 run_check t06a en $'変更内容(詳細)\n'
@@ -124,6 +184,21 @@ rc=0; (cd "$TMP" && bash "$CHECK" --body-file t06c.md --language ja >/dev/null 2
 expect_eq "T-07 相対パスは exit 2" "2" "$rc"
 rc=0; bash "$CHECK" --language ja >/dev/null 2>&1 || rc=$?
 expect_eq "T-07 body-file 欠落は exit 2" "2" "$rc"
+printf '\xff\xfe日本語(a)\n' > "$TMP/bad_utf8.md"
+rc=0; bash "$CHECK" --body-file "$TMP/bad_utf8.md" --language ja >/dev/null 2>&1 || rc=$?
+expect_eq "T-07 不正な UTF-8 は exit 2（検査を素通りしない）" "2" "$rc"
+rc=0; bash "$CHECK" --body-file "$TMP/t06c.md" --language ja --unknown-option >/dev/null 2>&1 || rc=$?
+expect_eq "T-07 未知のオプションは exit 2" "2" "$rc"
+rc=0; bash "$CHECK" --language ja --body-file >/dev/null 2>&1 || rc=$?
+expect_eq "T-07 値の無い --body-file は exit 2" "2" "$rc"
+mkdir -p "$TMP/nopython"
+rc=0; PATH="$TMP/nopython" "$(command -v bash)" "$CHECK" --body-file "$TMP/t06c.md" --language ja >/dev/null 2>&1 || rc=$?
+expect_eq "T-07 python3 が無ければ exit 2" "2" "$rc"
+# エラーメッセージ（原因語）も固定する
+err_of() { bash "$CHECK" "$@" 2>&1 >/dev/null || true; }
+case "$(err_of --body-file "$TMP/none.md" --language ja)" in *'ERROR:'*missing*) pass "T-07 不在のメッセージに原因語 missing" ;; *) fail "T-07 不在のメッセージ" ;; esac
+case "$(err_of --body-file "$TMP/empty.md" --language ja)" in *'ERROR:'*empty*) pass "T-07 空のメッセージに原因語 empty" ;; *) fail "T-07 空のメッセージ" ;; esac
+case "$(cd "$TMP" && err_of --body-file t06c.md --language ja)" in *'ERROR:'*absolute*) pass "T-07 相対パスのメッセージに原因語 absolute" ;; *) fail "T-07 相対パスのメッセージ" ;; esac
 
 echo ""
 echo "PASS=$PASS FAIL=$FAIL"
