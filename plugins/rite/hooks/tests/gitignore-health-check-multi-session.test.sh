@@ -86,6 +86,53 @@ case "$RUN_OUT" in
   *) fail "TC-7 nested composition drift message missing: $RUN_OUT" ;;
 esac
 
+# The default worktree_base is `.claude/worktrees` (outside `.rite/`, so the nested
+# `.rite/.gitignore` does not cover it). The check must follow the configured base:
+# key omitted → default; custom base → that base. Healthy only when the base carries
+# its own `*` .gitignore (what /rite:open writes) or an equivalent rule.
+MS_DEFAULT=$'multi_session:\n  enabled: true\n'
+MS_CUSTOM=$'multi_session:\n  enabled: true\n  worktree_base: "custom/wt"\n'
+
+run_base_case() {
+  local config="$1" base_dir="$2" d
+  d=$(make_sandbox)
+  cleanup_dirs+=("$d")
+  printf '%s' "$config" > "$d/rite-config.yml"
+  printf '%s' $'.rite/sessions/\n' > "$d/.gitignore"
+  mkdir -p "$d/.rite"
+  printf '%s' "$NESTED_OK" > "$d/.rite/.gitignore"
+  if [ -n "$base_dir" ]; then
+    mkdir -p "$d/$base_dir"
+    printf '%s\n' '*' > "$d/$base_dir/.gitignore"
+  fi
+  RUN_RC=0
+  RUN_OUT=$(cd "$d" && bash "$GHC" --quiet 2>&1) || RUN_RC=$?
+}
+
+echo "=== TC-7a: worktree_base omitted + default base not ignored → drift naming .claude/worktrees/ (exit 1) ==="
+run_base_case "${WIKI_OK}${MS_DEFAULT}" ""
+assert "TC-7a exit 1" "1" "$RUN_RC"
+case "$RUN_OUT" in
+  *"DRIFT DETECTED (multi_session)"*".claude/worktrees/"*) pass "TC-7a drift names the default base" ;;
+  *) fail "TC-7a drift message missing the default base: $RUN_OUT" ;;
+esac
+
+echo "=== TC-7b: worktree_base omitted + default base carries its own .gitignore → healthy (exit 0) ==="
+run_base_case "${WIKI_OK}${MS_DEFAULT}" ".claude/worktrees"
+assert "TC-7b exit 0" "0" "$RUN_RC"
+
+echo "=== TC-7c: custom worktree_base not ignored → drift naming the custom base (exit 1) ==="
+run_base_case "${WIKI_OK}${MS_CUSTOM}" ""
+assert "TC-7c exit 1" "1" "$RUN_RC"
+case "$RUN_OUT" in
+  *"custom/wt/"*) pass "TC-7c drift names the custom base" ;;
+  *) fail "TC-7c drift message missing the custom base: $RUN_OUT" ;;
+esac
+
+echo "=== TC-7d: custom worktree_base carrying its own .gitignore → healthy (exit 0) ==="
+run_base_case "${WIKI_OK}${MS_CUSTOM}" "custom/wt"
+assert "TC-7d exit 0" "0" "$RUN_RC"
+
 # F-02: nested comparison is $state_root/.rite/.gitignore (main checkout), not
 # the linked worktree's show-toplevel. Invoke without --repo-root (lint Phase 3.5
 # argv). Root .gitignore isolates sessions/worktrees so those later checks do
@@ -144,6 +191,19 @@ case "$RUN_OUT" in
   *"DRIFT DETECTED (nested)"*) fail "TC-9 must not nested-drift on worktree file: $RUN_OUT" ;;
   *) pass "TC-9 ignores worktree nested composition" ;;
 esac
+git -C "$d" worktree remove --force "$wt" >/dev/null 2>&1 || true
+
+echo "=== TC-9b: linked worktree + default base whose .gitignore exists only in main → healthy (exit 0) ==="
+setup_linked_worktree_case "$NESTED_OK"
+printf '%s' "${WIKI_OK}${MS_DEFAULT}" > "$d/rite-config.yml"
+printf '%s' "${WIKI_OK}${MS_DEFAULT}" > "$wt/rite-config.yml"
+printf '%s' $'.rite/sessions/\n' > "$d/.gitignore"
+printf '%s' $'.rite/sessions/\n' > "$wt/.gitignore"
+mkdir -p "$d/.claude/worktrees"
+printf '%s\n' '*' > "$d/.claude/worktrees/.gitignore"
+RUN_RC=0
+RUN_OUT=$(cd "$wt" && bash "$GHC" --quiet 2>&1) || RUN_RC=$?
+assert "TC-9b exit 0 (base .gitignore is checked at the main checkout)" "0" "$RUN_RC"
 git -C "$d" worktree remove --force "$wt" >/dev/null 2>&1 || true
 
 echo "=== TC-10: state-path-resolve failure is rc=2 findings unknown ==="

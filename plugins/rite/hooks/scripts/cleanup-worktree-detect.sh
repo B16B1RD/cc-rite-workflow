@@ -6,7 +6,7 @@
 # Why this exists:
 #   ステップ 4-W previously trusted ONLY flow-state's `worktree` field (`flow_wt`)
 #   as the source of truth for "am I in a session worktree?". When a session runs
-#   physically inside `.rite/worktrees/issue-{N}` but flow-state never recorded
+#   physically inside `.claude/worktrees/issue-{N}` but flow-state never recorded
 #   that path (path-entered a worktree another session created, post-reset
 #   flow-state, or a worktree-記録漏れ), the equality test `flow_wt == cur_top`
 #   was false with `flow_wt` empty, so 4-W classified `none` and skipped the whole
@@ -50,7 +50,7 @@ ms_enabled=""
 flow_wt=""
 cur_top=""
 issue=""
-worktree_base=".rite/worktrees"
+worktree_base=".claude/worktrees"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -63,7 +63,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-[ -n "$worktree_base" ] || worktree_base=".rite/worktrees"
+[ -n "$worktree_base" ] || worktree_base=".claude/worktrees"
 # Normalize so the suffix compare is exact: strip a leading `./` and any trailing `/`.
 wt_base_norm=${worktree_base#./}
 wt_base_norm=${wt_base_norm%/}

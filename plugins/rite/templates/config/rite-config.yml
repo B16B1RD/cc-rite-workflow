@@ -123,7 +123,7 @@ wiki:
 # Multi-session settings (per-session Git worktree isolation)
 # See docs/designs/multi-session-worktree.md for full specification.
 # Lets multiple Claude Code sessions work different Issues in the same repo
-# concurrently: /rite:open creates a session worktree (.rite/worktrees/issue-{N})
+# concurrently: /rite:open creates a session worktree (.claude/worktrees/issue-{N})
 # and EnterWorktree-s into it, so each session keeps its own working tree /
 # current branch. Default `enabled: true` (on by default); set to
 # false to restore single-session behavior.
@@ -139,7 +139,7 @@ wiki:
 # `enabled: false` is preserved.
 multi_session:
   enabled: true                    # per-session worktrees (on by default); false to disable
-  worktree_base: ".rite/worktrees" # session worktree base (issue-{N} subdirs)
+  worktree_base: ".claude/worktrees" # session worktree base (issue-{N} subdirs)
 
 # Test-Driven Development (Canon TDD) settings
 # Default ON (opt-out). When enabled, the implementation phase drives a Canon TDD

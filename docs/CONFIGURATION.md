@@ -646,13 +646,13 @@ Settings for per-session Git worktree isolation, letting multiple Claude Code se
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | boolean | `true` | Enable per-session worktrees (on by default). Set to `false` to restore single-session behavior (identical to the previous default, zero change). New projects get `enabled: true` from the `/rite:setup` template; existing configs that predate the feature and omit the `multi_session` block fall back to `false` for backward compatibility |
-| `worktree_base` | string | `".rite/worktrees"` | Base directory for session worktrees (each Issue gets an `issue-{N}` subdirectory) |
+| `worktree_base` | string | `".claude/worktrees"` | Base directory for session worktrees (each Issue gets an `issue-{N}` subdirectory) |
 
-**Separate axis from `parallel`:** `parallel.*` governs per-Issue sub-agent fan-out *within a single session*; `multi_session.*` governs lifecycle isolation *across whole sessions*. The two are orthogonal and intentionally not merged — `parallel.mode: "worktree"` uses `.worktrees/{issue}/{task}`, while `multi_session` uses `.rite/worktrees/issue-{N}`.
+**Separate axis from `parallel`:** `parallel.*` governs per-Issue sub-agent fan-out *within a single session*; `multi_session.*` governs lifecycle isolation *across whole sessions*. The two are orthogonal and intentionally not merged — `parallel.mode: "worktree"` uses `.worktrees/{issue}/{task}`, while `multi_session` uses `.claude/worktrees/issue-{N}`.
 
 **How it works (`enabled: true`):**
 
-1. `/rite:open N` creates a session worktree at `.rite/worktrees/issue-{N}` and enters it via Claude Code's `EnterWorktree(path)` tool, so each session keeps its own working tree and current branch.
+1. `/rite:open N` creates a session worktree at `.claude/worktrees/issue-{N}` and enters it via Claude Code's `EnterWorktree(path)` tool, so each session keeps its own working tree and current branch.
 2. rite state / locks / wiki worktree still resolve to the shared main checkout root (`state-path-resolve.sh` is worktree-aware), so cross-session exclusion stays intact.
    Commands running inside a session worktree read `rite-config.yml` from the worktree when it has one (a tracked config follows the branch) and otherwise from the main checkout, so an untracked config placed only in the main checkout still applies there. When neither exists, commands that continue with defaults print a WARNING naming the paths they tried. Hooks that resolve the shared state root (for example wiki query injection, the wiki ingest trigger, and post-compact) always read the main checkout's copy, so a config edited only on the branch does not reach them. The Projects checks that search upward from the current directory find the main checkout's config only when the worktree sits inside the main checkout, which the default `worktree_base` guarantees and an absolute `worktree_base` does not.
 3. `/rite:cleanup` exits the worktree (`ExitWorktree`), removes it, and releases the Issue claim — when the worktree was `EnterWorktree`-managed. If the session entered the worktree **by path** instead, `ExitWorktree` is a no-op, so cleanup skips the four main-checkout items (base update, worktree removal, branch deletion, wiki ingest) and delegates them to a re-run of `/rite:cleanup {pr}` from the main checkout. The re-run itself does not delegate — it runs Steps 4 / 5 / 9 normally, finishing base update, wiki ingest, and remote branch deletion directly, and recording a `branch` entry (only when the PR is merged) that arms the lazy reap to reclaim the worktree and its local branch at the next session start. Abnormally-orphaned worktrees are reaped lazily by `pr-cycle-cleanup.sh`.
@@ -662,10 +662,10 @@ Settings for per-session Git worktree isolation, letting multiple Claude Code se
 ```yaml
 multi_session:
   enabled: true                    # on by default; set false to opt out
-  worktree_base: ".rite/worktrees"
+  worktree_base: ".claude/worktrees"
 ```
 
-**`.gitignore` requirement:** `.rite/worktrees/` must be effectively ignored so session worktrees do not leak into dev-branch diffs. `/rite:setup` writes `.rite/.gitignore` (`*` / `!wiki/` / `!wiki/**`) at the main checkout (`state_root`); it does not add runtime-state lines to the consumer root `.gitignore`. `/rite:lint` (via `gitignore-health-check.sh`) verifies that nested file at `state_root` and the effective ignore.
+**`.gitignore` requirement:** `.claude/worktrees/` must be effectively ignored so session worktrees do not leak into dev-branch diffs. `/rite:open` writes a `*` `.gitignore` at `{worktree_base}/.gitignore` (idempotent, the same self-contained exclusion as `.rite/.gitignore`), and `/rite:lint` verifies the configured `worktree_base` with `gitignore-health-check.sh`.
 
 **Disk cost:** each session worktree is a full working-tree clone. Build artifacts (`node_modules`, etc.) may need rebuilding per worktree.
 

@@ -346,10 +346,10 @@ A: Yes — Worktree Mode is ON by default. In rite-config.yml:
 
      multi_session:
        enabled: true                   # default true; set false to opt out
-       worktree_base: ".rite/worktrees" # session worktrees: issue-{N} subdirs
+       worktree_base: ".claude/worktrees" # session worktrees: issue-{N} subdirs
 
    With it enabled (the default), /rite:open N creates a per-session Git
-   worktree at .rite/worktrees/issue-{N} and enters it via Claude Code's
+   worktree at .claude/worktrees/issue-{N} and enters it via Claude Code's
    EnterWorktree tool, so each session keeps its own working tree and current
    branch. /rite:cleanup exits and removes the worktree after merge.
 
@@ -385,10 +385,10 @@ Operating rules (important):
   • After a crash / restart: just run /rite:recover — it re-enters the session
     worktree (or rebuilds it from the branch if it was removed) and continues.
 
-  • .rite/worktrees/ must be effectively ignored — /rite:setup writes
-    .rite/.gitignore (* / !wiki/ / !wiki/**) at the main checkout (state_root)
-    and does not add runtime-state lines to the consumer root .gitignore;
-    /rite:lint verifies that nested file at state_root.
+  • .claude/worktrees/ must be effectively ignored — /rite:open writes a `*`
+    .gitignore at {worktree_base}/.gitignore (Claude Code enters worktrees under
+    this directory without an approval prompt); /rite:lint verifies it via
+    multi_session.worktree_base.
 
   • Sandboxed environments: after entering a session worktree, state writes to
     the main checkout (.rite/sessions/, etc.) can be rejected as read-only.
@@ -399,7 +399,7 @@ Operating rules (important):
 
 Note: multi_session is a SEPARATE axis from parallel.mode: "worktree".
   - parallel  → multiple sub-agents within ONE session (.worktrees/{issue}/{task})
-  - multi_session → whole-session isolation across terminals (.rite/worktrees/issue-{N})
+  - multi_session → whole-session isolation across terminals (.claude/worktrees/issue-{N})
 
 Full design: docs/designs/multi-session-worktree.md
 ```

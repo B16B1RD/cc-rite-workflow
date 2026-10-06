@@ -358,6 +358,10 @@ if [ -n "$REPO_ROOT_REAL" ] && git -C "$PLUGIN_ROOT" rev-parse --verify -q origi
       # Drop only the superseded line, matched as a whole line. After the base
       # advances this exclusion matches nothing.
       base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv '| `stale_residue` | パス存在・worktree 未登録（prune 後も残存）→ AskUserQuestion（「削除して再作成」= `rm -rf {path}` 後に create / 「中止」） |' || true)
+      # The session worktree base default moved under `.claude/worktrees`. Drop only
+      # the superseded line, matched as a whole line. After the base advances this
+      # exclusion matches nothing.
+      base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv '[ -n "$ms_base" ] || ms_base=".rite/worktrees"' || true)
       printf '%s\n' "$base_rail" > "$TEST_DIR/base-rail"
       printf '%s\n' "$head_rail" > "$TEST_DIR/head-rail"
       if [ -z "$base_rail" ] || [ -z "$head_rail" ]; then
@@ -399,6 +403,7 @@ if [ -n "${REPO_ROOT_REAL:-}" ] && [ -f "$REPO_ROOT_REAL/plugins/rite/skills/ope
     rail=$(printf '%s\n' "$rail" | grep -Fv 'GUARD (#1595)' || true) # drift-check-ignore
     rail=$(printf '%s\n' "$rail" | grep -Fxv '| `create_new` | branch も worktree もなし → `git worktree add --no-track -b "{branch}" "{path}" "origin/{base_branch}"`（`--no-track`: sandbox 有効環境で `branch.autoSetupMerge` の tracking 書込が `.git/config` 拒否に当たるのを回避。branch は origin 起点のまま tracking だけ張らない — Issue #1894） |' || true) # drift-check-ignore
     rail=$(printf '%s\n' "$rail" | grep -Fxv '| `interactive` | AskUserQuestion で「この計画で実装開始 / 計画を修正 / 中止」を選択（standalone。従来どおり。AC-4 回帰なし） |' || true)
+    rail=$(printf '%s\n' "$rail" | grep -Fxv '[ -n "$ms_base" ] || ms_base=".rite/worktrees"' || true)
     printf '%s\n' "$rail" | normalize_open_contracts
   }
   first_unmatched_base_line() {

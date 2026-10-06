@@ -26,7 +26,7 @@ detect_wt() {
   bash "$DETECT" "$@" | sed 's/.*worktree=//'
 }
 
-WT="/repo/.rite/worktrees/issue-1622"
+WT="/repo/.claude/worktrees/issue-1622"
 
 # --- TC-1 (AC-1, T-01): unrecorded physical worktree ---
 echo "=== TC-1: flow_wt empty + cwd is this issue's worktree → in_worktree_unrecorded ==="
@@ -62,7 +62,7 @@ assert "TC-5 state" "none" \
 # --- TC-6 (AC-6, T-06): cwd is a DIFFERENT issue's worktree → none ---
 echo "=== TC-6: cwd is issue-9999 but target is 1622 → none (no cross-issue match) ==="
 assert "TC-6 state" "none" \
-  "$(detect_state --ms-enabled true --flow-wt "" --cur-top "/repo/.rite/worktrees/issue-9999" --issue 1622)"
+  "$(detect_state --ms-enabled true --flow-wt "" --cur-top "/repo/.claude/worktrees/issue-9999" --issue 1622)"
 
 # --- TC-7 (boundary): cwd is main checkout (not a worktree) + flow_wt empty → none ---
 echo "=== TC-7: flow_wt empty + cwd is main checkout (not a worktree) → none ==="
@@ -77,16 +77,16 @@ assert "TC-8 state" "in_worktree_unrecorded" \
 # --- TC-9 (boundary): right leaf but wrong dir name (not issue-N) → none ---
 echo "=== TC-9: parent leaf=worktrees but dir is not issue-{N} → none ==="
 assert "TC-9 state" "none" \
-  "$(detect_state --ms-enabled true --flow-wt "" --cur-top "/repo/.rite/worktrees/scratch" --issue 1622)"
+  "$(detect_state --ms-enabled true --flow-wt "" --cur-top "/repo/.claude/worktrees/scratch" --issue 1622)"
 
 # --- TC-10 (AC-6 regression): issue-number prefix collision must NOT match ---
 # issue-12 is NOT this session's worktree when the target issue is 1; the full-tail
-# match (`.rite/worktrees/issue-1`) must not prefix-match `.../issue-12`.
+# match (`.claude/worktrees/issue-1`) must not prefix-match `.../issue-12`.
 echo "=== TC-10: cur_top is issue-12 but target is issue-1 → none (no prefix match) ==="
 assert "TC-10 state (issue-1 vs issue-12)" "none" \
-  "$(detect_state --ms-enabled true --flow-wt "" --cur-top "/repo/.rite/worktrees/issue-12" --issue 1)"
+  "$(detect_state --ms-enabled true --flow-wt "" --cur-top "/repo/.claude/worktrees/issue-12" --issue 1)"
 assert "TC-10 state (issue-12 self matches)" "in_worktree_unrecorded" \
-  "$(detect_state --ms-enabled true --flow-wt "" --cur-top "/repo/.rite/worktrees/issue-12" --issue 12)"
+  "$(detect_state --ms-enabled true --flow-wt "" --cur-top "/repo/.claude/worktrees/issue-12" --issue 12)"
 
 # --- TC-11 (boundary): absolute worktree_base matches by exact tail equality ---
 echo "=== TC-11: absolute worktree_base → derives in_worktree_unrecorded ==="

@@ -103,6 +103,15 @@ setup_repo; M="$REPO_MAIN"
 assert "TC-3 reconstructed token" "reconstructed" "$(ens_case "$M" --issue 42)"
 assert "TC-3 worktree registered" "yes" "$(wt_registered "$M" 42)"
 
+# --- TC-3c: reconstruction writes the worktree base's own `*` .gitignore (default base) ---
+echo "=== TC-3c: worktree_base omitted → reconstruction writes .claude/worktrees/.gitignore ==="
+setup_repo; M="$REPO_MAIN"
+printf 'multi_session:\n  enabled: true\n' > "$M/rite-config.yml"
+assert "TC-3c reconstructed token" "reconstructed" "$(ens_case "$M" --issue 42)"
+assert "TC-3c default base carries its own * .gitignore" "*" "$(cat "$M/.claude/worktrees/.gitignore" 2>/dev/null)"
+assert "TC-3c reconstructed worktree is not reported untracked in main" "" \
+  "$(git -C "$M" status --porcelain 2>/dev/null | grep -F '.claude' || true)"
+
 # --- TC-3b: explicit --branch (the form pr-review.md / fix.md actually use) ---
 echo "=== TC-3b: explicit --branch reconstructed (caller invocation form) ==="
 setup_repo; M="$REPO_MAIN"

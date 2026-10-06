@@ -585,6 +585,23 @@ worktree_push_branch() {
  return 0
 }
 
+# Session worktree base carries its own `*` .gitignore so reconstructed worktrees never leak into
+# the main checkout's git status (same self-contained exclusion /rite:open writes).
+_ensure_session_base_gitignore() {
+  local main_root="$1" ms_base="$2" base_dir
+  case "$ms_base" in
+    /*) base_dir="$ms_base" ;;
+    *)  base_dir="$main_root/$ms_base" ;;
+  esac
+  # shellcheck source=../../gitignore-ensure.sh
+  source "$(dirname "${BASH_SOURCE[0]}")/../../gitignore-ensure.sh"
+  if ! _ensure_dir_gitignore "$base_dir"; then
+    echo "WARNING: ensure_session_worktree: $base_dir/.gitignore を作成できませんでした — worktree が git の差分に漏れる可能性があります" >&2
+    [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+  fi
+  return 0
+}
+
 # -----------------------------------------------------------------------
 # ensure_session_worktree: detect + reconstruct a multi_session session
 # worktree for an Issue at a flow ENTRY path.
@@ -612,7 +629,7 @@ worktree_push_branch() {
 #   --branch         feature branch name. Optional — resolved from
 #                    local/remote refs matching issue-<N> when omitted.
 #   --worktree-base  override multi_session.worktree_base (default: parsed
-#                    from rite-config.yml, fallback .rite/worktrees)
+#                    from rite-config.yml, fallback .claude/worktrees)
 #
 # stdout (always exactly one marker line):
 #   [CONTEXT] WT_ENSURE=<case>; path=<wt_path>; branch=<branch>[; other=<p>]
@@ -685,7 +702,7 @@ ensure_session_worktree() {
   else
     ms_base=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+worktree_base:/ {print; exit}' \
       | sed 's/[[:space:]]#.*//' | sed 's/.*worktree_base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
-    [ -n "$ms_base" ] || ms_base=".rite/worktrees"
+    [ -n "$ms_base" ] || ms_base=".claude/worktrees"
   fi
 
   if [ "$ms_enabled" != "true" ]; then
@@ -801,6 +818,7 @@ ensure_session_worktree() {
       if [ -f "$main_root/.claude/settings.local.json" ] && ! { mkdir -p "$wt_path/.claude" && cp "$main_root/.claude/settings.local.json" "$wt_path/.claude/settings.local.json"; } 2>/dev/null; then
         echo "WARNING: ensure_session_worktree: .claude/settings.local.json のコピーに失敗しました（issue #${issue}）— ドッグフーディング上書きが worktree に反映されません" >&2
       fi
+      _ensure_session_base_gitignore "$main_root" "$ms_base"
       echo "[CONTEXT] WT_ENSURE=reconstructed; path=$wt_path; branch=$branch"
       return 0
     fi
@@ -832,6 +850,7 @@ ensure_session_worktree() {
       if [ -f "$main_root/.claude/settings.local.json" ] && ! { mkdir -p "$wt_path/.claude" && cp "$main_root/.claude/settings.local.json" "$wt_path/.claude/settings.local.json"; } 2>/dev/null; then
         echo "WARNING: ensure_session_worktree: .claude/settings.local.json のコピーに失敗しました（issue #${issue}）— ドッグフーディング上書きが worktree に反映されません" >&2
       fi
+      _ensure_session_base_gitignore "$main_root" "$ms_base"
       echo "[CONTEXT] WT_ENSURE=reconstructed; path=$wt_path; branch=$branch"
       return 0
     fi

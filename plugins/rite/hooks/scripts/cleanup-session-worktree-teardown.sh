@@ -219,7 +219,7 @@ cmd_detect() {
   # worktree_base も読む（物理 cwd 検出時に worktree dir の親 leaf を照合する）
   ms_base=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+worktree_base:/ {print; exit}' \
     | sed 's/[[:space:]]#.*//' | sed 's/.*worktree_base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
-  [ -n "$ms_base" ] || ms_base=".rite/worktrees"
+  [ -n "$ms_base" ] || ms_base=".claude/worktrees"
   flow_wt=$(bash "$PLUGIN_ROOT/hooks/flow-state.sh" get --field worktree --default "") || flow_wt=""
   cur_top=$(git rev-parse --show-toplevel 2>/dev/null) || cur_top=""
   # main checkout の絶対パスを削除前に確保する（自己削除後も main checkout を参照できるようにするため）。
