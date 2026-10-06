@@ -158,8 +158,8 @@ body_path, out_path, new_count = sys.argv[1], sys.argv[2], sys.argv[3]
 with open(body_path, "r") as f:
     body = f.read()
 updated = re.sub(
-    r"^- \*\*現在のループ回数\*\*: \d+",
-    f"- **現在のループ回数**: {new_count}",
+    r"^(- \*\*現在のループ回数\*\*[:：] ?)\d+",
+    lambda m: m.group(1) + new_count,
     body, count=1, flags=re.MULTILINE
 )
 with open(out_path, "w") as f:

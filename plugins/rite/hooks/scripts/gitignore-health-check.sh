@@ -304,13 +304,14 @@ else
   exit 1
 fi
 
-# --- Multi-session: verify .rite/worktrees/ is ignored when enabled (design §2) ---
+# --- Multi-session: verify the session worktree base is ignored when enabled (design §2) ---
 # Independent of wiki settings — placed BEFORE the wiki early-exits so a
 # wiki.enabled=false + multi_session.enabled=true config is still verified.
 # Non-blocking & opt-in: drift → WARNING + exit 1; healthy or disabled → fall
 # through to the wiki checks. Mirrors the separate_branch Layer-1 probe: a static
 # `git check-ignore -v` (no file created) asks git whether session worktree paths
-# are ignored. If not, session worktrees (.rite/worktrees/issue-{N}) would leak
+# are ignored at state_root (main checkout — the base .gitignore is an untracked
+# file that linked worktrees do not carry). If not, session worktrees ({worktree_base}/issue-{N}) would leak
 # into dev-branch diffs.
 # 節は空白と # 以外で始まる次の行で終える（数字や _ で始まるキーでも終え、列 0 のコメント行では終えない）
 ms_section=$(sed -n '/^multi_session:/,/^[^[:space:]#]/p' "$config_file" 2>/dev/null) || ms_section=""
@@ -325,10 +326,14 @@ if [ -n "$ms_section" ]; then
   esac
 fi
 if [ "$ms_enabled" = "true" ]; then
-  ms_probe=".rite/worktrees/issue-0/.rite-lint-probe"
+  ms_base=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+worktree_base:/ { print; exit }' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*worktree_base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
+  [ -n "$ms_base" ] || ms_base=".claude/worktrees"
+  ms_base="${ms_base%/}"
+  ms_probe="$ms_base/issue-0/.rite-lint-probe"
   ms_ci_out=""
   ms_ci_rc=0
-  if ms_ci_out=$(git check-ignore -v "$ms_probe" 2>/dev/null); then ms_ci_rc=0; else ms_ci_rc=$?; fi
+  if ms_ci_out=$(git -C "$state_root" check-ignore -v "$ms_probe" 2>/dev/null); then ms_ci_rc=0; else ms_ci_rc=$?; fi
   # 実効判定: sessions ブロックと同じ理由で「rc==0 かつ negation マッチでない」を healthy 条件と
   # する (親 `.rite/` 広域ルール一致でも実効的に ignore されていれば偽陽性にしない。negation
   # マッチは rc=0 でも実際には ignore されないため DRIFT — 詳細は sessions ブロックのコメント参照)。
@@ -337,18 +342,18 @@ if [ "$ms_enabled" = "true" ]; then
     ms_ci_negated=1
   fi
   if [ "$ms_ci_rc" -eq 0 ] && [ "$ms_ci_negated" -eq 0 ]; then
-    log_info "gitignore-health-check: multi_session layer healthy — .rite/worktrees/ ignored (${ms_ci_out})"
+    log_info "gitignore-health-check: multi_session layer healthy — $ms_base/ ignored (${ms_ci_out})"
   elif [ "$ms_ci_rc" -ge 2 ]; then
-    echo "WARNING: gitignore-health-check: git check-ignore failed (rc=$ms_ci_rc) for .rite/worktrees/ verify — skipping multi_session check" >&2
+    echo "WARNING: gitignore-health-check: git check-ignore failed (rc=$ms_ci_rc) for $ms_base/ verify — skipping multi_session check" >&2
   else
     if [ "$ms_ci_negated" -eq 1 ]; then
-      echo "==> gitignore-health-check: DRIFT DETECTED (multi_session): '.rite/worktrees/' matched only a negation rule (${ms_ci_out}) — effectively NOT ignored" >&2
+      echo "==> gitignore-health-check: DRIFT DETECTED (multi_session): '$ms_base/' matched only a negation rule (${ms_ci_out}) — effectively NOT ignored" >&2
     else
-      echo "==> gitignore-health-check: DRIFT DETECTED (multi_session): '.rite/worktrees/' rule missing from .gitignore" >&2
+      echo "==> gitignore-health-check: DRIFT DETECTED (multi_session): '$ms_base/' rule missing from .gitignore" >&2
     fi
-    echo "==> multi_session.enabled=true but session worktrees (.rite/worktrees/issue-{N}) would leak into dev-branch diffs." >&2
-    echo "==> Hint: /rite:setup --upgrade writes .rite/.gitignore only when missing or empty. For composition drift, replace the file with the 3-line composition by hand. lint does not rewrite." >&2
-    echo "WARNING: gitignore-health-check: .rite/worktrees/ not effectively ignored while multi_session.enabled=true" >&2
+    echo "==> multi_session.enabled=true but session worktrees ($ms_base/issue-{N}) would leak into dev-branch diffs." >&2
+    echo "==> Hint: /rite:open writes '$ms_base/.gitignore' (a single '*' line). Create it by hand, or point multi_session.worktree_base at an ignored directory." >&2
+    echo "WARNING: gitignore-health-check: $ms_base/ not effectively ignored while multi_session.enabled=true" >&2
     echo "==> Total gitignore-health-check findings: 1"
     exit 1
   fi

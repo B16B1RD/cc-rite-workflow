@@ -98,9 +98,9 @@ gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
 
 | Field | Extraction Pattern | Purpose |
 |-----------|-------------|------|
-| Issue number | `- **Issue**: #(\d+)` | Identify the related Issue |
-| PR number | `- **番号**: #(\d+)` | Identify the target PR |
-| Branch name | `- **ブランチ**: (.+)` | For verification |
+| Issue number | `- **Issue**[:：] ?#(\d+)` | Identify the related Issue |
+| PR number | `- **番号**[:：] ?#(\d+)` | Identify the target PR |
+| Branch name | `- **ブランチ**[:：] ?(.+)` | For verification |
 
 **When PR number exists in work memory:**
 

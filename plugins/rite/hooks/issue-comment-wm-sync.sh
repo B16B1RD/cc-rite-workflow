@@ -342,7 +342,8 @@ _body_belongs_to_issue() {
   # `head -1` の早期クローズは pipefail 下で sed を SIGPIPE 失敗させうる。判定不能は rc=1 側
   # (= scan フォールバック) が正しい挙動なので、抽出失敗は空文字へ縮退させる。
   found=$(printf '%s\n' "$body" \
-    | sed -n 's/^- \*\*Issue\*\*:[[:space:]]*#\([0-9][0-9]*\)[^0-9]*$/\1/p' | head -1) || found=""
+    | sed -n -e 's/^- \*\*Issue\*\*:[[:space:]]*#\([0-9][0-9]*\)[^0-9]*$/\1/p' \
+             -e 's/^- \*\*Issue\*\*：[[:space:]]*#\([0-9][0-9]*\)[^0-9]*$/\1/p' | head -1) || found=""
   [ -n "$found" ] && [ "$found" = "$issue" ]
 }
 

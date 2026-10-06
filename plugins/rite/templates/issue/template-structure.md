@@ -21,6 +21,8 @@ For the Complexity Gate, Type Definitions (incl. the Commit Type ↔ Contract Ty
 
 Issue は Meta の直後、PR は本文先頭に置く。以下は日本語例。上段の見出し・ラベルも `language` に合わせて翻訳する。
 
+上段要約の日本語は、記号の字形を [日本語文書の記号規定](../../references/ja-symbol-style.md) に従って書く。
+
 ```markdown
 ## 要約
 
@@ -39,7 +41,7 @@ Issue は Meta の直後、PR は本文先頭に置く。以下は日本語例�
 {条件に合う図。図なしのときは `<!-- 図なし: {条件} -->`}
 
 **用語**:
-- {この本文で使う内部用語}: {初出の一言説明}
+- {この本文で使う内部用語}：{初出の一言説明}
 ```
 
 - 問題 / 変更 / 期待する結果の見出しと次行からの段落は必須。英語本文は `### Problem` / `### Change` / `### Expected result` の順。特定の確認依頼があるときだけ、任意の `### 見てほしい点`（英語: `### Specific request`）と段落を追加する。依頼が無ければ見出しごと出力しない。内部用語が無ければ `**用語**:` とそのリストを省略する。各ブロックは3文以内を目安とする。
@@ -87,6 +89,23 @@ svg_allowed=$(gh --version | awk 'NR==1 { if ($3 !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) 
 ```
 
 Mermaid は上段に `mermaid` fence を置き、添付配列は空にする。SVG は **Write tool** で `.svg` を書く（新 helper / hook / config キーは追加しない）。配色はテーマ中立にし、白背景を前提とせず線は中間色にする。本文の `![説明](./diagram.svg)` と添付パスを同じファイルに対応させ、作成時の cwd から解決できるパスを使う。Issue は `issue.attachments`、PR は `--attach` に渡す。作成後に body を取得し、図の参照が添付 URL に置き換わったことを確認する。図なしの HTML コメントは `<details>` より前の上段に置く。
+
+### 記号の作成前検査（Issue / PR 共通）
+
+日本語で出力する本文は、作成前に [日本語文書の記号規定](../../references/ja-symbol-style.md) の違反を検査する。図の作成前検査の次、読みやすさ点検の前に、図の作成前検査を通過した本文を、全本文（単一 Issue・分解経路の親と各 Sub-Issue・PR）について検査する。違反があれば作成 helper / `gh pr create` を呼ばず、当該本文の違反行だけを規定どおりに直して再生成し、再検査する。WARNING で続行しない。自動で書き換えない。読みやすさ点検が本文を書き直した場合も、作成の直前にもう一度検査する。
+
+`{body_file}` は生成した本文の絶対パス、`{language}` は `rite-config.yml` の `language`（未設定なら `auto`）。検査するのは最初の `<details>` より前の上段で、日本語を含む行だけを対象にする。`language: en` と英語の文書は検査せず通過する。
+
+```bash
+# ja-symbol-check: 日本語の記号の字形を検査（違反は 行番号:検出種別:該当行 で出る）
+symbol_rc=0
+bash "{plugin_root}/hooks/scripts/ja-symbol-check.sh" --body-file "{body_file}" --language "{language}" || symbol_rc=$?
+case "$symbol_rc" in
+  0) ;;
+  1) echo "ERROR: 日本語の記号規定の違反。該当行だけを直して本文を再生成してください" >&2; exit 1 ;;
+  *) echo "ERROR: 記号検査の入力不正（終了コード $symbol_rc）。直前のエラーに従って引数か本文ファイルを直してください" >&2; exit 1 ;;
+esac
+```
 
 ### 契約層の折りたたみ
 

@@ -95,8 +95,8 @@ gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
 | Field | Extraction Pattern | Purpose |
 |-----------|-------------|------|
 | Issue number | `issue-(\d+)` from branch name | Generate `Closes #XX` in PR body |
-| Branch name | `- **ブランチ**: (.+)` | Verify base during PR creation |
-| Phase | `- **フェーズ**: (.+)` | Confirm flow position |
+| Branch name | `- **ブランチ**[:：] ?(.+)` | Verify base during PR creation |
+| Phase | `- **フェーズ**[:：] ?(.+)` | Confirm flow position |
 | lint results | `### 品質チェック履歴` section | Reflect in PR body |
 
 Issue 番号が取れなければ Phase 1.4。
@@ -704,7 +704,7 @@ echo "[CONTEXT] PR_CREATE_WORKDIR=$pr_workdir"
 3. 新規生成または描き直しで SVG を選んだときだけ `{PR_CREATE_WORKDIR}/diagram.svg` ← テーマ中立の図。本文の参照と添付は同じ絶対パスを使う。再掲時は書かない
 4. `{PR_CREATE_WORKDIR}/attachments.json` ← その SVG の絶対パス配列。再掲・図なし・Mermaid は必ず `[]` を書く
 
-(C) の前に [読みやすさ点検](../../references/body-readability-check.md) を title / body と本文参照のローカル SVG に実行する。共通の図条件検査を通過した本文だけを対象にし、書き直し後も再検査して作成用ファイルへ反映する。
+(C) の前に [記号の作成前検査](../../templates/issue/template-structure.md#記号の作成前検査issue--pr-共通) を body に実行し、違反時は (C) を呼ばず body を再生成する。続けて [読みやすさ点検](../../references/body-readability-check.md) を title / body と本文参照のローカル SVG に実行する。共通の図条件検査を通過した本文だけを対象にし、書き直し後も再検査して作成用ファイルへ反映する。点検が body を書き直したときは、記号の作成前検査も (C) の直前にもう一度実行する。
 
 **(C) gh pr create（単一 bash block）**
 

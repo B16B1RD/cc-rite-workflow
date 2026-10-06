@@ -603,7 +603,7 @@ if [ -f "$manifest_path" ]; then
           fi
           ;;
         session_worktree)
-          # Why: session worktree paths (`.rite/worktrees/issue-N`) are
+          # Why: session worktree paths (`.claude/worktrees/issue-N`) are
           # NEVER reaped here — that is Step 5's job, behind its claim /
           # self-exclusion / live-cwd gates (the "worktree" type case above is
           # ungated and reserved for ephemeral tmp artifacts only; mixing
@@ -758,7 +758,7 @@ _rite_ttl_protects() {
 #   - path が `${TMPDIR}/` 配下 (論理形・`pwd -P` 物理形の両方で prefix 一致、入れ子可。
 #     macOS の `/var`→`/private/var` 等で porcelain が物理パスを返すケースを含む)
 #   - detached HEAD (porcelain の `detached` 行。`branch refs/heads/...` を持つものは除外)
-#   - リポジトリ配下 (`.rite/worktrees/*` / wiki-worktree / main) は除外
+#   - リポジトリ配下 (`.claude/worktrees/*` / wiki-worktree / main) は除外
 #   - 別 live セッションの cwd が中にあるものは除外 (worktree-foreign-cwd.sh --self-root $PPID)
 #   - 名前が記録する所有セッションが別の live セッションなら除外
 #     (_rite_mutation_owner_allows_reap。判定できないときも見送る)
@@ -970,7 +970,7 @@ fi
 # -----------------------------------------------------------------------
 # Step 5: Lazy reap of orphaned SESSION worktrees (multi-session design §8).
 # 責務分担: 正常系の即時削除は cleanup.md (S7) の責務、本 reap は **異常終了の
-# 残骸回収のみ**。`.rite/worktrees/issue-{N}` (multi_session.worktree_base 配下)
+# 残骸回収のみ**。`.claude/worktrees/issue-{N}` (multi_session.worktree_base 配下)
 # を `git worktree list` から列挙し、**Gate 0 + 3 ゲート全通過時のみ** reap する:
 #   0. self-exclusion: 実行中の自セッション worktree (起動時 cwd または
 #      RITE_WORKTREE env が wt_path と一致/配下) は reap しない。3 ゲートとは独立した
@@ -1012,7 +1012,7 @@ if [ -f "$repo_root/rite-config.yml" ]; then
   session_wt_base=$(printf '%s\n' "$_ms_section" | awk '/^[[:space:]]+worktree_base:/ {print; exit}' \
     | sed 's/[[:space:]]#.*//' | sed 's/.*worktree_base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 fi
-[ -n "$session_wt_base" ] || session_wt_base=".rite/worktrees"
+[ -n "$session_wt_base" ] || session_wt_base=".claude/worktrees"
 session_wt_root="$repo_root/$session_wt_base"
 
 # Gate 0 (self-exclusion) helpers. Canonicalize via `cd && pwd -P` rather than

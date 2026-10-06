@@ -32,6 +32,20 @@ Past version sections carry none either — they have already been stripped.
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-10-06
+
+### Added
+
+- **Full-width symbol rules for Japanese documents** — A single reference, `ja-symbol-style.md`, defines the glyph for each symbol (parentheses, colons, slashes, range tildes) in Japanese text written by rite, and the writing skills point to it. The rules apply only to newly written or revised lines.
+- **Full-width symbol check before creating Issues and PRs** — The new helper `ja-symbol-check.sh` detects half-width symbols in Japanese lines of an Issue or PR body before creation. On a violation, the creation helper is not called and only the offending lines are fixed and the body regenerated.
+- **Label lines accept half-width and full-width colons** — Reading of label lines (a bold item name and a value separated by a colon) in work memory and Issue bodies now matches both `:` and `：`. Rewriting a value keeps the original colon glyph.
+
+### Fixed
+
+- **`batch-run` no longer stops right after review completes** — The stop guard now counts a stop that consumed a handoff as progress and resets its consecutive-stop count, so the count accumulated while waiting for review no longer stays above the limit of 3 and lets the final stop after `iterate` converges through. The limit itself is unchanged.
+- **No permission prompt when entering a session worktree** — The default of `multi_session.worktree_base` is now `.claude/worktrees`, so entering a session worktree no longer triggers a permission prompt that blocked `batch-run` even in auto mode. A self-contained `.gitignore` is written under that location.
+- **Issue and PR body templates pass the Japanese symbol check** — The example term lists in both templates now use the full-width colon.
+
 ## [0.20.0] - 2026-10-05
 
 ### Added
@@ -1283,6 +1297,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.20.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.5...v0.20.0
 [0.19.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.4...v0.19.5
 [0.19.4]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.3...v0.19.4

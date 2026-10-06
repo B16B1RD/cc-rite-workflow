@@ -144,7 +144,7 @@ Display the following list:
 💡 Tips: Context limit reached で中断した場合は /clear → /rite:recover で再開できます
 💡 Tips: 複数セッションで別 Issue を並行する場合、rite-config.yml の
          multi_session.enabled: true（デフォルト ON）により
-         セッション別 worktree (.rite/worktrees/issue-{N}) に分離されます
+         セッション別 worktree (.claude/worktrees/issue-{N}) に分離されます
 ```
 
 ---
@@ -170,7 +170,7 @@ Based on the state confirmed in Phase 1, suggest the next action.
   4. /rite:ready <pr> → /rite:merge <pr> → /rite:cleanup で完了
 ```
 
-> **multi-session 時の注意**: 作業はセッション worktree（`.rite/worktrees/issue-{N}`）内。
+> **multi-session 時の注意**: 作業はセッション worktree（`.claude/worktrees/issue-{N}`）内。
 > 中断後は `/rite:recover` がその worktree へ再入場する。main checkout のカレントブランチは
 > base（`branch.base`）のまま。詳細: `docs/designs/multi-session-worktree.md`。
 > rationale: references/rationale.md#main-checkout-untouched
