@@ -2,6 +2,9 @@
 
 ## 2026-10-06
 
+* **Create**: [設定の既定パスを移すときは、旧パスが副次的に担っていた保証を新パスへ引き継ぐ](pages/heuristics/default-path-move-carries-incidental-guarantees.md) — セッション worktree の置き場所移行のレビュー結果と fix 結果を新規ページ化
+* **Create**: [親ディレクトリに置いた未追跡の ignore ファイルは linked worktree から見えない](pages/anti-patterns/untracked-parent-ignore-invisible-from-linked-worktree.md) — 除外の担保の再レビュー結果と 2 回目の fix 結果を新規ページ化
+* **Skip**: [3 回目のレビュー結果](raw/reviews/20261006T132052Z-pr-3697.md) — 既存の経験則に含まれる検証手順の補足と、契約が名指ししない内部経路の推奨のみで、新しい経験則なし
 * **Update**: [集合一致 assert の抽出を固定 whitelist にすると「whitelist ∩ 各サイト」しか測れない](pages/anti-patterns/set-equality-assert-hollowed-by-whitelist-extraction.md) — ラベル行の抽出パターン走査に関する raw 5 件（レビュー結果 3 件・fix 結果 2 件）を統合。走査の対象・検査入力・検出条件の 3 段階で同じ空洞化が起きる点を追記
 * **Update**: [複数の独立した制約を1つの共有前提条件に総称すると片方だけの前提差異が握り潰される](pages/anti-patterns/changelog-shared-precondition-overgeneralization.md) — バージョンバンプの CHANGELOG に関する raw 3 件（レビュー結果 2 件・fix 結果 1 件）を統合。適用条件と許可範囲の取り違えの事例を追記
 * **Update**: [set -euo pipefail 下の外部コマンド単独文は後続 rc 分岐を dead code 化する](pages/anti-patterns/bare-statement-under-set-e-dead-code-rc-branch.md) — 停止ガードの削除失敗経路に関する raw 3 件（レビュー結果 2 件・fix 結果 1 件）を統合。失敗を警告に変える処理も、失敗する文そのものを条件分岐で受けないと到達しない点を追記

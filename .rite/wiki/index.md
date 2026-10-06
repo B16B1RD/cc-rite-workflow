@@ -683,9 +683,11 @@ okf_version: "0.2"
 | [CI 設定を grep で検査するときは matrix の行だけでなく job が実際に走る条件も固定する](pages/heuristics/ci-workflow-static-check-pins-job-execution-not-only-matrix.md) | heuristics | ジョブが両 OS で走ることを静的検査で守るとき、matrix 行と continue-on-error の不在だけを見ると、runs-on の固定化や job の if: false で片方の OS が消えても検査を通る。runs-on が matrix 値を参照することと、job 直下に実行条件が無いことも固定する。 | 2026-10-03T01:15:00Z | medium |
 | [リリースノートの項目はコミット件名の内部用語を写さず、利用者に見える効果で書く](pages/heuristics/release-note-entry-states-user-visible-effect.md) | heuristics | CHANGELOG の項目をコミット件名から起こすと、実装内部の用語（待機を区切る単位の名前など）がそのまま残り、利用者には何が変わったのかが読み取れない。項目は「利用者の操作で何が起きなくなった／できるようになったか」を主語に書き、内部用語は実装との照合にだけ使う。 | 2026-10-03T04:50:00Z | medium |
 | [状態を持つ走査器は、終端条件の判定を除外状態の判定より後ろに置く](pages/patterns/stateful-scanner-exclusion-before-termination.md) | patterns | 文書を行ごとに走査する検出器が、本文の終端（折りたたみ開始など）の判定を、フェンスやコメントの除外状態の判定より前に置くと、除外の内側の文字列で走査が打ち切られて以降の違反を見逃す。フェンスは開いた種別と長さで閉じる。 | 2026-10-06T10:30:00Z | medium |
+| [設定の既定パスを移すときは、旧パスが副次的に担っていた保証を新パスへ引き継ぐ](pages/heuristics/default-path-move-carries-incidental-guarantees.md) | heuristics | 既定のディレクトリを別の場所へ移す変更では、旧パスが親ディレクトリの規則で自然に満たしていた保証（git の管理対象外になる等）が新パスで失われる。dogfooding リポジトリでは別の規則が同じ保証を満たすため退行が見えず、配布先の標準構成でだけ現れる。 | 2026-10-06T13:40:00Z | high |
+| [親ディレクトリに置いた未追跡の ignore ファイルは linked worktree から見えない](pages/anti-patterns/untracked-parent-ignore-invisible-from-linked-worktree.md) | anti-patterns | 除外の担保を未追跡の .gitignore で自己完結させると、そのファイルは main checkout にだけ存在する。cwd が linked worktree の検査は同じ構成でも drift と判定する。担保を書く経路が複数あるときも、片方だけに足すともう一方で漏れる。 | 2026-10-06T13:40:00Z | high |
 ## 統計
 
-- 総ページ数: 673
-- ドメイン別: patterns=144, heuristics=336, anti-patterns=193
-- 最終更新: 2026-10-06T21:10:00+09:00
+- 総ページ数: 675
+- ドメイン別: patterns=144, heuristics=337, anti-patterns=194
+- 最終更新: 2026-10-06T13:40:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
