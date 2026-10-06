@@ -95,6 +95,8 @@ for case_body in \
   $'詳細はhttps://example.com/a(b)です\n' \
   $'説明<a title="詳細">リンク</a>\n' \
   $'`a...b` を使う\n' \
+  $'説明です <!-- 図なし(b) -->\n' \
+  $'~~~\n日本語(a)\n~~~\n' \
   $'<!--\n図なし(a)\n-->\n' \
   $'---\ntitle: 日本語(a)\n---\n本文\n' \
   $'Co-Authored-By: 日本語(a) <a@b.c>\n'; do
@@ -197,7 +199,7 @@ expect_eq "T-07 body-file 欠落は exit 2" "2" "$rc"
 printf '\xff\xfe日本語(a)\n' > "$TMP/bad_utf8.md"
 rc=0; bash "$CHECK" --body-file "$TMP/bad_utf8.md" --language ja >/dev/null 2>&1 || rc=$?
 expect_eq "T-07 不正な UTF-8 は exit 2（検査を素通りしない）" "2" "$rc"
-rc=0; bash "$CHECK" --body-file "$TMP/t06c.md" --language ja --unknown-option >/dev/null 2>&1 || rc=$?
+rc=0; bash "$CHECK" --body-file "$TMP/t06c.md" --language ja --bogus >/dev/null 2>&1 || rc=$?
 expect_eq "T-07 未知のオプションは exit 2" "2" "$rc"
 rc=0; bash "$CHECK" --language ja --body-file >/dev/null 2>&1 || rc=$?
 expect_eq "T-07 値の無い --body-file は exit 2" "2" "$rc"
@@ -210,10 +212,11 @@ case "$(err_of --body-file "$TMP/none.md" --language ja)" in *'ERROR:'*missing*)
 case "$(err_of --body-file "$TMP/zero_len.md" --language ja)" in *'ERROR:'*empty*) pass "T-07 空のメッセージに原因語 empty" ;; *) fail "T-07 空のメッセージ" ;; esac
 case "$(cd "$TMP" && err_of --body-file t06c.md --language ja)" in *'ERROR:'*absolute*) pass "T-07 相対パスのメッセージに原因語 absolute" ;; *) fail "T-07 相対パスのメッセージ" ;; esac
 case "$(err_of --body-file "$TMP/bad_utf8.md" --language ja)" in *'ERROR:'*'cannot read'*) pass "T-07 不正な UTF-8 のメッセージに原因語 cannot read" ;; *) fail "T-07 不正な UTF-8 のメッセージ" ;; esac
-case "$(err_of --body-file "$TMP/t06c.md" --language ja --unknown-option)" in *'ERROR:'*unknown*) pass "T-07 未知のオプションのメッセージに原因語 unknown" ;; *) fail "T-07 未知のオプションのメッセージ" ;; esac
+case "$(err_of --body-file "$TMP/t06c.md" --language ja --bogus)" in *'ERROR:'*unknown*) pass "T-07 未知のオプションのメッセージに原因語 unknown" ;; *) fail "T-07 未知のオプションのメッセージ" ;; esac
 case "$(err_of --language ja --body-file)" in *'ERROR:'*'requires a value'*) pass "T-07 値の無い --body-file のメッセージに原因語 requires a value" ;; *) fail "T-07 値の無い --body-file のメッセージ" ;; esac
 rc=0; bash "$CHECK" --body-file "$TMP/t06c.md" --language >/dev/null 2>&1 || rc=$?
 expect_eq "T-07 値の無い --language は exit 2" "2" "$rc"
+case "$(err_of --body-file "$TMP/t06c.md" --language)" in *'ERROR:'*'requires a value'*) pass "T-07 値の無い --language のメッセージに原因語 requires a value" ;; *) fail "T-07 値の無い --language のメッセージ" ;; esac
 case "$(PATH="$TMP/nopython" "$(command -v bash)" "$CHECK" --body-file "$TMP/t06c.md" --language ja 2>&1 >/dev/null || true)" in *'ERROR:'*python3*) pass "T-07 python3 不在のメッセージに原因語 python3" ;; *) fail "T-07 python3 不在のメッセージ" ;; esac
 
 echo ""
