@@ -331,7 +331,7 @@ if [ -f "$repo_root/.rite/plugin-root" ] || [ -f "$repo_root/.rite-plugin-root" 
   fi
 fi
 source {plugin_root}/hooks/gitignore-ensure.sh
-_ensure_dir_gitignore "$repo_root/$worktree_base" || { echo "ERROR: $repo_root/$worktree_base/.gitignore を作成できません。worktree が git の差分に漏れるため停止します" >&2; exit 1; }
+_ensure_dir_gitignore "${repo_root:?}/${worktree_base:?}" || { echo "ERROR: $repo_root/$worktree_base/.gitignore を作成できません。worktree が git の差分に漏れるため停止します" >&2; [ -z "${_RITE_GITIGNORE_ERROR:-}" ] || printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2; exit 1; }
 if [ -f "$repo_root/.claude/settings.local.json" ] && ! { mkdir -p "$wt_path/.claude" && cp "$repo_root/.claude/settings.local.json" "$wt_path/.claude/settings.local.json"; } 2>/dev/null; then
   echo "WARNING: .claude/settings.local.json のコピーに失敗しました — ドッグフーディング上書きが worktree に反映されません" >&2
 fi

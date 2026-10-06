@@ -310,7 +310,8 @@ fi
 # Non-blocking & opt-in: drift → WARNING + exit 1; healthy or disabled → fall
 # through to the wiki checks. Mirrors the separate_branch Layer-1 probe: a static
 # `git check-ignore -v` (no file created) asks git whether session worktree paths
-# are ignored. If not, session worktrees ({worktree_base}/issue-{N}) would leak
+# are ignored at state_root (main checkout — the base .gitignore is an untracked
+# file that linked worktrees do not carry). If not, session worktrees ({worktree_base}/issue-{N}) would leak
 # into dev-branch diffs.
 # 節は空白と # 以外で始まる次の行で終える（数字や _ で始まるキーでも終え、列 0 のコメント行では終えない）
 ms_section=$(sed -n '/^multi_session:/,/^[^[:space:]#]/p' "$config_file" 2>/dev/null) || ms_section=""
@@ -332,7 +333,7 @@ if [ "$ms_enabled" = "true" ]; then
   ms_probe="$ms_base/issue-0/.rite-lint-probe"
   ms_ci_out=""
   ms_ci_rc=0
-  if ms_ci_out=$(git check-ignore -v "$ms_probe" 2>/dev/null); then ms_ci_rc=0; else ms_ci_rc=$?; fi
+  if ms_ci_out=$(git -C "$state_root" check-ignore -v "$ms_probe" 2>/dev/null); then ms_ci_rc=0; else ms_ci_rc=$?; fi
   # 実効判定: sessions ブロックと同じ理由で「rc==0 かつ negation マッチでない」を healthy 条件と
   # する (親 `.rite/` 広域ルール一致でも実効的に ignore されていれば偽陽性にしない。negation
   # マッチは rc=0 でも実際には ignore されないため DRIFT — 詳細は sessions ブロックのコメント参照)。

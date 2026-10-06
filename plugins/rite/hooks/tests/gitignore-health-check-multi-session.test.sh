@@ -193,6 +193,19 @@ case "$RUN_OUT" in
 esac
 git -C "$d" worktree remove --force "$wt" >/dev/null 2>&1 || true
 
+echo "=== TC-9b: linked worktree + default base whose .gitignore exists only in main → healthy (exit 0) ==="
+setup_linked_worktree_case "$NESTED_OK"
+printf '%s' "${WIKI_OK}${MS_DEFAULT}" > "$d/rite-config.yml"
+printf '%s' "${WIKI_OK}${MS_DEFAULT}" > "$wt/rite-config.yml"
+printf '%s' $'.rite/sessions/\n' > "$d/.gitignore"
+printf '%s' $'.rite/sessions/\n' > "$wt/.gitignore"
+mkdir -p "$d/.claude/worktrees"
+printf '%s\n' '*' > "$d/.claude/worktrees/.gitignore"
+RUN_RC=0
+RUN_OUT=$(cd "$wt" && bash "$GHC" --quiet 2>&1) || RUN_RC=$?
+assert "TC-9b exit 0 (base .gitignore is checked at the main checkout)" "0" "$RUN_RC"
+git -C "$d" worktree remove --force "$wt" >/dev/null 2>&1 || true
+
 echo "=== TC-10: state-path-resolve failure is rc=2 findings unknown ==="
 stub=$(mktemp -d)
 cleanup_dirs+=("$stub")
