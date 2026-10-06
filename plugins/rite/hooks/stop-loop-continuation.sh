@@ -253,11 +253,11 @@ if [ -z "$HANDOFF" ]; then
   exit 0
 fi
 
-# handoff による差し戻しは進捗なので、watchdog の連続停止の回数を数え直す。消さないと、
+# handoff を consume した停止は進捗なので、watchdog の連続停止の回数を数え直す。消さないと、
 # review 待ちで積んだ回数が上限 K を超えたまま残り、iterate 収束後の最後の停止が許可される。
+# 削除に失敗しても set -e で止めず、WARNING を出して差し戻しを続ける。
 _wd_sidecar="$STATE_ROOT/.rite/state/run-queue-${SESSION_ID}.watchdog"
-rm -f "$_wd_sidecar" 2>/dev/null
-if [ -e "$_wd_sidecar" ]; then
+if ! rm -f "$_wd_sidecar" 2>/dev/null; then
   echo "WARNING: batch watchdog sidecar を削除できませんでした ($_wd_sidecar)。回数を数え直せないため、iterate 収束後の停止が許可されるリスクがあります" >&2
 fi
 

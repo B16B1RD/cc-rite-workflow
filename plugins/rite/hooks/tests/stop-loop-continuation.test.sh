@@ -1196,6 +1196,11 @@ run_stop "$d" >/dev/null
 err=$(mktemp)
 out=$(run_stop "$d" "$err")
 assert "H-02: stop after K progress-less stops allows" "" "$out"
+if grep -q "3 回連続で進捗なく停止" "$err"; then
+  pass "H-02: allow carries the resume WARNING"
+else
+  fail "H-02: allow lost the resume WARNING: $(cat "$err")"
+fi
 rm -f "$err"
 
 echo ""
@@ -1209,6 +1214,25 @@ RITE_STATE_ROOT="$d" bash "$FS" pause --session "$SID" >/dev/null 2>&1
 out=$(run_stop "$d")
 assert "H-03: paused stop is allowed" "" "$out"
 assert "H-03: sidecar count stays 2" "2" "$(jq -r '.count' "$(sidecar_for "$d")")"
+
+echo ""
+echo "=== H-04: sidecar removal failure warns and the handoff block still fires ==="
+d=$(new_sandbox)
+setup_watchdog_fs "$d" review 99
+jq -n '{cursor:0, updated_at:"2026-09-02T00:00:00Z", phase:"review", pr_number:"99", count:34}' > "$(sidecar_for "$d")"
+RITE_STATE_ROOT="$d" bash "$FS" set --phase review --issue 2502 --branch "fix/issue-2502-x" --pr 99 \
+  --next n --handoff "/rite:fix 99" --session "$SID" >/dev/null
+chmod a-w "$d/.rite/state"
+err=$(mktemp)
+out=$(run_stop "$d" "$err") || true
+chmod u+w "$d/.rite/state"
+assert "H-04: handoff stop still blocks" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+if grep -q "sidecar を削除できませんでした" "$err"; then
+  pass "H-04: WARNING on sidecar removal failure"
+else
+  fail "H-04: missing removal WARNING: $(cat "$err")"
+fi
+rm -f "$err"
 
 # --- P-xx: a recorded pause lets the turn stop without re-injection or watchdog ---
 # The record is always written by `flow-state.sh pause` (never placed by hand), so a writer/reader

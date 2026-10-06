@@ -53,7 +53,7 @@ flow-state の `handoff` は単一フィールド + default-clear で、iterate 
 
 Stop hook の batch watchdog は handoff フィールドではなく自セッションの run-queue を読む別軸
 である。handoff が非空なら既存の prefix 分岐が先に block し、watchdog は評価しない。handoff が
-空で run-queue が `active:true` かつ未完了のときだけ停止を差し戻す。handoff による差し戻しは進捗なので
+空で run-queue が `active:true` かつ未完了のときだけ停止を差し戻す。handoff を consume した停止は進捗なので
 watchdog の連続回数を数え直す（review 待ちで積んだ回数が収束後の停止を許可させない）。batch-run は handoff を
 set しない契約のまま。自セッションの一時停止の記録（`flow-state.sh pause`）があるときは、
 どちらの軸も評価せずに停止を許可する（handoff も消費しない）。
