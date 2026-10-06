@@ -5,8 +5,9 @@
 #   T-01 全角フェーズ行の更新で字形が保たれる
 #   T-02 全角ループ回数を読んで加算できる
 #   T-03 半角の既存データは変更前と同じ結果になる
-#   T-04 skills 本文に書かれた抽出パターンが全角の番号行から PR 番号を取り出す
+#   T-04 skills / references の抽出パターン全行が両字形・空白の有無で固定の入力から同じ値を返す
 #   T-05 句点など想定外の区切りは一致しない
+#   update-progress の最終更新行も両字形で更新され字形が保たれる
 # 加えて issue-comment-wm-sync.sh の Issue 行抽出と wiki-apply-capture.sh の awk を、
 # 実ファイルから照合式を取り出して両字形で検証する（照合式のコピーを持たない）。
 # run-tests.sh は *.test.sh の glob で本ファイルを自動検出する。
@@ -93,25 +94,47 @@ root = sys.argv[1]
 files = (glob.glob(root + "/skills/*/SKILL.md") + glob.glob(root + "/skills/*/references/*.md")
          + glob.glob(root + "/references/*.md"))
 # 抽出パターン = バッククォート内の `- **ラベル**<区切り>...(取り出し部)...`
-rx = re.compile(r"`- \*\*([^*`]+)\*\*(\[:：\] \?|: )([^`]*\([^`]*)`")
+# 検査入力は検査対象のパターンと独立に固定する（パターンから生成すると前置部の欠落を検出できない）。
+# ラベル → (入力の値部, 取り出し期待値)。未定義のラベルは ng（足すまで通さない）。
+VALUES = {
+    "番号": ("#123", "123"), "Issue": ("#123", "123"),
+    "ブランチ": ("feat/x", "feat/x"), "フェーズ": ("implement", "implement"),
+    "現在のループ回数": ("3", "3"),
+}
+# 抽出パターン = `- **ラベル**...(取り出し部)...`（バッククォート式）と、Python の raw 文字列 r"^(- \*\*ラベル\*\*...)"。
+# 区切りの表記は問わず拾い、許容形 `[:：] ?` 以外は ng に積む。
+rx_span = re.compile(r"`- \*\*([^*`]+)\*\*([^`]*)`")
+rx_py = re.compile(r'r"(\^?\(?- \\\*\\\*([^\\*"]+)\\\*\\\*[^"]*)"')
 rows, ng = 0, []
+
+def verify(where, label, pat, sep_ok, check_group):
+    if not sep_ok:
+        ng.append("半角のみ・許容形以外: %s: %s" % (where, label))
+        return
+    if label not in VALUES:
+        ng.append("検査入力が未定義: %s: %s" % (where, label))
+        return
+    value, want = VALUES[label][0], VALUES[label][1]
+    for colon in (":", "：") :
+        for space in ("", " "):
+            sample = "- **" + label + "**" + colon + space + value
+            mm = re.search(pat, sample)
+            if not mm or (check_group and mm.group(1) != want):
+                ng.append("不一致: %s: %r" % (where, sample))
+
 for f in sorted(files):
+    where = f.replace(root + "/", "")
     for line in open(f, encoding="utf-8"):
-        for m in rx.finditer(line):
-            rows += 1
-            label, sep, rest = m.groups()
-            if sep != "[:：] ?":
-                ng.append("半角のみ: %s: %s" % (f.replace(root + "/", ""), m.group(0)))
+        for m in rx_span.finditer(line):
+            label, rest = m.groups()
+            if "(" not in rest:
                 continue
-            expected = "123" if "\\d" in rest else "feat/x"
-            sample_rest = rest.replace("(\\d+)", "123").replace("(.+)", "feat/x")
-            pat = re.escape("- **" + label + "**") + "[:：] ?" + rest
-            for colon in (":", "：") :
-                for space in ("", " "):
-                    sample = "- **" + label + "**" + colon + space + sample_rest
-                    mm = re.search("^" + pat, sample)
-                    if not mm or mm.group(1) != expected:
-                        ng.append("不一致: %s: %r" % (label, sample))
+            rows += 1
+            verify(where, label, "^" + re.escape("- **" + label + "**") + rest, rest.startswith("[:：] ?"), True)
+        for m in rx_py.finditer(line):
+            rows += 1
+            content, label = m.groups()
+            verify(where, label, content, "\\*\\*[:：] ?" in content, False)
 print("rows=%d ng=%d" % (rows, len(ng)))
 for x in ng:
     print(x)
@@ -119,7 +142,7 @@ PYEOF
 )
 rows=$(printf '%s\n' "$t04" | sed -n '1s/^rows=\([0-9]*\) ng=.*/\1/p')
 ng=$(printf '%s\n' "$t04" | sed -n '1s/^rows=[0-9]* ng=\([0-9]*\)$/\1/p')
-if [ -n "$rows" ] && [ "$rows" -ge 9 ]; then pass "T-04: 抽出パターンを ${rows} 行検出（9 行以上）"; else fail "T-04: 抽出パターンの検出行数が少ない (rows=${rows:-none})"; fi
+if [ -n "$rows" ] && [ "$rows" -ge 11 ]; then pass "T-04: 抽出パターンを ${rows} 行検出（11 行以上）"; else fail "T-04: 抽出パターンの検出行数が少ない (rows=${rows:-none})"; fi
 expect_eq "T-04: 半角のみ・両字形で値を返さない抽出パターンが 0 件" "0" "${ng:-none}"
 [ "${ng:-none}" = "0" ] || printf '%s\n' "$t04" | tail -n +2 | sed 's/^/    /'
 
