@@ -173,7 +173,8 @@ skill 文書の規則 1 文を `grep -c '<部分文字列>'` で固定すると�
 ## 関連ページ
 
 - [状態を持つ走査器は、終端条件の判定を除外状態の判定より後ろに置く](../patterns/stateful-scanner-exclusion-before-termination.md)
-- [文書の手順を検証するテストは、埋め込んだ bash ブロックを実行して固定する](../patterns/doc-procedure-test-executes-embedded-bash.md)
+- [手順書の bash 文は期待文字列で固定せず、抽出して実行するテストで固定する](../patterns/procedure-bash-extracted-and-executed-by-test.md)
+- [除外契約のテストは境界の両側に対で書く](../patterns/exclusion-test-requires-both-sides-of-boundary.md)
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
 - [accept fixture と reject fixture は設計目的が逆 — 安全側の形状を両方に適用すると順序契約が pin できなくなる](./accept-vs-reject-fixture-design-inversion.md)

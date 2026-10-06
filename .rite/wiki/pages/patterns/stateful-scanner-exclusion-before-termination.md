@@ -38,7 +38,7 @@ confidence: medium
 ## 関連ページ
 
 - [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](../heuristics/mutation-axes-beyond-predicate.md)
-- [文書の手順を検証するテストは、埋め込んだ bash ブロックを実行して固定する](./doc-procedure-test-executes-embedded-bash.md)
+- [手順書の bash 文は期待文字列で固定せず、抽出して実行するテストで固定する](./procedure-bash-extracted-and-executed-by-test.md)
 
 ## ソース
 

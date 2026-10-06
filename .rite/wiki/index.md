@@ -671,7 +671,7 @@ okf_version: "0.2"
 | [照合を位置で狭めたら、診断に位置の基準になる受理集合も挙げる](pages/heuristics/narrowed-match-position-diagnostic-lists-accepted-set.md) | heuristics | 照合を「項目の冒頭」のような位置で狭めると、受け付けない記号で始まる入力が受理から拒否へ変わる。診断が位置しか言わないと、書き手は診断だけでは直せない。 | 2026-09-30T22:06:00+09:00 | medium |
 | [他スキルから直接読まれる手順に工程を足すときは、回復手順の所在と呼び出し側の規定を合わせる](pages/heuristics/reference-recovery-step-pointer-and-caller-sync.md) | heuristics | 節アンカーで複数スキルから直接参照される手順書に工程を挿入すると、スキル内でしか解決しない所在指示は読み手に届かず、番号で範囲を引く呼び出し側や一律の失敗規定を持つ呼び出し側と食い違う。 | 2026-10-01T03:17:07Z | medium |
 | [既存パーサの一部だけを再利用すると、保守的に判定していた入力の扱いが抜け落ちる](pages/anti-patterns/partial-parser-reuse-drops-conservative-judgment.md) | anti-patterns | 検出器を作り直すときに既存パーサの一部の関数だけを借りると、直接コマンドでない形（timeout や nice 経由など）を保守的に数えていた判定が抜け、旧検出器が拾っていた対象を 0 件と数える退行になる。 | 2026-10-01T00:40:35Z | medium |
-| [手順書の bash 文は期待文字列で固定せず、抽出して実行するテストで固定する](pages/patterns/procedure-bash-extracted-and-executed-by-test.md) | patterns | 手順書に書いた 1 文を期待文字列として固定するだけのテストは、その文が実行すると構文エラーになることを検出できない。手順書から実行ブロックを抽出し、プレースホルダーを置換して実際に走らせる形にすると、手順と挙動のずれが変異で落ちる。 | 2026-10-01T16:55:00Z | medium |
+| [手順書の bash 文は期待文字列で固定せず、抽出して実行するテストで固定する](pages/patterns/procedure-bash-extracted-and-executed-by-test.md) | patterns | 手順書に書いた 1 文を期待文字列として固定するだけのテストは、その文が実行すると構文エラーになることを検出できない。手順書から実行ブロックを抽出し、プレースホルダーを置換して実際に走らせる形にすると、手順と挙動のずれが変異で落ちる。 | 2026-10-06T10:40:00Z | medium |
 | [作業ツリーの内容 hash を証跡にするなら、削除されたパスを表す値を持たせる](pages/heuristics/evidence-hash-needs-deleted-path-representation.md) | heuristics | 作業ツリーを hash して index と比べる証跡は、削除・改名で消えたパスと、symlink のように作業ツリーと index で表現が分かれるパスを、同じ方法で表さないと commit の前後で食い違う。削除は HEAD にあって作業ツリーに無いパスだけを専用の値にし、照合を変えたら契約文書も同時に直し、commit 後の回復は作業ツリーに残るパスへ絞る。 | 2026-10-01T04:06:42Z | medium |
 | [受入条件の範囲を実装側の都合で黙って狭めると、書かれたとおりに未充足と判定される](pages/heuristics/ac-scope-narrowed-by-helper-constraint-reads-as-unmet.md) | heuristics | 受入条件の本文が範囲を限定していないのに、実装が helper の制約を理由に一部を範囲外とすると、acceptance レビューは条件を書かれたとおりに読んで未充足とする。範囲を絞るなら条件を先に改訂し、絞らないなら helper を直す。 | 2026-10-01 | medium |
 | [照合キーの要素を信頼できない行は空キーにして、呼び出し側の 1 本の検査で止める](pages/heuristics/untrusted-row-yields-empty-match-key-single-fail-loud-check.md) | heuristics | 列数が想定外の行や、キー要素のセルが空の行を、既定値で寄せて照合に使うと旧形式の行と誤一致して「記録済み」と判定される。要素を信頼できない行は空キーにし、呼び出し側が空キーで fail-loud に止める 1 本の検査にすると、別変数と別検査を足さずに閉じられる。 | 2026-10-01T12:05:00+09:00 | medium |
@@ -683,10 +683,9 @@ okf_version: "0.2"
 | [CI 設定を grep で検査するときは matrix の行だけでなく job が実際に走る条件も固定する](pages/heuristics/ci-workflow-static-check-pins-job-execution-not-only-matrix.md) | heuristics | ジョブが両 OS で走ることを静的検査で守るとき、matrix 行と continue-on-error の不在だけを見ると、runs-on の固定化や job の if: false で片方の OS が消えても検査を通る。runs-on が matrix 値を参照することと、job 直下に実行条件が無いことも固定する。 | 2026-10-03T01:15:00Z | medium |
 | [リリースノートの項目はコミット件名の内部用語を写さず、利用者に見える効果で書く](pages/heuristics/release-note-entry-states-user-visible-effect.md) | heuristics | CHANGELOG の項目をコミット件名から起こすと、実装内部の用語（待機を区切る単位の名前など）がそのまま残り、利用者には何が変わったのかが読み取れない。項目は「利用者の操作で何が起きなくなった／できるようになったか」を主語に書き、内部用語は実装との照合にだけ使う。 | 2026-10-03T04:50:00Z | medium |
 | [状態を持つ走査器は、終端条件の判定を除外状態の判定より後ろに置く](pages/patterns/stateful-scanner-exclusion-before-termination.md) | patterns | 文書を行ごとに走査する検出器が、本文の終端（折りたたみ開始など）の判定を、フェンスやコメントの除外状態の判定より前に置くと、除外の内側の文字列で走査が打ち切られて以降の違反を見逃す。フェンスは開いた種別と長さで閉じる。 | 2026-10-06T10:30:00Z | medium |
-| [文書の手順を検証するテストは、埋め込んだ bash ブロックを実行して固定する](pages/patterns/doc-procedure-test-executes-embedded-bash.md) | patterns | 手順書の配線を文字列の出現回数だけで検証すると、引数の綴りやパスの誤りを検出できない。手順に埋め込んだ bash ブロックを抽出して実際に実行し、終了コードと案内を固定する。文の語句一致は、文の境界で切り出して照合する。 | 2026-10-06T10:30:00Z | medium |
 ## 統計
 
-- 総ページ数: 674
-- ドメイン別: patterns=145, heuristics=336, anti-patterns=193
-- 最終更新: 2026-10-06T10:30:00Z
+- 総ページ数: 673
+- ドメイン別: patterns=144, heuristics=336, anti-patterns=193
+- 最終更新: 2026-10-06T10:40:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
