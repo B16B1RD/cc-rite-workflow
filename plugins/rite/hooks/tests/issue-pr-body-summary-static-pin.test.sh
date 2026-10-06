@@ -42,6 +42,8 @@ done
 for heading in '1. Goal' '2. Scope' '3. User Scenarios' '4. Implementation Details' '5. Acceptance Criteria' '6. Test Specification' '7. Important Conventions' '8. Definition of Done' '9. Decision Log'; do
   pin "$structure" "## $heading"
 done
+pin "$structure" '- {この本文で使う内部用語}：{初出の一言説明}'
+pin "$pr_template" '- {この本文で使う内部用語}：{一言説明}'
 pin "$pr_template" '内部用語が無ければ用語ブロックを省略'
 pin "$pr_template" '</details>'
 pin "$PLUGIN_ROOT/templates/issue/default.md" '| 上段要約 | M | M | M | M | M |'
