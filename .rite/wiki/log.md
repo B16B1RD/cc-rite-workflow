@@ -390,6 +390,11 @@
   - page_a=`.rite/wiki/pages/anti-patterns/set-equality-assert-hollowed-by-whitelist-extraction.md`; page_b=`.rite/wiki/pages/anti-patterns/git-update-index-force-remove-succeeds-when-entry-absent.md`; decision=excluded; reason=要約「git update-index --force-remove は index に対象の …」は集合一致 assert の抽出・走査対象・検査入力を固定列挙にして空洞化する問題とは論点が異なる
   - page_a=`.rite/wiki/pages/anti-patterns/set-equality-assert-hollowed-by-whitelist-extraction.md`; page_b=`.rite/wiki/pages/anti-patterns/partial-parser-reuse-drops-conservative-judgment.md`; decision=excluded; reason=要約「検出器を作り直すときに既存パーサの一部の関数だけを借りると、直接コマンドでない形（time…」は集合一致 assert の抽出・走査対象・検査入力を固定列挙にして空洞化する問題とは論点が異なる
   - page_a=`.rite/wiki/pages/anti-patterns/set-equality-assert-hollowed-by-whitelist-extraction.md`; page_b=`.rite/wiki/pages/anti-patterns/nested-mktemp-in-cd-turns-failure-into-cwd-deletion.md`; decision=excluded; reason=要約「TEST_ROOT=$(cd "$(mktemp -d)" && pwd -P) は mk…」は集合一致 assert の抽出・走査対象・検査入力を固定列挙にして空洞化する問題とは論点が異なる
+* **Update**: [契約を一意化する変更は、参照文書だけでなく実行手順書の placeholder と同節の旧語彙まで同時に揃える](pages/heuristics/contract-unification-sweeps-execution-docs-and-same-section-vocabulary.md) — raw/reviews/20261006T082659Z-pr-3691.md を統合（規定とテンプレートの字面の衝突は例外一覧への 1 項目で解く）
+* **Update**: [契約を一意化する変更は、参照文書だけでなく実行手順書の placeholder と同節の旧語彙まで同時に揃える](pages/heuristics/contract-unification-sweeps-execution-docs-and-same-section-vocabulary.md) — raw/fixes/20261006T083328Z-pr-3691.md を統合（分散した例外を 1 か所の一覧へ集める）
+* **Update**: [契約を一意化する変更は、参照文書だけでなく実行手順書の placeholder と同節の旧語彙まで同時に揃える](pages/heuristics/contract-unification-sweeps-execution-docs-and-same-section-vocabulary.md) — raw/reviews/20261006T084030Z-pr-3691-c2.md を統合（2 通りに読める判定基準と、一覧と参照文の名詞の粒度）
+* **Update**: [契約を一意化する変更は、参照文書だけでなく実行手順書の placeholder と同節の旧語彙まで同時に揃える](pages/heuristics/contract-unification-sweeps-execution-docs-and-same-section-vocabulary.md) — raw/fixes/20261006T084451Z-pr-3691.md を統合（判定基準を 1 つに絞る）
+* **Update**: [契約を一意化する変更は、参照文書だけでなく実行手順書の placeholder と同節の旧語彙まで同時に揃える](pages/heuristics/contract-unification-sweeps-execution-docs-and-same-section-vocabulary.md) — raw/reviews/20261006T084915Z-pr-3691-c3.md を統合（基準の語に指示対象を添える）
 
 ## 2026-10-05
 
