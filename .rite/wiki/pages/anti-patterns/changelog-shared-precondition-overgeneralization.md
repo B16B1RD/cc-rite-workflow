@@ -19,11 +19,18 @@ sources:
     resource: "raw/fixes/20261004T022451Z-pr-3655.md"
   - type: "reviews"
     resource: "raw/reviews/20261004T022849Z-pr-3655.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261005T023257Z-pr-3683.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261005T023733Z-pr-3683.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261005T024209Z-pr-3683.md"
 tags: ["changelog", "doc-heavy-review", "cross-reference", "precondition-granularity", "overgeneralization"]
 confidence: medium
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-04T02:35:00Z" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-10-06T16:50:00+09:00" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-04T02:35:00Z" }
+  - { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-10-06T16:50:00+09:00" }
 ---
 
 # 複数の独立した制約を1つの共有前提条件に総称すると片方だけの前提差異が握り潰される
@@ -46,6 +53,10 @@ fix cycle 1 で修正を適用し、cycle 2（フルレビュー、スコープ�
 
 同じ総称化はリリース準備でコミット subject を要約するときにも起きる。ある Fixed エントリが「helpers が対象リポジトリと作業先を照合して停止する」と書かれていたが、実装を確認すると変更が及んだのは Complexity レーン判定の helper 1 つと、それを呼ぶ 3 つの skill だけで、他の helper は従来の契約のままだった。総称のままだと読者は全 helper の挙動が変わったと読む。修正では対象機能と呼び出し元 skill を名指しする文へ英日同時に差し替え、次のレビューで実装の停止経路・呼び出し箇所の数と一致することを grep で確かめて解消とした。コミット subject の抽象度をそのまま CHANGELOG に転記せず、差分から変更対象を特定して書く。
 
+別のバージョンバンプ PR でも同じ型が 2 つ出た。ひとつは機能の**適用条件**の取り違えで、特定のメタデータを持つ文書だけが対象の機能を、全文書が対象のように書いた。もうひとつは**許可範囲**の取り違えで、列挙された条件文字列に限って認める図の省略を、一般に省略してよいかのように書いた。どちらもコミット subject の要約だけから書いたことが原因で、バンプ 5 ファイル・英日 CHANGELOG の件数や順序・比較リンクのような機械的に検証できる部分は問題なかった。修正は各エントリの文言を実装の入力・適用条件・許可条件の列挙に合わせる最小の書き換えで、英日を同時に揃え、再レビューで 3 件とも解消した。
+
+教訓として、CHANGELOG のエントリは各コミットの実装差分と照合して書き、適用条件と許可範囲を落とさない。同一リリース内で導入して直した挙動を Fixed に書くと、前のリリースから上げる利用者には正味の変化（制約の追加）が読み取りにくいという設計上の確認事項も挙がった。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -53,3 +64,6 @@ fix cycle 1 で修正を適用し、cycle 2（フルレビュー、スコープ�
 ## ソース
 
 - [fix 結果](../../raw/fixes/20260721T063551Z-pr-1948.md)
+- [バージョンバンプの CHANGELOG：レビュー結果](../../raw/reviews/20261005T023257Z-pr-3683.md)
+- [バージョンバンプの CHANGELOG：fix 結果](../../raw/fixes/20261005T023733Z-pr-3683.md)
+- [バージョンバンプの CHANGELOG：再レビュー結果](../../raw/reviews/20261005T024209Z-pr-3683.md)

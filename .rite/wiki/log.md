@@ -1,5 +1,10 @@
 # Directory Update Log
 
+## 2026-10-06
+
+* **Update**: [集合一致 assert の抽出を固定 whitelist にすると「whitelist ∩ 各サイト」しか測れない](pages/anti-patterns/set-equality-assert-hollowed-by-whitelist-extraction.md) — ラベル行の抽出パターン走査に関する raw 5 件（レビュー結果 3 件・fix 結果 2 件）を統合。走査の対象・検査入力・検出条件の 3 段階で同じ空洞化が起きる点を追記
+* **Update**: [複数の独立した制約を1つの共有前提条件に総称すると片方だけの前提差異が握り潰される](pages/anti-patterns/changelog-shared-precondition-overgeneralization.md) — バージョンバンプの CHANGELOG に関する raw 3 件（レビュー結果 2 件・fix 結果 1 件）を統合。適用条件と許可範囲の取り違えの事例を追記
+
 ## 2026-10-05
 
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, broken_refs=0, unregistered_raw=735
