@@ -304,13 +304,13 @@ else
   exit 1
 fi
 
-# --- Multi-session: verify .rite/worktrees/ is ignored when enabled (design §2) ---
+# --- Multi-session: verify the session worktree base is ignored when enabled (design §2) ---
 # Independent of wiki settings — placed BEFORE the wiki early-exits so a
 # wiki.enabled=false + multi_session.enabled=true config is still verified.
 # Non-blocking & opt-in: drift → WARNING + exit 1; healthy or disabled → fall
 # through to the wiki checks. Mirrors the separate_branch Layer-1 probe: a static
 # `git check-ignore -v` (no file created) asks git whether session worktree paths
-# are ignored. If not, session worktrees (.rite/worktrees/issue-{N}) would leak
+# are ignored. If not, session worktrees ({worktree_base}/issue-{N}) would leak
 # into dev-branch diffs.
 # 節は空白と # 以外で始まる次の行で終える（数字や _ で始まるキーでも終え、列 0 のコメント行では終えない）
 ms_section=$(sed -n '/^multi_session:/,/^[^[:space:]#]/p' "$config_file" 2>/dev/null) || ms_section=""
@@ -351,7 +351,7 @@ if [ "$ms_enabled" = "true" ]; then
       echo "==> gitignore-health-check: DRIFT DETECTED (multi_session): '$ms_base/' rule missing from .gitignore" >&2
     fi
     echo "==> multi_session.enabled=true but session worktrees ($ms_base/issue-{N}) would leak into dev-branch diffs." >&2
-    echo "==> Hint: add '$ms_base/' to the repository .gitignore (or set multi_session.worktree_base to an ignored directory)." >&2
+    echo "==> Hint: /rite:open writes '$ms_base/.gitignore' (a single '*' line). Create it by hand, or point multi_session.worktree_base at an ignored directory." >&2
     echo "WARNING: gitignore-health-check: $ms_base/ not effectively ignored while multi_session.enabled=true" >&2
     echo "==> Total gitignore-health-check findings: 1"
     exit 1

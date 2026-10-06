@@ -665,7 +665,7 @@ multi_session:
   worktree_base: ".claude/worktrees"
 ```
 
-**`.gitignore` requirement:** `.claude/worktrees/` must be effectively ignored so session worktrees do not leak into dev-branch diffs. `/rite:setup` writes `.rite/.gitignore` (`*` / `!wiki/` / `!wiki/**`) at the main checkout (`state_root`); it does not add runtime-state lines to the consumer root `.gitignore`. `/rite:lint` (via `gitignore-health-check.sh`) verifies that nested file at `state_root` and the effective ignore.
+**`.gitignore` requirement:** `.claude/worktrees/` must be effectively ignored so session worktrees do not leak into dev-branch diffs. `/rite:open` writes a `*` `.gitignore` at `{worktree_base}/.gitignore` (idempotent, the same self-contained exclusion as `.rite/.gitignore`), and `/rite:lint` verifies the configured `worktree_base` with `gitignore-health-check.sh`.
 
 **Disk cost:** each session worktree is a full working-tree clone. Build artifacts (`node_modules`, etc.) may need rebuilding per worktree.
 

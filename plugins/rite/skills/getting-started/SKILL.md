@@ -385,9 +385,10 @@ Operating rules (important):
   • After a crash / restart: just run /rite:recover — it re-enters the session
     worktree (or rebuilds it from the branch if it was removed) and continues.
 
-  • .claude/worktrees/ must be effectively ignored — add it to the repository
-    .gitignore (Claude Code enters worktrees under this directory without an
-    approval prompt); /rite:lint verifies it via multi_session.worktree_base.
+  • .claude/worktrees/ must be effectively ignored — /rite:open writes a `*`
+    .gitignore at {worktree_base}/.gitignore (Claude Code enters worktrees under
+    this directory without an approval prompt); /rite:lint verifies it via
+    multi_session.worktree_base.
 
   • Sandboxed environments: after entering a session worktree, state writes to
     the main checkout (.rite/sessions/, etc.) can be rejected as read-only.
