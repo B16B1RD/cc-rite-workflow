@@ -779,6 +779,9 @@
 * **lint:clean** — contradictions=0, stale=72, orphans=0, missing_concept=0, unregistered_raw=737, broken_refs=0
   - WIKI_CONTRADICTION_CHECK=complete; changed=0; screened=0; candidates=0; excluded=0; compared=0; elapsed_seconds=60; read_bytes=unmeasured
   - 今回の取り込みはページを作らず raw 1 件を skip したため、変更ページは 0 件で、比較の対象なし。index の登録 675 行と実在 675 ファイルは一致。番号参照は 0 件。
+* **lint:clean** — contradictions=0, stale=72, orphans=0, missing_concept=0, unregistered_raw=738, broken_refs=0
+  - WIKI_CONTRADICTION_CHECK=complete; changed=0; screened=0; candidates=0; excluded=0; compared=0; elapsed_seconds=0; read_bytes=unmeasured
+  - 今回の取り込みはページを作らず raw 1 件を skip したため、変更ページは 0 件で、比較の対象なし。ページ 675 件・raw 3349 件を検査し、番号参照は 0 件。
 
 ## 2026-10-05
 
