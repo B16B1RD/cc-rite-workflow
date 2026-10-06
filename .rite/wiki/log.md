@@ -3,7 +3,7 @@
 ## 2026-10-07
 
 * **Skip**: [レビュー結果](raw/reviews/20261006T224853Z-pr-3705.md) — 指摘なしのレビュー記録のみで新規経験則なし
-
+* **lint:clean** — contradictions=0, stale=72, orphans=0, missing_concept=0, unregistered_raw=739, broken_refs=0。自動比較: changed=0; screened=0; candidates=0; excluded=0; compared=0（対象なし）。
 
 ## 2026-10-06
 
