@@ -99,7 +99,7 @@ for index, raw in enumerate(lines):
 used, missing = set(), []
 for section in sections:
     for index, line in section:
-        match = re.match(r'^(?:###\s+|[-*+]\s+\[[ xX]\]\s+)(AC-(\d+))(?=[:\s]|$)', line)
+        match = re.match(r'^(?:###\s+|[-*+]\s+\[[ xX]\]\s+)(AC-(\d+))(?=[:：\s]|$)', line)
         if match:
             used.add(int(match[2]))
         elif re.match(r'^-\s+\[ \]\s+', line):

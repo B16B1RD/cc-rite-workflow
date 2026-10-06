@@ -379,7 +379,7 @@ def ac_contract(body, ref):
                 "acceptance criteria", "受入基準", "受入条件", "受け入れ条件")
             selected = False
         elif section:
-            item = re.match(r"^(?:###\s+|[-*+]\s+\[[ xX]\]\s+)(AC-[0-9]+)(?=[:\s]|$)", token)
+            item = re.match(r"^(?:###\s+|[-*+]\s+\[[ xX]\]\s+)(AC-[0-9]+)(?=[:：\s]|$)", token)
             if item:
                 selected = item[1] == ref
             elif heading and len(heading[1]) == 3:
@@ -412,7 +412,7 @@ def contract_identity(key):
     if isinstance(key, dict) and isinstance(key.get("text"), list) and key["text"]:
         first, *rest = key["text"]
         if isinstance(first, str):
-            first = re.sub(r"^( {0,3}[-*+]\s+\[)[ xX](\]\s+AC-[0-9]+(?=[:\s]|$))",
+            first = re.sub(r"^( {0,3}[-*+]\s+\[)[ xX](\]\s+AC-[0-9]+(?=[:：\s]|$))",
                            r"\1 \2", first)
             return {**key, "text": [first, *rest]}
     return key
