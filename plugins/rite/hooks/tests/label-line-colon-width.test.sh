@@ -78,27 +78,50 @@ expect_eq "全角ループ回数 2 → 3" "- **現在のループ回数**：3" "
 expect_eq "半角入力のバイト一致（全行）" $'- **フェーズ**: lint\n- **フェーズ詳細**: 検証\n- **最終更新**: T1' \
   "$(printf '%s\n' $'- **フェーズ**: implement\n- **フェーズ詳細**: 実装中\n- **最終更新**: old' | python3 -I "$PY" update-phase --phase lint --phase-detail 検証 --timestamp T1)"
 
-echo "T-04 pin: 手順書の抽出パターン行に半角のみの表記が残っていない"
-for rel in skills/fix/SKILL.md skills/ready/SKILL.md skills/pr-review/SKILL.md references/bash-defensive-patterns.md; do
-  n=$(grep -cE '`- \*\*(番号|Issue|ブランチ)\*\*: [^`]*(\(|#)' "$PLUGIN_ROOT/$rel" || true)
-  expect_eq "T-04 pin: $rel に半角のみの抽出パターンが 0 件" "0" "$n"
+echo "update-progress: 最終更新行が両字形で更新され字形が保たれる"
+for sep in ':' "$FW"; do
+  out=$(printf '%s\n' "- **最終更新**${sep} old" | python3 -I "$PY" update-progress --impl-status 完了 --test-status 完了 --doc-status 完了 --timestamp T1)
+  expect_eq "update-progress: sep=$sep の最終更新" "- **最終更新**${sep} T1" "$(printf '%s\n' "$out" | sed -n '1p')"
 done
 
-# ─── skills 本文の抽出パターン ──────────────────────────────────────
-echo "T-04: skills 本文の抽出パターンが両字形の番号行に一致する"
-for rel in skills/fix/SKILL.md skills/ready/SKILL.md skills/pr-review/SKILL.md; do
-  pat=$(grep -oE '`- \*\*番号\*\*[^`]*#\(\\d\+\)`' "$PLUGIN_ROOT/$rel" | head -1 | sed 's/^`//; s/`$//')
-  if [ -z "$pat" ]; then fail "T-04: $rel に番号行の抽出パターンが無い"; continue; fi
-  # 手順書の表記（`**` は文字どおり）を Python の正規表現へ変換して適用する
-  for sep in ':' "$FW"; do
-    got=$(PAT="$pat" LINE="- **番号**${sep} #123" python3 -I -c '
-import os, re
-pat = re.escape("- **番号**") + os.environ["PAT"].split("**番号**", 1)[1]
-m = re.search("^" + pat, os.environ["LINE"], re.M)
-print(m.group(1) if m else "")')
-    expect_eq "T-04: $rel [sep=$sep]" "123" "$got"
-  done
-done
+# ─── 手順書の抽出パターン（T-04 pin と行動検証を同じ走査で行う）──────────────
+echo "T-04: 手順書・参考資料の抽出パターン全行が半角のみでなく、両字形・空白の有無で同じ値を返す"
+t04=$(python3 -I - "$PLUGIN_ROOT" <<'PYEOF'
+import glob, re, sys
+
+root = sys.argv[1]
+files = (glob.glob(root + "/skills/*/SKILL.md") + glob.glob(root + "/skills/*/references/*.md")
+         + glob.glob(root + "/references/*.md"))
+# 抽出パターン = バッククォート内の `- **ラベル**<区切り>...(取り出し部)...`
+rx = re.compile(r"`- \*\*([^*`]+)\*\*(\[:：\] \?|: )([^`]*\([^`]*)`")
+rows, ng = 0, []
+for f in sorted(files):
+    for line in open(f, encoding="utf-8"):
+        for m in rx.finditer(line):
+            rows += 1
+            label, sep, rest = m.groups()
+            if sep != "[:：] ?":
+                ng.append("半角のみ: %s: %s" % (f.replace(root + "/", ""), m.group(0)))
+                continue
+            expected = "123" if "\\d" in rest else "feat/x"
+            sample_rest = rest.replace("(\\d+)", "123").replace("(.+)", "feat/x")
+            pat = re.escape("- **" + label + "**") + "[:：] ?" + rest
+            for colon in (":", "：") :
+                for space in ("", " "):
+                    sample = "- **" + label + "**" + colon + space + sample_rest
+                    mm = re.search("^" + pat, sample)
+                    if not mm or mm.group(1) != expected:
+                        ng.append("不一致: %s: %r" % (label, sample))
+print("rows=%d ng=%d" % (rows, len(ng)))
+for x in ng:
+    print(x)
+PYEOF
+)
+rows=$(printf '%s\n' "$t04" | sed -n '1s/^rows=\([0-9]*\) ng=.*/\1/p')
+ng=$(printf '%s\n' "$t04" | sed -n '1s/^rows=[0-9]* ng=\([0-9]*\)$/\1/p')
+if [ -n "$rows" ] && [ "$rows" -ge 9 ]; then pass "T-04: 抽出パターンを ${rows} 行検出（9 行以上）"; else fail "T-04: 抽出パターンの検出行数が少ない (rows=${rows:-none})"; fi
+expect_eq "T-04: 半角のみ・両字形で値を返さない抽出パターンが 0 件" "0" "${ng:-none}"
+[ "${ng:-none}" = "0" ] || printf '%s\n' "$t04" | tail -n +2 | sed 's/^/    /'
 
 # ─── wm-sync.sh の Issue 行抽出（実ファイルの sed 式を取り出して適用）─────
 echo "wm-sync: Issue 行の抽出が両字形で #N を返す（BSD sed でも動く 2 式構成）"

@@ -95,8 +95,8 @@ gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
 | Field | Extraction Pattern | Purpose |
 |-----------|-------------|------|
 | Issue number | `issue-(\d+)` from branch name | Phase 4.4 work memory update |
-| Branch name | `- **ブランチ**: (.+)` | Verification |
-| Phase | `- **フェーズ**: (.+)` | Flow position confirmation |
+| Branch name | `- **ブランチ**[:：] ?(.+)` | Verification |
+| Phase | `- **フェーズ**[:：] ?(.+)` | Flow position confirmation |
 | Next steps | `### 次のステップ` section | Expected operation confirmation |
 
 Issue 番号または work memory が無ければ警告して skip し、Phase 1 へ。
