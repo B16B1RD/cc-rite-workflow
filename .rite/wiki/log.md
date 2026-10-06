@@ -735,6 +735,26 @@
   - page_a=`.rite/wiki/pages/heuristics/contract-unification-sweeps-execution-docs-and-same-section-vocabulary.md`; page_b=`.rite/wiki/pages/heuristics/release-note-entry-states-user-visible-effect.md`; decision=excluded; reason=要約「CHANGELOG の項目をコミット件名から起こすと、実装内部の用語（待機を区切る単位の名…」は契約文の一意化・例外の判定基準の書き方・手順書と同節語彙の同期とは論点が異なる
 * **Update**: [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) — 除外 fixture と原因語の pin の知見を、レビューと fix の結果 6 件から統合
 * **Create**: [状態を持つ走査器は、終端条件の判定を除外状態の判定より後ろに置く](pages/patterns/stateful-scanner-exclusion-before-termination.md) — fix 結果を新規ページ化
+* **lint:clean** — contradictions=0, stale=72, orphans=0, missing_concept=0, unregistered_raw=735, broken_refs=0
+  - WIKI_CONTRADICTION_CHECK=complete; changed=3; screened=619; candidates=16; excluded=603; compared=16; elapsed_seconds=196; read_bytes=31658
+  - 変更 3 ページの本文を、同じ分類の全ページの一行要約と照合し、論点が重なる候補 16 組の全文を読んで比較した。タイトル衝突・方針逆転・重複情報は無かった。
+  - page_a=`.rite/wiki/pages/heuristics/mutation-axes-beyond-predicate.md`; page_b=`.rite/wiki/pages/heuristics/fixture-mutation-isolates-invariants.md`; decision=compared; reason=変異による検出力の議論は補完関係で、結論は対立しない
+  - page_a=`.rite/wiki/pages/heuristics/mutation-axes-beyond-predicate.md`; page_b=`.rite/wiki/pages/heuristics/accept-vs-reject-fixture-design-inversion.md`; decision=compared; reason=変異による検出力の議論は補完関係で、結論は対立しない
+  - page_a=`.rite/wiki/pages/heuristics/mutation-axes-beyond-predicate.md`; page_b=`.rite/wiki/pages/heuristics/mutation-testing-measures-assertion-strength.md`; decision=compared; reason=変異による検出力の議論は補完関係で、結論は対立しない
+  - page_a=`.rite/wiki/pages/heuristics/mutation-axes-beyond-predicate.md`; page_b=`.rite/wiki/pages/heuristics/mutation-validate-before-and-after-application.md`; decision=compared; reason=変異による検出力の議論は補完関係で、結論は対立しない
+  - page_a=`.rite/wiki/pages/heuristics/mutation-axes-beyond-predicate.md`; page_b=`.rite/wiki/pages/heuristics/convention-and-detector-introduced-together-blind-each-other.md`; decision=compared; reason=変異による検出力の議論は補完関係で、結論は対立しない
+  - page_a=`.rite/wiki/pages/heuristics/mutation-axes-beyond-predicate.md`; page_b=`.rite/wiki/pages/heuristics/hook-failure-branch-needs-execution-test.md`; decision=compared; reason=変異による検出力の議論は補完関係で、結論は対立しない
+  - page_a=`.rite/wiki/pages/patterns/stateful-scanner-exclusion-before-termination.md`; page_b=`.rite/wiki/pages/patterns/markdown-fence-balance-precommit-check.md`; decision=compared; reason=走査器の除外状態と検出範囲の議論は補完関係で、結論は対立しない（フェンスの種別と長さは既存ページの既知の限界への対処）
+  - page_a=`.rite/wiki/pages/patterns/stateful-scanner-exclusion-before-termination.md`; page_b=`.rite/wiki/pages/patterns/awk-bash-block-termination-tracking.md`; decision=compared; reason=走査器の除外状態と検出範囲の議論は補完関係で、結論は対立しない（フェンスの種別と長さは既存ページの既知の限界への対処）
+  - page_a=`.rite/wiki/pages/patterns/stateful-scanner-exclusion-before-termination.md`; page_b=`.rite/wiki/pages/patterns/lint-strip-code-fence-before-extraction.md`; decision=compared; reason=走査器の除外状態と検出範囲の議論は補完関係で、結論は対立しない（フェンスの種別と長さは既存ページの既知の限界への対処）
+  - page_a=`.rite/wiki/pages/patterns/stateful-scanner-exclusion-before-termination.md`; page_b=`.rite/wiki/pages/patterns/normalize-instead-of-enumerate-in-detection-layer.md`; decision=compared; reason=走査器の除外状態と検出範囲の議論は補完関係で、結論は対立しない（フェンスの種別と長さは既存ページの既知の限界への対処）
+  - page_a=`.rite/wiki/pages/patterns/stateful-scanner-exclusion-before-termination.md`; page_b=`.rite/wiki/pages/patterns/exclusion-test-requires-both-sides-of-boundary.md`; decision=compared; reason=走査器の除外状態と検出範囲の議論は補完関係で、結論は対立しない（フェンスの種別と長さは既存ページの既知の限界への対処）
+  - page_a=`.rite/wiki/pages/patterns/stateful-scanner-exclusion-before-termination.md`; page_b=`.rite/wiki/pages/patterns/detector-widening-pins-both-bounds.md`; decision=compared; reason=走査器の除外状態と検出範囲の議論は補完関係で、結論は対立しない（フェンスの種別と長さは既存ページの既知の限界への対処）
+  - page_a=`.rite/wiki/pages/patterns/procedure-bash-extracted-and-executed-by-test.md`; page_b=`.rite/wiki/pages/patterns/prose-pin-requires-positive-control.md`; decision=compared; reason=手順書の文書 pin と実行テストの使い分けは補完関係で、結論は対立しない
+  - page_a=`.rite/wiki/pages/patterns/procedure-bash-extracted-and-executed-by-test.md`; page_b=`.rite/wiki/pages/patterns/static-parity-pin-needs-reachability-and-emit-pins.md`; decision=compared; reason=手順書の文書 pin と実行テストの使い分けは補完関係で、結論は対立しない
+  - page_a=`.rite/wiki/pages/patterns/procedure-bash-extracted-and-executed-by-test.md`; page_b=`.rite/wiki/pages/patterns/contract-paragraph-adjacent-pin-through-following-sentence.md`; decision=compared; reason=手順書の文書 pin と実行テストの使い分けは補完関係で、結論は対立しない
+  - page_a=`.rite/wiki/pages/patterns/procedure-bash-extracted-and-executed-by-test.md`; page_b=`.rite/wiki/pages/patterns/guidance-command-test-by-verbatim-execution.md`; decision=compared; reason=手順書の文書 pin と実行テストの使い分けは補完関係で、結論は対立しない
+  - page_a=`.rite/wiki/pages/heuristics/mutation-axes-beyond-predicate.md` ほか 2 ページ; decision=excluded; reason=残る同じ分類の 603 組は、要約から本文の論点（除外 fixture・走査器の状態・手順書の実行テスト）と異なることを判断できた
 * **Update**: [手順書の bash 文は期待文字列で固定せず、抽出して実行するテストで固定する](pages/patterns/procedure-bash-extracted-and-executed-by-test.md) — 複数経路への検査の差し込みと文の境界での照合を、レビュー結果 2 件と fix 結果から統合
 
 ## 2026-10-05
