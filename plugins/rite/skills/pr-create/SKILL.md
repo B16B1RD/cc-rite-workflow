@@ -95,8 +95,8 @@ gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
 | Field | Extraction Pattern | Purpose |
 |-----------|-------------|------|
 | Issue number | `issue-(\d+)` from branch name | Generate `Closes #XX` in PR body |
-| Branch name | `- **ブランチ**: (.+)` | Verify base during PR creation |
-| Phase | `- **フェーズ**: (.+)` | Confirm flow position |
+| Branch name | `- **ブランチ**[:：] ?(.+)` | Verify base during PR creation |
+| Phase | `- **フェーズ**[:：] ?(.+)` | Confirm flow position |
 | lint results | `### 品質チェック履歴` section | Reflect in PR body |
 
 Issue 番号が取れなければ Phase 1.4。

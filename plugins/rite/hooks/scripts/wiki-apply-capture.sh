@@ -143,9 +143,9 @@ PAGE_BLOCK=""
 if [ "$STATUS" = "ok" ]; then
   PAGE_BLOCK=$(printf '%s\n' "$STDOUT" | awk '
     /^#### / { title=$0; sub(/^#### /, "", title); next }
-    /^- \*\*パス\*\*: / { path=$0; sub(/^- \*\*パス\*\*: /, "", path); next }
-    /^- \*\*版\*\*: / {
-      rev=$0; sub(/^- \*\*版\*\*: /, "", rev)
+    /^- \*\*パス\*\*(:|：) ?/ { path=$0; sub(/^- \*\*パス\*\*(:|：) ?/, "", path); next }
+    /^- \*\*版\*\*(:|：) ?/ {
+      rev=$0; sub(/^- \*\*版\*\*(:|：) ?/, "", rev)
       printf "page: %s\nrev: %s\nexcerpt: -\nbody: -\ndecision: -\nreason: -\nevidence: -\nresult: -\n", path, rev
     }
   ')

@@ -45,6 +45,10 @@ import sys
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+# ラベル行 `- **ラベル**: 値` の区切り。半角 `:` と全角 `：` の両方を受け付ける
+# （置換側は capture group で元の字形を保つ）。
+LABEL_SEP = r"[:：]"
+
 
 def get_timestamp() -> str:
     """Generate ISO 8601 timestamp in JST."""
@@ -86,7 +90,7 @@ def update_progress(body: str, impl_status: str, test_status: str,
 
     # Update timestamp
     body = re.sub(
-        r"^(- \*\*最終更新\*\*: ).*",
+        r"^(- \*\*最終更新\*\*" + LABEL_SEP + r" ?).*",
         lambda m: m.group(1) + ts,
         body, count=1, flags=re.MULTILINE
     )
@@ -100,17 +104,17 @@ def update_phase(body: str, phase: str, phase_detail: str,
     ts = timestamp or get_timestamp()
 
     body = re.sub(
-        r"^(- \*\*最終更新\*\*: ).*",
+        r"^(- \*\*最終更新\*\*" + LABEL_SEP + r" ?).*",
         lambda m: m.group(1) + ts,
         body, count=1, flags=re.MULTILINE
     )
     body = re.sub(
-        r"^(- \*\*フェーズ\*\*: ).*",
+        r"^(- \*\*フェーズ\*\*" + LABEL_SEP + r" ?).*",
         lambda m: m.group(1) + phase,
         body, count=1, flags=re.MULTILINE
     )
     body = re.sub(
-        r"^(- \*\*フェーズ詳細\*\*: ).*",
+        r"^(- \*\*フェーズ詳細\*\*" + LABEL_SEP + r" ?).*",
         lambda m: m.group(1) + phase_detail,
         body, count=1, flags=re.MULTILINE
     )
@@ -274,11 +278,11 @@ def increment_loop_count(body: str) -> str:
     If the field exists, increment by 1.
     If the section doesn't exist, create it with count=1.
     """
-    match = re.search(r"^- \*\*現在のループ回数\*\*: (\d+)", body, flags=re.MULTILINE)
+    match = re.search(r"^- \*\*現在のループ回数\*\*" + LABEL_SEP + r" ?(\d+)", body, flags=re.MULTILINE)
     if match:
         new_count = int(match.group(1)) + 1
         body = re.sub(
-            r"^(- \*\*現在のループ回数\*\*: )\d+",
+            r"^(- \*\*現在のループ回数\*\*" + LABEL_SEP + r" ?)\d+",
             lambda m: m.group(1) + str(new_count),
             body, count=1, flags=re.MULTILINE,
         )

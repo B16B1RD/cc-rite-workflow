@@ -107,8 +107,8 @@ work memory から抽出し retain:
 | Field | Extraction Pattern | Purpose |
 |-------|-------------------|---------|
 | Issue number | `issue-(\d+)` from branch name | Work memory update |
-| PR number | `- **番号**: #(\d+)` | Retrieve review comments |
-| Phase | `- **フェーズ**: (.+)` | Confirm flow position |
+| PR number | `- **番号**[:：] ?#(\d+)` | Retrieve review comments |
+| Phase | `- **フェーズ**[:：] ?(.+)` | Confirm flow position |
 | Review result | `### レビュー対応履歴` section | Check previous state |
 
 standalone: 引数なしなら現在ブランチの PR。work memory の関連 PR も参照可。
