@@ -195,7 +195,7 @@ bash {plugin_root}/scripts/pr-review-step.sh parse-args --args '$ARGUMENTS'
  ```
 
 3. Extract the "Related PR" section from work memory and obtain the PR number:
- - Pattern: `- **番号**: #(\d+)`
+ - Pattern: `- **番号**[:：] ?#(\d+)`
  - If found, use that number as `{pr_number}`
  - **If multiple matches**: Use the first matching PR number (normally only one PR is recorded in work memory)
 
