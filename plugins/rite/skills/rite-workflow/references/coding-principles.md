@@ -165,6 +165,8 @@ The `knowledge_routing` principle additionally draws on t-wada's four quadrants 
 
 These conventions apply to authoring Markdown files loaded by the Claude Code Skill loader. Certain inline-code patterns may interact with the loader's bash interpretation path and cause prose to be executed as shell commands.
 
+skills 本文の日本語の新規行と改訂行は、記号の字形を [日本語文書の記号規定](../../../references/ja-symbol-style.md) に従って書く。
+
 **Applicable file paths** (Skill loader 経路にある全カテゴリ):
 
 - `plugins/rite/skills/**/*.md`

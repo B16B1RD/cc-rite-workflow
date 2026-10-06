@@ -2,6 +2,8 @@
 
 Format definition for work memory. Local file (`{state_root}/.rite/work-memory/issue-{n}.md`) is the Source of Truth (SoT). `{state_root}` is `hooks/state-path-resolve.sh`（linked worktree cwd では main checkout）。Issue comment is a backup replica.
 
+作業メモリの日本語の記述は、記号の字形を [日本語文書の記号規定](../../../references/ja-symbol-style.md) に従って書く。読み取りが半角コロンと全角コロンの両方に対応しているのは、太字のラベル行（`- **項目名**：値` の形）だけである。`## Detail` の定型行と frontmatter は半角のまま書く。
+
 ## Basic Structure
 
 ```markdown

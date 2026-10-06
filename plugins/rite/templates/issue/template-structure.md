@@ -21,6 +21,8 @@ For the Complexity Gate, Type Definitions (incl. the Commit Type ↔ Contract Ty
 
 Issue は Meta の直後、PR は本文先頭に置く。以下は日本語例。上段の見出し・ラベルも `language` に合わせて翻訳する。
 
+上段要約の日本語は、記号の字形を [日本語文書の記号規定](../../references/ja-symbol-style.md) に従って書く。
+
 ```markdown
 ## 要約
 
