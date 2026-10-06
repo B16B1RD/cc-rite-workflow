@@ -116,6 +116,8 @@ run_check t04j ja $'本文\n````\n```\n日本語(a)\n````\n違反(b)です\n'
 expect_eq "T-04 4 連のフェンスは内側の 3 連では閉じない" "6:半角記号:違反(b)です" "$OUT"
 run_check t04k ja $'本文\n```\n```x\n日本語(a)\n```\n違反(b)です\n'
 expect_eq "T-04 info string 付きの行ではフェンスが閉じない" "6:半角記号:違反(b)です" "$OUT"
+run_check t04l ja $'<!-- 図なし: 文言のみ -->\n違反(a)です\n'
+expect_eq "T-04 行頭の単行コメントの後ろの行を見逃さない" "2:半角記号:違反(a)です" "$OUT"
 
 # T-05: 文書側の配線（段落ごとに 1 回）
 section=$(awk '/^### 記号の作成前検査/{f=1;next} /^### /{f=0} f' "$STRUCTURE")
