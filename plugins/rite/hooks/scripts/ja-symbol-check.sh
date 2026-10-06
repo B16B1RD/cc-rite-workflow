@@ -85,7 +85,7 @@ LABEL_COLON = re.compile(LIST + r"(?:\*\*[^*]*[" + J + r"][^*]*\*\*|[^:*\n]*[" +
 LABEL_PERIOD = re.compile(LIST + r"\*\*[^*]+\*\*。")
 FIXED_LINE = re.compile(r"^\s*\*\*用語\*\*:\s*$|^\s*(?:Co-Authored-By|Signed-off-by):|^\s*\|?[\s:\-|]+\|?\s*$")
 CC_PREFIX = re.compile(r"^(?:feat|fix|docs|refactor|chore|test|perf|ci|build|style|revert)(?:\([^)]*\))?!?:\s")
-FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
+FENCE = re.compile(r"^\s*(`{3,}(?=[^`]*$)|~{3,})")
 FENCE_CLOSE = re.compile(r"^\s*(`{3,}|~{3,})\s*$")
 
 CODE_SPAN = re.compile(r"(`+)(?:(?!\1).)+?\1")

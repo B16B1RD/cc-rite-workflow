@@ -92,8 +92,9 @@ expect_eq "T-04 日本語を含まない行は検査しない" "0" "$RC"
 # 日本語を含み、除外が無ければ検出される行で、除外ごとに固定する
 for case_body in \
   $'```\n日本語(a)\n```\n' \
-  $'詳細は https://example.com/a(b) を参照\n' \
-  $'説明<a href="x(y)">リンク</a>\n' \
+  $'詳細はhttps://example.com/a(b)です\n' \
+  $'説明<a title="詳細">リンク</a>\n' \
+  $'`a...b` を使う\n' \
   $'<!--\n図なし(a)\n-->\n' \
   $'---\ntitle: 日本語(a)\n---\n本文\n' \
   $'Co-Authored-By: 日本語(a) <a@b.c>\n'; do
@@ -107,6 +108,12 @@ run_check t04g ja $'本文\n```\n~~~\n```\n違反(a)です\n'
 expect_eq "T-04 バッククォートのフェンスの中のチルダはフェンスを閉じない" "5:半角記号:違反(a)です" "$OUT"
 run_check t04h ja $'<!--\n<details>\n-->\n違反(a)です\n'
 expect_eq "T-04 コメント内の details で走査が終わらない" "4:半角記号:違反(a)です" "$OUT"
+run_check t04i ja $'本文です\n```a``` と書く行\n```b``` とも書く行\n違反(a)です\n'
+expect_eq "T-04 行頭のインラインコードはフェンスの開始にならない" "4:半角記号:違反(a)です" "$OUT"
+run_check t04j ja $'本文\n````\n```\n日本語(a)\n````\n違反(b)です\n'
+expect_eq "T-04 4 連のフェンスは内側の 3 連では閉じない" "6:半角記号:違反(b)です" "$OUT"
+run_check t04k ja $'本文\n```\n```x\n日本語(a)\n```\n違反(b)です\n'
+expect_eq "T-04 info string 付きの行ではフェンスが閉じない" "6:半角記号:違反(b)です" "$OUT"
 
 # T-05: 文書側の配線（段落ごとに 1 回）
 section=$(awk '/^### 記号の作成前検査/{f=1;next} /^### /{f=0} f' "$STRUCTURE")
@@ -131,9 +138,12 @@ expect_eq "T-05 節に WARNING で続行しない旨が 1 回" "1" "$(printf '%s
 # 経路ごとに、違反時は作成を呼ばず再生成する文があり、記号検査が読みやすさ点検より前にある
 for site in "$ISSUE_CREATE" "$PR_CREATE"; do
   while IFS= read -r site_line; do
-    case "$site_line" in
-      *呼ばず*再生成*) pass "T-05 作成を呼ばず再生成する文がある: ${site##*/}" ;;
-      *) fail "T-05 作成を呼ばず再生成する文が無い: ${site##*/}: ${site_line:0:60}" ;;
+    # 記号検査を最初に述べる文（最初の句点まで）に限って照合する。同じ行の図検査の文に一致させない
+    after_symbol=${site_line#*記号の作成前検査}
+    symbol_sentence=${after_symbol%%。*}
+    case "$symbol_sentence" in
+      *呼ばず*再生成*) pass "T-05 記号検査の文に作成を呼ばず再生成する旨がある: ${site##*/}" ;;
+      *) fail "T-05 記号検査の文に作成を呼ばず再生成する旨が無い: ${site##*/}: ${symbol_sentence:0:60}" ;;
     esac
     before_symbol=${site_line%%記号の作成前検査*}
     case "$before_symbol" in
@@ -177,8 +187,8 @@ expect_eq "T-06 LC_ALL=C でも日本語行を検出する" "1" "$rc"
 # T-07
 rc=0; bash "$CHECK" --body-file "$TMP/none.md" --language ja >/dev/null 2>&1 || rc=$?
 expect_eq "T-07 ファイル不在は exit 2" "2" "$rc"
-: > "$TMP/empty.md"
-rc=0; bash "$CHECK" --body-file "$TMP/empty.md" --language ja >/dev/null 2>&1 || rc=$?
+: > "$TMP/zero_len.md"
+rc=0; bash "$CHECK" --body-file "$TMP/zero_len.md" --language ja >/dev/null 2>&1 || rc=$?
 expect_eq "T-07 空ファイルは exit 2" "2" "$rc"
 rc=0; (cd "$TMP" && bash "$CHECK" --body-file t06c.md --language ja >/dev/null 2>&1) || rc=$?
 expect_eq "T-07 相対パスは exit 2" "2" "$rc"
@@ -197,8 +207,14 @@ expect_eq "T-07 python3 が無ければ exit 2" "2" "$rc"
 # エラーメッセージ（原因語）も固定する
 err_of() { bash "$CHECK" "$@" 2>&1 >/dev/null || true; }
 case "$(err_of --body-file "$TMP/none.md" --language ja)" in *'ERROR:'*missing*) pass "T-07 不在のメッセージに原因語 missing" ;; *) fail "T-07 不在のメッセージ" ;; esac
-case "$(err_of --body-file "$TMP/empty.md" --language ja)" in *'ERROR:'*empty*) pass "T-07 空のメッセージに原因語 empty" ;; *) fail "T-07 空のメッセージ" ;; esac
+case "$(err_of --body-file "$TMP/zero_len.md" --language ja)" in *'ERROR:'*empty*) pass "T-07 空のメッセージに原因語 empty" ;; *) fail "T-07 空のメッセージ" ;; esac
 case "$(cd "$TMP" && err_of --body-file t06c.md --language ja)" in *'ERROR:'*absolute*) pass "T-07 相対パスのメッセージに原因語 absolute" ;; *) fail "T-07 相対パスのメッセージ" ;; esac
+case "$(err_of --body-file "$TMP/bad_utf8.md" --language ja)" in *'ERROR:'*'cannot read'*) pass "T-07 不正な UTF-8 のメッセージに原因語 cannot read" ;; *) fail "T-07 不正な UTF-8 のメッセージ" ;; esac
+case "$(err_of --body-file "$TMP/t06c.md" --language ja --unknown-option)" in *'ERROR:'*unknown*) pass "T-07 未知のオプションのメッセージに原因語 unknown" ;; *) fail "T-07 未知のオプションのメッセージ" ;; esac
+case "$(err_of --language ja --body-file)" in *'ERROR:'*'requires a value'*) pass "T-07 値の無い --body-file のメッセージに原因語 requires a value" ;; *) fail "T-07 値の無い --body-file のメッセージ" ;; esac
+rc=0; bash "$CHECK" --body-file "$TMP/t06c.md" --language >/dev/null 2>&1 || rc=$?
+expect_eq "T-07 値の無い --language は exit 2" "2" "$rc"
+case "$(PATH="$TMP/nopython" "$(command -v bash)" "$CHECK" --body-file "$TMP/t06c.md" --language ja 2>&1 >/dev/null || true)" in *'ERROR:'*python3*) pass "T-07 python3 不在のメッセージに原因語 python3" ;; *) fail "T-07 python3 不在のメッセージ" ;; esac
 
 echo ""
 echo "PASS=$PASS FAIL=$FAIL"
