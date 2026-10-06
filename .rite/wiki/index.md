@@ -270,7 +270,7 @@ okf_version: "0.2"
 | [暫定注記は対象成果物内の同種表記を全数列挙してから書く](pages/heuristics/interim-notice-enumerate-all-stale-references-first.md) | heuristics | 陳腐化した成果物（再生成できない動画等）への暫定注記を書くとき、注記が言及する「旧表記」の範囲は対象成果物内の同種表記を最初に全数把握してから決める。 | 2026-07-26T20:51:40+09:00 | medium |
 | [段階分割 PR では「契約として宣言したこと」と「いま実装されていること」を時制で書き分ける](pages/heuristics/staged-pr-declared-contract-vs-implemented-fact-tense.md) | heuristics | Sub-Issue でデータ契約だけを先に切る PR では、SoT ドキュメントと LLM 向け指示が「write 側は常に N キーを出力する」「フィールドとして保存される」と現在形で書かれやすい。 | 2026-07-27T10:57:51+09:00 | high |
 | [accept fixture と reject fixture は設計目的が逆 — 安全側の形状を両方に適用すると順序契約が pin できなくなる](pages/heuristics/accept-vs-reject-fixture-design-inversion.md) | heuristics | 分岐チェーンに新しいガードを挿入したとき、「そのガードが先行分岐より前にある」という順序契約は fixture の形状に依存して観測可能／不可能が決まる。 | 2026-09-29 | high |
-| [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) | heuristics | 「静的 pin を追加したらその場で mutation を当てて落ちることを確認する」は既に確立した規約だが、**当てる mutation の軸**が規約に含まれていないと、述語（条件式そのもの）にだけ変異を入れて満足してしまう。 | 2026-09-27T22:02:06Z | high |
+| [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) | heuristics | 「静的 pin を追加したらその場で mutation を当てて落ちることを確認する」は既に確立した規約だが、**当てる mutation の軸**が規約に含まれていないと、述語（条件式そのもの）にだけ変異を入れて満足してしまう。 | 2026-10-06T10:30:00Z | high |
 | [few-shot 例に「実行していない実測」を書く — LLM はもっともらしいコマンドを書く挙動を学習する](pages/anti-patterns/few-shot-unexecuted-measurement-anchor.md) | anti-patterns | reviewer / agent 向けの calibration 文書（finding-examples.md 等）に「実測アンカー付きの良い例」を追加するとき、例に載せる再現コマンドと観測結果を実際には走らせずに書いてしまう anti-pattern。 | 2026-07-27T10:57:51+09:00 | high |
 | [gate を守る対象の内側に置くと、守るべき唯一の failure mode で gate も一緒に skip される](pages/anti-patterns/gate-placed-inside-guarded-scope.md) | anti-patterns | LLM が読む手順書で「手順 X が実行されたこと」を保証する post-condition gate を新設するとき、gate を X のサブステップとして書くと自己参照で無力化する。 | 2026-07-27T10:57:51+09:00 | high |
 | [属性は母集団からの除外ではなく別 map で持つ — 除外は下流の全分岐を経路依存で壊す](pages/heuristics/attribute-as-separate-map-not-population-exclusion.md) | heuristics | 既存の分類 map（severity_map など）に新しい軸（実測済みか否か）を導入するとき、「条件を満たさない要素を母集団から除外する」設計にすると、その map を参照する下流の全分岐が経路依存で壊れる。 | 2026-07-27T10:57:51+09:00 | high |
@@ -682,9 +682,11 @@ okf_version: "0.2"
 | [テスト fixture の前提ガードは return 1 だけにせず原因を ERROR で出す](pages/patterns/test-fixture-guards-print-error-before-return.md) | patterns | set -e 下で fixture 構築のガードが return 1 だけで失敗すると、出力ゼロで終了し、CI の失敗サマリは原因を拾えない。各ガードを ERROR で始まる 1 行つきの失敗にすれば、サマリの grep が原因を示す。 | 2026-10-03T01:15:00Z | medium |
 | [CI 設定を grep で検査するときは matrix の行だけでなく job が実際に走る条件も固定する](pages/heuristics/ci-workflow-static-check-pins-job-execution-not-only-matrix.md) | heuristics | ジョブが両 OS で走ることを静的検査で守るとき、matrix 行と continue-on-error の不在だけを見ると、runs-on の固定化や job の if: false で片方の OS が消えても検査を通る。runs-on が matrix 値を参照することと、job 直下に実行条件が無いことも固定する。 | 2026-10-03T01:15:00Z | medium |
 | [リリースノートの項目はコミット件名の内部用語を写さず、利用者に見える効果で書く](pages/heuristics/release-note-entry-states-user-visible-effect.md) | heuristics | CHANGELOG の項目をコミット件名から起こすと、実装内部の用語（待機を区切る単位の名前など）がそのまま残り、利用者には何が変わったのかが読み取れない。項目は「利用者の操作で何が起きなくなった／できるようになったか」を主語に書き、内部用語は実装との照合にだけ使う。 | 2026-10-03T04:50:00Z | medium |
+| [状態を持つ走査器は、終端条件の判定を除外状態の判定より後ろに置く](pages/patterns/stateful-scanner-exclusion-before-termination.md) | patterns | 文書を行ごとに走査する検出器が、本文の終端（折りたたみ開始など）の判定を、フェンスやコメントの除外状態の判定より前に置くと、除外の内側の文字列で走査が打ち切られて以降の違反を見逃す。フェンスは開いた種別と長さで閉じる。 | 2026-10-06T10:30:00Z | medium |
+| [文書の手順を検証するテストは、埋め込んだ bash ブロックを実行して固定する](pages/patterns/doc-procedure-test-executes-embedded-bash.md) | patterns | 手順書の配線を文字列の出現回数だけで検証すると、引数の綴りやパスの誤りを検出できない。手順に埋め込んだ bash ブロックを抽出して実際に実行し、終了コードと案内を固定する。文の語句一致は、文の境界で切り出して照合する。 | 2026-10-06T10:30:00Z | medium |
 ## 統計
 
-- 総ページ数: 672
-- ドメイン別: patterns=143, heuristics=336, anti-patterns=193
-- 最終更新: 2026-10-06T08:58:40Z
+- 総ページ数: 674
+- ドメイン別: patterns=145, heuristics=336, anti-patterns=193
+- 最終更新: 2026-10-06T10:30:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

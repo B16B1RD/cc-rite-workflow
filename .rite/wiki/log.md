@@ -733,6 +733,9 @@
   - page_a=`.rite/wiki/pages/heuristics/contract-unification-sweeps-execution-docs-and-same-section-vocabulary.md`; page_b=`.rite/wiki/pages/heuristics/untrusted-row-yields-empty-match-key-single-fail-loud-check.md`; decision=excluded; reason=要約「列数が想定外の行や、キー要素のセルが空の行を、既定値で寄せて照合に使うと旧形式の行と誤一致…」は契約文の一意化・例外の判定基準の書き方・手順書と同節語彙の同期とは論点が異なる
   - page_a=`.rite/wiki/pages/heuristics/contract-unification-sweeps-execution-docs-and-same-section-vocabulary.md`; page_b=`.rite/wiki/pages/heuristics/ci-workflow-static-check-pins-job-execution-not-only-matrix.md`; decision=excluded; reason=要約「ジョブが両 OS で走ることを静的検査で守るとき、matrix 行と continue-o…」は契約文の一意化・例外の判定基準の書き方・手順書と同節語彙の同期とは論点が異なる
   - page_a=`.rite/wiki/pages/heuristics/contract-unification-sweeps-execution-docs-and-same-section-vocabulary.md`; page_b=`.rite/wiki/pages/heuristics/release-note-entry-states-user-visible-effect.md`; decision=excluded; reason=要約「CHANGELOG の項目をコミット件名から起こすと、実装内部の用語（待機を区切る単位の名…」は契約文の一意化・例外の判定基準の書き方・手順書と同節語彙の同期とは論点が異なる
+* **Update**: [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) — 除外 fixture と原因語の pin の知見を、レビューと fix の結果 6 件から統合
+* **Create**: [状態を持つ走査器は、終端条件の判定を除外状態の判定より後ろに置く](pages/patterns/stateful-scanner-exclusion-before-termination.md) — fix 結果を新規ページ化
+* **Create**: [文書の手順を検証するテストは、埋め込んだ bash ブロックを実行して固定する](pages/patterns/doc-procedure-test-executes-embedded-bash.md) — レビュー結果 2 件と fix 結果を新規ページ化
 
 ## 2026-10-05
 

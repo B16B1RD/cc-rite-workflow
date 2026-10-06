@@ -45,10 +45,23 @@ sources:
     resource: "raw/reviews/20260927T205140Z-pr-3344.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T215520Z-pr-3353.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261006T094933Z-pr-3692-c2.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261006T100036Z-pr-3692-c3.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261006T100420Z-pr-3692.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261006T101112Z-pr-3692.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261006T101706Z-pr-3692.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261006T102057Z-pr-3692.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T22:02:06Z" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-10-06T10:30:00Z" }
 verified:
+  - { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-10-06T10:30:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-13T05:16:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T11:40:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:18:40Z" }
@@ -145,7 +158,22 @@ skill 文書の規則 1 文を `grep -c '<部分文字列>'` で固定すると�
 
 失敗 rc をそのまま伝える `exit "$rc"` は、呼び出し先の失敗 rc が 1 種類しかない間は、`exit 1` へ書き換える変異とテスト上区別できない（観測上等価）。伝播そのものを固定したいなら、呼び出し先の stub に 1 以外の失敗 rc を返させ、その値が呼び出し元の終了コードに現れることを確かめる。
 
+### 除外規則の fixture は、除外の種類ごとに「除外が無ければ検出される入力」で、閉じ側と直後の行まで置く
+
+検出器の除外規則（コードフェンス・URL・タグ・コードスパン・コメント）を fixture で固定するとき、入力が対象言語の行を含まなければ、除外を壊しても検出されないので pin にならない。除外ごとに、対象言語を含み、除外が無ければ違反として検出される入力を置く。実測では、日本語を含まない URL・タグ・コードスパンの fixture が、除外を外す変異で通り続けた。
+
+- **種類ごとに 1 件**: 単行の HTML コメントと、`~~~` で囲んだフェンスは、複数行コメントとバッククォートのフェンスの fixture では固定されない。除外の選択肢ごとに入力を足す。
+- **除外の直後の行に違反を置く**: 行頭の単行コメントは複数行コメントの開始と取り違えやすい。コメントの次の行に違反を置くと、開始条件を外す変異で以降の行が除外されて検出が空になり、fixture が落ちる。開きだけでなく閉じ側と、除外が終わった直後の行まで置いて初めて、除外の範囲を固定できる。
+- **確認は変異で行う**: 条件 1 つを外した隔離コピーでスイートを実行し、その fixture 1 件だけが落ちることを確かめる。落ちない条件が残っていれば、入力と assert を 1 件ずつ足す（新しい機構は足さない）。
+
+### エラーメッセージの原因語を pin するときは、原因語を含まない入力名で行う
+
+未知のオプションなど、渡した引数名をそのままメッセージへ転記する実装では、引数名に原因語（`unknown` など）を含めると、メッセージの文言を変えても原因語の assert は通る。転記ではなく実装側の文言を固定するために、原因語を含まない引数名（`--bogus` など）を渡す。値の無いオプションのメッセージは、オプションごとに別の assert で固定する。片方の文言を変えて、もう片方の assert が落ちないことまで確かめる。
+
 ## 関連ページ
+
+- [状態を持つ走査器は、終端条件の判定を除外状態の判定より後ろに置く](../patterns/stateful-scanner-exclusion-before-termination.md)
+- [文書の手順を検証するテストは、埋め込んだ bash ブロックを実行して固定する](../patterns/doc-procedure-test-executes-embedded-bash.md)
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
 - [accept fixture と reject fixture は設計目的が逆 — 安全側の形状を両方に適用すると順序契約が pin できなくなる](./accept-vs-reject-fixture-design-inversion.md)
@@ -170,3 +198,9 @@ skill 文書の規則 1 文を `grep -c '<部分文字列>'` で固定すると�
 - [列挙した文字クラスの一部を外す変異が生き残ったレビュー結果](../../raw/reviews/20260927T204401Z-pr-3334.md)
 - [時間窓の上端近くの値で閾値の縮小を検出したレビュー結果](../../raw/reviews/20260927T205140Z-pr-3344.md)
 - [失敗 rc の伝播が exit 1 と観測上等価になると指摘したレビュー結果](../../raw/reviews/20260927T215520Z-pr-3353.md)
+- [除外の fixture が日本語を含まず除外を固定できていなかったことを指摘した再レビュー結果](../../raw/reviews/20261006T094933Z-pr-3692-c2.md)
+- [原因語の pin が引数名の転記で成立していたことを指摘したレビュー結果](../../raw/reviews/20261006T100036Z-pr-3692-c3.md)
+- [単行コメントと ~~~ の fixture、原因語を含まない引数名への変更を示した fix 結果](../../raw/fixes/20261006T100420Z-pr-3692.md)
+- [除外の閉じ側と直後の行まで fixture を置く必要を示したレビュー結果](../../raw/reviews/20261006T101112Z-pr-3692.md)
+- [行頭の単行コメントの後ろの行を固定する fixture を足した fix 結果](../../raw/fixes/20261006T101706Z-pr-3692.md)
+- [除外の直後の行の fixture が変異で落ちることを確認したレビュー結果](../../raw/reviews/20261006T102057Z-pr-3692.md)
