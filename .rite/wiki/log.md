@@ -2,6 +2,7 @@
 
 ## 2026-10-06
 
+* **Skip**: [v0.20.1 リリース準備のレビュー結果](raw/reviews/20261006T140211Z-pr-3700.md) — 指摘 0 件で、再利用できる経験則を含まない
 * **Skip**: [用語リストの例の全角コロン修正のレビュー結果](raw/reviews/20261006T134533Z-pr-3698.md) — コードフェンス内の例は記号の検査器が読み飛ばすという知見は、既存ページの既定パス移行の保証と pin の知見に含まれ、新しい経験則なし
 * **Create**: [設定の既定パスを移すときは、旧パスが副次的に担っていた保証を新パスへ引き継ぐ](pages/heuristics/default-path-move-carries-incidental-guarantees.md) — セッション worktree の置き場所移行のレビュー結果と fix 結果を新規ページ化
 * **Create**: [親ディレクトリに置いた未追跡の ignore ファイルは linked worktree から見えない](pages/anti-patterns/untracked-parent-ignore-invisible-from-linked-worktree.md) — 除外の担保の再レビュー結果と 2 回目の fix 結果を新規ページ化
