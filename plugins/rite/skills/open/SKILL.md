@@ -145,7 +145,7 @@ ms_enabled=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+enabled:/ {print; 
 case "$ms_enabled" in true|yes|1) ms_enabled=true ;; *) ms_enabled=false ;; esac
 ms_base=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+worktree_base:/ {print; exit}' \
   | sed 's/[[:space:]]#.*//' | sed 's/.*worktree_base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
-[ -n "$ms_base" ] || ms_base=".rite/worktrees"
+[ -n "$ms_base" ] || ms_base=".claude/worktrees"
 echo "[CONTEXT] MULTI_SESSION_ENABLED=$ms_enabled; WORKTREE_BASE=$ms_base"
 ```
 
@@ -206,7 +206,7 @@ ms_enabled=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+enabled:/ {print; 
 case "$ms_enabled" in true|yes|1) ms_enabled=true ;; *) ms_enabled=false ;; esac
 ms_base=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+worktree_base:/ {print; exit}' \
   | sed 's/[[:space:]]#.*//' | sed 's/.*worktree_base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
-[ -n "$ms_base" ] || ms_base=".rite/worktrees"
+[ -n "$ms_base" ] || ms_base=".claude/worktrees"
 echo "[CONTEXT] MULTI_SESSION_ENABLED=$ms_enabled; WORKTREE_BASE=$ms_base; SOURCE=branch-gate"
 ```
 
@@ -334,6 +334,8 @@ if [ -f "$repo_root/.claude/settings.local.json" ] && ! { mkdir -p "$wt_path/.cl
   echo "WARNING: .claude/settings.local.json のコピーに失敗しました — ドッグフーディング上書きが worktree に反映されません" >&2
 fi
 ```
+
+`{wt_path}` は既定で `.claude/worktrees/` 配下にあり、`EnterWorktree(path)` は承認なしで入場できる（条件と根拠: [入場先の置き場所と許可確認](../../references/git-worktree-patterns.md#host-worktree-execution)）。
 
 その後 [共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) を読み、`{wt_path}` への native / 検証済み `workdir` / 毎回 `cd` 経路を選ぶ。`EnterWorktree` が利用可能な場合は `path: {wt_path}` で呼ぶ。`multi_session.enabled: true` と本コマンドが入場の明示指示であり、ツール不在だけを理由に追加承認を求めない。権限拒否では代替を試さない。
 

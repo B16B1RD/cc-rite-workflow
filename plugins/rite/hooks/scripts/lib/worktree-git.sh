@@ -612,7 +612,7 @@ worktree_push_branch() {
 #   --branch         feature branch name. Optional — resolved from
 #                    local/remote refs matching issue-<N> when omitted.
 #   --worktree-base  override multi_session.worktree_base (default: parsed
-#                    from rite-config.yml, fallback .rite/worktrees)
+#                    from rite-config.yml, fallback .claude/worktrees)
 #
 # stdout (always exactly one marker line):
 #   [CONTEXT] WT_ENSURE=<case>; path=<wt_path>; branch=<branch>[; other=<p>]
@@ -685,7 +685,7 @@ ensure_session_worktree() {
   else
     ms_base=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+worktree_base:/ {print; exit}' \
       | sed 's/[[:space:]]#.*//' | sed 's/.*worktree_base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
-    [ -n "$ms_base" ] || ms_base=".rite/worktrees"
+    [ -n "$ms_base" ] || ms_base=".claude/worktrees"
   fi
 
   if [ "$ms_enabled" != "true" ]; then

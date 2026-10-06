@@ -325,7 +325,11 @@ if [ -n "$ms_section" ]; then
   esac
 fi
 if [ "$ms_enabled" = "true" ]; then
-  ms_probe=".rite/worktrees/issue-0/.rite-lint-probe"
+  ms_base=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+worktree_base:/ { print; exit }' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*worktree_base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
+  [ -n "$ms_base" ] || ms_base=".claude/worktrees"
+  ms_base="${ms_base%/}"
+  ms_probe="$ms_base/issue-0/.rite-lint-probe"
   ms_ci_out=""
   ms_ci_rc=0
   if ms_ci_out=$(git check-ignore -v "$ms_probe" 2>/dev/null); then ms_ci_rc=0; else ms_ci_rc=$?; fi
@@ -337,18 +341,18 @@ if [ "$ms_enabled" = "true" ]; then
     ms_ci_negated=1
   fi
   if [ "$ms_ci_rc" -eq 0 ] && [ "$ms_ci_negated" -eq 0 ]; then
-    log_info "gitignore-health-check: multi_session layer healthy — .rite/worktrees/ ignored (${ms_ci_out})"
+    log_info "gitignore-health-check: multi_session layer healthy — $ms_base/ ignored (${ms_ci_out})"
   elif [ "$ms_ci_rc" -ge 2 ]; then
-    echo "WARNING: gitignore-health-check: git check-ignore failed (rc=$ms_ci_rc) for .rite/worktrees/ verify — skipping multi_session check" >&2
+    echo "WARNING: gitignore-health-check: git check-ignore failed (rc=$ms_ci_rc) for $ms_base/ verify — skipping multi_session check" >&2
   else
     if [ "$ms_ci_negated" -eq 1 ]; then
-      echo "==> gitignore-health-check: DRIFT DETECTED (multi_session): '.rite/worktrees/' matched only a negation rule (${ms_ci_out}) — effectively NOT ignored" >&2
+      echo "==> gitignore-health-check: DRIFT DETECTED (multi_session): '$ms_base/' matched only a negation rule (${ms_ci_out}) — effectively NOT ignored" >&2
     else
-      echo "==> gitignore-health-check: DRIFT DETECTED (multi_session): '.rite/worktrees/' rule missing from .gitignore" >&2
+      echo "==> gitignore-health-check: DRIFT DETECTED (multi_session): '$ms_base/' rule missing from .gitignore" >&2
     fi
-    echo "==> multi_session.enabled=true but session worktrees (.rite/worktrees/issue-{N}) would leak into dev-branch diffs." >&2
-    echo "==> Hint: /rite:setup --upgrade writes .rite/.gitignore only when missing or empty. For composition drift, replace the file with the 3-line composition by hand. lint does not rewrite." >&2
-    echo "WARNING: gitignore-health-check: .rite/worktrees/ not effectively ignored while multi_session.enabled=true" >&2
+    echo "==> multi_session.enabled=true but session worktrees ($ms_base/issue-{N}) would leak into dev-branch diffs." >&2
+    echo "==> Hint: add '$ms_base/' to the repository .gitignore (or set multi_session.worktree_base to an ignored directory)." >&2
+    echo "WARNING: gitignore-health-check: $ms_base/ not effectively ignored while multi_session.enabled=true" >&2
     echo "==> Total gitignore-health-check findings: 1"
     exit 1
   fi

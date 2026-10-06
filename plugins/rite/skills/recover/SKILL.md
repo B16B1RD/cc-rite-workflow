@@ -92,7 +92,7 @@ if [ -z "$issue_arg" ]; then
   ms_section=$(sed -n '/^multi_session:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null) || ms_section=""
   ms_base=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+worktree_base:/ {print; exit}' \
     | sed 's/[[:space:]]#.*//' | sed 's/.*worktree_base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
-  [ -n "$ms_base" ] || ms_base=".rite/worktrees"
+  [ -n "$ms_base" ] || ms_base=".claude/worktrees"
   wt_issues=$(git worktree list --porcelain 2>/dev/null | awk '$1=="worktree"{print $2}' \
     | grep -E "/${ms_base}/issue-[0-9]+\$" | sed -nE 's|.*/issue-([0-9]+)$|\1|p' | sort -un)
   cnt=$(printf '%s' "$wt_issues" | grep -c . 2>/dev/null || echo 0)

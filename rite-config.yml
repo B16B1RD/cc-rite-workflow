@@ -114,12 +114,12 @@ parallel:
 # マルチセッション（セッション別 Git worktree 分離）
 # 仕様詳細: docs/designs/multi-session-worktree.md
 # 複数の Claude Code セッションが同一リポジトリで別 Issue を並行して進められるようにする。
-# /rite:open がセッション worktree (.rite/worktrees/issue-{N}) を作成し EnterWorktree で入場する。
+# /rite:open がセッション worktree (.claude/worktrees/issue-{N}) を作成し EnterWorktree で入場する。
 # `parallel`（1 セッション内の Issue 別サブエージェント並列）とは直交する別軸のため統合しない。
 # default `enabled: true`（デフォルト ON）。false にすると 1 セッション 1 作業ツリーで動作する。
 multi_session:
   enabled: true                    # セッション別 worktree（default ON）。false で無効化
-  worktree_base: ".rite/worktrees" # セッション worktree のベース（issue-{N} サブディレクトリ）
+  worktree_base: ".claude/worktrees" # セッション worktree のベース（issue-{N} サブディレクトリ）
 
 # メトリクス
 metrics:
