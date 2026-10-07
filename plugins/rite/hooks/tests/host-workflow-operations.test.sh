@@ -264,7 +264,7 @@ class WorkflowContracts(unittest.TestCase):
         # Run the real 4.3 block: each guard must stop on its own failure instead of
         # handing an unreadable or relative path to the reviewers.
         blocks = re.findall(r"(?ms)^ ```bash\n(.*?)^ ```", load_part)
-        self.assertEqual(len(blocks), 1, "expected one 4.3 bash block")
+        self.assertEqual(len(blocks), 2, "expected common and tech-writer-specific 4.3 guards")
         load_code = "\n".join(line[1:] if line.startswith(" ") else line for line in blocks[0].splitlines())
 
         def run_load(plugin_root, cwd):
@@ -301,6 +301,89 @@ class WorkflowContracts(unittest.TestCase):
         self.assertNotIn("[review:error]", out)
         self.assertEqual(out.strip(), "[CONTEXT] SHARED_REVIEWER_PRINCIPLES=" + str((root / "plugins/rite/agents/_reviewer-base.md").resolve()))
         self.assertNotIn("絶対パスではありません", err)
+        prose_code = "\n".join(line[1:] if line.startswith(" ") else line for line in blocks[1].splitlines())
+
+        def run_prose(plugin_root, reviewer_type):
+            code = prose_code.replace("{plugin_root}", str(plugin_root)).replace("{reviewer_type}", reviewer_type)
+            return subprocess.run(["bash", "-c", code], cwd=str(self.fixture), capture_output=True, text=True, timeout=20)
+
+        result = run_prose(plugin, "tech-writer")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "[CONTEXT] PROSE_REVIEWER_PRINCIPLES=" + str(plugin / "references/prose-reasoning.md"))
+        no_prose = self.fixture / "no-prose"
+        no_prose.mkdir()
+        (no_prose / "scripts").mkdir()
+        (no_prose / "hooks").mkdir()
+        shutil.copy2(plugin / "scripts/pr-review-step.sh", no_prose / "scripts/pr-review-step.sh")
+        shutil.copy2(plugin / "hooks/control-char-neutralize.sh", no_prose / "hooks/control-char-neutralize.sh")
+        result = run_prose(no_prose, "tech-writer")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("[review:error]", result.stderr)
+        self.assertNotIn("PROSE_REVIEWER_PRINCIPLES=", result.stdout)
+        # Non-tech-writer reviews do not depend on the additional reference.
+        result = run_prose(no_prose, "application")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "")
+        unreadable = no_prose / "references/prose-reasoning.md"
+        unreadable.parent.mkdir()
+        unreadable.write_text("unreadable reference\n", encoding="utf-8")
+        unreadable.chmod(0)
+        try:
+            result = run_prose(no_prose, "tech-writer")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("[review:error]", result.stderr)
+        finally:
+            unreadable.chmod(0o600)
+        prose_row = next(line for line in pr_review.splitlines() if line.startswith("| `{prose_reviewer_principles}` |"))
+        for clause in ["tech-writer だけ", "全文読む", "読めなければ", "; ", "セクションごと省略", "通常・light・incremental・verification", "全文 inline しない", "既存の mandate"]:
+            self.assertIn(clause, prose_row)
+        prompt = (plugin / "skills/pr-review/references/reviewer-prompt-generator.md").read_text(encoding="utf-8")
+        self.assertEqual(prompt.count("{prose_reviewer_principles}"), 1)
+        prose_section = re.search(r"(?ms)^## 文書の論証と読み手の負担.*?(?=^## )", prompt).group()
+        self.assertIn("tech-writer 以外", prose_section)
+        self.assertIn("セクション全体を省略", prose_section)
+        # The ordinary template is retained in all existing review compositions.
+        selection = pr_review.split("**Template selection logic:**", 1)[1].split("**Placeholder embedding method:**", 1)[0]
+        self.assertIn("Both: this section's (4.5.1) verification template AND the normal template", selection)
+        self.assertIn("Normal template from ステップ 4.5 のみ", selection)
+        self.assertIn("{complexity_lane_mandate}", prompt)
+        self.assertIn("{cycle_scope_mandate}", prompt)
+        self.assertIn("{shared_reviewer_principles}", prompt)
+        self.assertIn("4 必須自問", prompt)
+        self.assertIn("references/prose-reasoning.md", handoff_part)
+        self.assertIn("名簿から外して続行しない", handoff_part)
+        profile = (plugin / "agents/tech-writer-reviewer.md").read_text(encoding="utf-8")
+        self.assertIn("Before starting any review, read that file from beginning to end", profile)
+        self.assertIn("raw output’s first `読取完了:`", profile)
+        self.assertIn("Step 1: Fact-Check All References", profile)
+        # Exact view extraction includes both language scopes, excluding wrapper/source.
+        reasoning = (plugin / "references/prose-reasoning.md").read_text(encoding="utf-8")
+        self.assertEqual(len(re.findall(r"(?m)^## 読み手用観点$", reasoning)), 1)
+        view = re.search(r"(?ms)^## 読み手用観点\n(.*?)(?=^## |\Z)", reasoning).group(1)
+        self.assertTrue(view.strip())
+        self.assertIn("### 言語に共通する観点", view)
+        self.assertIn("### 日本語の説明文だけに適用する観点", view)
+        self.assertNotIn("## 出典", view)
+        self.assertNotIn("文書の作成前点検と tech-writer", view)
+        readability = (plugin / "references/body-readability-check.md").read_text(encoding="utf-8")
+        extraction_blocks = [block for block in re.findall(r"(?ms)^```bash\n(.*?)^```", readability)
+                             if "# prose-reasoning-reader-view" in block]
+        self.assertEqual(len(extraction_blocks), 1)
+        extraction_code = extraction_blocks[0].replace("{plugin_root}", str(plugin))
+        result = subprocess.run(["bash", "-c", extraction_code], capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "## 読み手用観点\n" + view)
+        self.assertEqual(readability.count("\n{prose_reasoning_checks}\n"), 1)
+        # A second or empty section must fail, rather than injecting ambiguous criteria.
+        for label, content in [
+                ("duplicate", "## 読み手用観点\nfirst\n## 別節\nother\n## 読み手用観点\nsecond\n"),
+                ("empty", "## 読み手用観点\n\n## 出典\nsource\n"),
+                ("missing heading", "## 別節\ncontent\n")]:
+            unreadable.write_text(content, encoding="utf-8")
+            result = subprocess.run(["bash", "-c", extraction_blocks[0].replace("{plugin_root}", str(no_prose))],
+                                    capture_output=True, text=True, timeout=20)
+            self.assertNotEqual(result.returncode, 0, label)
+            self.assertEqual(result.stdout, "", label)
         row = next(line for line in pr_review.splitlines() if line.startswith("| `{shared_reviewer_principles}` |"))
         for clause in ["全文 inline しない", "SHARED_REVIEWER_PRINCIPLES=", "着手前に Read tool で先頭から末尾まで全文読む",
                        "offset / limit で分割して末尾まで", "読取完了: {絶対パス}", "named / 独立子の両経路で同じ"]:
