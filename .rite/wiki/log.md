@@ -5555,3 +5555,12 @@ T02:22:43+09:00 — review ingest (skip pages)
 ## 2026-10-05
 
 * **Skip**: [レビュー実行記録の検証結果](raw/reviews/20261004T183147Z-pr-3677.md) — 記録・検証機構は配布プラグインに実装済み。ドメイン経験則はない
+
+## 2026-10-07T00:54:37Z: 文書点検の記録の取り込み
+
+* **Skip**: [レビューの解消確認](raw/reviews/20261007T004219Z-pr-3708.md) — 新規のドメイン経験則なし。規則の正本と実行機構の説明を二重に保守しない。
+* **Skip**: [レビューでの未充足確認](raw/reviews/20261007T002754Z-pr-3708.md) — 実行機構の修正と少数の例文観測であり、原記録を保持する。
+* **Skip**: [修正結果](raw/fixes/20261007T003347Z-pr-3708.md) — 既存 CLI への移設と検証結果の記録。新規ドメイン経験則なし。
+* **lint:clean** — contradictions=0, stale=72, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0
+  - WIKI_CONTRADICTION_CHECK=complete; changed=0; screened=0; candidates=0; excluded=0; compared=0; elapsed_seconds=0; read_bytes=0
+  - ページ変更なしの自動比較。全675 Markdownページを静的検査し、全カテゴリの読取状態は成功。番号参照0件。陳腐化72件は情報値で、今回の変更による警告なし。
