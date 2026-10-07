@@ -119,6 +119,32 @@ for heading in '受入基準' '受入条件' '受け入れ条件' 'Acceptance Cr
   else fail "extract checkbox $heading (rc=$CHECK_RC out=$CHECK_STDOUT err=$CHECK_STDERR)"; fi
 done
 
+# Every supported boundary preserves the same ordered IDs and input bytes.
+for prefix in '###' '- [ ]' '- [x]' '- [X]' '* [ ]' '* [x]' '* [X]' '+ [ ]' '+ [x]' '+ [X]'; do
+  for suffix in ': title' ':title' '： title' '：title' ' title' ''; do
+    printf '## 受入条件\n%s AC-2%s\n%s AC-1%s\n' "$prefix" "$suffix" "$prefix" "$suffix" > "$TEST_DIR/body-boundary.md"
+    cp "$TEST_DIR/body-boundary.md" "$TEST_DIR/body-boundary.before"
+    run_check extract --body-file "$TEST_DIR/body-boundary.md"
+    if [ "$CHECK_RC" -eq 0 ] && [ "$CHECK_STDOUT" = 'AC-2,AC-1' ] \
+      && cmp -s "$TEST_DIR/body-boundary.md" "$TEST_DIR/body-boundary.before"; then
+      pass "extract: $prefix / '$suffix' は同じID集合、入力不変"
+    else fail "extract boundary $prefix / '$suffix' (rc=$CHECK_RC out=$CHECK_STDOUT err=$CHECK_STDERR)"; fi
+  done
+done
+# Under LC_ALL=C, sharing any UTF-8 byte with ： does not make a delimiter.
+for prefix in '###' '- [ ]'; do
+  for suffix in 'abc' '。title' '；title' 'Ｘtitle' '☚title'; do
+    printf '## 受入条件\n%s AC-1%s\n' "$prefix" "$suffix" > "$TEST_DIR/body-invalid-boundary.md"
+    expect_failure "extract: $prefix / '$suffix' は境界でない" malformed_ac_item extract --body-file "$TEST_DIR/body-invalid-boundary.md"
+  done
+done
+for prefix in '###' '- [ ]'; do
+  printf '## 受入条件\n%s AC-1: first\n%s AC-1：second\n' "$prefix" "$prefix" > "$TEST_DIR/body-colon-dup.md"
+  expect_failure "extract: $prefix のコロン字形が異なる重複を拒否" duplicate_ac_id extract --body-file "$TEST_DIR/body-colon-dup.md"
+done
+printf '## 受入条件\n### AC-1：heading\n- [x] AC-1: checkbox\n' > "$TEST_DIR/body-colon-mixed-dup.md"
+expect_failure "extract: 全角見出しと半角checkboxの重複を拒否" duplicate_ac_id extract --body-file "$TEST_DIR/body-colon-mixed-dup.md"
+
 printf '## 受入基準\n### AC-1: header\n- [ ] AC-1: checkbox\n' > "$TEST_DIR/body-mixed-dup.md"
 expect_failure "extract: 見出しとcheckboxを跨ぐ重複を拒否" duplicate_ac_id extract --body-file "$TEST_DIR/body-mixed-dup.md"
 for row in '- [ ] IDなしの条件' '- [ ] AC-X: 非数値' '### AC-2x: 壊れたID' '- AC-2: 非対応の箇条書き' '#### AC-2: 非対応の見出し深さ' '1. AC-2: 番号付き項目' '1. [ ] AC-2: 番号付きcheckbox' '## AC-2: 非対応の見出し深さ'; do

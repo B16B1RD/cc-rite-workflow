@@ -7,6 +7,7 @@ import copy
 import json
 import os
 from pathlib import Path
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -22,6 +23,46 @@ def check(condition, message):
     global checks
     assert condition, message
     checks += 1
+
+
+adoption = runpy.run_path(str(plugin / 'hooks/scripts/lib/review-adoption.py'))
+for prefix in ('### ', '- [ ] '):
+    for separator in (':', '：', ' ', ''):
+        for next_prefix in ('### ', '- [ ] '):
+            item = prefix + 'AC-1' + separator
+            continuation = ['Given: an empty NAME', 'When: tool runs', 'Then: exit 1']
+            body = ('## Acceptance Criteria\n' + '\n'.join([item, *continuation]) + '\n'
+                    + next_prefix + 'AC-2：independent caller\nThen: preserve NAME\n')
+            key = {'issue': 100, 'ref': 'AC-1', 'text': adoption['ac_contract'](body, 'AC-1')}
+            original = copy.deepcopy(key)
+            check(key['text'] == [item, *continuation], 'raw item and continuation exclude the next AC')
+            identity = adoption['contract_identity'](key)
+            changed_next = dict(key, text=adoption['ac_contract'](
+                body.replace('preserve NAME', 'normalize NAME'), 'AC-1'))
+            check(adoption['contract_identity'](changed_next) == identity, 'next AC is independent')
+            changed_selected = dict(key, text=adoption['ac_contract'](
+                body.replace('exit 1', 'exit 2'), 'AC-1'))
+            check(adoption['contract_identity'](changed_selected) != identity, 'selected continuation binds identity')
+            if prefix == '- [ ] ':
+                for mark in (' ', 'x', 'X'):
+                    marked = dict(key, text=adoption['ac_contract'](
+                        body.replace('- [ ] AC-1', f'- [{mark}] AC-1', 1), 'AC-1'))
+                    saved = copy.deepcopy(marked)
+                    check(marked['text'][0] == f'- [{mark}] AC-1' + separator, 'raw checkbox glyphs are retained')
+                    check(adoption['contract_identity'](marked) == identity, 'completion alone preserves identity')
+                    check(marked == saved, 'identity normalization never mutates its input')
+            if separator in (':', '：'):
+                changed_glyph = dict(key, text=adoption['ac_contract'](
+                    body.replace('AC-1' + separator, 'AC-1' + ('：' if separator == ':' else ':'), 1), 'AC-1'))
+                check(adoption['contract_identity'](changed_glyph) != identity, 'separator glyph remains contract text')
+            check(key == original, 'raw key is unchanged after all comparisons')
+for prefix in ('### ', '- [x] '):
+    for suffix in ('abc', '。見出し', '；見出し'):
+        item = prefix + 'AC-1' + suffix
+        check(adoption['ac_contract']('## Acceptance Criteria\n' + item + '\nThen: exit 1', 'AC-1') == [],
+              'unsupported boundary does not select an AC')
+        key = {'text': [item]}
+        check(adoption['contract_identity'](key) == key, 'unsupported boundary is not normalized')
 
 
 def git(repo, *args):
@@ -436,10 +477,14 @@ request_of(reconcile(accepted), 'stale')
 issue_body.write_text(original_issue)
 # Supported AC items include multiline headings and checkbox continuations.
 # A different AC or an example outside the section is not this contract.
-for heading in ('### AC-1: reject empty input', '- [ ] AC-1: reject empty input'):
+for heading, next_heading in (
+        (prefix + 'AC-1' + separator, next_prefix + 'AC-2：independent caller')
+        for prefix in ('### ', '- [ ] ')
+        for separator in (': reject empty input', '：reject empty input', ' reject empty input', '')
+        for next_prefix in ('### ', '- [ ] ')):
     multiline = ('## 4. Acceptance Criteria\n\n' + heading + '\n'
                  'Given: an empty NAME\nWhen: tool runs\nThen: exit 1\n'
-                 '\n### AC-2: independent caller\nThen: preserve NAME\n'
+                 '\n' + next_heading + '\nThen: preserve NAME\n'
                  '\n## Notes\nAC-1 is used by the caller\n')
     issue_body.write_text(multiline)
     ac_extract = subprocess.run(['bash', str(plugin / 'scripts/acceptance-criteria-check.sh'),
@@ -447,7 +492,11 @@ for heading in ('### AC-1: reject empty input', '- [ ] AC-1: reject empty input'
     check(ac_extract.returncode == 0 and ac_extract.stdout.strip() == 'AC-1,AC-2', ac_extract)
     pending = request_of(reconcile(conflict))
     multiline_answer = dict(conflict, reconciliation=answer(pending))
-    check(reconcile(multiline_answer)['reconciliation'] == [], 'unchanged multiline AC reuses answer')
+    unchanged = reconcile(multiline_answer)
+    check(unchanged['reconciliation'] == [], 'unchanged multiline AC reuses answer')
+    check(unchanged['history']['entries'][-1]['contract_key']['text'] ==
+          [heading, 'Given: an empty NAME', 'When: tool runs', 'Then: exit 1'],
+          'history retains the selected item and continuation with their original glyphs')
     for before, after in (('an empty NAME', 'a missing NAME'), ('tool runs', 'caller runs'),
                           ('exit 1', 'exit 2')):
         issue_body.write_text(multiline.replace(before, after))
@@ -542,7 +591,7 @@ for source, body_path in (('issue', issue_body), ('pr', pr_body)):
 
 
 # Completion metadata does not change the guarantee matched across PRs.
-original_issue = issue_body.read_text()
+original_issue = issue_body.read_text().replace('AC-1:', 'AC-1：')
 original_issue = original_issue.replace('- [ ] AC-2:',
     'Given: an empty NAME\nWhen: tool runs\nThen: exit 1\n'
     '\n```text\n- [ ] AC-1: literal example\n```\n- [ ] AC-2:')
@@ -550,7 +599,7 @@ for saved_mark in (' ', 'x', 'X'):
     history_dir = work / f'completion-history-{ord(saved_mark)}'
     history_dir.mkdir()
     history_args = ['--history-dir', str(history_dir), '--pr', '20', '--kind', 'sweep', '--issue', '100']
-    body = original_issue.replace('- [ ] AC-1:', f'- [{saved_mark}] AC-1:', 1)
+    body = original_issue.replace('- [ ] AC-1：', f'- [{saved_mark}] AC-1：', 1)
     issue_body.write_text(body)
     completed = reconcile(rec(present=False))
     check(completed['decisions'][0]['exit'] == 'RESOLVED', completed)
@@ -559,14 +608,14 @@ for saved_mark in (' ', 'x', 'X'):
     before = path.read_bytes()
     history_args[history_args.index('--pr') + 1] = '21'
     for current_mark in (' ', 'x', 'X'):
-        current = body.replace(f'- [{saved_mark}] AC-1:', f'- [{current_mark}] AC-1:', 1)
+        current = body.replace(f'- [{saved_mark}] AC-1：', f'- [{current_mark}] AC-1：', 1)
         issue_body.write_text(current)
         pending = request_of(reconcile(rec()))
         check('completed_contract' in pending['signals'], pending)
         recorded = rec(reconciliation=answer(pending, 'recurrence'))
         check(reconcile(recorded)['reconciliation'] == [], 'parent recurrence answer is reusable')
-        issue_body.write_text(current.replace(f'- [{current_mark}] AC-1:',
-                                             f'- [{"x" if current_mark == " " else " "}] AC-1:', 1))
+        issue_body.write_text(current.replace(f'- [{current_mark}] AC-1：',
+                                             f'- [{"x" if current_mark == " " else " "}] AC-1：', 1))
         stale = request_of(reconcile(recorded), 'stale')
         check('completed_contract' in stale['signals'], stale)
         check(reconcile(rec(reconciliation=answer(stale, 'recurrence')))['reconciliation'] == [],

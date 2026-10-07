@@ -486,7 +486,7 @@ mode=$(jq -r '.mode // "default"' "$queue_file" 2>/dev/null || echo "default")
 processed=$(jq -rc '.issues' "$queue_file" 2>/dev/null || echo "[]")
 failed=$(jq -rc '.failed // []' "$queue_file" 2>/dev/null || echo "[]")
 outstanding=$(jq -rc '.outstanding // []' "$queue_file" 2>/dev/null || echo "[]")
-rm -f "$queue_file"
+rm -f "$queue_file" "${queue_file%.json}.watchdog"
 echo "[CONTEXT] RUN_DONE; processed=$processed; failed=$failed; outstanding=$outstanding; mode=$mode"
 ```
 

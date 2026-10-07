@@ -54,7 +54,7 @@ Codex の `spawn_agent` では named reviewer の frontmatter `model: inherit` �
 - 制約（読取専用・時刻記録・結果形式）、差分、仕様、絶対 workdir
 - pr-review 4.5 の placeholder 表が定義する `{shared_reviewer_principles}`（4.5 テンプレートと 4.5.1 検証テンプレートの双方の出現箇所）は named 経路と同じく `_reviewer-base.md` の絶対パス行（読取義務付き）で渡す。その他の placeholder（差分・仕様・CI 状態・Wiki 等）は 4.5 のまま渡す。制約・絶対 workdir は上記の項目として別途明示する
 
-親は回収ゲートで申告行を読み、渡したパス集合と一致することを確認する。申告行が無い、または 1 件でも欠ける raw 出力は未読とみなし、当該 reviewer を失敗として既存の 1 回再試行を適用する。再失敗は incomplete として停止する。申告は helper ではなく親が確認する。named agent 経路の子も profile だけを system prompt で受け取り、`_reviewer-base.md` は同じ絶対パス行で受け取って読むため、その 1 パスの申告を同じ規則で確認する。
+親は回収ゲートで申告行を読み、渡したパス集合と一致することを確認する。申告行が無い、または 1 件でも欠ける raw 出力は未読とみなし、当該 reviewer を失敗として既存の 1 回再試行を適用する。再失敗は incomplete として停止する。申告は helper ではなく親が確認する。named agent 経路の子も profile だけを system prompt で受け取り、`_reviewer-base.md` は同じ絶対パス行で受け取って読むため、tech-writer 以外はその 1 パスの申告を同じ規則で確認する。tech-writer は named / 独立子とも、追加で渡す `references/prose-reasoning.md` の絶対パスを着手前に全文読み、同じ先頭行の `読取完了:` に `; ` 区切りで申告する。親は共通原則とこの参照（独立子は profile も）の全パスを照合する。読取失敗は既存の失敗・再試行経路に従い、名簿から外して続行しない。
 
 ### 回収ゲート
 

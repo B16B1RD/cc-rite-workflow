@@ -76,6 +76,14 @@ else:
     original = '前文\r\n## 5. Acceptance Criteria\r\n- [ ] AC-1: A\r\n- [ ] B\r\n### AC-3: C\r\n- [ ] D\r\n```\r\n- [ ] 例\r\n```\r\n## Other\r\n- [ ] untouched\r\n'
     result, body, calls = run(original)
     check(result.returncode == 0 and body == original.replace('- [ ] B', '- [ ] AC-2: B').replace('- [ ] D', '- [ ] AC-4: D'), 'existing IDs, holes, CRLF, fence, headings and outside text are preserved')
+    original = '前文\r\n## 受入条件\r\n- [ ] A\r\n- [x] AC-1：既存\r\n### AC-3： 見出し\r\n- [ ] B\r\n+ [X] AC-2：完了\r\n'
+    result, body, calls = run(original)
+    expected = original.replace('- [ ] A', '- [ ] AC-4: A').replace('- [ ] B', '- [ ] AC-5: B')
+    check(result.returncode == 0 and body == expected and calls == ['issue view', 'issue edit', 'issue view', 'issue comment'], 'fullwidth IDs are reserved before missing IDs, retaining original glyphs and CRLF')
+    check('付与 ID: AC-4,AC-5' in (work / 'comment').read_text(), 'assignment record contains only newly assigned IDs')
+    original = '## 受入条件\n### AC-1：見出し\n* [ ] AC-2： 未確認\n- [x] AC-3：完了\n+ [X] AC-4：完了\n'
+    result, body, calls = run(original)
+    check(result.returncode == 0 and body == original and calls == ['issue view'] and not (work / 'comment').exists(), 'complete fullwidth IDs preserve body glyphs without assignment or writes')
     for original, expected in [('## 受入条件\n- [ ] A\n- [ ] B\n', '## 受入条件\n- [ ] AC-1: A\n- [ ] AC-2: B\n'), ('## 受入条件\n- [ ] AC-1: A\n- [ ] B\n', '## 受入条件\n- [ ] AC-1: A\n- [ ] AC-2: B\n')]:
         result, body, calls = run(original, byte_count_style='padded')
         check(result.returncode == 0 and body == expected and calls == ['issue view', 'issue edit', 'issue view', 'issue comment'], 'BSD padded byte count preserves ID assignment and existing IDs')

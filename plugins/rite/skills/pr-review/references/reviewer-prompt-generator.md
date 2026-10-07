@@ -52,6 +52,10 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 <!-- 全 reviewer 共通の原則 (`_reviewer-base.md`) の絶対パスと着手前の全文読取義務・読取完了申告 (ステップ 4.5 の placeholder 表)。本文は inline しない。reviewer 固有の identity は named subagent の system prompt (agents/{reviewer_type}-reviewer.md) として届く -->
 {shared_reviewer_principles}
 
+## 文書の論証と読み手の負担（tech-writer のみ）
+<!-- tech-writer 以外は placeholder とこのセクション全体を省略する。light / incremental / verification でも通常テンプレートの本読取義務を保持する。 -->
+{prose_reviewer_principles}
+
 ## Doc-Heavy PR Mode (Conditional — 適用時のみ非空)
 <!-- reviewer_type == tech-writer かつ doc_heavy_pr == true のときのみ内容が入る。それ以外は空文字列。 -->
 {doc_heavy_mode_instructions}
