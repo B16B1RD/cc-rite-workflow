@@ -32,6 +32,17 @@ Past version sections carry none either — they have already been stripped.
 
 ## [Unreleased]
 
+## [0.20.2] - 2026-10-07
+
+### Added
+
+- **Checks for reasoning and reader load in documents** — The new shared reference `prose-reasoning.md` defines checks for unsupported certainty, cause and effect, claim scope, unclear references, second-person address and literally translated metaphors. The reader check before creating an Issue or PR embeds its reader section in the reader prompt, and the tech-writer reviewer reads the whole reference; the review stops if the reference cannot be read.
+
+### Fixed
+
+- **Acceptance criteria headings with a full-width colon are read** — A heading such as `### AC-1：…` now yields the same acceptance criterion ID as a half-width colon, so the acceptance check no longer stops on it.
+- **`batch-run` removes the consecutive-stop counter file on completion** — When all Issues complete, the counter file is deleted along with the other run state, so it no longer accumulates in the state directory.
+
 ## [0.20.1] - 2026-10-06
 
 ### Added
@@ -1297,6 +1308,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.20.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.20.1...v0.20.2
 [0.20.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.5...v0.20.0
 [0.19.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.4...v0.19.5
