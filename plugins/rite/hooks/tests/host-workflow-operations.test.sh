@@ -312,6 +312,10 @@ class WorkflowContracts(unittest.TestCase):
         self.assertEqual(result.stdout.strip(), "[CONTEXT] PROSE_REVIEWER_PRINCIPLES=" + str(plugin / "references/prose-reasoning.md"))
         no_prose = self.fixture / "no-prose"
         no_prose.mkdir()
+        (no_prose / "scripts").mkdir()
+        (no_prose / "hooks").mkdir()
+        shutil.copy2(plugin / "scripts/pr-review-step.sh", no_prose / "scripts/pr-review-step.sh")
+        shutil.copy2(plugin / "hooks/control-char-neutralize.sh", no_prose / "hooks/control-char-neutralize.sh")
         result = run_prose(no_prose, "tech-writer")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("[review:error]", result.stderr)

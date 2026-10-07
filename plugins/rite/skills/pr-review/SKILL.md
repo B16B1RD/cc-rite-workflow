@@ -947,15 +947,7 @@ rationale: references/design-rationale.md#verification-inline-ban
 rationale: references/design-rationale.md#shared-principles-hybrid
 4. **tech-writer の追加読取元を確定する**: `reviewer_type == tech-writer` のときだけ次を実行し、`PROSE_REVIEWER_PRINCIPLES=` の絶対パスを保持する。非ゼロなら `[review:error]` で停止し、名簿を減らさない。他の reviewer ではこの事前検査を実行しない。named / 独立子とも同じ全文読取義務を渡す。
  ```bash
- if [ "{reviewer_type}" = "tech-writer" ]; then
-   prose_plugin_root=$(cd "{plugin_root}" && pwd -P) || { echo '[review:error] prose reference root cannot be resolved' >&2; exit 1; }
-   prose_reference="$prose_plugin_root/references/prose-reasoning.md"
-   if [ ! -f "$prose_reference" ] || [ ! -r "$prose_reference" ] || [ ! -s "$prose_reference" ]; then
-     echo "[review:error] prose reference cannot be read: $prose_reference" >&2
-     exit 1
-   fi
-   printf '[CONTEXT] PROSE_REVIEWER_PRINCIPLES=%s\n' "$prose_reference"
- fi
+ bash {plugin_root}/scripts/pr-review-step.sh prose-principles --reviewer-type "{reviewer_type}"
  ```
 **並列（MUST）**: 利用可能な子枠内で同じ組の Task を 1 メッセージで invoke する。全名簿が枠を超える場合は組に分け、完了した枠を解放して次の組を実行する。全組回収まで統合・修正へ進まない（失敗した Task の retry は 4.4 に従う）。各 agent に diff / 変更ファイル / `{issue_spec}` / `{shared_reviewer_principles}` を渡す。tech-writer には `{prose_reviewer_principles}` も渡す。
 

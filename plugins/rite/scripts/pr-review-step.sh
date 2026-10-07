@@ -32,6 +32,7 @@
 #   bash pr-review-step.sh wiki-query-config
 #   bash pr-review-step.sh wiki-apply-check --keywords KEYWORDS
 #   bash pr-review-step.sh shared-principles
+#   bash pr-review-step.sh prose-principles --reviewer-type REVIEWER_TYPE
 #   bash pr-review-step.sh spawn-at
 #   bash pr-review-step.sh rejected-ledger --owner-repo OWNER_REPO --pr PR_NUMBER
 #   bash pr-review-step.sh tmp-dir
@@ -532,6 +533,17 @@ base="$plugin_root/agents/_reviewer-base.md"
 [ -r "$base" ] && grep -q '^## Output Format' "$base" \
   || { echo "ERROR: 共通レビュー原則を読めません: $base" >&2; echo "[review:error]"; exit 1; }
 echo "[CONTEXT] SHARED_REVIEWER_PRINCIPLES=$base"
+}
+
+# --- prose-principles ------------------------------------------------------------
+step_prose_principles() {
+[ "$reviewer_type" = "tech-writer" ] || return 0
+prose_reference="$plugin_root/references/prose-reasoning.md"
+if [ ! -f "$prose_reference" ] || [ ! -r "$prose_reference" ] || [ ! -s "$prose_reference" ]; then
+  echo "[review:error] prose reference cannot be read: $prose_reference" >&2
+  exit 1
+fi
+printf '[CONTEXT] PROSE_REVIEWER_PRINCIPLES=%s\n' "$prose_reference"
 }
 
 # --- spawn-at --------------------------------------------------------------------
@@ -1308,6 +1320,7 @@ low_medium=""
 low=""
 content_file=""
 pending_id=""
+reviewer_type=""
 observation=""
 issue_file=""
 cycle_id=""
@@ -1331,6 +1344,7 @@ while [ "$#" -gt 0 ]; do
   esac
   case "$1" in
     --args) args=$2 ;;
+    --reviewer-type) reviewer_type=$2 ;;
     --owner-repo) owner_repo=$2 ;;
     --issue) issue_number=$2 ;;
     --pr) pr_number=$2 ;;
@@ -1433,6 +1447,7 @@ require() {
       low) opt=--low ;;
       content_file) opt=--content-file ;;
       pending_id) opt=--pending-id ;;
+      reviewer_type) opt=--reviewer-type ;;
       observation) opt=--observation ;;
       issue_file) opt=--issue-file ;;
       cycle_id) opt=--cycle-id ;;
@@ -1466,6 +1481,7 @@ case "$subcommand" in
   wiki-query-config) step_wiki_query_config ;;
   wiki-apply-check) require keywords; step_wiki_apply_check ;;
   shared-principles) step_shared_principles ;;
+  prose-principles) require reviewer_type; step_prose_principles ;;
   spawn-at) step_spawn_at ;;
   rejected-ledger) require pr_number owner_repo; step_rejected_ledger ;;
   tmp-dir) step_tmp_dir ;;
