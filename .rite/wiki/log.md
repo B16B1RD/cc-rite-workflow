@@ -5564,3 +5564,10 @@ T02:22:43+09:00 — review ingest (skip pages)
 * **lint:clean** — contradictions=0, stale=72, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0
   - WIKI_CONTRADICTION_CHECK=complete; changed=0; screened=0; candidates=0; excluded=0; compared=0; elapsed_seconds=0; read_bytes=0
   - ページ変更なしの自動比較。全675 Markdownページを静的検査し、全カテゴリの読取状態は成功。番号参照0件。陳腐化72件は情報値で、今回の変更による警告なし。
+
+## 2026-10-07T01:30:08Z: リリース準備レビューの取り込み
+
+* **Skip**: [リリース準備レビュー](raw/reviews/20261007T012106Z-pr-3710.md) — 版表記と変更履歴の整合確認であり、新規ドメイン経験則なし。
+* **lint:clean** — contradictions=0, stale=72, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0
+  - WIKI_CONTRADICTION_CHECK=complete; changed=0; screened=0; candidates=0; excluded=0; compared=0; elapsed_seconds=0; read_bytes=0
+  - ページ変更なしの自動比較。全675 Markdownページを静的検査し、読取状態は全カテゴリ成功。番号参照0件。陳腐化72件は情報値。
