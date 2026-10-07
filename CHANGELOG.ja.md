@@ -30,6 +30,17 @@ blocking gate として実行する。
 
 ## [Unreleased]
 
+## [0.20.2] - 2026-10-07
+
+### 追加
+
+- **文書の論証と読み手の負担の点検** — 新しい共有の参考資料 `prose-reasoning.md` が、根拠のない断定・因果・主張の範囲・指示語の曖昧さ・二人称の呼びかけ・翻訳調の比喩の点検規則を定める。Issue・PR の作成前の読み手点検はその読み手用の節を読み手の指示に埋め込み、tech-writer reviewer は全文を読む。参考資料を読めなければレビューを止める。
+
+### 修正
+
+- **全角コロンの受入条件の見出しを読めるようにする** — `### AC-1：…` のような見出しから、半角コロンと同じ受入条件の ID を得る。受入条件の確認がこの見出しで止まらない。
+- **`batch-run` の完了時に連続停止カウンタのファイルも消す** — 全件完了時に、ほかの実行状態とあわせてカウンタのファイルを削除し、state ディレクトリに溜まらないようにする。
+
 ## [0.20.1] - 2026-10-06
 
 ### 追加
@@ -1294,6 +1305,7 @@ v0.4.0 では値は silent に無視されます。機能的な代替はあり�
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.20.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.20.1...v0.20.2
 [0.20.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.5...v0.20.0
 [0.19.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.19.4...v0.19.5
