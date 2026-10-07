@@ -945,7 +945,19 @@ rationale: references/design-rationale.md#verification-inline-ban
  bash {plugin_root}/scripts/pr-review-step.sh shared-principles
  ```
 rationale: references/design-rationale.md#shared-principles-hybrid
-**並列（MUST）**: 利用可能な子枠内で同じ組の Task を 1 メッセージで invoke する。全名簿が枠を超える場合は組に分け、完了した枠を解放して次の組を実行する。全組回収まで統合・修正へ進まない（失敗した Task の retry は 4.4 に従う）。各 agent に diff / 変更ファイル / `{issue_spec}` / `{shared_reviewer_principles}` を渡す。
+4. **tech-writer の追加読取元を確定する**: `reviewer_type == tech-writer` のときだけ次を実行し、`PROSE_REVIEWER_PRINCIPLES=` の絶対パスを保持する。非ゼロなら `[review:error]` で停止し、名簿を減らさない。他の reviewer ではこの事前検査を実行しない。named / 独立子とも同じ全文読取義務を渡す。
+ ```bash
+ if [ "{reviewer_type}" = "tech-writer" ]; then
+   prose_plugin_root=$(cd "{plugin_root}" && pwd -P) || { echo '[review:error] prose reference root cannot be resolved' >&2; exit 1; }
+   prose_reference="$prose_plugin_root/references/prose-reasoning.md"
+   if [ ! -f "$prose_reference" ] || [ ! -r "$prose_reference" ] || [ ! -s "$prose_reference" ]; then
+     echo "[review:error] prose reference cannot be read: $prose_reference" >&2
+     exit 1
+   fi
+   printf '[CONTEXT] PROSE_REVIEWER_PRINCIPLES=%s\n' "$prose_reference"
+ fi
+ ```
+**並列（MUST）**: 利用可能な子枠内で同じ組の Task を 1 メッセージで invoke する。全名簿が枠を超える場合は組に分け、完了した枠を解放して次の組を実行する。全組回収まで統合・修正へ進まない（失敗した Task の retry は 4.4 に従う）。各 agent に diff / 変更ファイル / `{issue_spec}` / `{shared_reviewer_principles}` を渡す。tech-writer には `{prose_reviewer_principles}` も渡す。
 
 
 **Error handling:**
@@ -960,7 +972,7 @@ If the following issues occur with the sub-agent approach:
 
 ### 4.3.1 Task Tool Sub-Agent Invocation
 
-ホストに named Agent/Task が無い場合は [Host workflow operations](../../references/host-workflow-operations.md#独立-reviewer) の絶対パスと読取義務の明示による独立子を使う。これは未登録 named agent の無条件 fallback ではない。起動前に選定名簿を固定し、実際の親/子 ID・開始/終了時刻・raw 完了出力を保持する。必要な独立性または並列性を作れなければ `[review:error]`。placeholder は named 経路と同じく 4.5 のまま渡す（`{shared_reviewer_principles}` も named 経路と同じ絶対パス行）。独立子には加えて `agents/{reviewer_type}-reviewer.md` の絶対パスを同じ読取義務・読取完了申告の対象として渡す（named 経路は profile を system prompt で受け取る）。
+ホストに named Agent/Task が無い場合は [Host workflow operations](../../references/host-workflow-operations.md#独立-reviewer) の絶対パスと読取義務の明示による独立子を使う。これは未登録 named agent の無条件 fallback ではない。起動前に選定名簿を固定し、実際の親/子 ID・開始/終了時刻・raw 完了出力を保持する。必要な独立性または並列性を作れなければ `[review:error]`。placeholder は named 経路と同じく 4.5 のまま渡す（`{shared_reviewer_principles}` も named 経路と同じ絶対パス行）。tech-writer の `{prose_reviewer_principles}` も named 経路と同じ絶対パス・全文読取義務・先頭行の申告で渡す。独立子には加えて `agents/{reviewer_type}-reviewer.md` の絶対パスを同じ読取義務・読取完了申告の対象として渡す（named 経路は profile を system prompt で受け取る）。
 
 **⚠️ IMPORTANT — Named Subagent Invocation**: `rite:{reviewer_type}-reviewer` で **named subagent** として呼ぶ。
 rationale: references/design-rationale.md#named-subagent-and-foreground
@@ -1067,6 +1079,7 @@ Determine the error type from the completion notification (failure payload or ab
 | `{issue_spec}` | Issue specification obtained in ステップ 1.3.1 | Content of the "仕様詳細" section (if empty, write "仕様情報なし") |
 | `{change_intelligence_summary}` | Change Intelligence Summary from ステップ 1.2.6 | One-paragraph summary of change type, file classification, and focus area |
 | `{shared_reviewer_principles}` | ステップ 4.3 step 3 の `SHARED_REVIEWER_PRINCIPLES=`（`_reviewer-base.md` の絶対パス） | **全文 inline しない**。絶対パスを埋めた次の指示を渡す: 「共通レビュー原則は `{絶対パス}` にある。着手前に Read tool で先頭から末尾まで全文読むこと（1 回で読み切れなければ offset / limit で分割して末尾まで読む）。raw 出力の先頭行に `読取完了: {絶対パス}` と書くこと」。独立子は profile の絶対パスも `; ` 区切りで同じ行に並べる。named / 独立子の両経路で同じ。4.5 テンプレートと 4.5.1 検証テンプレートの双方の出現箇所に適用する |
+| `{prose_reviewer_principles}` | ステップ 4.3 step 4 の `PROSE_REVIEWER_PRINCIPLES=`（`references/prose-reasoning.md` の絶対パス） | **tech-writer だけ**: 「文書の論証と読み手の負担の規則は `{絶対パス}` にある。着手前に Read tool で先頭から末尾まで全文読むこと（必要なら offset / limit で分割する）。読めなければ失敗を報告して停止し、記憶や外部取得で代用しない。raw 出力の先頭行の `読取完了:` に、この絶対パスを共通原則のパスと `; ` 区切りで追記すること」を渡す。独立子は profile も同じ行に列挙する。他の reviewer は空文字列にし、「文書の論証と読み手の負担」セクションごと省略する。通常・light・incremental・verification の全組合せで 4.5 の通常テンプレートを通して渡す。全文 inline しない。既存の mandate・共通原則・採否ゲートを置換しない |
 | `{change_summary}` | Scale information from ステップ 1.2.1 | Used only for large diffs. Change summary table |
 | `{doc_heavy_pr}` | ステップ 1.2.7 result | Boolean flag (`true` / `false`). Inject only when reviewer is `tech-writer`. If `false` or reviewer != tech-writer, set to empty string |
 | `{doc_heavy_mode_instructions}` | `agents/tech-writer-reviewer.md` `## Doc-Heavy PR Mode (Conditional)` section | **Conditional extraction**: Only populated when `reviewer_type == tech-writer` AND `{doc_heavy_pr} == true`. Extract the entire section from `## Doc-Heavy PR Mode (Conditional)` heading down to (but excluding) the next `##` heading. Otherwise set to empty string |
