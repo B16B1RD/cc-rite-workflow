@@ -678,12 +678,19 @@ for a in "\$@"; do
 done
 if [ "\$is_patch" = 1 ]; then
   echo PATCH >> "$dir/gh.class"
-  cat > "$dir/patch-body.txt"
+  for b in "\$@"; do case "\$b" in body=@*) cp "\${b#body=@}" "$dir/patched.md" ;; esac; done
+  [ -f "$dir/patched.md" ] && jq -n --rawfile b "$dir/patched.md" '{body:\$b}' > "$dir/patch-body.txt"
+  [ "\${PATCH_RC:-0}" = 0 ] && echo '{"id":4242}'
   exit \${PATCH_RC:-0}
 fi
 case "\$1 \$2" in
   "repo view") echo GET_REPO >> "$dir/gh.class"; echo "testowner/testrepo"; exit 0 ;;
 esac
+if [ -f "$dir/patched.md" ] && [[ "\$url" == */issues/comments/* ]]; then
+  echo VERIFY >> "$dir/gh.class"
+  jq -n --rawfile b "$dir/patched.md" '{body:\$b}'
+  exit 0
+fi
 echo GET >> "$dir/gh.class"
 echo "\$url" >> "$dir/gh.urls"
 case "\$url" in
@@ -712,7 +719,7 @@ run_hook_cap() {
   return $rc
 }
 
-echo "T-01: 3-transform gated phase → gh log is GET 1 + PATCH 1 exactly"
+echo "T-01: 3-transform gated phase → gh log is GET 1 + PATCH 1 + verify re-GET 1 exactly"
 dir_n01="$TEST_DIR/n01"
 git init -q "$dir_n01"
 mkdir -p "$dir_n01/.rite/work-memory"
@@ -727,16 +734,17 @@ run_hook_cap "$dir_n01" || rc_n01=$?
 get_n01=$(grep -c '^GET$' "$dir_n01/gh.class" 2>/dev/null || true); : "${get_n01:=0}"
 patch_n01=$(grep -c '^PATCH$' "$dir_n01/gh.class" 2>/dev/null || true); : "${patch_n01:=0}"
 list_n01=$(grep -c '/issues/42/comments' "$dir_n01/gh.urls" 2>/dev/null || true); : "${list_n01:=0}"
+verify_n01=$(grep -c '^VERIFY$' "$dir_n01/gh.class" 2>/dev/null || true); : "${verify_n01:=0}"
 lsp_n01=$(jq -r '.last_synced_phase // empty' "$(state_file_path "$dir_n01")")
 stdout01=$(cat "$dir_n01/hook.stdout" 2>/dev/null)
-obs01=$(printf '%s\n' "$stdout01" | grep -c '^status=success round_trips=2$' || true); : "${obs01:=0}"
-if [ "$get_n01" = "1" ] && [ "$patch_n01" = "1" ] && [ "$list_n01" = "0" ] && [ "$lsp_n01" = "implement" ]; then
-  pass "T-01: gated phase GET 1 + PATCH 1 (no list GET), last_synced_phase=implement"
+obs01=$(printf '%s\n' "$stdout01" | grep -c '^status=success round_trips=3$' || true); : "${obs01:=0}"
+if [ "$get_n01" = "1" ] && [ "$patch_n01" = "1" ] && [ "$verify_n01" = "1" ] && [ "$list_n01" = "0" ] && [ "$lsp_n01" = "implement" ]; then
+  pass "T-01: gated phase GET 1 + PATCH 1 + verify re-GET 1 (no list GET), last_synced_phase=implement"
 else
-  fail "T-01: GET=$get_n01 PATCH=$patch_n01 list=$list_n01 lsp=$lsp_n01 class=$(cat "$dir_n01/gh.class" 2>/dev/null) log=$(cat "$dir_n01/gh.log" 2>/dev/null)"
+  fail "T-01: GET=$get_n01 PATCH=$patch_n01 VERIFY=$verify_n01 list=$list_n01 lsp=$lsp_n01 class=$(cat "$dir_n01/gh.class" 2>/dev/null) log=$(cat "$dir_n01/gh.log" 2>/dev/null)"
 fi
 if [ "$obs01" = "1" ] && [ "$rc_n01" -eq 0 ]; then
-  pass "T-01b: stdout has status=success round_trips=2 (1 line), exit 0"
+  pass "T-01b: stdout has status=success round_trips=3 (1 line), exit 0"
 else
   fail "T-01b: expected obs line once. obs=$obs01 rc=$rc_n01 stdout=$stdout01"
 fi

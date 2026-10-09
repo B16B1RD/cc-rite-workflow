@@ -13,6 +13,9 @@ patched="${RITE_TEST_WM_FAIL:-/nonexistent}.patched"
 if [ "$fail" = refetch ] && [ -f "$patched" ]; then
   case "$*" in
     *"issues/comments/1 -X PATCH"*) ;;
+    # the helper's own post-PATCH verification read (no --jq) is not the read under test
+    *issues/*comments*--jq*) echo "HTTP 502: Bad Gateway" >&2; exit 1 ;;
+    *issues/comments/1) ;;
     *issues/*comments*) echo "HTTP 502: Bad Gateway" >&2; exit 1 ;;
   esac
 fi
@@ -24,8 +27,13 @@ case "$*" in
     jq -n --rawfile b "$RITE_TEST_WM_BODY" '{id: 1, body: $b}' ;;
   *"issues/comments/1 -X PATCH"*)
     [ "$fail" = patch ] && { echo "HTTP 422: Validation Failed" >&2; exit 1; }
-    jq -r .body > "$RITE_TEST_WM_BODY.new" && mv "$RITE_TEST_WM_BODY.new" "$RITE_TEST_WM_BODY" || exit 1
-    if [ "$fail" = refetch ]; then : > "$patched"; fi ;;
-  *issues/comments/1*) [ -f "$RITE_TEST_WM_BODY" ] && cat "$RITE_TEST_WM_BODY" ;;
+    # the helper sends the body as `-F body=@file`; the response is the updated comment
+    for a in "$@"; do
+      case "$a" in body=@*) cp "${a#body=@}" "$RITE_TEST_WM_BODY.new" && mv "$RITE_TEST_WM_BODY.new" "$RITE_TEST_WM_BODY" || exit 1 ;; esac
+    done
+    if [ "$fail" = refetch ]; then : > "$patched"; fi
+    echo '{"id": 1}' ;;
+  *--jq*issues/comments/1*|*issues/comments/1*--jq*) [ -f "$RITE_TEST_WM_BODY" ] && cat "$RITE_TEST_WM_BODY" ;;
+  *issues/comments/1*) [ -f "$RITE_TEST_WM_BODY" ] && jq -n --rawfile b "$RITE_TEST_WM_BODY" '{id: 1, body: $b}' ;;
   *) exit 1 ;;
 esac

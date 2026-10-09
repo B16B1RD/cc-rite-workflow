@@ -477,7 +477,7 @@ EOF
 }
 
 # ─── T-03 / T-04: update は status=/exit 0 のまま、gh は GET 1 + PATCH 1 ───
-echo "T-03/T-04: update emits status=success exit 0; gh is GET 1 + PATCH 1 (no verify GET)"
+echo "T-03/T-04: update emits status=success exit 0; gh is GET 2 (body + verify re-GET) + PATCH 1"
 dir_t03="$TEST_DIR/t03"
 mkdir -p "$dir_t03/bin"
 git -C "$dir_t03" init -q
@@ -496,13 +496,18 @@ for a in "\$@"; do
 done
 if [ "\$is_patch" = 1 ]; then
   echo PATCH >> "$GH_CLASS_T03"
-  cat >/dev/null
+  for b in "\$@"; do case "\$b" in body=@*) cp "\${b#body=@}" "$dir_t03/patched.md" ;; esac; done
+  echo '{"id":1}'
   exit 0
 fi
 case "\$1 \$2" in
   "repo view") echo GET_REPO >> "$GH_CLASS_T03"; echo "testowner/testrepo"; exit 0 ;;
 esac
 echo GET >> "$GH_CLASS_T03"
+if [ -f "$dir_t03/patched.md" ] && [[ "\$*" == */issues/comments/* ]]; then
+  jq -n --rawfile b "$dir_t03/patched.md" '{body:\$b}'
+  exit 0
+fi
 case "\$*" in
   *"/issues/comments/4242"*)
     cat "$dir_t03/wm-body.md"
@@ -532,10 +537,18 @@ get_n=$(grep -c '^GET$' "$GH_CLASS_T03" 2>/dev/null || true)
 patch_n=$(grep -c '^PATCH$' "$GH_CLASS_T03" 2>/dev/null || true)
 list_n=$(grep -c 'UNEXPECTED_LIST_GET' "$GH_CLASS_T03" 2>/dev/null || true)
 : "${get_n:=0}" "${patch_n:=0}" "${list_n:=0}"
-if [ "$get_n" = "1" ] && [ "$patch_n" = "1" ] && [ "$list_n" = "0" ]; then
-  pass "T-04: gh calls are GET 1 + PATCH 1 (verification/list GET gone)"
+patch_calls=$(grep -c -e '-X PATCH -F body=@' "$GH_LOG_T03" 2>/dev/null || true)
+stdin_calls=$(grep -c -e '--input' "$GH_LOG_T03" 2>/dev/null || true)
+: "${patch_calls:=0}" "${stdin_calls:=0}"
+if [ "$patch_calls" = "1" ] && [ "$stdin_calls" = "0" ]; then
+  pass "T-04b: PATCH is sent as -F body=@file, never --input (stdin)"
 else
-  fail "T-04: expected GET=1 PATCH=1 list=0, got GET=$get_n PATCH=$patch_n list=$list_n class=$(cat "$GH_CLASS_T03" 2>/dev/null) log=$(cat "$GH_LOG_T03" 2>/dev/null)"
+  fail "T-04b: expected one '-X PATCH -F body=@' and no --input. log=$(cat "$GH_LOG_T03" 2>/dev/null)"
+fi
+if [ "$get_n" = "2" ] && [ "$patch_n" = "1" ] && [ "$list_n" = "0" ]; then
+  pass "T-04: gh calls are GET 2 (body + verify re-GET) + PATCH 1, no list GET"
+else
+  fail "T-04: expected GET=2 PATCH=1 list=0, got GET=$get_n PATCH=$patch_n list=$list_n class=$(cat "$GH_CLASS_T03" 2>/dev/null) log=$(cat "$GH_LOG_T03" 2>/dev/null)"
 fi
 echo ""
 
@@ -644,13 +657,18 @@ done
 echo "\$url" >> "$GH_URLS_T12"
 if [ "\$is_patch" = 1 ]; then
   echo PATCH >> "$GH_CLASS_T12"
-  cat >/dev/null
+  for b in "\$@"; do case "\$b" in body=@*) cp "\${b#body=@}" "$dir_t12/patched.md" ;; esac; done
+  echo '{"id":1}'
   exit 0
 fi
 case "\$1 \$2" in
   "repo view") echo "testowner/testrepo"; exit 0 ;;
 esac
 echo GET >> "$GH_CLASS_T12"
+if [ -f "$dir_t12/patched.md" ] && [[ "\$*" == */issues/comments/* ]]; then
+  jq -n --rawfile b "$dir_t12/patched.md" '{body:\$b}'
+  exit 0
+fi
 case "\$url" in
   *"/issues/comments/999")
     echo "gh: Not Found (HTTP 404)" >&2
@@ -680,7 +698,7 @@ fi
 echo ""
 
 # ─── T-nfs: flow-state 不在でも update は GET 1 + PATCH 1 で status=success ───
-echo "T-nfs: no flow-state → update GET 1 + PATCH 1, status=success (COMMENT_ID survives do_fetch)"
+echo "T-nfs: no flow-state → update GET 2 + PATCH 1, status=success (COMMENT_ID survives do_fetch)"
 dir_tnfs="$TEST_DIR/tnfs"
 mkdir -p "$dir_tnfs/bin"
 git -C "$dir_tnfs" init -q
@@ -699,13 +717,18 @@ for a in "\$@"; do
 done
 if [ "\$is_patch" = 1 ]; then
   echo PATCH >> "$GH_CLASS_NFS"
-  cat >/dev/null
+  for b in "\$@"; do case "\$b" in body=@*) cp "\${b#body=@}" "$dir_tnfs/patched.md" ;; esac; done
+  echo '{"id":1}'
   exit 0
 fi
 case "\$1 \$2" in
   "repo view") echo GET_REPO >> "$GH_CLASS_NFS"; echo "testowner/testrepo"; exit 0 ;;
 esac
 echo GET >> "$GH_CLASS_NFS"
+if [ -f "$dir_tnfs/patched.md" ] && [[ "\$*" == */issues/comments/* ]]; then
+  jq -n --rawfile b "$dir_tnfs/patched.md" '{body:\$b}'
+  exit 0
+fi
 case "\$*" in
   *"/issues/42/comments"*)
     jq -n --rawfile body "$dir_tnfs/wm-body.md" '{id:4242, body:\$body}'
@@ -732,11 +755,88 @@ get_nfs=$(grep -c '^GET$' "$GH_CLASS_NFS" 2>/dev/null || true)
 patch_nfs=$(grep -c '^PATCH$' "$GH_CLASS_NFS" 2>/dev/null || true)
 : "${get_nfs:=0}" "${patch_nfs:=0}"
 if printf '%s' "$out_tnfs" | grep -cF >/dev/null "status=success" \
-   && [ "$rc_tnfs" -eq 0 ] && [ "$get_nfs" = "1" ] && [ "$patch_nfs" = "1" ]; then
-  pass "T-nfs: no flow-state update GET 1 + PATCH 1, status=success"
+   && [ "$rc_tnfs" -eq 0 ] && [ "$get_nfs" = "2" ] && [ "$patch_nfs" = "1" ]; then
+  pass "T-nfs: no flow-state update GET 2 + PATCH 1, status=success"
 else
   fail "T-nfs: out=$out_tnfs rc=$rc_tnfs GET=$get_nfs PATCH=$patch_nfs class=$(cat "$GH_CLASS_NFS" 2>/dev/null) log=$(cat "$GH_LOG_NFS" 2>/dev/null)"
 fi
+echo ""
+
+# ─── T-pf: PATCH 後の失敗段階を reason で区別する (送信 / 応答解析 / 再 GET / 本文照合) ───
+# MODE: ok | send_fail | empty_resp | verify_fail | mismatch | stdin_hostile
+#   stdin_hostile = 障害環境の再現: --input (stdin) 経由は "unexpected end of JSON input" で失敗し、
+#   -F body=@file だけが通る。stdin 経路へ戻すと patch_failed になりここで検出される。
+make_pf_case() {
+  local dir="$1" mode="$2"
+  mkdir -p "$dir/bin" "$dir/tmp"
+  git -C "$dir" init -q
+  echo '{"active":true,"issue_number":42,"wm_comment_id":4242}' > "$dir/.rite-flow-state"
+  wm_body_fixture > "$dir/wm-body.md"
+  cat > "$dir/bin/gh" <<GH_SHIM
+#!/bin/bash
+printf 'gh %s\n' "\$*" >> "$dir/gh.log"
+is_patch=0; prev=""
+for a in "\$@"; do
+  if [ "\$a" = "PATCH" ] && [ "\$prev" = "-X" ]; then is_patch=1; fi
+  prev="\$a"
+done
+if [ "\$is_patch" = 1 ]; then
+  for a in "\$@"; do
+    if [ "\$a" = "--input" ]; then
+      [ "$mode" = "stdin_hostile" ] && { cat >/dev/null; echo "unexpected end of JSON input" >&2; exit 1; }
+    fi
+  done
+  [ "$mode" = "send_fail" ] && { echo "HTTP 422: Validation Failed" >&2; exit 1; }
+  [ "$mode" = "empty_resp" ] && exit 0
+  for b in "\$@"; do case "\$b" in body=@*) cp "\${b#body=@}" "$dir/patched.md" ;; esac; done
+  [ -f "$dir/patched.md" ] || exit 1
+  echo '{"id":4242}'
+  exit 0
+fi
+case "\$1 \$2" in
+  "repo view") echo "testowner/testrepo"; exit 0 ;;
+esac
+if [ -f "$dir/patched.md" ] && [[ "\$*" == */issues/comments/* ]]; then
+  [ "$mode" = "verify_fail" ] && { echo "HTTP 502: Bad Gateway" >&2; exit 1; }
+  if [ "$mode" = "mismatch" ]; then jq -n '{body:"stale body"}'; else jq -n --rawfile b "$dir/patched.md" '{body:\$b}'; fi
+  exit 0
+fi
+case "\$*" in
+  *"/issues/comments/4242"*) cat "$dir/wm-body.md"; exit 0 ;;
+esac
+exit 0
+GH_SHIM
+  chmod +x "$dir/bin/gh"
+}
+
+echo "T-pf: PATCH 後の失敗段階は reason で区別され、backup を残し、success へ補完されない"
+for spec in "ok:status=success" "stdin_hostile:status=success" \
+            "send_fail:status=error; reason=patch_failed" \
+            "empty_resp:status=error; reason=patch_response_invalid" \
+            "verify_fail:status=error; reason=patch_verify_failed" \
+            "mismatch:status=error; reason=patch_body_mismatch"; do
+  mode="${spec%%:*}"; want="${spec#*:}"
+  d="$TEST_DIR/tpf_$mode"; make_pf_case "$d" "$mode"
+  set +e
+  (cd "$d" && PATH="$d/bin:$PATH" TMPDIR="$d/tmp" \
+    bash "$HOOK" update --issue 42 --transform update-phase --phase "implement" --phase-detail "実装中" >"$d/out" 2>"$d/err")
+  echo "$?" > "$d/rc"
+  set -e
+  if [ "$(grep -c '^status=' "$d/out" || true)" = "1" ] && grep -qxF -- "$want" "$d/out" && [ "$(cat "$d/rc")" = "0" ]; then
+    pass "T-pf ($mode): $want"
+  else
+    fail "T-pf ($mode): expected '$want' exactly once, rc=0. out=$(cat "$d/out") rc=$(cat "$d/rc") err=$(cat "$d/err")"
+  fi
+  case "$mode" in
+    ok|stdin_hostile)
+      if ! grep -q -e '--input' "$d/gh.log"; then pass "T-pf ($mode): no --input (stdin) call"; else fail "T-pf ($mode): --input was used"; fi
+      if [ -z "$(ls -A "$d/tmp")" ]; then pass "T-pf ($mode): no temporary file left behind"; else fail "T-pf ($mode): leftover files: $(ls -A "$d/tmp")"; fi ;;
+    *)
+      if ls "$d/tmp"/rite-wm-backup-42-* >/dev/null 2>&1; then pass "T-pf ($mode): backup retained"; else fail "T-pf ($mode): backup not retained. tmp=$(ls "$d/tmp")"; fi
+      stray=$(find "$d/tmp" -mindepth 1 ! -name 'rite-wm-backup-42-*')
+      if [ -z "$stray" ]; then pass "T-pf ($mode): only the backup remains in tmp"; else fail "T-pf ($mode): stray temporary files: $stray"; fi ;;
+  esac
+done
 echo ""
 
 # ─── T-13: init gh call sequence unchanged ───
@@ -811,12 +911,17 @@ if [ "\$is_patch" = 1 ]; then
     *"/issues/comments/4242"*) echo "PATCH_CACHED" >> "$seq" ;;
     *) echo "PATCH_SCANNED" >> "$seq" ;;
   esac
-  cat >/dev/null
+  for b in "\$@"; do case "\$b" in body=@*) cp "\${b#body=@}" "$dir/patched.md" ;; esac; done
+  echo '{"id":1}'
   exit 0
 fi
 case "\$1 \$2" in
   "repo view") echo "testowner/testrepo"; exit 0 ;;
 esac
+if [ -f "$dir/patched.md" ] && [[ "\$*" == */issues/comments/* ]]; then
+  jq -n --rawfile b "$dir/patched.md" '{body:\$b}'
+  exit 0
+fi
 case "\$*" in
   *"/issues/comments/4242"*)
     echo "GET_CACHED" >> "$seq"
@@ -1007,12 +1112,18 @@ make_args_case() {
 printf 'gh %s\n' "\$*" >> "$dir/gh.log"
 prev=""
 for a in "\$@"; do
-  if [ "\$a" = "PATCH" ] && [ "\$prev" = "-X" ]; then cat > "$dir/patched.json"; exit 0; fi
+  if [ "\$a" = "PATCH" ] && [ "\$prev" = "-X" ]; then
+    for b in "\$@"; do case "\$b" in body=@*) cp "\${b#body=@}" "$dir/patched.md" ;; esac; done
+    jq -n --rawfile b "$dir/patched.md" '{body:\$b}' > "$dir/patched.json"
+    echo '{"id":4242}'
+    exit 0
+  fi
   prev="\$a"
 done
 case "\$1 \$2" in
   "repo view") echo "testowner/testrepo"; exit 0 ;;
 esac
+if [ -f "$dir/patched.json" ]; then cat "$dir/patched.json"; exit 0; fi
 case "\$*" in
   *"/issues/comments/4242"*) cat "$dir/wm-body.md"; exit 0 ;;
 esac
