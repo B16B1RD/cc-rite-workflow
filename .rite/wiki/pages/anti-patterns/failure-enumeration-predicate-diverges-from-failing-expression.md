@@ -5,9 +5,10 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "失敗の原因を名指しする列挙の条件が失敗する式と別の述語だと、同じ欠陥クラスの隣接ケースが列挙から漏れる。そのずれを既定文言で覆うと、既定文言は到達しにくい経路でだけ働き、案内先の妥当性を誰も確かめない。"
 created: "2026-09-30T04:20:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T21:48:43Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T21:48:43Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260930T033135Z-pr-3468.md"
@@ -25,6 +26,8 @@ sources:
     resource: "raw/fixes/20261009T140438Z-pr-3723-c2.md"
   - type: "reviews"
     resource: "raw/reviews/20261009T141138Z-pr-3723-c3.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261009T201807Z-pr-3723.md"
 tags: []
 confidence: high
 ---
@@ -66,6 +69,14 @@ confidence: high
 - 新しい CLI フラグの値検査は「値が非空か」ではなく「指定されたか」で入口を決める。空値を通常経路へ落とすと関門が黙って通る（fail-open）
 - 新しいモードを足したら、helper 冒頭の出力・終了コードの節（SoT）も同時に更新する
 
+### 保存前検査は最終ゲートと判定式を共有し、両方が同時に落ちることを変異で確かめる
+
+保存後のゲートにしか無い条件は、保存した記録の書き換えが禁じられていると、落ちたときに書き手が直せず工程が止まる。同じ条件を保存の前に検査すれば、書き手はその場で書き直せる。このとき保存前検査に判定式を写すと、ゲートとの間に今回と同じ述語のずれが生まれる。
+
+- 判定式を 1 か所（変数や関数）に切り出し、保存前検査と最終ゲートの両方がそれを使う
+- 式を壊す変異を入れて、保存前検査と最終ゲートが同時に落ちることを確かめる。片方だけが落ちるなら式を共有できていない
+- 保存前検査を足しても、ゲートの条件は緩めない
+
 この変更は 3 cycle で収束した（blocking 0 → 1 → 0）。
 
 ## 関連ページ
@@ -83,3 +94,4 @@ confidence: high
 - [レビュー結果（保存前検査の診断と判定式の網羅）](../../raw/reviews/20261009T135848Z-pr-3723-c2.md)
 - [fix 結果（保存前検査の診断と判定式の網羅）](../../raw/fixes/20261009T140438Z-pr-3723-c2.md)
 - [レビュー結果（保存前検査の診断と判定式の網羅）](../../raw/reviews/20261009T141138Z-pr-3723-c3.md)
+- [レビュー結果（判定式を共有する保存前検査）](../../raw/reviews/20261009T201807Z-pr-3723.md)

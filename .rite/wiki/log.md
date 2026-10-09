@@ -175,6 +175,8 @@
   * 比較: [external-fetch-separates-absent-from-unavailable-and-marks-truncation](pages/heuristics/external-fetch-separates-absent-from-unavailable-and-marks-truncation.md) ↔ [delegated-procedure-terminus-and-preconditions-follow-each-caller](pages/heuristics/delegated-procedure-terminus-and-preconditions-follow-each-caller.md) — 矛盾なし。主題が無関係
   * 比較: [external-fetch-separates-absent-from-unavailable-and-marks-truncation](pages/heuristics/external-fetch-separates-absent-from-unavailable-and-marks-truncation.md) ↔ [skill-exec-block-conforms-to-shell-shape-contract](pages/heuristics/skill-exec-block-conforms-to-shell-shape-contract.md) — 矛盾なし。同じ出典だが結論が別
   * 比較: [delegated-procedure-terminus-and-preconditions-follow-each-caller](pages/heuristics/delegated-procedure-terminus-and-preconditions-follow-each-caller.md) ↔ [skill-exec-block-conforms-to-shell-shape-contract](pages/heuristics/skill-exec-block-conforms-to-shell-shape-contract.md) — 矛盾なし。fail-loud 分岐にテストを置く点は両立
+* **Update**: [失敗の原因を列挙する条件は失敗する式と同じ述語で書き、「特定できません」の既定文言で覆わない](pages/anti-patterns/failure-enumeration-predicate-diverges-from-failing-expression.md) — 判定式を共有する保存前検査のレビュー結果を統合
+* **Skip**: [20261009T202851Z-pr-3723.md](raw/reviews/20261009T202851Z-pr-3723.md) — 差分スコープの再レビューで指摘・推奨とも無く、新しい経験則を含まない
 
 ## 2026-10-07
 

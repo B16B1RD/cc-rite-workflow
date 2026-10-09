@@ -655,7 +655,7 @@ okf_version: "0.2"
 | [「書き込みが起きない」の検査は、呼び出しログの全行が読み取りであることの allowlist で行う](pages/patterns/no-write-assertion-uses-call-log-allowlist.md) | patterns | 外部状態が変わらないことを前後比較で assert しても、スタブが書き込みを反映しなければどんな実装でも通る。書き込み系の不在を denylist で探すと新しい書き込みの形を拾わないので、呼び出しログの全行が読み取りであることを allowlist で検査する。 | 2026-09-30T04:20:00Z | high |
 | [停止を固定するテストは、止まらなかった場合に観測値が変わる条件で assert する](pages/heuristics/stop-test-asserts-with-observable-that-changes-if-not-stopped.md) | heuristics | 「止まる」ことを固定するテストで、止まらなくても別の理由で同じ観測値になる条件を使うと、停止の分岐を外した変異が生き残る。止まらなかった場合に観測値が変わる条件を用意し、停止分岐を外す変異で落ちることを実際に確かめる。 | 2026-09-30T04:20:00Z | high |
 | [回復手順は実際のエラー出力だけで実行できるかを確かめ、直す対象の識別子を ERROR に添える](pages/heuristics/recovery-steps-must-be-executable-from-error-output.md) | heuristics | 回復手順に「エラーが示す X を直す」と書くなら、実際にそのエラーを出して X が出力に含まれるかを確かめる。含まれないなら文面を直すのではなく、helper が持つ識別子（出典パス・id）を ERROR に添える。 | 2026-09-30T04:20:00Z | high |
-| [失敗の原因を列挙する条件は失敗する式と同じ述語で書き、「特定できません」の既定文言で覆わない](pages/anti-patterns/failure-enumeration-predicate-diverges-from-failing-expression.md) | anti-patterns | 失敗の原因を名指しする列挙の条件が失敗する式と別の述語だと、同じ欠陥クラスの隣接ケースが列挙から漏れる。そのずれを既定文言で覆うと、既定文言は到達しにくい経路でだけ働き、案内先の妥当性を誰も確かめない。 | 2026-10-09T19:10:23Z | high |
+| [失敗の原因を列挙する条件は失敗する式と同じ述語で書き、「特定できません」の既定文言で覆わない](pages/anti-patterns/failure-enumeration-predicate-diverges-from-failing-expression.md) | anti-patterns | 失敗の原因を名指しする列挙の条件が失敗する式と別の述語だと、同じ欠陥クラスの隣接ケースが列挙から漏れる。そのずれを既定文言で覆うと、既定文言は到達しにくい経路でだけ働き、案内先の妥当性を誰も確かめない。 | 2026-10-09T21:48:43Z | high |
 | [出力形式の gate を新設したら、producer 側にも同じ区切り規則を書く](pages/heuristics/output-format-gate-needs-producer-side-delimiter-rule.md) | heuristics | reviewer の出力のような形式を検査する gate を足すとき、gate 側だけで「どこまでを値とみなすか」を決めると、正しい内容の出力が付記行（時刻記録など）で落とされる。gate の範囲を狭めて誤検出を避けると、今度は fail-loud で拾うべき不備を取りこぼす。区切り規則は producer への指示と再生成の指示にも同じ形で書く。 | 2026-10-09T19:10:23Z | medium |
 | [値の切り詰めは、許す区切り文字を列挙して限定し、rc の振り分けは完全一致で固定する](pages/patterns/value-truncation-allows-listed-delimiters-only.md) | patterns | 先頭の語だけを値として取り出す切り詰めを「英字以外で切る」と書くと、区切り付きの複合値まで受理してしまう。一方、値の直後に来てよい区切り文字の列挙だけで判定すると、列挙の外の区切りを取りこぼし、列挙の外の注記を拒否する。複合値かどうかは、区切りと装飾だけを挟んで値の直後に 2 つ目の候補語が来るかで判定する。新しい失敗分岐のテストは rc の完全一致を固定する。 | 2026-09-30T07:27:00Z | high |
 | [ガードの復旧案内は状態ごとのコマンド列ではなく、ガードの解除条件で示す](pages/heuristics/guard-recovery-guidance-states-exit-condition.md) | heuristics | 処理を止めるガードの復旧案内を、原因の状態ごとのコマンド列で書くと、列挙していない状態がレビューのたびに見つかり続ける。ガードが見ている条件そのもの（例: git status に対象が表示されなくなったら再実行）を解除条件として示すと、案内とガードが同じ状態を見るので全状態で成り立つ。テストは原因の状態を列挙してループし、各状態で止まることと、解除条件を満たせば通ることを検査する。 | 2026-09-30T07:27:00Z | high |
@@ -695,5 +695,5 @@ okf_version: "0.2"
 
 - 総ページ数: 681
 - ドメイン別: patterns=144, heuristics=342, anti-patterns=195
-- 最終更新: 2026-10-09T19:10:23Z
+- 最終更新: 2026-10-09T21:48:43Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
