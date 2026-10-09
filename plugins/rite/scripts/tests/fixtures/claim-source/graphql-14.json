@@ -1,0 +1,1 @@
+{"data":{"repository":{"issueOrPullRequest":{"__typename":"Issue","state":"CLOSED","title":"コミットで閉じた Issue","closedByPullRequestsReferences":{"totalCount":0,"nodes":[]},"timelineItems":{"totalCount":1,"nodes":[{"__typename":"ClosedEvent","closer":{"__typename":"Commit","oid":"0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c"}}]}}}}}

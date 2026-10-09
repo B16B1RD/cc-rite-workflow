@@ -1017,6 +1017,58 @@ else
   else pass "MEASURED_UNDETERMINED_ON_ANCHOR 非出力"; fi
 fi
 
+# ---------------------------------------------------------------------------
+# T-claim-source: 主張と出典の照合の指摘テンプレ (claim-source-check.md) をゲートに通す。
+# 不支持は実測済みとして findings[] に残り blocking、判定不能は non_blocking_findings[] へ。
+# 行本文の | と => は置換済みで、アンカーの => は 1 つに保たれる。
+# ---------------------------------------------------------------------------
+echo "--- T-claim-source: 主張と出典の照合の指摘テンプレ ---"
+CLAIM_REF="$SCRIPT_DIR/../../skills/pr-review/references/claim-source-check.md"
+claim_desc() {
+  python3 - "$CLAIM_REF" "$1" "$2" <<'PY'
+import sys
+from pathlib import Path
+ref, label, anchor = sys.argv[1], sys.argv[2], sys.argv[3]
+for line in Path(ref).read_text(encoding="utf-8").splitlines():
+    if line.startswith(f"- {label}: `"):
+        tpl = line.split("`")[1]
+        break
+else:
+    sys.exit(1)
+text = "| ログの欠落 | 解決済み => 確認 | src/logger.js |".replace("|", "¦").replace("=>", "⇒")
+print(tpl.replace("{verification_anchor}", anchor).replace("{blocked_anchor}", anchor)
+      .replace("{claim_id}", "CLAIM-1").replace("{origin}", "docs/ledger.md:5")
+      .replace("{claim_text}", text))
+PY
+}
+if ! unsupported_desc=$(claim_desc 不支持 'Verification: repro gh pr view 15 -R o/r --json files => 変更ファイルに src/logger.js が無い'); then
+  fail "claim-source-check.md の不支持テンプレを抽出できない"
+elif ! blocked_desc=$(claim_desc 判定不能 'Measurement-Blocked: gh api repos/o/r/commits/abc1234 => HTTP 503'); then
+  fail "claim-source-check.md の判定不能テンプレを抽出できない"
+else
+  f="$TEST_DIR/tc_claim_source.json"
+  finding_u=$(jq -n --arg desc "$unsupported_desc" \
+    '{id:"F-01", reviewer:"pr-review", category:"claim_source", severity:"HIGH",
+      file:"docs/ledger.md", line:5, description:$desc, suggestion:"s", status:"open", scope:"current-pr"}')
+  finding_b=$(jq -n --arg desc "$blocked_desc" \
+    '{id:"F-02", reviewer:"pr-review", category:"claim_source", severity:"HIGH",
+      file:"docs/ledger.md", line:7, description:$desc, suggestion:"s", status:"open", scope:"current-pr"}')
+  mk_json "$f" "$finding_u" "$finding_b"
+  run_gate "$f"
+  arrow_count=$(printf '%s' "$unsupported_desc" | grep -o '=>' | wc -l | tr -d ' ')
+  if [ "$arrow_count" = "1" ]; then pass "不支持の description の => は 1 つ"
+  else fail "不支持の => count=$arrow_count (期待 1): $unsupported_desc"; fi
+  if [ "$(jq -r '[.findings[] | select(.id == "F-01") | .verification.measured] | .[0]' "$f")" = "true" ]; then
+    pass "不支持は findings[] に measured=true で残る"
+  else fail "不支持の扱い: $(jq -c '.findings' "$f")"; fi
+  if [ "$(jq -r '[.non_blocking_findings[]? | select(.id == "F-02")] | length' "$f")" = "1" ]; then
+    pass "判定不能は non_blocking_findings[] へ移る"
+  else fail "判定不能の扱い: $(jq -c '.non_blocking_findings' "$f")"; fi
+  if [ "$(jq -r '.verdict' "$f")" = "fix-needed" ]; then
+    pass "不支持があれば verdict == fix-needed"
+  else fail "verdict=$(jq -r '.verdict' "$f")"; fi
+fi
+
 echo ""
 # gate fixture だけでは、その入力を作る LLM 向け規則の削除を検出できない。
 # 実際に注入される fenced mandate と base の先行判定を契約として検査する。

@@ -449,6 +449,17 @@ grep -q "WARNING" <<<"$GATE_STDERR" && pass "WARNING emitted" || fail "WARNING m
 [ "$(jq -r '.non_blocking_findings | length' "$TEST_DIR/tc17.json")" = "0" ] && pass "not demoted" || fail "finding demoted"
 [ "$(jq -r '.findings[0].consequence_class' "$TEST_DIR/tc17.json")" = "A" ] && pass "consequence_class=A" || fail "class not pinned"
 
+# 主張と出典の照合の不支持指摘 (claim_source) も同じく class A に固定する。
+fc=$(mk_finding "F-01" "HIGH" "current-pr" "出典が主張を裏づけない" "docs/ledger.md" "true" "claim_source")
+mk_json "$TEST_DIR/tc17-claim.json" "$fc"
+mk_cls "$TEST_DIR/tc17-claim-cls.json" "$(mk_entry F-01 B "文書整合に留まる")"
+run_gate "$TEST_DIR/tc17-claim.json" "$TEST_DIR/tc17-claim-cls.json"
+grep -q "CLASS_DEMOTION_GATE=not-triggered; class_a=1; class_b=0; demoted=0; assessment=fix-needed" <<<"$GATE_STDERR" \
+  && pass "claim_source stays blocking" || fail "claim_source marker mismatch: $GATE_STDERR"
+grep -q "CLASS_DEMOTION_CATEGORY_PINNED=1; count=1" <<<"$GATE_STDERR" \
+  && pass "claim_source CATEGORY_PINNED marker" || fail "claim_source pinned marker missing: $GATE_STDERR"
+[ "$(jq -r '.findings[0].consequence_class' "$TEST_DIR/tc17-claim.json")" = "A" ] && pass "claim_source consequence_class=A" || fail "claim_source class not pinned"
+
 # 固定 A が同一 cycle の通常 B の降格も阻止する。
 f2=$(mk_finding "F-02" "LOW" "current-pr" "通常の文書整合")
 mk_json "$TEST_DIR/tc17-mixed.json" "$f1" "$f2"

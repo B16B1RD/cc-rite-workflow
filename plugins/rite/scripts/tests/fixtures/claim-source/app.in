@@ -1,0 +1,2 @@
+// fixes #12, see app.js:4 and commit 1a2b3c4
+export const retry = 3;

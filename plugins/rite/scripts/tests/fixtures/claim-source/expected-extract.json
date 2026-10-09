@@ -1,0 +1,7 @@
+[
+ {"id": "CLAIM-1", "origin": "docs/ledger.md:5", "refs": [{"kind": "issue", "token": "#12"}, {"kind": "file_line", "token": "src/logger.js:3"}]},
+ {"id": "CLAIM-2", "origin": "docs/ledger.md:6", "refs": [{"kind": "section", "token": "「再試行」節"}]},
+ {"id": "CLAIM-3", "origin": "docs/ledger.md:7", "refs": [{"kind": "sha", "token": "1a2b3c4"}]},
+ {"id": "CLAIM-4", "origin": "docs/ledger.md:8", "refs": [{"kind": "section", "token": "§4.2"}]},
+ {"id": "CLAIM-5", "origin": "docs/notes.md:3", "refs": [{"kind": "section", "token": "§9"}]}
+]
