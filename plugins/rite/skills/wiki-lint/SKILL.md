@@ -669,7 +669,7 @@ rationale: references/descriptive-refs-rationale.md#entries-zero-guard
 **`index.md` / `log.md` の扱い**: helper が自力で読み出す（stdin に足す必要はない。渡した場合も完全一致で受理し重複計上しない）。**ステップ 2.2 の `pages_list` 構築は変更しない** — `pages_list` は `pages/` 配下のみを列挙する契約のままで、`log.md` はそこに現れないため helper 側の discovery が唯一の経路になる。どちらかが存在しない場合（Wiki 初期化直後）は静かに対象から落とし、`descriptive_refs_read_errors` にも走査母数にも数えない（存在するのに読めない場合のみ read error として計上する）。
 rationale: references/descriptive-refs-rationale.md#pages-list-unchanged
 
-**検出文法は `number-reference-check.sh` に委譲する**。本ステップも helper も文法のコピーを持たない。対象は 3-4 桁の番号トークンで、参照キーワードの有無を問わない（裸の `#NNNN` も対象）。1-2 桁と 5 桁以上は対象外で、上流トラッカ id や列挙条件は Wiki 散文にそのまま残る。委譲先の行レベル除外（プレースホルダ `#123`・見出しアンカー・`drift-check-ignore`）もそのまま効く。**Wiki ページで `drift-check-ignore` を使ってはならない** — 検出器自身の fixture 向けの opt-out であり、Wiki 本文に書くと本指標から自分のページを外すことになる。
+**検出文法は `number-reference-check.sh` に委譲する**。本ステップも helper も文法のコピーを持たない。対象は 3-4 桁の番号トークンで、参照キーワードの有無を問わない（裸の `#NNNN` も対象）。1-2 桁と 5 桁以上は対象外で、上流トラッカ id や列挙条件は Wiki 散文にそのまま残る。委譲先の行レベル除外（プレースホルダ `#123`・見出しアンカー・10進 HTML 文字参照 `&#NNN;`・`drift-check-ignore`）もそのまま効く。**Wiki ページで `drift-check-ignore` を使ってはならない** — 検出器自身の fixture 向けの opt-out であり、Wiki 本文に書くと本指標から自分のページを外すことになる。
 rationale: references/descriptive-refs-rationale.md#exclusions
 
 **検出ロジック**は `wiki-lint-descriptive-refs.sh` に委譲する（stdin `pages_list` はステップ 6.2 helper と同型 — ステップ 6.0 helper は入力を自前で列挙し stdin を読まない。marker block + read_ok enum は 6.0 / 6.2 の双方と同型）。

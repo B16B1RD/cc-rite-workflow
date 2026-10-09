@@ -41,12 +41,17 @@ case " $* " in
   *" -X PATCH "*)
     [ "${GH_FAIL_PATCH:-0}" != 1 ] || exit 23
     echo PATCH >> "$TEST_ROOT/effects"
-    jq -r '.body' > "$TEST_ROOT/replica.md"
+    for a in "$@"; do case "$a" in body=@*) cp "${a#body=@}" "$TEST_ROOT/replica.md" ;; esac; done
+    echo '{"id":4242}'
     exit 0 ;;
 esac
 case "$1 $2" in
   "repo view") echo testowner/testrepo ;;
-  "api repos/testowner/testrepo/issues/comments/4242") cat "$TEST_ROOT/replica.md" ;;
+  "api repos/testowner/testrepo/issues/comments/4242")
+    case " $* " in
+      *" --jq "*) cat "$TEST_ROOT/replica.md" ;;
+      *) jq -n --rawfile body "$TEST_ROOT/replica.md" '{body:$body}' ;;
+    esac ;;
   "api repos/testowner/testrepo/issues/42/comments")
     [ "${GH_NO_COMMENT:-0}" != 1 ] || exit 0
     jq -n --rawfile body "$TEST_ROOT/replica.md" '{id:4242,body:$body}' ;;

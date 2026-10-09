@@ -38,7 +38,7 @@ Hooks registration はチェックしない (`/rite:setup` の専管)。hooks �
 
 **Input**: PR number (or auto-detected from current branch), flow state with `phase: review` (written by `skills/iterate/SKILL.md` review side) or `phase: phase5_review` (legacy compat)
 rationale: references/design-rationale.md#contract-legacy-phase
-**Output**: `[review:mergeable]` | `[review:fix-needed:{n}]` | `[review:error]`（受入条件未検証の停止は `[CONTEXT] REVIEW_STOP=ac_unverified` を伴う。ステップ 8.1）
+**Output**: `[review:mergeable]` | `[review:fix-needed:{n}]` | `[review:error]`（受入条件未検証の停止は `[CONTEXT] REVIEW_STOP=ac_unverified` を伴う。ステップ 8.1。base との競合で必須 CI を待てない停止は `[CONTEXT] REVIEW_STOP=base_conflict; base={base}` を伴う。ステップ 5.3.0.CI）
 
 ## Prerequisites
 
@@ -1837,7 +1837,8 @@ bash {plugin_root}/scripts/pr-review-step.sh ci-completion-check \
 
 helper はレビュー JSON の commit と毎回取得した PR HEAD を照合する。内部の `python3 {plugin_root}/scripts/review-required-ci.py {owner_repo} {pr_number} {reviewed_sha}` が PR の base branch に有効な ruleset（全ページ）と classic branch protection の必須 status check 集合を取得・合流し、app 制約付き check は app metadata も照合する。両 API の正常応答で集合が空と確認できた場合だけ必須なしとする。設定・metadata の取得不能、不正応答、分類不明は `[review:error]` 停止であり、非必須への fallback は禁止。状態分類は `pr-checks-classify.sh` を使う。
 
-必須 check の失敗は停止し、必須 pending / 欠落は 15 秒間隔・上限 540 秒で再取得する。非必須の失敗・pending は待機/停止条件にせず、失敗を `.warnings[]`（job 名・結論・詳細 URL）へ保持する。`continue-on-error` も必須なら失敗として止める。wait/poll の明示引数は通常省略し、上限を超えた確認を成功へ切り替える用途には使わない。成功時だけ helper が provisional JSON の `.ci_status` を最新結果へ更新し、他の実測/AC/判定フィールドは保持する。
+必須 check の失敗は停止し、必須 pending / 欠落は 15 秒間隔・上限 540 秒で再取得する。helper は pending の各取得で上限判定より先に `mergeable` を見て、`CONFLICTING` なら待機をやめる。`UNKNOWN`（計算中）は待機を続け、`mergeable` を取得できない応答は競合なしと扱わず停止する。非必須の失敗・pending は待機/停止条件にせず、失敗を `.warnings[]`（job 名・結論・詳細 URL）へ保持する。`continue-on-error` も必須なら失敗として止める。wait/poll の明示引数は通常省略し、上限を超えた確認を成功へ切り替える用途には使わない。成功時だけ helper が provisional JSON の `.ci_status` を最新結果へ更新し、他の実測/AC/判定フィールドは保持する。
+rationale: references/design-rationale.md#ci-base-conflict
 
 呼び出し前に現在の work 計測区間を閉じ、待機を `external_wait` として開始する。終了コードにかかわらず区間を閉じ、後続作業で work を開く。Bash の実行上限は待機上限を含む 600000ms とし、途中 yield 後も完了を回収する。fix-needed は helper が取得・待機せず skip する。取得・分類不明、HEAD 不一致、上限到達は未確認の停止であり、CI を成功扱いしない。
 
@@ -1846,7 +1847,13 @@ helper はレビュー JSON の commit と毎回取得した PR HEAD を照合�
 | rc=0 + `REVIEW_CI_FINAL=passed; state=healthy` または `state=none` | 必須 check が完了・非失敗、または必須なし。非必須失敗は warnings として保持。stdout の最新 JSON を `{ci_status}`、その `.state` を `{ci_state}` に保持し、5.3.8 → 5.4 → 6.1.a へ進む |
 | rc=0 + `REVIEW_CI_FINAL=skipped; reason=fix_needed` | 修正が必要なので CI を待たず、既存の fix-needed の報告・保存へ進む |
 | rc=1 + `REVIEW_CI_FINAL=failed; reason=unhealthy` | 最終 mergeable を出力せず、下記の CI 失敗回収へ進む。report/save は実行しない |
+| rc=1 + `REVIEW_CI_FINAL=blocked; reason=base_conflict; base={base}` | 最終 mergeable を出力せず、report/save は実行しない。下の `review-ci-base-conflict` で cycle を放棄し（review_run・counter・所有の対応は保持される）、`[CONTEXT] REVIEW_STOP=base_conflict; base={base}` と `[review:error]` をこの順で出して停止する。取り込みは [fix-plan の base 取り込み](../fix/references/fix-plan.md#base-取り込み) の「CI 待ちの cycle を閉じた後」に従い、取り込んだ HEAD は次の cycle でレビューする。放棄が拒否されたら helper の診断を表示し、`REVIEW_STOP` を出さずに `[review:error]` で停止する。期限超過の行とは別の停止であり、期限超過をこの行で迂回しない |
 | その他の非ゼロ、`REVIEW_CI_FINAL=error`、成功 marker 不在 | 診断を保持し `[review:error]` で停止。report/save は実行しない。取得不能・期限超過を再生成で迂回しない |
+
+```bash
+# review-ci-base-conflict
+bash {plugin_root}/hooks/flow-state.sh review-abandon --reason "base conflict: required CI cannot start until {base} is taken in"
+```
 
 **CI 失敗回収**（`ci_failure_retry_count` 初期 0、再生成開始前に 1。1 の状態で再び失敗なら停止）:
 

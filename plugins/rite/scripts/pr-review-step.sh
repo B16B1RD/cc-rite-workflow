@@ -319,7 +319,7 @@ printf '[CONTEXT] REVIEW_CI_STATE=%s; failed=%s\n' "$ci_state" "$ci_failed"
 
 # --- ci-completion-check ----------------------------------------------------------
 step_ci_completion_check() {
-  local ci_sha ci_verdict ci_pr ci_head ci_classified ci_state ci_failed
+  local ci_sha ci_verdict ci_pr ci_head ci_classified ci_state ci_failed ci_mergeable ci_base
   local waited=0 delay
   # The measured result is provisional until this check passes. Read its SHA,
   # rather than accepting an independent caller SHA that could check another head.
@@ -339,7 +339,7 @@ step_ci_completion_check() {
     return 0
   fi
   while :; do
-    if ! ci_pr=$(gh pr view "$pr_number" -R "$owner_repo" --json headRefOid,statusCheckRollup); then
+    if ! ci_pr=$(gh pr view "$pr_number" -R "$owner_repo" --json headRefOid,statusCheckRollup,mergeable,baseRefName); then
       echo "ERROR: CI completion check could not fetch PR checks" >&2
       echo "[CONTEXT] REVIEW_CI_FINAL=error; reason=fetch_failed"
       return 1
@@ -347,6 +347,14 @@ step_ci_completion_check() {
     if ! ci_head=$(printf '%s' "$ci_pr" | jq -er '.headRefOid | select(type == "string")') || [ "$ci_head" != "$ci_sha" ]; then
       echo "ERROR: CI completion check PR HEAD differs from the reviewed commit" >&2
       echo "[CONTEXT] REVIEW_CI_FINAL=error; reason=head_mismatch"
+      return 1
+    fi
+    # A missing mergeable must not read as "no conflict": that would wait out the
+    # full timeout on a PR whose CI can never start.
+    if ! ci_mergeable=$(printf '%s' "$ci_pr" | jq -er '.mergeable | select(type == "string" and . != "")') ||
+       ! ci_base=$(printf '%s' "$ci_pr" | jq -er '.baseRefName | select(type == "string" and . != "")'); then
+      echo "ERROR: CI completion check could not read the PR merge state or base branch" >&2
+      echo "[CONTEXT] REVIEW_CI_FINAL=error; reason=merge_state_unavailable"
       return 1
     fi
     if ! ci_classified=$(printf '%s' "$ci_pr" | bash "$plugin_root"/hooks/scripts/pr-checks-classify.sh) ||
@@ -387,6 +395,15 @@ step_ci_completion_check() {
         printf '[CONTEXT] REVIEW_CI_FINAL=failed; reason=unhealthy; failed=%s\n' "$ci_failed"
         return 1 ;;
       pending)
+        # GitHub does not start pull_request workflows while the PR conflicts with
+        # its base, so required checks stay missing until the base is taken in.
+        # Checked before the timeout so the last poll is not reported as one.
+        if [ "$ci_mergeable" = CONFLICTING ]; then
+          printf '%s' "$ci_classified" | jq -c --arg sha "$ci_sha" '. + {commit_sha:$sha}' || return 1
+          printf 'ERROR: required CI cannot start while the PR conflicts with %s\n' "$ci_base" >&2
+          printf '[CONTEXT] REVIEW_CI_FINAL=blocked; reason=base_conflict; base=%s\n' "$ci_base"
+          return 1
+        fi
         if [ "$waited" -ge "$ci_wait_seconds" ]; then
           printf '%s' "$ci_classified" | jq -c --arg sha "$ci_sha" '. + {commit_sha:$sha}' || return 1
           echo "ERROR: CI completion check timed out; jobs remain unverified" >&2

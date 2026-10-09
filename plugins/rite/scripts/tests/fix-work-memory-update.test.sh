@@ -264,11 +264,14 @@ done
 
 echo '--- WM status and history preparation ordering ---'
 for stage in progress history; do
-  for state in no_comment error absent; do
+  for state in no_comment error response_invalid verify_failed body_mismatch absent; do
     reset_case
     case "$state" in
       no_comment) response='status=skipped; reason=no_comment'; expected=skipped ;;
       error) response='status=error; reason=patch_failed'; expected=failed ;;
+      response_invalid) response='status=error; reason=patch_response_invalid'; expected=failed ;;
+      verify_failed) response='status=error; reason=patch_verify_failed'; expected=failed ;;
+      body_mismatch) response='status=error; reason=patch_body_mismatch'; expected=failed ;;
       absent) response=''; expected=failed ;;
     esac
     if [ "$stage" = progress ]; then PROGRESS_OUT=$response; else HISTORY_OUT=$response; fi

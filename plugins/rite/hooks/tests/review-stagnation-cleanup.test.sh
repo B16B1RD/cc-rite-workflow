@@ -121,7 +121,7 @@ try:
     record = history[history.index(marker):]
     check('mergeable' in record and 'blocking 0' in record and context['commit_sha'][:12] in record,
           'T-02: the record carries verdict, blocking count and reviewed commit')
-    check('- **現在のループ回数**: 1' in history and '- **Issue**: #42' in body and body.endswith('### 次のステップ\n1. review\n'),
+    check('- **現在のループ回数**: 1' in history and '- **Issue**: #42' in body and body.rstrip('\n').endswith('### 次のステップ\n1. review'),
           'T-02: the rest of the work memory is preserved')
     state = f.state()
     check(state['review_run']['completed_context'] == context and str(state.get('wm_comment_id')) == '1',

@@ -387,3 +387,9 @@ blocking 0 で未検証だけが残る cycle を `[review:mergeable]` にしな�
 ## excluded-selection-reason
 
 除外行にも `selection_reason` を非空で残すのは、保存後の最終ゲートが選定済みか否かに依らず非空を要求し、保存後は receipt を書き換えられず停止するため。`exclusion_reason` の複写は検査を通るが根拠の情報量がゼロになるので、分岐ごとに「候補になった経緯」を書かせる。生成時に外れた記録は Write 直後の `--record-file` 検査で保存前に止める。
+
+## ci-base-conflict
+
+PR が base と競合している間、GitHub は `pull_request` の workflow を起動しない。必須 check は欠落のまま終わらず、待機は上限まで続いても完了しない。上限判定より先に競合を見るのは、最後の取得で競合が見えた場合を期限超過と区別するためである。
+
+競合で待てない cycle は、待っても閉じられない。5.3.0.CI は `review-finish` より前にあり、cycle はまだ証跡（manifest / content / result、保存済み receipt）を持たないので、`review-abandon` で閉じられる。放棄すると cycle が無くなり、commit ガードは base を取り込む merge commit を止めない。取り込んだ HEAD は次の cycle が、最後に保存したレビュー以降の差分としてレビューする。

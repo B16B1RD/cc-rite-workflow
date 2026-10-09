@@ -298,6 +298,18 @@ in_order "iterate: REVIEW_STOP 行が汎用 [review:error] 行より前" \
 in_order "iterate: adoption_held 行が汎用 [review:error] 行より前" \
   "$(line_of "$ITERATE" '| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=adoption_held; kind={kind}; hold_file={path}` |')" \
   "$(line_of "$ITERATE" '| `[review:error]` | 可逆な再試行を推奨として 1 回だけ自動実行')"
+in_order "iterate: base_conflict 行が汎用 [review:error] 行より前" \
+  "$(line_of "$ITERATE" '| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=base_conflict; base={base}` |')" \
+  "$(line_of "$ITERATE" '| `[review:error]` | 可逆な再試行を推奨として 1 回だけ自動実行')"
+pin "iterate: base_conflict は取り込んでステップ 1、2 回目は停止" "$ITERATE" '下記「base 競合の停止での取り込み」で `{base}` を取り込み、push してステップ 1 へ戻る（取り込んだ HEAD を次の cycle でレビューする）。同じ iterate 実行で 2 回目なら取り込まず、下記の段落が定める停止の内容を示して終了する（成功 sentinel も新しい sentinel も出さない）'
+pin "iterate: base_conflict の取り込みは 1 回限り" "$ITERATE" '`base_conflict_intake_count`（retained flag、初期値 0）が 0 なら +1 してから'
+in_order "pr-review 5.3.0.CI: base_conflict 行がその他の非ゼロ行より前" \
+  "$(line_of "$PR_REVIEW" '| rc=1 + `REVIEW_CI_FINAL=blocked; reason=base_conflict; base={base}` |')" \
+  "$(line_of "$PR_REVIEW" '| その他の非ゼロ、`REVIEW_CI_FINAL=error`、成功 marker 不在 |')"
+pin "pr-review 5.3.0.CI: 放棄 → REVIEW_STOP → [review:error] の順" "$PR_REVIEW" '下の `review-ci-base-conflict` で cycle を放棄し（review_run・counter・所有の対応は保持される）、`[CONTEXT] REVIEW_STOP=base_conflict; base={base}` と `[review:error]` をこの順で出して停止する。'
+pin "pr-review 5.3.0.CI: base_conflict は report/save しない" "$PR_REVIEW" '最終 mergeable を出力せず、report/save は実行しない。下の `review-ci-base-conflict`'
+pin "pr-review: 放棄のコマンド" "$PR_REVIEW" 'bash {plugin_root}/hooks/flow-state.sh review-abandon --reason "base conflict: required CI cannot start until {base} is taken in"'
+pin "stop-loop contract: base 競合は handoff を張らない" "$STOP_CONTRACT" '**base 競合の `[review:error]`（`REVIEW_STOP=base_conflict`）は handoff を張らない**'
 pin "iterate: adoption_held は再試行せず hold ファイルと再開方法を示す" "$ITERATE" '採否の出口待ちの保留、またはスコープ外処分の外部への書き込みが途中で失敗した停止（後者は一部が書き込み済み）。再試行せず、`hold_file` と、hold ファイルの resume（出口待ちのときはゲートの WARNING にも出る）に従って再開することを示して終了する。書き込み途中の停止で hold に書けなかったときは、hold の resume ではなく stderr の WARNING と flow-state の次アクションにある再開方法に従う（成功 sentinel も新しい sentinel も出さない）'
 pin "iterate: 再試行せず sentinel を出さない" "$ITERATE" '再試行せず、下記の停止通知を出して終了する（成功 sentinel も新しい sentinel も出さない）'
 pin "iterate: 行頭 marker だけで判定" "$ITERATE" '`REVIEW_STOP` は行頭 `[CONTEXT] ` の marker だけを判定に使う'

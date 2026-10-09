@@ -450,8 +450,8 @@ else
           rm -f "$_backup_file"
           _backup_file=""
           _phase_sync_ok=1
-          _obs_line="status=success round_trips=2"
-          log_debug "round_trips=2 path=fetch+patch"
+          _obs_line="status=success round_trips=3"
+          log_debug "round_trips=3 path=fetch+patch+verify"
         else
           _set_sysmsg "作業メモリ replica の更新に失敗しました。バックアップを保持しています。認証とネットワークを確認してください。"
           echo "[rite] WARNING: post-tool-wm-sync: PATCH non-success (line=${_patch_line:-empty}) — last_synced_phase will NOT be advanced" >&2
