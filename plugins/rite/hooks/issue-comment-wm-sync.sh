@@ -476,6 +476,7 @@ do_patch() {
   if [ "$patch_status" -ne 0 ]; then
     echo "[rite] WARNING: issue-comment-wm-sync: PATCH failed (rc=$patch_status, Backup: ${backup_file:-retained})" >&2
     [ -n "$patch_err" ] && [ -s "$patch_err" ] && head -3 "$patch_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    rm -f "$patch_err" "$patch_resp"
     echo "status=error; reason=patch_failed"
     return 0
   fi
@@ -485,6 +486,7 @@ do_patch() {
   # 応答が JSON object でなければ、送信は通ったが適用結果を読めない (応答解析の失敗)。
   if [ -z "$patch_resp" ] || ! jq -e 'type == "object"' "$patch_resp" >/dev/null 2>&1; then
     echo "[rite] WARNING: issue-comment-wm-sync: PATCH response is not a JSON object (Backup: ${backup_file:-retained})" >&2
+    rm -f "$patch_resp"
     echo "status=error; reason=patch_response_invalid"
     return 0
   fi
@@ -498,11 +500,11 @@ do_patch() {
      || ! jq -j '.body // empty' "$patch_resp" > "$verify_body" 2>/dev/null; then
     echo "[rite] WARNING: issue-comment-wm-sync: 再 GET による本文照合に失敗 (rc=$verify_status, Backup: ${backup_file:-retained})" >&2
     [ -n "$verify_err" ] && [ -s "$verify_err" ] && head -3 "$verify_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-    rm -f "$verify_body" "$verify_err"
+    rm -f "$verify_body" "$verify_err" "$patch_resp"
     echo "status=error; reason=patch_verify_failed"
     return 0
   fi
-  rm -f "$verify_err"
+  rm -f "$verify_err" "$patch_resp"
   if ! cmp -s "$in_file" "$verify_body"; then
     echo "[rite] WARNING: issue-comment-wm-sync: 再 GET の本文が送信本文と一致しません (Backup: ${backup_file:-retained})" >&2
     rm -f "$verify_body"
