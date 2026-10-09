@@ -5,7 +5,9 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "失敗の原因を名指しする列挙の条件が失敗する式と別の述語だと、同じ欠陥クラスの隣接ケースが列挙から漏れる。そのずれを既定文言で覆うと、既定文言は到達しにくい経路でだけ働き、案内先の妥当性を誰も確かめない。"
 created: "2026-09-30T04:20:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-30T04:20:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260930T033135Z-pr-3468.md"
@@ -13,6 +15,16 @@ sources:
     resource: "raw/reviews/20260930T035710Z-pr-3468.md"
   - type: "fixes"
     resource: "raw/fixes/20260930T034612Z-pr-3468.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261009T134027Z-pr-3723.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261009T135120Z-pr-3723.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261009T135848Z-pr-3723-c2.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261009T140438Z-pr-3723-c2.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261009T141138Z-pr-3723-c3.md"
 tags: []
 confidence: high
 ---
@@ -43,6 +55,19 @@ confidence: high
 
 失敗時の診断で案内する場所は、プロセス終了後も残るもの（結果 JSON・ログ）にする。一時ファイルは trap で消える前提で作られているので、案内先にしない。
 
+### 診断文が「全条件」を名乗るなら、判定式の連言を数えて全部挙げる
+
+保存前検査の失敗診断が、連言の多い jq 式のどの条件で落ちたかを示さず固定文だけを返していた。修正で診断文に条件を並べると、今度は「全条件」と名乗りながら式の条件の一部（reviewer の重複など）が欠けた。
+
+- 判定式の条件を文面に手書きで写す診断は式と同期しない。網羅を名乗るなら条件を数えて全部挙げ、欠けた条件で落ちる記録を実際に通すテストで文面を固定する。網羅を名乗らないなら「主な条件」とするか、式そのものを指す
+- 突き合わせは、連言を 1 つずつ列挙した対応表で行うと欠落が見つかる
+- ファイル不在・JSON 破損・契約違反は別の reason で名指しし、reason ごとにテストを揃える。jq の stderr を捨てない
+- fixture の欄を 1 つずつ動かして、各連言が実際に固定されているかを変異で確かめる。片方の理由欄だけを動かすと、もう一方の非空要求は固定されない
+- 新しい CLI フラグの値検査は「値が非空か」ではなく「指定されたか」で入口を決める。空値を通常経路へ落とすと関門が黙って通る（fail-open）
+- 新しいモードを足したら、helper 冒頭の出力・終了コードの節（SoT）も同時に更新する
+
+この変更は 3 cycle で収束した（blocking 0 → 1 → 0）。
+
 ## 関連ページ
 
 - [回復手順は実際のエラー出力だけで実行できるかを確かめ、直す対象の識別子を ERROR に添える](../heuristics/recovery-steps-must-be-executable-from-error-output.md)
@@ -53,3 +78,8 @@ confidence: high
 - [レビュー結果](../../raw/reviews/20260930T033135Z-pr-3468.md)
 - [レビュー結果](../../raw/reviews/20260930T035710Z-pr-3468.md)
 - [fix 結果](../../raw/fixes/20260930T034612Z-pr-3468.md)
+- [レビュー結果（保存前検査の診断と判定式の網羅）](../../raw/reviews/20261009T134027Z-pr-3723.md)
+- [fix 結果（保存前検査の診断と判定式の網羅）](../../raw/fixes/20261009T135120Z-pr-3723.md)
+- [レビュー結果（保存前検査の診断と判定式の網羅）](../../raw/reviews/20261009T135848Z-pr-3723-c2.md)
+- [fix 結果（保存前検査の診断と判定式の網羅）](../../raw/fixes/20261009T140438Z-pr-3723-c2.md)
+- [レビュー結果（保存前検査の診断と判定式の網羅）](../../raw/reviews/20261009T141138Z-pr-3723-c3.md)

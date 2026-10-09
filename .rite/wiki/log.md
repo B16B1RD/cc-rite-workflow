@@ -1,5 +1,50 @@
 # Directory Update Log
 
+## 2026-10-10
+
+* **Update**: [新規 exit 1 経路 / sentinel type 追加時は同一ファイル内 canonical 一覧を同期更新し、『N site 対称化』counter 宣言を drift 検出アンカーとして活用する](pages/heuristics/canonical-list-count-claim-drift-anchor.md) — 除外規則の同期漏れのfix 結果を統合
+* **Update**: [新規 exit 1 経路 / sentinel type 追加時は同一ファイル内 canonical 一覧を同期更新し、『N site 対称化』counter 宣言を drift 検出アンカーとして活用する](pages/heuristics/canonical-list-count-claim-drift-anchor.md) — 除外規則の同期漏れのレビュー結果を統合
+* **Update**: [新規 exit 1 経路 / sentinel type 追加時は同一ファイル内 canonical 一覧を同期更新し、『N site 対称化』counter 宣言を drift 検出アンカーとして活用する](pages/heuristics/canonical-list-count-claim-drift-anchor.md) — 除外規則の同期漏れのレビュー結果を統合
+* **Update**: [新規 exit 1 経路 / sentinel type 追加時は同一ファイル内 canonical 一覧を同期更新し、『N site 対称化』counter 宣言を drift 検出アンカーとして活用する](pages/heuristics/canonical-list-count-claim-drift-anchor.md) — 終了経路の説明と停止の手がかりのfix 結果を統合
+* **Update**: [診断メッセージの主語と射程は、その文が発火する条件が保証している対象に限る](pages/heuristics/diagnostic-claim-scoped-to-firing-condition.md) — 対象を足したテストの診断文言のfix 結果を統合
+* **Update**: [診断メッセージの主語と射程は、その文が発火する条件が保証している対象に限る](pages/heuristics/diagnostic-claim-scoped-to-firing-condition.md) — 対象を足したテストの診断文言のレビュー結果を統合
+* **Update**: [診断メッセージの主語と射程は、その文が発火する条件が保証している対象に限る](pages/heuristics/diagnostic-claim-scoped-to-firing-condition.md) — 対象を足したテストの診断文言のレビュー結果を統合
+* **Update**: [失敗の原因を列挙する条件は失敗する式と同じ述語で書き、「特定できません」の既定文言で覆わない](pages/anti-patterns/failure-enumeration-predicate-diverges-from-failing-expression.md) — 保存前検査の診断のレビュー結果を統合
+* **Update**: [失敗の原因を列挙する条件は失敗する式と同じ述語で書き、「特定できません」の既定文言で覆わない](pages/anti-patterns/failure-enumeration-predicate-diverges-from-failing-expression.md) — 保存前検査の診断のfix 結果を統合
+* **Update**: [失敗の原因を列挙する条件は失敗する式と同じ述語で書き、「特定できません」の既定文言で覆わない](pages/anti-patterns/failure-enumeration-predicate-diverges-from-failing-expression.md) — 保存前検査の診断のレビュー結果を統合
+* **Update**: [失敗の原因を列挙する条件は失敗する式と同じ述語で書き、「特定できません」の既定文言で覆わない](pages/anti-patterns/failure-enumeration-predicate-diverges-from-failing-expression.md) — 保存前検査の診断のfix 結果を統合
+* **Update**: [失敗の原因を列挙する条件は失敗する式と同じ述語で書き、「特定できません」の既定文言で覆わない](pages/anti-patterns/failure-enumeration-predicate-diverges-from-failing-expression.md) — 保存前検査の診断のレビュー結果を統合
+* **Update**: [散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする](pages/heuristics/prose-cited-implementation-behavioral-verification.md) — 採番式のコメントの範囲のレビュー結果を統合
+* **Update**: [path を返す test fixture ヘルパーの cleanup 登録は $() サブシェルではなく親シェルで行う](pages/patterns/test-fixture-helper-parent-shell-cleanup-registration.md) — 作業メモリ同期の一時ファイル削除のレビュー結果を統合
+* **Update**: [path を返す test fixture ヘルパーの cleanup 登録は $() サブシェルではなく親シェルで行う](pages/patterns/test-fixture-helper-parent-shell-cleanup-registration.md) — 作業メモリ同期の一時ファイル削除のレビュー結果を統合
+* **Update**: [失敗経路のテストは、対象の 1 経路だけを失敗させる差し替えで強制し、差し替えなしの対照実行で空振りでないことを確かめる](pages/patterns/failure-path-test-forced-by-narrow-stub-with-control-run.md) — 新しい失敗経路のテストのレビュー結果を統合
+* **Update**: [失敗経路のテストは、対象の 1 経路だけを失敗させる差し替えで強制し、差し替えなしの対照実行で空振りでないことを確かめる](pages/patterns/failure-path-test-forced-by-narrow-stub-with-control-run.md) — 新しい失敗経路のテストと案内文の集約のfix 結果を統合
+* **Update**: [失敗経路のテストは、対象の 1 経路だけを失敗させる差し替えで強制し、差し替えなしの対照実行で空振りでないことを確かめる](pages/patterns/failure-path-test-forced-by-narrow-stub-with-control-run.md) — 新しい失敗経路のテストのレビュー結果を統合
+* **Create**: [手順書で停止を見分ける条件は、stderr の先頭一致ではなく、その行が現れるかで書く](pages/heuristics/stop-discriminated-by-line-presence-not-stderr-prefix.md) — 停止の見分け方のレビュー結果を新規ページ化
+* **Create**: [手順書で停止を見分ける条件は、stderr の先頭一致ではなく、その行が現れるかで書く](pages/heuristics/stop-discriminated-by-line-presence-not-stderr-prefix.md) — 停止の見分け方のfix 結果を新規ページ化
+* **Create**: [手順書で停止を見分ける条件は、stderr の先頭一致ではなく、その行が現れるかで書く](pages/heuristics/stop-discriminated-by-line-presence-not-stderr-prefix.md) — 停止の見分け方のレビュー結果を新規ページ化
+* **Create**: [外部からの取得は「存在しない」と「取得できない」を分け、件数上限で切れたことを印として残す](pages/heuristics/external-fetch-separates-absent-from-unavailable-and-marks-truncation.md) — 外部取得の分類と diff の形のレビュー結果を新規ページ化
+* **Create**: [外部からの取得は「存在しない」と「取得できない」を分け、件数上限で切れたことを印として残す](pages/heuristics/external-fetch-separates-absent-from-unavailable-and-marks-truncation.md) — 外部取得の分類のfix 結果を新規ページ化
+* **Create**: [外部からの取得は「存在しない」と「取得できない」を分け、件数上限で切れたことを印として残す](pages/heuristics/external-fetch-separates-absent-from-unavailable-and-marks-truncation.md) — 外部取得の分類のfix 結果を新規ページ化
+* **Create**: [外部からの取得は「存在しない」と「取得できない」を分け、件数上限で切れたことを印として残す](pages/heuristics/external-fetch-separates-absent-from-unavailable-and-marks-truncation.md) — 取り直す手段の上限と diff 解析の残置のレビュー結果を新規ページ化
+* **Create**: [外部からの取得は「存在しない」と「取得できない」を分け、件数上限で切れたことを印として残す](pages/heuristics/external-fetch-separates-absent-from-unavailable-and-marks-truncation.md) — マージコミットの変更ファイルと判定規則の順序のfix 結果を新規ページ化
+* **Update**: [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — diff 解析の残置と停滞の見直しのfix 結果を統合
+* **Create**: [判定規則を「最初に当てはまる段だけを見る」順序づけへ変えると、根拠が複数の経路に分かれる正しい主張を不支持にする](pages/anti-patterns/first-match-stage-ordering-rejects-union-supported-claims.md) — 判定規則の順序づけのレビュー結果を新規ページ化
+* **Create**: [skill の手順に実行ブロックを足すときは、その skill のシェルブロックの形の契約に合わせ、検証に形を検査する hooks のスイートを含める](pages/heuristics/skill-exec-block-conforms-to-shell-shape-contract.md) — 実行ブロックの形の契約のレビュー結果を新規ページ化
+* **Create**: [skill の手順に実行ブロックを足すときは、その skill のシェルブロックの形の契約に合わせ、検証に形を検査する hooks のスイートを含める](pages/heuristics/skill-exec-block-conforms-to-shell-shape-contract.md) — 実行ブロックの形の契約のfix 結果を新規ページ化
+* **Create**: [判定表の行に条件を足したら、否定側の行・言い換えた要約・その行を固定するテストを同じ変更で揃える](pages/heuristics/decision-table-row-condition-moves-negation-row-summary-and-pin.md) — 判定表の否定側の行と出力の付記のレビュー結果を新規ページ化
+* **Create**: [判定表の行に条件を足したら、否定側の行・言い換えた要約・その行を固定するテストを同じ変更で揃える](pages/heuristics/decision-table-row-condition-moves-negation-row-summary-and-pin.md) — 判定表の否定側の行のfix 結果を新規ページ化
+* **Create**: [判定表の行に条件を足したら、否定側の行・言い換えた要約・その行を固定するテストを同じ変更で揃える](pages/heuristics/decision-table-row-condition-moves-negation-row-summary-and-pin.md) — 判定表の marker 条件と pinのレビュー結果を新規ページ化
+* **Create**: [判定表の行に条件を足したら、否定側の行・言い換えた要約・その行を固定するテストを同じ変更で揃える](pages/heuristics/decision-table-row-condition-moves-negation-row-summary-and-pin.md) — 判定表の marker 条件と pinのfix 結果を新規ページ化
+* **Create**: [判定表の行に条件を足したら、否定側の行・言い換えた要約・その行を固定するテストを同じ変更で揃える](pages/heuristics/decision-table-row-condition-moves-negation-row-summary-and-pin.md) — 判定表の pinのレビュー結果を新規ページ化
+* **Create**: [判定表の行に条件を足したら、否定側の行・言い換えた要約・その行を固定するテストを同じ変更で揃える](pages/heuristics/decision-table-row-condition-moves-negation-row-summary-and-pin.md) — 条件の集合を名指す記述のfix 結果を新規ページ化
+* **Create**: [判定表の行に条件を足したら、否定側の行・言い換えた要約・その行を固定するテストを同じ変更で揃える](pages/heuristics/decision-table-row-condition-moves-negation-row-summary-and-pin.md) — 条件の集合を名指す記述のレビュー結果を新規ページ化
+* **Create**: [既存手順を新しい入口から呼ぶときは、終端と前提分岐を呼び出し元ごとに書く](pages/heuristics/delegated-procedure-terminus-and-preconditions-follow-each-caller.md) — 委譲先の終端のレビュー結果を新規ページ化
+* **Create**: [既存手順を新しい入口から呼ぶときは、終端と前提分岐を呼び出し元ごとに書く](pages/heuristics/delegated-procedure-terminus-and-preconditions-follow-each-caller.md) — 委譲先の終端のfix 結果を新規ページ化
+* **Create**: [既存手順を新しい入口から呼ぶときは、終端と前提分岐を呼び出し元ごとに書く](pages/heuristics/delegated-procedure-terminus-and-preconditions-follow-each-caller.md) — 取り込み手順の前提分岐と退避編集のレビュー結果を新規ページ化
+* **Create**: [既存手順を新しい入口から呼ぶときは、終端と前提分岐を呼び出し元ごとに書く](pages/heuristics/delegated-procedure-terminus-and-preconditions-follow-each-caller.md) — 取り込み手順の前提分岐と退避編集のfix 結果を新規ページ化
+* **Create**: [既存手順を新しい入口から呼ぶときは、終端と前提分岐を呼び出し元ごとに書く](pages/heuristics/delegated-procedure-terminus-and-preconditions-follow-each-caller.md) — 取り込み手順の収束のレビュー結果を新規ページ化
+
 ## 2026-10-07
 
 * **Skip**: [レビュー結果](raw/reviews/20261006T224853Z-pr-3705.md) — 指摘なしのレビュー記録のみで新規経験則なし

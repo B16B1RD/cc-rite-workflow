@@ -15,13 +15,18 @@ sources:
     resource: "raw/reviews/20260927T144951Z-pr-3289.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T163342Z-pr-3311.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261009T143450Z-pr-3726.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261009T145449Z-pr-3726-c2.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:35:29Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-15T12:50:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:35:29Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
 ---
 
 # path を返す test fixture ヘルパーの cleanup 登録は $() サブシェルではなく親シェルで行う
@@ -79,6 +84,12 @@ fixture は呼び出し元スコープの変数を設定する形にする。呼
 登録の pin が初回呼び出しだけを対象にしていると、残りの呼び出しがコマンド置換へ戻る退行は検出されない。呼び出し箇所が複数あるなら、どれか 1 つを戻す変異で落ちるかを確かめる。
 
 
+### 一時ファイルの削除は失敗経路ごとに明示し、失敗経路でも残らないことをテストで固定する
+
+作業メモリの同期の修正で、command substitution のサブシェル内で動く関数の一時ファイルを EXIT trap に任せていたが、サブシェル内の関数では EXIT trap が効かない。削除は失敗経路ごとに明示し、成功経路だけでなく失敗経路でも「tmp に残るのは backup だけ」をテストで固定する。次の cycle では、一時ファイルの削除を取り除く変異をテストが検出できることを reviewer が実測して確かめた。
+
+同じ変更では、実装が観測値や挙動を変えたら docs の該当箇所も同じ PR で更新すること、gh の呼び出し形（stdin から `-F body=@file` へ）を変えたら全テストの gh モックを引数を解釈して応答する形に揃えることも必要だった。
+
 ## 関連ページ
 
 - [trap 登録 → mktemp の順序で tempfile lifecycle を守る](./trap-register-before-mktemp.md)
@@ -90,3 +101,5 @@ fixture は呼び出し元スコープの変数を設定する形にする。呼
 - [サブシェルで trap が発火し fixture が消えた経緯を記録したレビュー結果](../../raw/reviews/20260915T123233Z-pr-2867.md)
 - [同じ漏れを別のテストファイルで検出したレビュー結果](../../raw/reviews/20260927T144951Z-pr-3289.md)
 - [fixture を呼び出し元の local に値を入れる形へ揃えたレビュー結果](../../raw/reviews/20260927T163342Z-pr-3311.md)
+- [レビュー結果（サブシェル内の EXIT trap と失敗経路の削除）](../../raw/reviews/20261009T143450Z-pr-3726.md)
+- [レビュー結果（サブシェル内の EXIT trap と失敗経路の削除）](../../raw/reviews/20261009T145449Z-pr-3726-c2.md)

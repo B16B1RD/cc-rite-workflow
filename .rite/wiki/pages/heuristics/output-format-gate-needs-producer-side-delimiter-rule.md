@@ -4,7 +4,7 @@ title: "出力形式の gate を新設したら、producer 側にも同じ区切
 domain: "heuristics"
 description: "reviewer の出力のような形式を検査する gate を足すとき、gate 側だけで「どこまでを値とみなすか」を決めると、正しい内容の出力が付記行（時刻記録など）で落とされる。gate の範囲を狭めて誤検出を避けると、今度は fail-loud で拾うべき不備を取りこぼす。区切り規則は producer への指示と再生成の指示にも同じ形で書く。"
 created: "2026-09-30T05:38:00Z"
-generated: { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T12:10:17Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260930T052103Z-pr-3521.md"
@@ -12,8 +12,11 @@ sources:
     resource: "raw/fixes/20260930T053339Z-pr-3521.md"
   - type: "reviews"
     resource: "raw/reviews/20260930T110513Z-pr-3537.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261009T175021Z-pr-3728.md"
 verified:
   - { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T12:10:17Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
 tags: []
 confidence: medium
 ---
@@ -36,6 +39,10 @@ gate を足す変更では、producer への指示・gate・再生成の指示�
 
 推奨事項の節の直後に、字下げのない付記を 1 行置くと、その行は値の外だと分からず、分類の無い推奨事項として拒否され、出力の作り直しになる。付記は、節の値と区別できる字下げにするか、producer 側の区切り規則で値の外だと分かる形にする。作り直しを頼む指示にも、同じ区切りを書く。
 
+### 推奨事項の後ろの付記と、表のセル内の `\|`
+
+reviewer の出力で、推奨事項の後ろに「関連ファイル」などの付記を書くと推奨事項として数えられ、形式ゲートで再生成になった。表のセル内の `\|` も列区切りとして数えられた。producer への出力指示には、推奨事項の後ろに付記を置かないことと、セル内で区切り文字を使わないことも書いておく。
+
 ## 関連ページ
 
 - [消費側の許可リストが生産側の値域を詰まらせる](../anti-patterns/consumer-allowlist-wedges-producer-value-range.md)
@@ -45,3 +52,4 @@ gate を足す変更では、producer への指示・gate・再生成の指示�
 - [レビュー結果](../../raw/reviews/20260930T052103Z-pr-3521.md)
 - [fix 結果](../../raw/fixes/20260930T053339Z-pr-3521.md)
 - [節の直後の付記が拒否された記録](../../raw/reviews/20260930T110513Z-pr-3537.md)
+- [レビュー結果（付記とセル内の区切り）](../../raw/reviews/20261009T175021Z-pr-3728.md)

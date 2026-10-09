@@ -11,9 +11,17 @@ sources:
     resource: "raw/reviews/20260717T021655Z-pr-1882.md"
   - type: "reviews"
     resource: "raw/reviews/20260717T014643Z-pr-1882.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261009T163104Z-pr-3729.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261009T164231Z-pr-3729.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261009T164954Z-pr-3729.md"
 tags: []
 confidence: medium
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-17T02:44:35Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
 ---
 
 # rationale ポインタ形式は bare `rationale:` 形式に統一する
@@ -32,6 +40,10 @@ rationale 退避 PR のレビューで観測された事実:
 
 **推奨**: 退避作業の Issue / 計画段階で「ポインタは bare `rationale: references/<file>.md#<anchor>` 形式」と明文化する。既存の markdown link 形式を一括変換する必要はない(機能等価のため)が、新規追加分は bare 形式に揃える。hybrid 形式(prefix と link の二重)は情報が重複するためどちらかに寄せる。
 
+### 退避編集の後は、ポインタ行が単独行か・anchor が見出しに解決するかを機械的に確かめる
+
+理由説明を references へ移す編集で、ポインタ行の直後の改行が抜け、後続の規範文がポインタ行に連結された。anchor が解決しなくなり、本体の規則が読み飛ばされる行の中に入った。退避編集の後は、ポインタ行が単独行かを grep で、全ポインタの anchor が参照先の見出しに解決するかを機械検査で確かめる。文書だけの修正でも、変更した文言を固定する契約テストとこの機械検査を回すと、reviewer 間で解消の判定が一致しやすい。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -40,3 +52,6 @@ rationale 退避 PR のレビューで観測された事実:
 
 - [レビュー結果](../../raw/reviews/20260717T021655Z-pr-1882.md)
 - [レビュー結果](../../raw/reviews/20260717T014643Z-pr-1882.md)
+- [レビュー結果（退避編集後のポインタ行の検査）](../../raw/reviews/20261009T163104Z-pr-3729.md)
+- [fix 結果（退避編集後のポインタ行の検査）](../../raw/fixes/20261009T164231Z-pr-3729.md)
+- [レビュー結果（退避編集後のポインタ行の検査）](../../raw/reviews/20261009T164954Z-pr-3729.md)

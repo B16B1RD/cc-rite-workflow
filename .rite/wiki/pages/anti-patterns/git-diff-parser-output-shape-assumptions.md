@@ -4,9 +4,10 @@ title: "git diff の出力形状を前提にしたパーサは、git の設定�
 domain: "anti-patterns"
 description: "git diff の出力形状は、利用者の設定（引用・prefix・hunk の結合幅・textconv）と rename 検出で変わる。解析側で形の列挙を増やすより、呼び出し引数で形を固定し、固定した引数ごとに外すと落ちるテストを置く。範囲検査では移動元と移動先の両方を列挙する。"
 created: "2026-09-06T16:10:23Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T06:02:43Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T05:02:36Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260906T125803Z-pr-2582.md"
@@ -32,6 +33,12 @@ sources:
     resource: "raw/fixes/20260928T053004Z-pr-3387.md"
   - type: "reviews"
     resource: "raw/reviews/20260928T054345Z-pr-3387.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261009T154300Z-pr-3728.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261009T161152Z-pr-3728.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261009T162319Z-pr-3728.md"
 tags: ["git-diff", "parser", "silent-degradation", "portability"]
 confidence: high
 ---
@@ -108,6 +115,14 @@ textconv の固定を確かめるには、行数を変えるドライバ（各�
 
 固定した引数ごとに、その引数を外すとテストが落ちることを変異で確かめる。追加した引数（`--no-textconv` など）を外しても通るテストは、その引数の意図を固定していない。この変更では、接頭辞・結合幅・textconv の各固定について、複数の reviewer が変異で落ちることを確かめ、blocking 0 件で収束した
 
+### 新しい helper でも同じ穴が再発した — ヘッダ判定の移設後に残った除外と、空白を含む名前
+
+出典を挙げた行を全件確かめる新しい helper が、git の出力を既定の形と仮定していた。非 ASCII のファイル名（`core.quotePath` による引用符付きパス）や利用者の `diff.mnemonicPrefix` / `diff.noprefix` で diff ヘッダが変わり、抽出が rc=0 のまま 0 件になった。fixture が ASCII 名・既定設定だけだったため、テストでは見えなかった。
+
+次の cycle では、ヘッダの判定を作り直した後も本文側の条件に古い除外（`+++` で始まる行）が残り、`++` で始まる追加行を黙って落として後続行の行番号をずらしていた。判定を別の場所へ移したら、移す前の判定がまだ残っていないかを確かめる。修正は追加ではなく残置の削除で済んだ。
+
+空白を含むファイル名では、git が `+++` 行の path の末尾に区切りのタブを付けるため、タブが path に混入した。名前の空白・引用符・prefix の設定を入力として扱う回帰テストを 1 つの文書にまとめて持つと、同じ類の欠陥を一度に検出できる。どちらの欠陥も、helper を実際に実行して誤った値が返ることを確かめてから直した。
+
 ## 関連ページ
 
 - [変数名の字句解析に依存した prefix 導出は壊れる](../patterns/bash-variable-name-lexing-defeats-prefix-derivation-regex.md)
@@ -127,3 +142,6 @@ textconv の固定を確かめるには、行数を変えるドライバ（各�
 - [レビュー結果（hunk の結合幅の設定と、出力を変えない設定の回帰ケース）](../../raw/reviews/20260928T052332Z-pr-3387.md)
 - [fix 結果（hunk の結合幅の固定と、設定が効く経路での変異確認）](../../raw/fixes/20260928T053004Z-pr-3387.md)
 - [レビュー結果（固定した引数ごとの変異確認と、未固定の引数・兄弟 helper）](../../raw/reviews/20260928T054345Z-pr-3387.md)
+- [レビュー結果（新しい helper での再発と、移設後に残った除外）](../../raw/reviews/20261009T154300Z-pr-3728.md)
+- [レビュー結果（新しい helper での再発と、移設後に残った除外）](../../raw/reviews/20261009T161152Z-pr-3728.md)
+- [fix 結果（新しい helper での再発と、移設後に残った除外）](../../raw/fixes/20261009T162319Z-pr-3728.md)

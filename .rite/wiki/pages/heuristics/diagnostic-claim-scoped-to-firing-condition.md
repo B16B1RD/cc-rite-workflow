@@ -29,12 +29,19 @@ sources:
     resource: "raw/reviews/20260914T053432Z-pr-2803.md"
   - type: "reviews"
     resource: "raw/reviews/20260914T073943Z-pr-2806.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261009T133840Z-pr-3724.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261009T134138Z-pr-3724-fix.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261009T134704Z-pr-3724-c2.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-14T07:50:03Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-08-30T15:15:33Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
     at: "2026-08-30T12:50:00+09:00"
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-14T07:50:03Z" }
 ---
@@ -138,6 +145,10 @@ stderr を捕まえて表示する共通 helper を、新しい失敗経路（aw
 
 どちらも旧い言い回しの grep では見つからない。**条件文言を揃えるときは、旧文言だけでなく「その条件が効く場面の一覧」と「その概念の既存の呼び名」でも grep する。**
 
+### 既存テストに別の対象の assert を足したら、失敗メッセージと冒頭コメントにも対象を併記する
+
+ラベルが空でも Issue を起票できるようにする修正で、既存のテストファイルに別スクリプトの assert を追記したが、失敗メッセージと冒頭コメントは元の単一対象を説明したままだった。追加した assert が落ちても原因箇所を取り違えるため、3 名の reviewer が推奨した。対象を足したら診断文言も併記して更新する。次の cycle で解消を確認し、残った推奨（失敗メッセージ末尾の別テストへの言及）は実害を示せず却下した。この修正が直した不具合（`jq -R` が空入力で何も出力しない）は、SKILL.md の行を取り出して実行するテストで変異により検出できた。
+
 ## 関連ページ
 
 - [診断WARNINGの宛先（実行エージェント向けかユーザー向けか）を主語で明示する](./diagnostic-warning-message-audience-ambiguity.md)
@@ -149,3 +160,6 @@ stderr を捕まえて表示する共通 helper を、新しい失敗経路（aw
 - [fix 結果](../../raw/fixes/20260802T183824Z-pr-2094.md)
 - [原因別分割の順序ガード / 二役行は両因を併記](../../raw/fixes/20260830T144004Z-pr-2489.md)
 - [共通 helper の行ラベルと文書同期の取りこぼしを指摘したレビュー結果](../../raw/reviews/20260914T073943Z-pr-2806.md)
+- [レビュー結果（対象を足したテストの診断文言）](../../raw/reviews/20261009T133840Z-pr-3724.md)
+- [fix 結果（対象を足したテストの診断文言）](../../raw/fixes/20261009T134138Z-pr-3724-fix.md)
+- [レビュー結果（対象を足したテストの診断文言）](../../raw/reviews/20261009T134704Z-pr-3724-c2.md)

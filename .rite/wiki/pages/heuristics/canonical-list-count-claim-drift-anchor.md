@@ -42,11 +42,20 @@ sources:
     resource: "raw/reviews/20260607T115501Z-pr-1298.md"
   - type: "reviews"
     resource: "raw/reviews/20260830T135506Z-pr-2489.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261009T133506Z-pr-3722.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261009T133935Z-pr-3722.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261009T134352Z-pr-3722-c2.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261009T152844Z-pr-3727.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-08-30T15:15:33Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-08-30T15:15:33Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
 ---
 
 # 新規 exit 1 経路追加時は同一ファイル内 canonical 一覧を同期更新し、『N site 対称化』counter 宣言を drift 検出アンカーとして活用する
@@ -188,6 +197,12 @@ canonical 一覧の同期義務は「列挙している箇所」だけでは閉�
 
 「rationale は `references/` へ退避し本体に 1 行ポインタを残す」構造では、振る舞いを変えたときに本体だけを直してもポインタ先に同じ主張が残る。実測では本体の「informational 指標として完了レポートの内訳にのみ表示する」を実態へ直した後も、`rationale:` 行が指す先の同じ主張が旧仕様のまま残っていた。**ポインタ方式は記述の重複を消すのではなく 1 レベル下へ移すだけ**なので、canonical 一覧の同期義務も 1 レベル下まで及ぶ。
 
+### 除外規則・終了経路の一覧は、同じ一覧を持つ全箇所を grep で洗ってから変える
+
+検出器に除外規則を 1 つ足したとき、同じ列挙を持つ箇所（スクリプト冒頭のコメント・`--help` の usage・rationale・SKILL）のうち usage の Exclusions 行だけが同期漏れになり、2 名の reviewer が独立に同じ箇所を指摘した。修正は既存の一覧への 1 語句の追加で足り、次の cycle で新しい指摘なく収束した。
+
+exit code の説明に「〜のみ」と限定を書くと、新しい終了経路が増えるたびに食い違う。限定せず「非 blocking の失敗以外の致命的な失敗は exit 1」と書けば追従が要らない。エラー文言の接頭辞を変えたら、その文言を停止の手がかりとして引いている手順書・テスト手順の見出しも同じ commit で直す。PR 本文の検証節に書いたテスト件数も、fix でテストを足すたびに古くなるので fix の commit と同時に更新する。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -215,3 +230,7 @@ canonical 一覧の同期義務は「列挙している箇所」だけでは閉�
 - ['3-site 対称化' + watchdog footnote で peer scope 限定を narration に明示](../../raw/fixes/20260520T022118Z-pr-1066-cycle1.md)
 - [hand-maintained counter 撤廃 → step enumeration 列挙統一の successful application、0 findings 初回 mergeable](../../raw/reviews/20260607T115501Z-pr-1298.md)
 - [散文カウント drift を 3 レビュアーが独立検出](../../raw/reviews/20260830T135506Z-pr-2489.md)
+- [レビュー結果（除外規則と終了経路の一覧の同期）](../../raw/reviews/20261009T133506Z-pr-3722.md)
+- [fix 結果（除外規則と終了経路の一覧の同期）](../../raw/fixes/20261009T133935Z-pr-3722.md)
+- [レビュー結果（除外規則と終了経路の一覧の同期）](../../raw/reviews/20261009T134352Z-pr-3722-c2.md)
+- [fix 結果（除外規則と終了経路の一覧の同期）](../../raw/fixes/20261009T152844Z-pr-3727.md)

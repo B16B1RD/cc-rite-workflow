@@ -32,15 +32,18 @@ sources:
     resource: "raw/reviews/20261005T011354Z-pr-3681.md"
   - type: "reviews"
     resource: "raw/reviews/20261005T012658Z-pr-3681.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261009T143006Z-pr-3725.md"
 tags: ["verification-protocol", "prose-implementation-sync", "regex", "behavioral-test", "attribution"]
 confidence: high
-generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-10-05T01:39:35Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:27:52Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:39:40Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:16:02Z" }
   - { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T17:01:22Z" }
   - { by: "rite-wiki-ingest/gpt-6", at: "2026-10-05T01:39:35Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
 ---
 
 # 散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする
@@ -108,6 +111,10 @@ canonical: helper を散文参照するときは「regex 実体ファイル (`.p
 
 実装の規則をそのまま期待結果へ写すと、同じ見逃しをテストにも持ち込む。意味比較は対象・条件・結論を独立して読んだ期待結果と照合し、分類先の違いや低い確信度で候補を落とさず、条件付きの例外を方針逆転と取り違えないことを確かめる。静的な契約テストには、実際に注入される規則の全除去・個別除去を当てる。手作りの指摘を渡して緑になるだけでは、その規則が消えた際の退行を検出した証拠にはならない。
 
+### 「同形」と書くコメントは、同じなのがどこまでかを限定する
+
+Decision Log の採番式のコメントが「別ファイルの行の正規表現と同形」と書いていたが、同形なのは行頭の接頭部（日付と決定 ID）だけで、末尾の Reason / Impact は要求していなかった。同じ変更の追加テストは引用にコロンが無く、行頭アンカーと日付部分を外す変異が生き残った。「同形」「同じ」と書くときは一致する範囲を限定して書き、その範囲をテストの変異で確かめる。
+
 ## 関連ページ
 
 - [Documentation review は対応する実装側 (commands/scripts/templates) の grep verify を必須 step とする](./docs-review-implementation-grep-verification.md)
@@ -131,3 +138,4 @@ canonical: helper を散文参照するときは「regex 実体ファイル (`.p
 - [保存成果物と独立した挙動検証の記録](../../raw/reviews/20261004T234257Z-pr-3681.md)
 - [保存成果物と独立した挙動検証の記録](../../raw/reviews/20261005T011354Z-pr-3681.md)
 - [保存成果物と独立した挙動検証の記録](../../raw/reviews/20261005T012658Z-pr-3681.md)
+- [レビュー結果（「同形」と書くコメントの範囲）](../../raw/reviews/20261009T143006Z-pr-3725.md)
