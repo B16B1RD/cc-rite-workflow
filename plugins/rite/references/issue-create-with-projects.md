@@ -123,7 +123,13 @@ projects:
  field_name: "Sprint" # Default: "Sprint"
  field_names: { status, priority, complexity } # Optional per-field project field-name override. priority / complexity: overrides the built-in EN<->JA alias (empty/absent -> aliases only). status: overrides the resolver's candidates, which come from rite-config.yml github.projects.fields.status.name (empty/absent -> "ステータス" then "Status"); the built-in alias table does not apply to Status
 options:
- source: string # Caller identifier (pr_review|pr_create|cleanup|interactive|xl_decomposition|fingerprint_split|quality_signal_3_split|quality_signal_4_split)
+ source: string # Required caller identifier (pr_review|pr_create|cleanup|interactive|xl_decomposition|fingerprint_split|quality_signal_3_split|quality_signal_4_split)
+                # Missing or unknown values exit 1 before any gh call.
+                # interactive / xl_decomposition are the /rite:issue-create paths: they need the
+                # record left by scripts/issue-create-gate.sh (step 2, then 4.1 / 4.2.1, or 5.2 / 5.1.1
+                # when decomposing) and stop without creating an Issue when it is missing. interactive
+                # consumes the record once the Issue exists; decompose-issues.sh consumes it when it
+                # exits, once the parent has been created (the children are created under the same record).
                 # Note: 以下の値は legacy 互換のため enum に含めない (caller 消失済、`grep -rn 'source: "<value>"' plugins/rite/` で 0 件確認):
                 #   - `pr_fix`:          fix.md Phase 4.3 (Automatic Separate Issue Creation) が廃止済み
                 #   - `parent_routing`:  parent-routing.md sub-skill が廃止済み
@@ -206,6 +212,8 @@ The script handles errors internally with the following behavior:
 | Error Case | Response |
 |------------|----------|
 | `projects.status` is not `"todo"` | Input error: output JSON with `project_registration: "failed"` + `exit 1` **before any gh call** (the Issue is not created), even with `non_blocking_projects: true`. The warning names the received value |
+| `options.source` missing or not a known caller | Input error: output JSON with `project_registration: "failed"` + `exit 1` **before any gh call** (the Issue is not created). The warning is `options.source is required` or names the received value |
+| issue-create gate not passed (`interactive` / `xl_decomposition` without the `/rite:issue-create` record) | Output JSON with `project_registration: "failed"` + `exit 1` **before any gh call** (the Issue is not created). `scripts/issue-create-gate.sh` prints the reason on stderr: the guidance to start `/rite:issue-create` when the record is missing, or only the cause when the session or state root cannot be resolved |
 | `gh issue create` failure | Output JSON with `project_registration: "failed"` + `exit 1`. Caller's `result=$(bash ...)` captures stdout but gets non-zero exit code |
 | `gh project item-add` failure (after 3 retries) | Output JSON with `project_registration: "failed"` + `exit 0` (non-blocking) or `exit 1`. **stderr emit**: `ERROR: Projects registration failed: ...` |
 | `item_id` retrieval failure (after fallback to last: 20 + 3 retries) | Output JSON with `project_registration: "partial"` + `exit 0`. **stderr emit** on each failure |
@@ -215,7 +223,7 @@ The script handles errors internally with the following behavior:
 
 **Exit code convention:**
 - `exit 0`: Success or non-blocking failure (Projects-related issues when `non_blocking_projects: true`)
-- `exit 1`: Fatal error (input validation such as `projects.status` other than `"todo"`, Issue creation itself failed, or blocking failure when `non_blocking_projects: false`)
+- `exit 1`: Fatal error (input validation such as a missing or unknown `options.source` or `projects.status` other than `"todo"`, the issue-create gate not passed, Issue creation itself failed, or blocking failure when `non_blocking_projects: false`)
 
 **Behavior on error:**
 - All output (success and error) is written to **stdout** as JSON. The caller captures stdout via `result=$(bash ...)` and checks the exit code

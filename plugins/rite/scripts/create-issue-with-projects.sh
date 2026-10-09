@@ -37,6 +37,12 @@
 #     },
 #     "options": {
 #       "source": "interactive|pr_review|pr_create|cleanup|xl_decomposition|fingerprint_split|quality_signal_3_split|quality_signal_4_split",
+#                # 必須。欠落・enum 外の値は gh を呼ぶ前に exit 1。
+#                # interactive / xl_decomposition は /rite:issue-create の経路であり、
+#                # issue-create-gate.sh verify が通らなければ Issue を作らずに exit 1 する。
+#                # interactive は Issue を作った時点で gate を消費する (xl_decomposition は
+#                # decompose-issues.sh が消費する)。source は caller の自己申告なので、
+#                # 偽の source を渡す呼び出しまでは止めない。
 #                # Note: 以下の値は legacy 互換のため enum に含めない (caller 消失済):
 #                #   - `pr_fix`:          fix.md の Automatic Separate Issue Creation が廃止されたため
 #                #   - `parent_routing`:  parent-routing.md sub-skill が廃止されたため
@@ -54,6 +60,9 @@
 #     "project_registration": "skipped|ok|partial|failed",
 #     "warnings": ["string"]
 #   }
+#
+# Evaluation order: options.source → 入力検証 (title / body_file / status / attachments)
+# → issue-create gate (interactive / xl_decomposition のみ) → gh。gh より前の失敗では Issue を作らない。
 #
 # Note: Results (success and error) are written to stdout as JSON.
 # Attachment and Projects failures also surface their error on stderr.
@@ -190,10 +199,25 @@ eval "$(printf '%s\n' "$INPUT_JSON" | jq -r '
   @sh "FIELD_NAME_STATUS=\(.projects.field_names.status // "")",
   @sh "FIELD_NAME_PRIORITY=\(.projects.field_names.priority // "")",
   @sh "FIELD_NAME_COMPLEXITY=\(.projects.field_names.complexity // "")",
-  @sh "NON_BLOCKING=\(if .options.non_blocking_projects == false then false else true end)"
+  @sh "NON_BLOCKING=\(if .options.non_blocking_projects == false then false else true end)",
+  @sh "SOURCE=\(.options.source // "" | tostring)"
 ')"
 
 # --- Validation ---
+case "$SOURCE" in
+  interactive|pr_review|pr_create|cleanup|xl_decomposition|fingerprint_split|quality_signal_3_split|quality_signal_4_split) ;;
+  "")
+    add_warning "options.source is required"
+    output_result "" 0 "" "" "failed"
+    exit 1
+    ;;
+  *)
+    add_warning "options.source is not a known caller: '$(printf '%s' "$SOURCE" | neutralize_ctrl)'"
+    output_result "" 0 "" "" "failed"
+    exit 1
+    ;;
+esac
+
 if [ -z "$TITLE" ]; then
   add_warning "Issue title is required"
   output_result "" 0 "" "" "failed"
@@ -225,6 +249,25 @@ for attachment in "${ATTACHMENTS[@]}"; do
     exit 1
   fi
 done
+
+# /rite:issue-create の経路は、スキルの手順 (重複検出・確認・ファクトチェック) を通った記録を要する。
+# SKILL.md を読んで helper だけを直接呼ぶと、それらが飛んだまま起票されるため。
+GATED=false
+case "$SOURCE" in interactive|xl_decomposition) GATED=true ;; esac
+if [ "$GATED" = "true" ] && ! bash "$SCRIPT_DIR/issue-create-gate.sh" verify; then
+  add_warning "issue-create gate not passed (reason on stderr)"
+  output_result "" 0 "" "" "failed"
+  exit 1
+fi
+
+# interactive は Issue 1 件ごとに gate を消費する。作成済みなら gh が失敗扱いでも消費する
+# (作成済みの Issue に対して同じ記録で再起票させない)。
+consume_gate_if_created() {
+  [ "$SOURCE" = "interactive" ] && [ -n "${ISSUE_URL:-}" ] || return 0
+  bash "$SCRIPT_DIR/issue-create-gate.sh" consume && return 0
+  echo "ERROR: issue-create gate could not be consumed after creating $ISSUE_URL" >&2
+  add_warning "issue-create gate could not be consumed after creating $ISSUE_URL"
+}
 
 # --- Phase 1: Create Issue ---
 # SSH host alias remote (git@github.com-work:owner/repo.git 等) では --repo 未指定の
@@ -270,6 +313,7 @@ for attachment in "${ATTACHMENTS[@]}"; do
 done
 
 ISSUE_URL=$(gh "${GH_ARGS[@]}" 2>"$GH_ERR_FILE") || {
+  consume_gate_if_created
   gh_err=$(cat "$GH_ERR_FILE")
   add_warning "gh issue create failed: $gh_err"
   if [ ${#ATTACHMENTS[@]} -gt 0 ]; then
@@ -281,6 +325,7 @@ ISSUE_URL=$(gh "${GH_ARGS[@]}" 2>"$GH_ERR_FILE") || {
   output_result "$ISSUE_URL" "${ISSUE_NUMBER:-0}" "" "" "failed"
   exit 1
 }
+consume_gate_if_created
 
 # SIGPIPE 防止: printf | grep パターンを here-string に置換。
 # ISSUE_URL は短い文字列だが、pipefail 下での一貫性のため統一。

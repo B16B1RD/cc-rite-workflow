@@ -48,7 +48,8 @@
 # Exit codes:
 #   0 = decomposition completed (per-sub create/link failures are non-blocking
 #       and counted, NOT fatal — per the counting contract)
-#   1 = fatal (missing/invalid spec, empty parent body, parent create failed)
+#   1 = fatal (missing/invalid spec, empty parent body, issue-create gate not passed,
+#       parent create failed)
 #   2 = usage error
 #
 # NOTE: `set -e` is intentionally omitted. The Sub-Issue loop counts per-item
@@ -119,7 +120,17 @@ workdir=$(spec_get '.workdir // empty')
 # silently miscounting an actually-created Sub-Issue as failed (counting contract break).
 helper_err_file=$(mktemp "${TMPDIR:-/tmp}/rite-decompose-helper-err.XXXXXX") \
   || helper_err_file="${TMPDIR:-/tmp}/rite-decompose-helper-err.$$"
-trap 'rm -f "$helper_err_file"; if [ -n "$workdir" ] && [ -d "$workdir" ]; then rm -rf "$workdir"; fi' EXIT INT TERM
+# The issue-create gate is consumed once the parent Issue exists, on every exit path:
+# re-running with the same record would create a second parent.
+consume_gate=false
+on_exit() {
+  rm -f "$helper_err_file"
+  if [ -n "$workdir" ] && [ -d "$workdir" ]; then rm -rf "$workdir"; fi
+  if [ "$consume_gate" = "true" ] && ! bash "$SCRIPT_DIR/issue-create-gate.sh" consume; then
+    echo "ERROR: issue-create gate could not be consumed after creating the parent Issue" >&2
+  fi
+}
+trap on_exit EXIT INT TERM
 
 # --- Resolve shared projects fields ---
 proj_enabled=$(spec_get '.projects.enabled // true')
@@ -171,6 +182,9 @@ parent_body_file=$(spec_get '.parent.body_file')
 
 [ -s "$parent_body_file" ] || { echo "ERROR: parent Issue body is empty" >&2; exit 1; }
 
+# create-issue-with-projects.sh も照合するが、ラベルの事前作成より前に止める
+bash "$SCRIPT_DIR/issue-create-gate.sh" verify || exit 1
+
 # Parent labels = "epic" prepended to the shared CSV (gsub trims whitespace,
 # select(length>0) drops empties — e.g. a trailing comma when labels_csv="").
 labels_json=$(printf '%s' "epic,${labels_csv}" | jq -R 'split(",") | map(select(length>0) | gsub("^\\s+|\\s+$"; ""))')
@@ -185,10 +199,13 @@ while IFS= read -r label; do
 done < <(printf '%s\n' "$labels_json" | jq -r '.[]')
 
 parent_attachments=$(printf '%s' "$SPEC_JSON" | jq -c '.parent.attachments // []')
-parent_result=$(bash "$CREATE_SCRIPT" "$(build_payload "$parent_title" "$parent_body_file" "$labels_json" "XL" "$parent_attachments")") || {
+parent_rc=0
+parent_result=$(bash "$CREATE_SCRIPT" "$(build_payload "$parent_title" "$parent_body_file" "$labels_json" "XL" "$parent_attachments")") || parent_rc=$?
+[ -n "$(printf '%s' "$parent_result" | jq -r '.issue_url // empty' 2>/dev/null)" ] && consume_gate=true
+if [ "$parent_rc" -ne 0 ]; then
   echo "ERROR: 親 Issue 作成失敗" >&2
   exit 1
-}
+fi
 
 parent_issue_number=$(printf '%s' "$parent_result" | jq -r '.issue_number // empty')
 [ -z "$parent_issue_number" ] && { echo "ERROR: 親 Issue の issue_number 取得失敗: $parent_result" >&2; exit 1; }

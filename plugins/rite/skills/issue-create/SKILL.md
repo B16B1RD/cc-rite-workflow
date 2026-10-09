@@ -14,6 +14,9 @@ argument-hint: "<title or description>"
 
 新規 Issue を作成し、GitHub Projects に登録する。重複検出・親 Issue 候補検出・XL 自動分解を含む。
 
+> **必ず本スキルを起動して起票する**。本ファイルを規約として読み、`create-issue-with-projects.sh` / `decompose-issues.sh` だけを直接呼ぶと、重複検出・4.1 の確認・本文のファクトチェックが飛ぶ。helper はステップ 2 と、4.1・4.2.1（分解は 5.2・5.1.1）の `issue-create-gate.sh record` の記録が無ければ Issue を作らずに止まる。
+> rationale: references/rationale.md#issue-create-gate
+
 **途中で止まったらユーザーは `/rite:recover` で再開する**。
 
 ## Arguments
@@ -104,6 +107,12 @@ title 類似度 / label 一致 / 更新日時 / state（OPEN > CLOSED）で top 
 | 0 件 | 次ステップへ |
 | 1 件 | (a) #{number} の拡張 → body に `Extends: #{number}` 追記 / (b) 既存 Issue を使用 → 終了 + `/rite:open {number}` 提案 / (c) 関連なし |
 | 2+ 件 | (a) #{番号} の拡張 / (b) 別 Issue 番号入力 / (c) 関連なし |
+
+終了以外で次ステップへ進むときは、選んだ分岐に関わらず重複検出を通った記録を残す（出力なし。前回の記録はここで作り直される。本ファイルの `record` が非ゼロで終わったら stderr を表示して止まる）:
+
+```bash
+bash {plugin_root}/scripts/issue-create-gate.sh record --step duplicate_check
+```
 
 ---
 
@@ -205,6 +214,12 @@ AskUserQuestion で Issue の以下を確認/補完する:
 - complexity（XS / S / M / L / XL）
 - labels（推測されたもの + 追加）
 
+確認を終えたら記録する（出力なし）:
+
+```bash
+bash {plugin_root}/scripts/issue-create-gate.sh record --step confirm
+```
+
 ### 4.2 Issue Body 生成（Implementation Contract フォーマット）
 
 Issue body は **Implementation Contract** フォーマット（Section 0-9）で生成する。出力構造は Step 4.1 で確定した **Type** と **Complexity** で決まる。詳細 rubric は SoT reference に委譲し、inline で複製しない（self-contained: 外部サブスキルは invoke しない）。
@@ -258,6 +273,12 @@ File 列のセルが実パス ⇔ (`/` を含む、または `.` + 英数字の�
 | すべて `VERIFIED` | 出力を増やさず 4.3 へ |
 | `CONTRADICTED` あり | **自動修正せず** AskUserQuestion で 3 択（`訂正案を採用` / `要確認を付記して続行` / `そのまま続行`）。選択を反映して 4.3 へ |
 | `UNVERIFIED` あり | 「要確認」（外部仕様の主張は「要検証」）を本文に付記して 4.3 へ。作成をブロックしない |
+
+上表のどの行でも、4.3 へ進む前に記録する（検査対象 0 件の silent skip でも実行し、出力しない）:
+
+```bash
+bash {plugin_root}/scripts/issue-create-gate.sh record --step fact_check
+```
 
 自己矛盾候補（M 以上）は上表と**直交する軸**のため行にしない。上表のどの行に該当したかに関わらず、reference の「クラス 3」節が定める規則で独立に評価する（相乗り / 新規発行の分岐も同節が単一定義を持つ。ここに写すと consumer 間で転写漏れが起きるため参照に留める）。
 
@@ -426,12 +447,12 @@ rationale: references/rationale.md#no-flow-state
 
 ### 5.1.1 仕様書の断定のファクトチェック
 
-5.1 の設計仕様書に ステップ 4.2.1 と同一の検査を適用する。**先に [`references/body-fact-check.md`](./references/body-fact-check.md) を Read する**。親仕様書は親 Complexity `XL` 固定のため **3 クラスすべて**を検査する。検査対象 0 件の silent skip・`CONTRADICTED` の 3 択・自己矛盾・`UNVERIFIED` 付記は 4.2.1 と同一。表面化は 5.2 より**前**。**承認反映後の仕様書を `{spec_document}` とする**。**5.2 で「分解を修正」なら本ステップを再実行**（決着済みは再質問しない）。対象は 5.1 の仕様書に閉じ、5.5 の Sub-Issue body は対象外。
+5.1 の設計仕様書に ステップ 4.2.1 と同一の検査を適用する。**先に [`references/body-fact-check.md`](./references/body-fact-check.md) を Read する**。親仕様書は親 Complexity `XL` 固定のため **3 クラスすべて**を検査する。検査対象 0 件の silent skip・`CONTRADICTED` の 3 択・自己矛盾・`UNVERIFIED` 付記は 4.2.1 と同一。表面化は 5.2 より**前**。**承認反映後の仕様書を `{spec_document}` とする**。**5.2 で「分解を修正」なら本ステップを再実行**（決着済みは再質問しない）。対象は 5.1 の仕様書に閉じ、5.5 の Sub-Issue body は対象外。検査を終えたら（検査対象 0 件の silent skip でも）4.2.1 と同じ `record --step fact_check` を実行する（出力なし）。
 rationale: references/rationale.md#fact-check-before-create
 
 ### 5.2 ユーザー確認
 
-AskUserQuestion で「この分解で進める / 分解を修正 / 中止」を選択。修正の場合は仕様書を再提示。
+AskUserQuestion で「この分解で進める / 分解を修正 / 中止」を選択。修正の場合は仕様書を再提示。「この分解で進める」なら 4.1 と同じ `record --step confirm` を実行してから 5.3 へ進む（出力なし）。
 
 ### 5.3 + 5.4 + 5.5 Step 1: 親 Issue 作成 + Sub-Issue 一括作成 + fetch（helper 委譲）
 
@@ -486,7 +507,7 @@ bash {plugin_root}/scripts/decompose-issues.sh --spec "{DECOMPOSE_WORKDIR}/spec.
 }
 ```
 
-> **marker 受け渡し**: helper は stdout に `[CONTEXT] PARENT_ISSUE_NUMBER=N` / `[CONTEXT] SUB_ISSUE_RESULT created=… failed=… link_failures=…` / `[CONTEXT] SUB_ISSUE_NUMBERS=…` を emit し、続けて fetch_output（`original_length=` / `tmpfile_read=` / `tmpfile_write=`）を出力する。Step 5.5 Step 2-3 はこれらを marker として LLM が literal 置換する。Sub-Issue 作成・link の失敗は helper 内で非 blocking にカウントされ、parent 作成失敗のみ helper が `exit 1` を返し上記 caller ガードで停止する。
+> **marker 受け渡し**: helper は stdout に `[CONTEXT] PARENT_ISSUE_NUMBER=N` / `[CONTEXT] SUB_ISSUE_RESULT created=… failed=… link_failures=…` / `[CONTEXT] SUB_ISSUE_NUMBERS=…` を emit し、続けて fetch_output（`original_length=` / `tmpfile_read=` / `tmpfile_write=`）を出力する。Step 5.5 Step 2-3 はこれらを marker として LLM が literal 置換する。Sub-Issue 作成・link の失敗は helper 内で非 blocking にカウントされる。それ以外の致命的失敗（issue-create gate 不成立・parent 作成失敗など）は helper が `exit 1` を返し、上記 caller ガードで停止する。
 
 ### 5.5 Step 2: LLM 編集
 
@@ -587,5 +608,7 @@ rationale: references/rationale.md#no-flow-state
 
 - owner/repo 解決失敗（git-remote.sh + `gh repo view` fallback とも失敗）→ エラー、認証・remote 設定確認を案内
 - Projects 未設定 → warning、Projects 追加を skip
+- helper の stderr に「Issue は作成していません」が出て止まる（`不足:` に step 名）→ Issue は作られていない。下の「Issue 作成失敗」の再試行・手動作成には進まない。不足した step の `record` が実行されていないので、該当ステップ（`duplicate_check` = 2、`confirm` = 4.1 / 5.2、`fact_check` = 4.2.1 / 5.1.1）へ戻って手順を通す。記録は Issue 1 件（分解は 1 回）ごとに消費されるため、続けて別の Issue を作るときもステップ 2 からやり直す
+- helper の stderr に `ERROR: issue-create gate:` の行が出て止まる（`不足:` が無い。session や state root を解決できない等）→ Issue は作られていない。ステップへ戻らず stderr を表示して止まる。下の「Issue 作成失敗」には進まない
 - Issue 作成失敗 → 先に `gh issue list -R {owner_repo} --search "{title} in:title" --state open` で作成済みかを確かめ（作成済みなら再作成しない）、stderr から原因を分類する。一時障害なら 1 回だけ再試行する。それでも決まらないときだけ AskUserQuestion で「再試行 / 手動作成 / 中止」
 - 親-子リンク失敗 → warning、後で手動リンクを案内
