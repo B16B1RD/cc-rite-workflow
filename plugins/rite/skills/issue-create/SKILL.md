@@ -507,7 +507,7 @@ bash {plugin_root}/scripts/decompose-issues.sh --spec "{DECOMPOSE_WORKDIR}/spec.
 }
 ```
 
-> **marker 受け渡し**: helper は stdout に `[CONTEXT] PARENT_ISSUE_NUMBER=N` / `[CONTEXT] SUB_ISSUE_RESULT created=… failed=… link_failures=…` / `[CONTEXT] SUB_ISSUE_NUMBERS=…` を emit し、続けて fetch_output（`original_length=` / `tmpfile_read=` / `tmpfile_write=`）を出力する。Step 5.5 Step 2-3 はこれらを marker として LLM が literal 置換する。Sub-Issue 作成・link の失敗は helper 内で非 blocking にカウントされ、issue-create gate 不成立と parent 作成失敗のみ helper が `exit 1` を返し上記 caller ガードで停止する。
+> **marker 受け渡し**: helper は stdout に `[CONTEXT] PARENT_ISSUE_NUMBER=N` / `[CONTEXT] SUB_ISSUE_RESULT created=… failed=… link_failures=…` / `[CONTEXT] SUB_ISSUE_NUMBERS=…` を emit し、続けて fetch_output（`original_length=` / `tmpfile_read=` / `tmpfile_write=`）を出力する。Step 5.5 Step 2-3 はこれらを marker として LLM が literal 置換する。Sub-Issue 作成・link の失敗は helper 内で非 blocking にカウントされる。それ以外の致命的失敗（issue-create gate 不成立・parent 作成失敗など）は helper が `exit 1` を返し、上記 caller ガードで停止する。
 
 ### 5.5 Step 2: LLM 編集
 
@@ -608,6 +608,6 @@ rationale: references/rationale.md#no-flow-state
 
 - owner/repo 解決失敗（git-remote.sh + `gh repo view` fallback とも失敗）→ エラー、認証・remote 設定確認を案内
 - Projects 未設定 → warning、Projects 追加を skip
-- helper が `issue-create gate` で止まる（stderr の `不足:` に step 名）→ Issue は作られていない。下の「Issue 作成失敗」の再試行・手動作成には進まない。不足した step の `record` が実行されていないので、該当ステップ（`duplicate_check` = 2、`confirm` = 4.1 / 5.2、`fact_check` = 4.2.1 / 5.1.1）へ戻って手順を通す。記録は Issue 1 件（分解は 1 回）ごとに消費されるため、続けて別の Issue を作るときもステップ 2 からやり直す。stderr に `不足:` が無い停止（session を解決できない等）は、ステップへ戻らず stderr を表示して止まる
+- helper の stderr に「Issue は作成していません」が出て止まる（`不足:` に step 名）→ Issue は作られていない。下の「Issue 作成失敗」の再試行・手動作成には進まない。不足した step の `record` が実行されていないので、該当ステップ（`duplicate_check` = 2、`confirm` = 4.1 / 5.2、`fact_check` = 4.2.1 / 5.1.1）へ戻って手順を通す。記録は Issue 1 件（分解は 1 回）ごとに消費されるため、続けて別の Issue を作るときもステップ 2 からやり直す。stderr が `ERROR: issue-create gate:` で始まり `不足:` が無い停止（session を解決できない等）は、ステップへ戻らず stderr を表示して止まる
 - Issue 作成失敗 → 先に `gh issue list -R {owner_repo} --search "{title} in:title" --state open` で作成済みかを確かめ（作成済みなら再作成しない）、stderr から原因を分類する。一時障害なら 1 回だけ再試行する。それでも決まらないときだけ AskUserQuestion で「再試行 / 手動作成 / 中止」
 - 親-子リンク失敗 → warning、後で手動リンクを案内
