@@ -123,7 +123,12 @@ projects:
  field_name: "Sprint" # Default: "Sprint"
  field_names: { status, priority, complexity } # Optional per-field project field-name override. priority / complexity: overrides the built-in EN<->JA alias (empty/absent -> aliases only). status: overrides the resolver's candidates, which come from rite-config.yml github.projects.fields.status.name (empty/absent -> "ステータス" then "Status"); the built-in alias table does not apply to Status
 options:
- source: string # Caller identifier (pr_review|pr_create|cleanup|interactive|xl_decomposition|fingerprint_split|quality_signal_3_split|quality_signal_4_split)
+ source: string # Required caller identifier (pr_review|pr_create|cleanup|interactive|xl_decomposition|fingerprint_split|quality_signal_3_split|quality_signal_4_split)
+                # Missing or unknown values exit 1 before any gh call.
+                # interactive / xl_decomposition are the /rite:issue-create paths: they need the
+                # record left by scripts/issue-create-gate.sh (steps 2 / 4.1 / 4.2.1, or 5.1.1 / 5.2)
+                # and stop without creating an Issue when it is missing. interactive consumes the
+                # record once the Issue exists; decompose-issues.sh consumes it after the parent exists.
                 # Note: 以下の値は legacy 互換のため enum に含めない (caller 消失済、`grep -rn 'source: "<value>"' plugins/rite/` で 0 件確認):
                 #   - `pr_fix`:          fix.md Phase 4.3 (Automatic Separate Issue Creation) が廃止済み
                 #   - `parent_routing`:  parent-routing.md sub-skill が廃止済み

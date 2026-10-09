@@ -242,7 +242,7 @@ _rite_btg_pattern6_fail_closed() {
   local _rc=$?
   trap - ERR
   echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] pre-tool-bash-guard: WARNING Pattern 6 (direct gh issue create guard) crashed (rc=$_rc) — command DENIED via fail-closed" >&2
-  local _reason="BLOCKED (direct-gh-issue-create): Pattern 6 evaluation crashed; denying fail-closed to prevent a direct Issue creation. Use create-issue-with-projects.sh or /rite:issue-create. See the bash-guard stderr WARNING for the crash context."
+  local _reason="BLOCKED (direct-gh-issue-create): Pattern 6 evaluation crashed; denying fail-closed to prevent a direct Issue creation. Start /rite:issue-create so the Issue goes through its duplicate check, confirmation and fact check (rite workflow steps that create Issues already call create-issue-with-projects.sh). See the bash-guard stderr WARNING for the crash context."
   if ! jq -n --arg reason "$_reason" '{
       hookSpecificOutput: {
         hookEventName: "PreToolUse",
@@ -1369,7 +1369,7 @@ if [ -z "$BLOCKED_PATTERN" ]; then
   if [[ "$P6_CHECK" =~ (^|[^[:alnum:]_])gh[[:space:]]+issue[[:space:]]+create([[:space:]]|$) ]]; then
     BLOCKED_PATTERN="direct-gh-issue-create"
     BLOCKED_REASON="Direct gh issue create bypasses the required Issue format and Projects registration."
-    BLOCKED_ALTERNATIVE="Use create-issue-with-projects.sh or /rite:issue-create so the Issue is created through the approved helper."
+    BLOCKED_ALTERNATIVE="Start /rite:issue-create so the Issue goes through its duplicate check, confirmation and fact check (rite workflow steps that create Issues already call create-issue-with-projects.sh)."
     if [ -n "$_p6_raw" ]; then
       BLOCKED_REASON+=" This command is too long to separate its heredoc bodies from its commands within the hook time limit, so the bodies were checked too."
       BLOCKED_ALTERNATIVE+=" Write long heredoc text to a file with a file-editing tool, not a Bash heredoc (one holding the same text is checked the same way), then pass the file in a Bash call."

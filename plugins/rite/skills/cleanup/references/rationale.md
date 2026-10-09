@@ -143,7 +143,8 @@ PostToolUse hook が作る空 stub（`phase: init`・進捗セクションなし
 
 ## cleanup-source-label
 
-`source: "cleanup"` は将来 metrics 集計で起点 caller を区別するための識別子。`残作業` label の
+`source: "cleanup"` は helper が必須として検証する caller 識別子。cleanup は issue-create gate の
+照合対象外で、`/rite:issue-create` の手順の記録なしに起票できる。`残作業` label の
 事前作成は `gh issue create --label X` が X 未存在時に Issue creation 自体を fail させるため。
 
 ## exitworktree-delegation

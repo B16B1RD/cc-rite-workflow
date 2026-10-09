@@ -52,6 +52,11 @@ if [ -n "${STUB_CREATE_FAIL_TITLE:-}" ] && [ "$title" = "$STUB_CREATE_FAIL_TITLE
   echo "stub: forced create failure for $title" >&2
   exit 1
 fi
+if [ -n "${STUB_CREATED_THEN_FAIL_TITLE:-}" ] && [ "$title" = "$STUB_CREATED_THEN_FAIL_TITLE" ]; then
+  echo "stub: created, then failed for $title" >&2
+  jq -n '{issue_number:0, issue_url:"https://example/created-then-failed", project_registration:"failed", warnings:["stub failure after create"]}'
+  exit 1
+fi
 if [ -n "${STUB_UPLOAD_FAIL_PATH:-}" ] &&
    jq -e --arg path "$STUB_UPLOAD_FAIL_PATH" 'index($path) != null' <<<"$attachments" >/dev/null; then
   echo "stub: forced attachment upload failure for $title" >&2
@@ -95,8 +100,22 @@ echo "tmpfile_read=/tmp/rite-issue-body-read-STUB"
 echo "tmpfile_write=/tmp/rite-issue-body-write-STUB"
 STUB_FETCH
 
+# Stub: issue-create-gate.sh
+# - Logs each subcommand to STUB_GATE_LOG; verify fails while STUB_GATE_CLOSED is set.
+cat > "$SANDBOX/scripts/issue-create-gate.sh" <<'STUB_GATE'
+#!/bin/bash
+set -euo pipefail
+[ -n "${STUB_GATE_LOG:-}" ] && printf '%s\n' "$1" >> "$STUB_GATE_LOG"
+if [ "$1" = "verify" ] && [ -n "${STUB_GATE_CLOSED:-}" ]; then
+  echo "stub: gate closed" >&2
+  exit 1
+fi
+exit 0
+STUB_GATE
+
 chmod +x "$SANDBOX/scripts/create-issue-with-projects.sh" \
          "$SANDBOX/scripts/link-sub-issue.sh" \
+         "$SANDBOX/scripts/issue-create-gate.sh" \
          "$SANDBOX/hooks/issue-body-safe-update.sh"
 
 # --- Test helpers ---
@@ -212,10 +231,12 @@ printf '%s' "Parent" > "$wd5/parent.md"; printf '%s' "Sub 1" > "$wd5/s1.md"
 spec5=$(build_spec "$wd5" "EpicFail" "$wd5/parent.md" "refactor" "Sub One" "$wd5/s1.md" "M")
 STUB_NUM_FILE="$TEST_DIR/num5"; echo 500 > "$STUB_NUM_FILE"; export STUB_NUM_FILE
 STUB_CREATE_FAIL_TITLE="EpicFail"; export STUB_CREATE_FAIL_TITLE
+STUB_GATE_LOG="$TEST_DIR/gate5"; : > "$STUB_GATE_LOG"; export STUB_GATE_LOG
 run_decompose "$spec5"
 assert_rc 1 "exit 1 on parent create failure"
 assert_err_contains "親 Issue 作成失敗" "parent create failure ERROR"
-unset STUB_CREATE_FAIL_TITLE
+if grep -qx consume "$STUB_GATE_LOG"; then fail "gate consumed although no parent was created"; else pass "gate kept for the retry when no parent was created"; fi
+unset STUB_CREATE_FAIL_TITLE STUB_GATE_LOG
 
 # -----------------------------------------------------------------
 echo "--- Test 7: partial-Projects (stderr ERROR + stdout JSON + exit 0) counts as created, not failed ---"
@@ -444,6 +465,50 @@ else
   fail "only successful child is linked"; cat "$STUB_LINK_LOG"
 fi
 unset STUB_LINK_LOG STUB_UPLOAD_FAIL_PATH STUB_CREATE_FAIL_TITLE
+
+# -----------------------------------------------------------------
+echo "--- Test 15: without the issue-create gate nothing is created ---"
+wd15="$TEST_DIR/wd15"; mkdir -p "$wd15"
+printf '%s' "Parent" > "$wd15/parent.md"; printf '%s' "Sub 1" > "$wd15/s1.md"
+spec15=$(build_spec "$wd15" "Epic15" "$wd15/parent.md" "refactor" "Sub One" "$wd15/s1.md" "M")
+STUB_NUM_FILE="$TEST_DIR/num15"; echo 1500 > "$STUB_NUM_FILE"; export STUB_NUM_FILE
+STUB_CREATE_LOG="$TEST_DIR/create15.log"; : > "$STUB_CREATE_LOG"; export STUB_CREATE_LOG
+STUB_GATE_CLOSED=1; export STUB_GATE_CLOSED
+run_decompose "$spec15"
+assert_rc 1 "exit 1 without the gate"
+assert_err_contains "/rite:issue-create を起動して" "guidance to start /rite:issue-create"
+if [ ! -s "$STUB_CREATE_LOG" ]; then pass "no Issue create call without the gate"; else fail "create called without the gate"; cat "$STUB_CREATE_LOG"; fi
+unset STUB_GATE_CLOSED STUB_CREATE_LOG
+
+# -----------------------------------------------------------------
+echo "--- Test 16: one gate record covers the parent and every child, then is consumed ---"
+wd16="$TEST_DIR/wd16"; mkdir -p "$wd16"
+printf '%s' "Parent" > "$wd16/parent.md"; printf '%s' "Sub 1" > "$wd16/s1.md"; printf '%s' "Sub 2" > "$wd16/s2.md"; printf '%s' "Sub 3" > "$wd16/s3.md"
+spec16=$(build_spec "$wd16" "Epic16" "$wd16/parent.md" "refactor" \
+  "Sub One" "$wd16/s1.md" "S" "Sub Two" "$wd16/s2.md" "S" "Sub Three" "$wd16/s3.md" "S")
+STUB_NUM_FILE="$TEST_DIR/num16"; echo 1600 > "$STUB_NUM_FILE"; export STUB_NUM_FILE
+STUB_GATE_LOG="$TEST_DIR/gate16"; : > "$STUB_GATE_LOG"; export STUB_GATE_LOG
+run_decompose "$spec16"
+assert_rc 0 "exit 0 with the gate"
+assert_out_contains "SUB_ISSUE_RESULT created=3 failed=0" "all children created with one gate record"
+if [ "$(tr '\n' ' ' < "$STUB_GATE_LOG")" = "verify consume " ]; then
+  pass "gate verified once and consumed once at exit"
+else
+  fail "unexpected gate calls: $(tr '\n' ' ' < "$STUB_GATE_LOG")"
+fi
+
+# -----------------------------------------------------------------
+echo "--- Test 17: a parent created before a failure still consumes the gate ---"
+wd17="$TEST_DIR/wd17"; mkdir -p "$wd17"
+printf '%s' "Parent" > "$wd17/parent.md"; printf '%s' "Sub 1" > "$wd17/s1.md"
+spec17=$(build_spec "$wd17" "Epic17" "$wd17/parent.md" "refactor" "Sub One" "$wd17/s1.md" "M")
+STUB_NUM_FILE="$TEST_DIR/num17"; echo 1700 > "$STUB_NUM_FILE"; export STUB_NUM_FILE
+: > "$STUB_GATE_LOG"
+STUB_CREATED_THEN_FAIL_TITLE="Epic17"; export STUB_CREATED_THEN_FAIL_TITLE
+run_decompose "$spec17"
+assert_rc 1 "exit 1 when the parent helper fails after creating"
+if grep -qx consume "$STUB_GATE_LOG"; then pass "gate consumed on the failure exit"; else fail "gate left open after the parent was created"; fi
+unset STUB_CREATED_THEN_FAIL_TITLE STUB_GATE_LOG
 
 # -----------------------------------------------------------------
 echo "--- Test 6: usage / spec validation errors ---"

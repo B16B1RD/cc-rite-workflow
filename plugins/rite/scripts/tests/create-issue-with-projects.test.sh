@@ -59,13 +59,34 @@ fail() {
 # TCs that need an explicit board overwrite the file and restore it afterwards.
 CONFIG_DIR="$TEST_DIR/repo"
 mkdir -p "$CONFIG_DIR"
+# The issue-create gate (source interactive / xl_decomposition) keeps its record under the
+# git root for the fixture session, never under the session running the tests.
+git -C "$CONFIG_DIR" init -q
+unset CLAUDE_SESSION_ID CODEX_THREAD_ID GROK_SESSION_ID RITE_HOST RITE_STATE_ROOT
+export CLAUDE_CODE_SESSION_ID="11111111-2222-4333-8444-555555555555"
+GATE="$SCRIPT_DIR/../issue-create-gate.sh"
+GATE_FILE="$CONFIG_DIR/.rite/state/issue-create-gate-$CLAUDE_CODE_SESSION_ID"
+open_gate() {
+  local s
+  for s in duplicate_check confirm fact_check; do
+    (cd "$CONFIG_DIR" && bash "$GATE" record --step "$s")
+  done
+}
 write_legacy_config() {
   printf 'github:\n  projects:\n    enabled: true\n    project_number: 2\n' > "$CONFIG_DIR/rite-config.yml"
 }
 write_legacy_config
 
-# Helper: run the target script with mock gh and given JSON args
+# Helper: run the target script with mock gh and given JSON args.
+# options.source is required; a payload without one runs as the ungated caller pr_review so
+# each TC keeps exercising its own validation. run_script_raw passes the payload unchanged.
 run_script() {
+  local json_args
+  json_args=$(printf '%s' "$1" | jq -c '.options.source //= "pr_review"' 2>/dev/null) || json_args="$1"
+  run_script_raw "$json_args" "${2:-success}" "${3:-42}"
+}
+
+run_script_raw() {
   local json_args="$1"
   local scenario="${2:-success}"
   local issue_number="${3:-42}"
@@ -188,6 +209,7 @@ fi
 # --------------------------------------------------------------------------
 echo "TC-005: Successful Issue creation with full Projects integration"
 body_file=$(create_body_file "Test with projects")
+open_gate
 run_script "$(jq -n --arg bf "$body_file" '{
   issue: {title: "Test with Projects", body_file: $bf},
   projects: {
@@ -947,7 +969,8 @@ output=$(
   PATH="$MOCK_BIN_DIR:$PATH" \
   bash "$TARGET" "$(jq -n --arg bf "$body_file" '{
     issue: {title: "Retry Delay Test", body_file: $bf},
-    projects: {enabled: false}
+    projects: {enabled: false},
+    options: {source: "pr_review"}
   }')" 2>"$TEST_DIR/last_stderr"
 ) || rc=$?
 LAST_OUTPUT="$output"
@@ -1232,6 +1255,104 @@ if [ "$LAST_RC" -eq 1 ] \
 else
   fail "Expected original upload error and existing Issue identity without create retry (rc=$LAST_RC)"
 fi
+
+# --------------------------------------------------------------------------
+# TC-039..: options.source and the issue-create gate
+# --------------------------------------------------------------------------
+gated_payload() {
+  jq -n --arg src "$1" '{issue: {title: "Gated"}, projects: {enabled: false}, options: {source: $src}}'
+}
+no_gh_call() { [ ! -s "$LAST_GH_LOG.argv" ]; }
+
+echo "TC-039: interactive without the gate → no Issue, reason and guidance"
+rm -f "$GATE_FILE"
+run_script_raw "$(gated_payload interactive)"
+if [ "$LAST_RC" -eq 1 ] && no_gh_call \
+   && grep -q 'Issue は作成していません' "$LAST_STDERR" \
+   && grep -q '/rite:issue-create を起動して' "$LAST_STDERR" \
+   && grep -q '不足: duplicate_check confirm fact_check' "$LAST_STDERR" \
+   && [ "$(json_field '.issue_number')" = "0" ]; then
+  pass "Direct call stopped before gh with reason and guidance"
+else
+  fail "Expected gate refusal without gh call (rc=$LAST_RC, stderr=$(cat "$LAST_STDERR"))"
+fi
+
+echo "TC-040: interactive consumes the gate, so the next direct call is refused"
+open_gate
+run_script_raw "$(gated_payload interactive)"
+first_rc=$LAST_RC
+run_script_raw "$(gated_payload interactive)"
+if [ "$first_rc" -eq 0 ] && [ "$LAST_RC" -eq 1 ] && no_gh_call && [ ! -e "$GATE_FILE" ]; then
+  pass "One gate record → one Issue"
+else
+  fail "Expected first call to create and second to be refused (first=$first_rc, second=$LAST_RC)"
+fi
+
+echo "TC-041: a failed create without an Issue keeps the gate for the retry"
+open_gate
+run_script_raw "$(gated_payload interactive)" "issue_create_fail"
+failed_rc=$LAST_RC
+run_script_raw "$(gated_payload interactive)"
+if [ "$failed_rc" -eq 1 ] && [ "$LAST_RC" -eq 0 ] && [ ! -e "$GATE_FILE" ]; then
+  pass "Retry after a failed create passes the same gate"
+else
+  fail "Expected retry to pass (failed=$failed_rc, retry=$LAST_RC)"
+fi
+
+echo "TC-042: an Issue created before an attachment failure consumes the gate"
+open_gate
+run_script_raw "$(jq -n --arg a "$attachment_space" '{issue: {title: "Upload fails", attachments: [$a]}, projects: {enabled: false}, options: {source: "interactive"}}')" "attachment_failure"
+if [ "$LAST_RC" -eq 1 ] && [ "$(json_field '.issue_number')" = "42" ] && [ ! -e "$GATE_FILE" ]; then
+  pass "Created Issue consumed the gate"
+else
+  fail "Expected gate consumed after partial creation (rc=$LAST_RC)"
+fi
+
+echo "TC-043: xl_decomposition needs the gate and leaves it to decompose-issues.sh"
+rm -f "$GATE_FILE"
+run_script_raw "$(gated_payload xl_decomposition)"
+refused_rc=$LAST_RC
+refused_no_gh=false; no_gh_call && refused_no_gh=true
+open_gate
+run_script_raw "$(gated_payload xl_decomposition)"
+first_rc=$LAST_RC
+run_script_raw "$(gated_payload xl_decomposition)"
+if [ "$refused_rc" -eq 1 ] && [ "$refused_no_gh" = "true" ] \
+   && [ "$first_rc" -eq 0 ] && [ "$LAST_RC" -eq 0 ] && [ -e "$GATE_FILE" ]; then
+  pass "xl_decomposition refused without the gate, not consumed per call"
+else
+  fail "Unexpected xl_decomposition gate handling (refused=$refused_rc, first=$first_rc, second=$LAST_RC)"
+fi
+rm -f "$GATE_FILE"
+
+echo "TC-044: missing options.source → exit 1 before gh"
+run_script_raw '{"issue": {"title": "No source"}, "projects": {"enabled": false}}'
+if [ "$LAST_RC" -eq 1 ] && no_gh_call && [ "$(json_field '.warnings[0]')" = "options.source is required" ]; then
+  pass "Missing source refused"
+else
+  fail "Expected missing source refusal (rc=$LAST_RC, out=$LAST_OUTPUT)"
+fi
+
+echo "TC-045: unknown options.source (retired pr_fix) → exit 1 before gh"
+run_script_raw "$(gated_payload pr_fix)"
+if [ "$LAST_RC" -eq 1 ] && no_gh_call && grep -q "not a known caller: 'pr_fix'" <<< "$(json_field '.warnings[0]')"; then
+  pass "Unknown source refused"
+else
+  fail "Expected unknown source refusal (rc=$LAST_RC, out=$LAST_OUTPUT)"
+fi
+
+echo "TC-046: ungated sources create Issues without a resolvable session"
+saved_sid=$CLAUDE_CODE_SESSION_ID
+unset CLAUDE_CODE_SESSION_ID
+for src in pr_review pr_create cleanup fingerprint_split quality_signal_3_split quality_signal_4_split; do
+  run_script_raw "$(gated_payload "$src")"
+  if [ "$LAST_RC" -eq 0 ] && [ "$(json_field '.issue_number')" = "42" ]; then
+    pass "$src creates without the gate"
+  else
+    fail "$src failed without a session (rc=$LAST_RC, stderr=$(cat "$LAST_STDERR"))"
+  fi
+done
+export CLAUDE_CODE_SESSION_ID="$saved_sid"
 
 # --------------------------------------------------------------------------
 echo ""
