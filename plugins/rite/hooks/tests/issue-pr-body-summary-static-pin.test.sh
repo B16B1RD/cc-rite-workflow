@@ -432,6 +432,10 @@ assert_grep 'Section 9 maximum D-03 appends D-04' "$work/max.out" 'entry=D-04$'
 printf '## 9. Decision Log\n\n- 2026-01-01 D-01: a\n- 2026-01-01 D-02: b\n- 2026-01-01 D-03: c\n- 2026-01-01 D-04: see 9D-02\n' > "$work/digit-body.md"
 run_decision_log digit "$work/digit-body.md"
 assert_grep 'digit before D-NN still appends D-05' "$work/digit.out" 'entry=D-05$'
+# A D-NN quoted inside a record body is not a record number; only the leading number counts.
+printf '## 9. Decision Log\n\n- 2026-01-01 D-13: 別の決定「別 Issue の D-24」を踏まえる\n- 2026-01-01 D-16: later\n' > "$work/quoted-body.md"
+run_decision_log quoted "$work/quoted-body.md"
+assert_grep 'quoted D-NN in a record body still appends D-17' "$work/quoted.out" 'entry=D-17$'
 
 # A failing numbering scan or append awk on an existing Section 9 never writes back.
 for fail in partial:1 partial:2; do
