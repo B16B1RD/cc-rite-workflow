@@ -216,6 +216,10 @@ BASE_INTAKE_CONCLUDE = ("if it takes in origin/<base>, resolve and stage it, add
                         "run check and verify --kind all, re-capture the wiki apply record, commit, advance the record's head, "
                         "push, then re-run /rite:iterate; otherwise "
                         "git merge --abort and start over (skills/fix/references/fix-plan.md, section: base 取り込み)")
+# The same route, entered while the review still waits for CI that a base conflict keeps from starting.
+BASE_INTAKE_WAITING = ("if the review waits for CI while the PR conflicts with its base, re-run the review (/rite:iterate); "
+                       "on REVIEW_CI_FINAL=blocked; reason=base_conflict pr-review abandons the cycle, and the merge "
+                       "can then be committed (skills/fix/references/fix-plan.md, section: base 取り込み, CI 待ちの cycle を閉じた後)")
 
 
 def merge_head():
@@ -1031,7 +1035,8 @@ def commit_check(args):
         frozen = state.get("review_cycle")
         require(isinstance(frozen, dict), "review run has no frozen cycle; start its review before committing")
         require(frozen.get("status") == "completed",
-                "review is incomplete; collect reviewers and run review-finish before committing")
+                "review is incomplete; collect reviewers and run review-finish before committing"
+                + ("; this concludes a merge: " + BASE_INTAKE_WAITING if merge_head() else ""))
         directory = Path(args.state_root) / ".rite/state"
         approved_path = directory / ("fix-plan-" + args.session + ".json")
         require(approved_path.is_file(),

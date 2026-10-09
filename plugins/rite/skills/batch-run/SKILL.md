@@ -347,6 +347,7 @@ iterate の終了 sentinel を `{run_mode}`（ステップ 1 の `mode=` marker�
 |---------|-----------|
 | `[review:error]` + `REVIEW_STOP=purpose_unaligned`（両モード） | **失敗** → ステップ 8（段階=iterate）。内側の `[review:mergeable]` は iterate 終端ではない |
 | `[review:error]` + `REVIEW_STOP=adoption_held`（両モード） | **失敗** → ステップ 8（段階=iterate）。採否の出口待ちで外部へ何も書かずに止まっているか、スコープ外処分の外部への書き込み（Issue・Decision Log・申し送り・台帳）が途中で失敗して止まっている（後者は一部が書き込み済み）。停止報告に `hold_file` とその resume（再開方法）を載せる。hold に書けなかったときは stderr の WARNING の `再開方法:` を載せる |
+| `[review:error]` + `REVIEW_STOP=base_conflict`（両モード） | **失敗** → ステップ 8（段階=iterate）。iterate は base 競合を 1 回取り込んで再レビューするため、ここへ戻るのは取り込み後も再び競合したか、取り込みを解消できずに止まったとき。停止報告に iterate の停止通知（競合したファイルと理由）を載せる |
 | `[review:error]` + `REVIEW_STOP=ac_unverified`（`merge`） | → ステップ 4（ready）へ。ready が実行して確かめられる条件を確かめ、その結果と人間にしか確かめられない条件を停止理由に示す |
 | `[review:error]` + `REVIEW_STOP=ac_unverified`（`default`） | ready を実行しないため未検証の受入条件を確かめられない。**失敗** → ステップ 8（段階=iterate）。draft PR は残る。停止報告に未検証の受入条件（iterate の停止通知の内容）を載せる |
 | `[review:mergeable]` + `merge` | iterate 収束 → ステップ 4（ready）へ |
@@ -357,7 +358,7 @@ iterate の終了 sentinel を `{run_mode}`（ステップ 1 の `mode=` marker�
 | `[fix:cancelled-by-user]`（両モード） | ユーザー中断 → ステップ 8（段階=iterate） |
 | `[iterate:nb-sweep-error]` / `[fix:error]` / sentinel 不在（両モード） | **失敗** → ステップ 8（段階=iterate） |
 
-<!-- run orchestration: after iterate returns a terminal sentinel, do NOT stop. [review:error] + REVIEW_STOP=purpose_unaligned (both modes) -> ステップ 8; 内側の [review:mergeable] は iterate 終端ではない. [review:error] + REVIEW_STOP=adoption_held (both modes) -> ステップ 8 (held, or the out-of-scope writes stopped part way; see hold_file resume, or the stderr WARNING 再開方法: when the hold could not be written). [review:error] + REVIEW_STOP=ac_unverified: merge mode -> ステップ 4, default mode -> ステップ 8. merge mode + [review:mergeable] (purpose_unaligned なし) -> ステップ 4. default mode + [review:mergeable] or [fix:replied-only] -> ステップ 6 cursor advance (skip ready/merge/cleanup). [iterate:max-cycles-reached] (both modes) -> ステップ 8 (record failure and stop; do NOT advance cursor). -->
+<!-- run orchestration: after iterate returns a terminal sentinel, do NOT stop. [review:error] + REVIEW_STOP=purpose_unaligned (both modes) -> ステップ 8; 内側の [review:mergeable] は iterate 終端ではない. [review:error] + REVIEW_STOP=adoption_held (both modes) -> ステップ 8 (held, or the out-of-scope writes stopped part way; see hold_file resume, or the stderr WARNING 再開方法: when the hold could not be written). [review:error] + REVIEW_STOP=base_conflict (both modes) -> ステップ 8 (iterate already took the base in once). [review:error] + REVIEW_STOP=ac_unverified: merge mode -> ステップ 4, default mode -> ステップ 8. merge mode + [review:mergeable] (purpose_unaligned なし) -> ステップ 4. default mode + [review:mergeable] or [fix:replied-only] -> ステップ 6 cursor advance (skip ready/merge/cleanup). [iterate:max-cycles-reached] (both modes) -> ステップ 8 (record failure and stop; do NOT advance cursor). -->
 
 ---
 

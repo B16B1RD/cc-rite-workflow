@@ -78,6 +78,13 @@ mergeable のレビューの後に手で commit すると、その HEAD には f
 5. `git push origin HEAD` で取り込み commit を PR に反映する
 6. `/rite:iterate` で次のレビュー cycle を回し、mergeable になってから ready / merge へ進む
 
+**CI 待ちの cycle を閉じた後**: PR が base と競合している間は必須 CI が起動しないため、pr-review ステップ 5.3.0.CI は cycle を放棄して `[CONTEXT] REVIEW_STOP=base_conflict; base={base}` で止まる。完了した cycle と保存済みレビューが無いので計画・`check`・`verify` は作れず、commit ガードもそれらを求めない。取り込み相手は marker の `{base}`（PR の base ブランチ）で、手順 1 の `branch.base` は読まない。上から順に行う:
+
+- `git fetch origin {base}` のあと `git merge --no-commit --no-ff origin/{base}` で取り込み、競合を解消して `git add` する。merge が既に進行中（`MERGE_HEAD` がある）なら、取り込み相手が `origin/{base}` のときは競合解消と `git add` から始め、そうでなければ `git merge --abort` してから取り込む
+- 手順 3 の `base-intake-wiki-capture` を実行してから `git commit --no-edit` で確定する。`{changed_paths}` は `git diff --no-renames --name-only HEAD` の全パス、ページの記録と out の判定は手順 3 と同じ。phase が implement / fix ではないので commit 時の Wiki 適用ゲートは働かないが、次のレビューのゲートは取り込み前の証跡を拒否するため、取り直しは省かない
+- 手順 4 の head 更新と手順 5 の push を行う。手順 4 が非 0 で終わって capture からやり直すときの `{changed_paths}` は、`git diff --no-renames --name-only HEAD^ HEAD` のうち作業ツリーにあるもの
+- iterate のステップ 2 から実行しているときは手順 6 を行わず、iterate のステップ 1 へ戻る。それ以外は手順 6 の `/rite:iterate` を行う
+
 制約の除外はファイル単位で、base 側が変更したファイル（merge-base から取り込み相手までの差分に出るファイル）だけが Issue の Non-Target / 閉じた対象の検査から外れる。競合を解消したファイルは base 側も変更しているので外れる。base 側が変更した symlink は、指す先が Non-Target でもそのパスの変更として取り込める。base-intake グループにだけ並べた symlink が覆うのはそのパス自体で、指す先は覆わない（他のグループにも並べた symlink は指す先も覆う）。指す先で base 側が変更していないファイルを変えたら、そのパスも `paths` に並べる（手順 2 の後で変えたなら追加し、手順 3 の `check` からやり直す）。並べたファイルは Issue の Non-Target / 閉じた対象の検査を受け、並べていない変更は verify / commit で計画外の変更として拒否される。base 側が変更していないファイル（base の変更に合わせて直した自ブランチのファイル等）は制約を受ける。
 
 `base-intake` は merge 進行中（`MERGE_HEAD` がある状態）でだけ有効で、取り込み相手は `origin/<base>` またはその祖先に限る（別ブランチや別の worktree で作った commit は取り込めない）。計画に 1 グループまで。`--no-commit` / `--squash` / `--abort` / `--quit` / `--ff-only` の merge は拒否されない（オプションは git と同じく後に書いたものが勝つ。これらのオプションの省略形は判定できないため拒否される）。`git pull` / rebase 等でレビュー済み HEAD を動かした場合は次の `review-start` が拒否する。レビュー済み commit（`flow-state.sh get --jq-filter .review_cycle.review_context.commit_sha`）へ `git reset --keep` で戻してから、この手順で取り込む。ただし、`git fetch origin <PR ブランチ>` のあと `git merge-base --is-ancestor origin/<PR ブランチ> <レビュー済み commit>` が失敗するなら、戻すと push 済みの commit を巻き戻すことになるため、戻さずに止まり、その状況を報告する（公開済み履歴の書き換えは人間が判断する）。

@@ -183,6 +183,11 @@ assert "batch-run adoption_held fails to step 8 before mergeable" "true" \
   "$( [ -n "$ah_line" ] && [ -n "$mg_line" ] && [ "$ah_line" -lt "$mg_line" ] && echo true || echo "false ah=$ah_line mg=$mg_line" )"
 assert_grep "batch-run orchestration comment routes adoption_held to step 8" "$BATCH_RUN" \
   'REVIEW_STOP=adoption_held \(both modes\) -> ステップ 8'
+bc_line=$(grep -nF '| `[review:error]` + `REVIEW_STOP=base_conflict`（両モード） | **失敗** → ステップ 8（段階=iterate）' "$BATCH_RUN" | head -1 | cut -d: -f1)
+assert "batch-run base_conflict fails to step 8 before mergeable" "true" \
+  "$( [ -n "$bc_line" ] && [ -n "$mg_line" ] && [ "$bc_line" -lt "$mg_line" ] && echo true || echo "false bc=$bc_line mg=$mg_line" )"
+assert_grep "batch-run orchestration comment routes base_conflict to step 8" "$BATCH_RUN" \
+  'REVIEW_STOP=base_conflict \(both modes\) -> ステップ 8'
 # 受入条件未検証（ac_unverified）: merge は ready へ、default は停止。行全体で pin し、変数表や本文の別の言及に当たらないようにする
 ACU_PREFIX='| `[review:error]` + `REVIEW_STOP=ac_unverified`'
 acm_line=$(grep -nF "${ACU_PREFIX}（\`merge\`） | → ステップ 4（ready）へ。" "$BATCH_RUN" | head -1 | cut -d: -f1)
