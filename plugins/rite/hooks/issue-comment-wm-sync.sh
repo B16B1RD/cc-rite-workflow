@@ -58,7 +58,11 @@
 #   status=skipped; reason=section_absent   merge-checklist: 対象 ### section 不在で新規 items を置けず
 #                                           (Python exit 10。items は破棄せず PATCH もしない)
 #   status=error; reason=transform_failed   必須引数が揃った状態で Python transform が非ゼロ exit (exit 10 以外)
-#   status=error; reason=patch_failed       jq | gh api PATCH が失敗
+#   status=error; reason=patch_failed       gh api PATCH の送信が失敗 (rc≠0)
+#   status=error; reason=patch_response_invalid PATCH は rc=0 だが応答が JSON object でない (空応答等)
+#   status=error; reason=patch_verify_failed 同じコメントの再 GET に失敗し、本文照合できない
+#   status=error; reason=patch_body_mismatch 再 GET の本文が送信本文とバイト単位で不一致
+#                                           (patch_* の error は backup を保持し、success へ補完しない)
 #   skills/fix/SKILL.md ステップ 4.5.2 はこの行を read し、no_comment 以外の skipped/error を
 #   `[CONTEXT] WM_UPDATE_FAILED=1` にマップする (`[fix:pushed-wm-stale]` routing 用)。
 #
@@ -95,11 +99,12 @@ body_tmp=""
 updated_tmp=""
 py_err_tmp=""
 patch_err=""
+patch_resp=""
 _fetch_out=""
 _rite_wm_sync_cleanup() {
   rm -f "${_fs_err:-}" "${_pre_err:-}" "${tmpfile:-}" "${_init_err:-}" "${_verify_err:-}" \
     "${_cb_err:-}" "${body_tmp:-}" "${updated_tmp:-}" "${py_err_tmp:-}" "${patch_err:-}" \
-    "${_fetch_out:-}"
+    "${patch_resp:-}" "${_fetch_out:-}"
 }
 trap 'rc=$?; _rite_wm_sync_cleanup; exit $rc' EXIT
 trap '_rite_wm_sync_cleanup; exit 130' INT
@@ -461,18 +466,50 @@ do_patch() {
   fi
 
   patch_err=$(mktemp 2>/dev/null) || patch_err=""
+  patch_resp=$(mktemp 2>/dev/null) || patch_resp=""
   local patch_status=0
-  ( set -o pipefail; jq -n --rawfile body "$in_file" '{"body": $body}' \
-    | gh api "repos/${OWNER_REPO}/issues/comments/${cid}" -X PATCH --input - > /dev/null 2>"${patch_err:-/dev/null}" ) || patch_status=$?
+  # 本文は -F body=@file でファイルから渡す (stdin 経由の JSON は使わない)。応答は捨てず、
+  # 送信 (rc) / 応答解析 / 再 GET 照合のどの段階で外れたかを reason で区別する。
+  gh api "repos/${OWNER_REPO}/issues/comments/${cid}" -X PATCH -F "body=@${in_file}" \
+    > "${patch_resp:-/dev/null}" 2>"${patch_err:-/dev/null}" || patch_status=$?
 
   if [ "$patch_status" -ne 0 ]; then
     echo "[rite] WARNING: issue-comment-wm-sync: PATCH failed (rc=$patch_status, Backup: ${backup_file:-retained})" >&2
     [ -n "$patch_err" ] && [ -s "$patch_err" ] && head -3 "$patch_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-    [ -n "$patch_err" ] && rm -f "$patch_err"
     echo "status=error; reason=patch_failed"
     return 0
   fi
   [ -n "$patch_err" ] && rm -f "$patch_err"
+  patch_err=""
+
+  # 応答が JSON object でなければ、送信は通ったが適用結果を読めない (応答解析の失敗)。
+  if [ -z "$patch_resp" ] || ! jq -e 'type == "object"' "$patch_resp" >/dev/null 2>&1; then
+    echo "[rite] WARNING: issue-comment-wm-sync: PATCH response is not a JSON object (Backup: ${backup_file:-retained})" >&2
+    echo "status=error; reason=patch_response_invalid"
+    return 0
+  fi
+
+  # 同じコメントを再 GET し、送った本文とバイト単位で一致することを成功の条件にする。
+  local verify_body verify_err verify_status=0
+  verify_body=$(mktemp 2>/dev/null) || verify_body=""
+  verify_err=$(mktemp 2>/dev/null) || verify_err=""
+  gh api "repos/${OWNER_REPO}/issues/comments/${cid}" > "${patch_resp}" 2>"${verify_err:-/dev/null}" || verify_status=$?
+  if [ "$verify_status" -ne 0 ] || [ -z "$verify_body" ] \
+     || ! jq -j '.body // empty' "$patch_resp" > "$verify_body" 2>/dev/null; then
+    echo "[rite] WARNING: issue-comment-wm-sync: 再 GET による本文照合に失敗 (rc=$verify_status, Backup: ${backup_file:-retained})" >&2
+    [ -n "$verify_err" ] && [ -s "$verify_err" ] && head -3 "$verify_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    rm -f "$verify_body" "$verify_err"
+    echo "status=error; reason=patch_verify_failed"
+    return 0
+  fi
+  rm -f "$verify_err"
+  if ! cmp -s "$in_file" "$verify_body"; then
+    echo "[rite] WARNING: issue-comment-wm-sync: 再 GET の本文が送信本文と一致しません (Backup: ${backup_file:-retained})" >&2
+    rm -f "$verify_body"
+    echo "status=error; reason=patch_body_mismatch"
+    return 0
+  fi
+  rm -f "$verify_body"
   echo "status=success"
   return 0
 }

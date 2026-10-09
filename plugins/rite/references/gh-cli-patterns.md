@@ -219,7 +219,7 @@ gh issue edit {issue_number} -R {owner_repo} --body-file "$tmpfile"
 | Body retrieval (for update) | Save to temp file and validate | Variable assignment via direct pipe (※ variable assignment is OK for read-only) | 3, 4 |
 | Body update | `--body-file` + temp file | `--body "$var"` | 1, 4 |
 | Comment update (gh api) | `jq -n --rawfile` + `--input -` | `-f body=` or `echo JSON \| --input -` | 1, 2, 6, 7 |
-| Work memory comment update | `jq -n --rawfile` + `gh api PATCH --input -` | `sed` (multibyte error) or `-f body=` | 1, 2 |
+| Work memory comment update | `gh api PATCH -F body=@file` (検証済みファイルを渡し、応答と再 GET で本文一致を確認) | `sed` (multibyte error) or `-f body="$var"` | 1, 2 |
 | Empty check | `[ ! -s file ]` after write | Update without validation | 4 |
 | Checklist extraction | `grep -E` | `grep -P` (environment-dependent) | - |
 
@@ -625,14 +625,20 @@ fi
 #### 4. Safe Write with Error Handling
 
 ```bash
-# Update via jq + gh api (backup preserved on failure for manual recovery)
+# Update via gh api -F body=@file (backup preserved on failure for manual recovery)
+# 本文は検証済みの $updated_tmp を -F body=@file で渡す (stdin の JSON は使わない。シェル展開を通らない)
 # PATCH 送信失敗時は WARNING で継続（backup が保全されているため復旧可能）
 # 注: 追記型・置換型ともに同じパターン。safety check（Step 2-3）の exit 1 とは役割が異なる
-jq -n --rawfile body "$updated_tmp" '{"body": $body}' \
-    | gh api repos/{owner}/{repo}/issues/comments/"$comment_id" \
-      -X PATCH --input - || \
+resp=$(gh api repos/{owner}/{repo}/issues/comments/"$comment_id" \
+      -X PATCH -F body=@"$updated_tmp") || \
       echo "WARNING: PATCH failed. Backup saved at: $backup_file" >&2
+# 成功とみなすのは、応答が JSON object で、同じコメントの再 GET の本文が送信本文と一致したときだけ
+printf '%s' "$resp" | jq -e 'type == "object"' >/dev/null || echo "WARNING: PATCH response invalid. Backup saved at: $backup_file" >&2
+gh api repos/{owner}/{repo}/issues/comments/"$comment_id" | jq -j '.body' | cmp -s - "$updated_tmp" || \
+  echo "WARNING: re-read body differs from the sent body. Backup saved at: $backup_file" >&2
 ```
+
+> 実装は `hooks/issue-comment-wm-sync.sh` の `do_patch`（`patch_failed` / `patch_response_invalid` / `patch_verify_failed` / `patch_body_mismatch` で失敗段階を区別する）。
 
 ---
 
