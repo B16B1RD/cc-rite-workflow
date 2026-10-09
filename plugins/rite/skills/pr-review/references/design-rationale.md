@@ -383,3 +383,7 @@ key に `C-n` を使わないのは、run ごとに振り直すから。key を�
 判定表の AC-ID 集合と未充足 finding の残存を helper（`scripts/acceptance-criteria-check.sh`）で機械検査するのは、reviewer が AC を読み飛ばした出力や、降格ゲートで未充足 finding が消えた JSON を「全充足」と区別できないため。未充足行は降格されても未検証へ格下げしない — 不合格を観測した事実と finding の採否は別で、格下げは人間確認で通せる経路を再生産する。Accepted Fingerprint Suppression / Fact-Checking / Debate は免除せず、そこで finding が消えたら最終整合検査が error で止める（例外経路を増やさず fail-loud に倒す）。Deduplication だけ免除するのは、同じ file の別指摘へ統合されると `[AC-N]` 接頭辞の紐付けが壊れ、正常な未充足まで error になるため。
 
 blocking 0 で未検証だけが残る cycle を `[review:mergeable]` にしないのは、agent が観測できなかった AC を黙って合格扱いにするため。新 sentinel を足さず `[review:error]` + `REVIEW_STOP=ac_unverified` にするのは sentinel 語彙と caller の分岐表を増やさないため。ステップ 8.0 は 8.1 より先に flow-state を書くので、同じ条件の行で handoff を付けない — 付けると FINALIZE の mergeable 完了経路へ Stop hook が差し戻す。iterate が自動再試行しないのは、同じ HEAD では再実行しても観測できないため。
+
+## excluded-selection-reason
+
+除外行にも `selection_reason` を非空で残すのは、保存後の最終ゲートが選定済みか否かに依らず非空を要求し、保存後は receipt を書き換えられず停止するため。`exclusion_reason` の複写は検査を通るが根拠の情報量がゼロになるので、分岐ごとに「候補になった経緯」を書かせる。生成時に外れた記録は Write 直後の `--record-file` 検査で保存前に止める。

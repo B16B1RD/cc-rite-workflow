@@ -497,6 +497,56 @@ assert_not_grep "T-13c: top-level キー欠落と融合しない" "$ERR" '\(comm
 assert_not_grep "T-13d: jq 読取失敗と融合しない" "$ERR" 'commit_sha=<jq 読取失敗'
 
 # ---------------------------------------------------------------------------
+# T-14: 除外行の selection_reason — 保存前検査 (--record-file) と最終ゲートが同じ契約で判定する
+# ---------------------------------------------------------------------------
+echo "--- T-14: 除外行の selection_reason ---"
+
+# 基底 fixture は共通で、除外行の selection_reason だけを差し替える。
+make_excluded_case() {
+  # $1 = dir, $2 = pr, $3 = selection_reason の jq リテラル (null / "" / "  " / 非空文字列)
+  mkdir -p "$1"
+  make_result "$1" "$2" 01 "bbbb222"
+  jq --argjson reason "$3" '
+    . + {review_context: {},
+         reviewers: ["code-quality-reviewer"],
+         reviewer_selection: [
+           {reviewer: "code-quality-reviewer", selected: true,
+            selection_reason: "Markdown の変更を審査", exclusion_reason: null},
+           {reviewer: "devops-reviewer", selected: false,
+            selection_reason: $reason, exclusion_reason: "今回の差分に CI 設定がない"}],
+         reviewer_execution: [{reviewer: "code-quality-reviewer", model: "不明", effort: "不明"}]}' \
+    "$1/$2-20260101000001.json" > "$1/tmp" && mv "$1/tmp" "$1/$2-20260101000001.json"
+}
+
+DIR_EX_OK="$SANDBOX/ex-ok"; make_excluded_case "$DIR_EX_OK" 960 '"CI 設定の glob に一致 0 件"'
+run_verify --pr 960 --commit-sha "bbbb222" --results-dir "$DIR_EX_OK" --since ""
+assert "T-14a: 除外行も selection_reason が非空なら最終ゲートは rc=0" "0" "$RC"
+assert_grep "T-14b: 通過は REVIEW_SAVE_JSON_OK=1" "$ERR" 'REVIEW_SAVE_JSON_OK=1; pr=960'
+run_verify --record-file "$DIR_EX_OK/960-20260101000001.json"
+assert "T-14c: 保存前検査も同じ記録で rc=0" "0" "$RC"
+assert_grep "T-14d: 保存前検査の通過は REVIEW_RECORD_OK=1" "$ERR" 'REVIEW_RECORD_OK=1'
+
+n=0
+for reason in 'null' '""' '"  "'; do
+  n=$((n + 1))
+  d="$SANDBOX/ex-bad-$n"; make_excluded_case "$d" 961 "$reason"
+  run_verify --pr 961 --commit-sha "bbbb222" --results-dir "$d" --since ""
+  assert "T-14e$n: 除外行 selection_reason=$reason は最終ゲートで rc=1" "1" "$RC"
+  assert_grep "T-14f$n: reason=execution_record_invalid" "$ERR" 'reason=execution_record_invalid'
+  assert_not_grep "T-14g$n: OK marker を出さない" "$ERR" 'REVIEW_SAVE_JSON_OK'
+  run_verify --record-file "$d/961-20260101000001.json"
+  assert "T-14h$n: 同じ記録は保存前検査でも rc=1" "1" "$RC"
+  assert_grep "T-14i$n: 保存前検査は REVIEW_RECORD_INVALID を名乗る" "$ERR" 'REVIEW_RECORD_INVALID=1; reason=execution_record_invalid'
+done
+
+# 生成指示 (SKILL.md ステップ 3.3) が除外行の非空と保存前検査の呼び出しを保持している。
+_sel_md="$SCRIPT_DIR/../../skills/pr-review/SKILL.md"
+assert "T-14j: 3.3 が除外行の selection_reason 非空必須を述べる" "1" \
+  "$(grep -c '除外行も非空必須で `null` 不可' "$_sel_md" || true)"
+assert "T-14k: 保存前検査 (--record-file) が step 2 の直前に配線されている" "1" \
+  "$(awk '/review-save-json-verify\.sh --record-file/{r=NR} /^\*\*step 2: ゲート適用\*\*/ && r && NR-r<=3 {c++} END{print c+0}' "$_sel_md")"
+
+# ---------------------------------------------------------------------------
 # T-07: mutation check — positive 検査を「ファイルが 1 件でもあれば pass」へ退行させると
 #       T-04 が落ちることを実測で固定する (AC-7)。静的 pin は「判定式がある」しか言えない。
 # ---------------------------------------------------------------------------

@@ -744,7 +744,8 @@ rationale: references/design-rationale.md#acceptance-reviewer
 
 ### 3.3 Confirm Reviewers
 
-候補を絞る前の一致・追加結果（incremental の対象外、cap、ユーザー除外を含む）を保持し、最終構成の各候補を `reviewer_selection[]` に記録する: `reviewer`（`*-reviewer`）、`selected`（boolean）、`selection_reason`（候補となった実際のルール・一致ファイル）、`exclusion_reason`（除外分岐の理由。選定済みは `null`）。選定ロジックは変えず、除外候補を記録から落とさない。
+候補を絞る前の一致・追加結果（incremental の対象外、cap、ユーザー除外を含む）を保持し、最終構成の各候補を `reviewer_selection[]` に記録する: `reviewer`（`*-reviewer`）、`selected`（boolean）、`selection_reason`（候補となった実際のルール・一致ファイル。**除外行も非空必須で `null` 不可**。`exclusion_reason` の複写も不可）、`exclusion_reason`（除外分岐の理由。選定済みは `null`）。除外行の `selection_reason` は分岐ごとに、incremental=対象外判定前の一致ファイル / cap=一致数と順位 / ユーザー除外=選定時の一致ルール / no-match=評価したルールと一致 0 件、を書く。選定ロジックは変えず、除外候補を記録から落とさない。
+rationale: references/design-rationale.md#excluded-selection-reason
 
 **E2E flow detection**: `/rite:iterate` 経由の E2E では本ステップの pre-flight レビュアー構成確認 `AskUserQuestion`（末尾「オプション」の選択）を skip する。判定は `skills/ready/SKILL.md` Phase 2.1 と同型の flow-state。helper 失敗時は standalone（確認を出す）に fail-safe する:
 rationale: references/design-rationale.md#e2e-confirm-skip
@@ -1690,6 +1691,12 @@ bash {plugin_root}/scripts/pr-review-step.sh spawn-timings-check --file {spawn_t
 - **`findings[].pre_existing` は書かない** — canonical `schema_version: "1.1.0"` 内の additive optional field であり、現行 write path は reviewer の revert test 結果を収集しない。欠落時も read 側は default mapping を適用せず、Cross-field invariant #5 は発火しない
 - **`reviewer_timings[]` / `reviewer_spawn_serialized` / `reviewer_spawn_spread_seconds`** = ステップ 4.6 の `{spawn_timings_file}` を **Read tool で読んで転記する**（会話コンテキストの記憶から再構成しない — 記憶と実測がずれると、直列化の記録が実際の計測と別のことを主張する）。`reviewer_timings[]` は同ファイルの値をそのまま写す。後 2 者は**同ファイルに存在するときだけ**書き、計測不能で helper が書かなかった場合は**キーごと省略する**（欠落 = 計測不能）。上記 bash が `SPAWN_TIMINGS=not_run` を emit した場合は 3 者とも省略する（捏造しない。無言ではなく同 bash の WARNING で表面化済み）。ゲート helper は本キー群に触れず、`review-result-save.sh` も必須フィールドとして要求しないため、欠落しても保存・merge 判定は変わらない
 - 必須フィールドと各 finding のフィールド定義は ステップ 6.1.a の「Required JSON fields」節を参照する (定義の重複を避けるため本節では再掲しない)
+
+Write 直後・step 2 の前に、選定・実行記録を保存前に検査する。非ゼロなら JSON を直して Write し直し、通るまで step 2 へ進まない（保存後は receipt を書き換えられず停止するため）:
+
+```bash
+bash {plugin_root}/hooks/scripts/review-save-json-verify.sh --record-file {review_tmp_dir}/rite-review-result-{pr_number}.json
+```
 
 **step 2: ゲート適用**
 
