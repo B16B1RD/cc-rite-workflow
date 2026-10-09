@@ -501,19 +501,20 @@ assert_not_grep "T-13d: jq 読取失敗と融合しない" "$ERR" 'commit_sha=<j
 # ---------------------------------------------------------------------------
 echo "--- T-14: 除外行の selection_reason ---"
 
-# 基底 fixture は共通で、除外行の selection_reason だけを差し替える。
+# 基底 fixture は共通で、除外行の selection_reason と exclusion_reason だけを差し替える。
 make_excluded_case() {
   # $1 = dir, $2 = pr, $3 = selection_reason の jq リテラル (null / "" / "  " / 非空文字列)
+  # $4 = exclusion_reason の jq リテラル (省略時は非空文字列)
   mkdir -p "$1"
   make_result "$1" "$2" 01 "bbbb222"
-  jq --argjson reason "$3" '
+  jq --argjson reason "$3" --argjson excl "${4:-\"今回の差分に CI 設定がない\"}" '
     . + {review_context: {},
          reviewers: ["code-quality-reviewer"],
          reviewer_selection: [
            {reviewer: "code-quality-reviewer", selected: true,
             selection_reason: "Markdown の変更を審査", exclusion_reason: null},
            {reviewer: "devops-reviewer", selected: false,
-            selection_reason: $reason, exclusion_reason: "今回の差分に CI 設定がない"}],
+            selection_reason: $reason, exclusion_reason: $excl}],
          reviewer_execution: [{reviewer: "code-quality-reviewer", model: "不明", effort: "不明"}]}' \
     "$1/$2-20260101000001.json" > "$1/tmp" && mv "$1/tmp" "$1/$2-20260101000001.json"
 }
@@ -538,6 +539,32 @@ for reason in 'null' '""' '"  "'; do
   assert "T-14h$n: 同じ記録は保存前検査でも rc=1" "1" "$RC"
   assert_grep "T-14i$n: 保存前検査は REVIEW_RECORD_INVALID を名乗る" "$ERR" 'REVIEW_RECORD_INVALID=1; reason=execution_record_invalid'
 done
+
+# 除外行の exclusion_reason も同じ契約 (非空) で、selection_reason が非空でも空欄なら両経路が落ちる。
+n=0
+for excl in 'null' '""' '"  "'; do
+  n=$((n + 1))
+  d="$SANDBOX/ex-excl-bad-$n"; make_excluded_case "$d" 962 '"CI 設定の glob に一致 0 件"' "$excl"
+  run_verify --pr 962 --commit-sha "bbbb222" --results-dir "$d" --since ""
+  assert "T-14l$n: 除外行 exclusion_reason=$excl は最終ゲートで rc=1" "1" "$RC"
+  run_verify --record-file "$d/962-20260101000001.json"
+  assert "T-14m$n: 同じ記録は保存前検査でも rc=1" "1" "$RC"
+done
+
+# 保存前検査は迂回させない: 値が空の --record-file は通常ゲートへ落とさず止め、原因を名指しする。
+run_verify --record-file ""
+assert "T-14n: 値が空の --record-file は rc=2 (通常ゲートへ落ちて degraded rc=0 にならない)" "2" "$RC"
+run_verify --record-file
+assert "T-14o: 値なしの --record-file も rc=2" "2" "$RC"
+run_verify --record-file "$SANDBOX/no-such-result.json"
+assert "T-14p: 読めない結果 JSON は rc=1" "1" "$RC"
+assert_grep "T-14q: 読めない理由を名指しする" "$ERR" 'REVIEW_RECORD_INVALID=1; reason=record_file_unreadable'
+printf '%s' '{not json' > "$SANDBOX/broken-result.json"
+run_verify --record-file "$SANDBOX/broken-result.json"
+assert "T-14r: JSON として解析できない結果は rc=1" "1" "$RC"
+assert_grep "T-14s: 解析できない理由を名指しする" "$ERR" 'REVIEW_RECORD_INVALID=1; reason=record_file_invalid_json'
+run_verify --record-file "$d/962-20260101000001.json"
+assert_grep "T-14t: 契約違反の診断は selection_reason だけでなく名簿・実行条件の全条件を挙げる" "$ERR" 'reviewer_execution\[\] は全員分で model・effort が非空'
 
 # 生成指示 (SKILL.md ステップ 3.3) が除外行の非空と保存前検査の呼び出しを保持している。
 _sel_md="$SCRIPT_DIR/../../skills/pr-review/SKILL.md"
