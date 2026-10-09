@@ -63,7 +63,9 @@
 # Scenarios (claim-source-check.sh): responses are files under MOCK_CSC_DIR
 #   "csc_fixture"  - `gh api graphql` prints graphql-<n>.json (n = the -F n=<n> value),
 #                    `gh pr view` prints pr-body.in, `gh api repos/*/commits/<sha>` prints
-#                    commit-<sha>.json; a missing file answers as GitHub does (HTTP 404, exit 1)
+#                    commit-<sha>.json; a missing file answers as the REST API does (HTTP 404,
+#                    exit 1). A sibling <name>.rc holds a non-zero exit code to answer with after
+#                    printing the file (GraphQL NOT_FOUND prints its JSON and exits 1)
 #   "csc_fail"     - every gh call fails (stderr + exit 1)
 #
 # Both create-issue-with-projects.sh and projects-status-update.sh root their
@@ -105,6 +107,9 @@ case "$SCENARIO" in
       exit 1
     fi
     cat "$csc_file"
+    if [ -f "${csc_file%.json}.rc" ]; then
+      exit "$(cat "${csc_file%.json}.rc")"
+    fi
     exit 0
     ;;
 esac

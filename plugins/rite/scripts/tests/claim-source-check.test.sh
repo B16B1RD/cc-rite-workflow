@@ -39,16 +39,25 @@ MOCK_BIN="$TEST_DIR/bin"
 mkdir -p "$MOCK_BIN"
 ln -s "$SCRIPT_DIR/mock-gh.sh" "$MOCK_BIN/gh"
 export MOCK_CSC_DIR="$FIX"
+# 利用者の git 設定 (diff.* など) から隔離する。設定を注入するケースは明示的に作る
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+
+new_repo() {
+  mkdir -p "$1"
+  git -C "$1" init -q
+  git -C "$1" config user.email test@example.com
+  git -C "$1" config user.name test
+  git -C "$1" config commit.gpgsign false
+}
 
 REPO="$TEST_DIR/repo"
-mkdir -p "$REPO/src" "$REPO/docs"
-git -C "$REPO" init -q
-git -C "$REPO" config user.email test@example.com
-git -C "$REPO" config user.name test
-git -C "$REPO" config commit.gpgsign false
+mkdir -p "$REPO/src" "$REPO/docs" "$REPO/sub/.hidden"
+new_repo "$REPO"
 printf '# repo\n' > "$REPO/README.md"
 cp "$FIX/logger.in" "$REPO/src/logger.js"
 cp "$FIX/spec.in" "$REPO/docs/spec.md"
+printf '# hidden\n' > "$REPO/sub/.hidden/x.md"
+seq 1 30 > "$REPO/docs/long.txt"
 git -C "$REPO" add -A
 git -C "$REPO" commit -qm base
 git -C "$REPO" tag base
@@ -61,7 +70,7 @@ cp "$FIX/notes.in" "$REPO/docs/notes.md"
 # helper を repo の中で実行する。stdout / stderr / rc を大域変数へ
 run_helper() {
   local scenario="$1"; shift
-  OUT=$(cd "$REPO" && MOCK_GH_SCENARIO="$scenario" PATH="$MOCK_BIN:$PATH" bash "$TARGET" "$@" 2>"$TEST_DIR/stderr")
+  OUT=$(cd "${HELPER_REPO:-$REPO}" && MOCK_GH_SCENARIO="$scenario" PATH="$MOCK_BIN:$PATH" bash "$TARGET" "$@" 2>"$TEST_DIR/stderr")
   RC=$?
   ERR=$(cat "$TEST_DIR/stderr")
 }
@@ -110,6 +119,36 @@ fi
 run_helper csc_fixture extract --base base
 if [ "$RC" -eq 2 ]; then pass "extract: --out 欠落は invocation error"; else fail "extract: --out 欠落 rc=$RC"; fi
 
+# 非 ASCII のファイル名 (git 既定では引用符付きパスになる) と、利用者の diff の prefix 設定
+JA_REPO="$TEST_DIR/repo-ja"
+new_repo "$JA_REPO"
+printf '# repo\n' > "$JA_REPO/README.md"
+git -C "$JA_REPO" add -A
+git -C "$JA_REPO" commit -qm base
+git -C "$JA_REPO" tag base
+mkdir -p "$JA_REPO/docs"
+cp "$FIX/ledger.in" "$JA_REPO/docs/継続先台帳.md"
+git -C "$JA_REPO" add -A
+git -C "$JA_REPO" commit -qm ledger
+cp "$FIX/notes.in" "$JA_REPO/docs/メモ.md"
+expected_ja='["docs/継続先台帳.md:5","docs/継続先台帳.md:6","docs/継続先台帳.md:7","docs/継続先台帳.md:8","docs/メモ.md:3"]'
+HELPER_REPO="$JA_REPO" run_helper csc_fixture extract --base base --out "$TEST_DIR/rows-ja.json"
+if [ "$RC" -eq 0 ] && [ "$(jq -c '[.rows[].origin]' "$TEST_DIR/rows-ja.json")" = "$expected_ja" ]; then
+  pass "extract: 非 ASCII のファイル名の文書も commit 済み・未追跡の両方から抜き出す"
+else
+  fail "extract: 非 ASCII のファイル名 (rc=$RC out=$OUT err=$ERR)"
+fi
+for prefix_config in diff.mnemonicPrefix diff.noprefix; do
+  OUT=$(cd "$JA_REPO" && GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="$prefix_config" GIT_CONFIG_VALUE_0=true \
+    bash "$TARGET" extract --base base --out "$TEST_DIR/rows-prefix.json" 2>"$TEST_DIR/stderr")
+  RC=$?
+  if [ "$RC" -eq 0 ] && [ "$(jq -c '[.rows[].origin]' "$TEST_DIR/rows-prefix.json")" = "$expected_ja" ]; then
+    pass "extract: $prefix_config=true でも同じ行を抜き出す"
+  else
+    fail "extract: $prefix_config (rc=$RC out=$OUT err=$(cat "$TEST_DIR/stderr"))"
+  fi
+done
+
 echo "=== facts ==="
 
 run_helper csc_fixture facts --rows "$TEST_DIR/rows.json" --repo o/r --out "$TEST_DIR/facts.json"
@@ -119,9 +158,9 @@ if [ "$RC" -eq 0 ] && grep -q '^\[CONTEXT\] CLAIM_SOURCE_FACTS=ok; refs=3; error
 else
   fail "facts: marker (rc=$RC out=$OUT err=$ERR)"
 fi
-issue_fact=$(jq -c '.refs | to_entries[] | select(.key | startswith("issue:")) | .value | {type, state, closing: [.closing_prs[] | .files]}' "$F")
-if [ "$issue_fact" = '{"type":"issue","state":"CLOSED","closing":[["src/other.js"]]}' ]; then
-  pass "facts: Issue を閉じた PR の変更ファイル一覧 (主張の src/logger.js を含まない) を記録"
+issue_fact=$(jq -c '.refs | to_entries[] | select(.key | startswith("issue:")) | .value | {type, state, closing: [.closing_prs[] | .files], truncated: [.closing_prs[] | .files_truncated], closer: .closer.number}' "$F")
+if [ "$issue_fact" = '{"type":"issue","state":"CLOSED","closing":[["src/other.js"]],"truncated":[true],"closer":15}' ]; then
+  pass "facts: Issue を閉じた PR の変更ファイル一覧 (主張の src/logger.js を含まない)・切り捨ての印・closer を記録"
 else
   fail "facts: Issue の事実 $issue_fact"
 fi
@@ -154,10 +193,39 @@ jq -n --arg sha "$head_sha" '{rows: [
   {id: "CLAIM-1", origin: "x.md:1", text: "t", refs: [{kind: "file_line", token: "src/logger.js:99"}]},
   {id: "CLAIM-2", origin: "x.md:2", text: "t", refs: [{kind: "file_line", token: "src/missing.js:1"}]},
   {id: "CLAIM-3", origin: "x.md:3", text: "t", refs: [{kind: "sha", token: $sha}]},
-  {id: "CLAIM-4", origin: "x.md:4", text: "t", refs: [{kind: "issue", token: "#15"}]}
+  {id: "CLAIM-4", origin: "x.md:4", text: "t", refs: [{kind: "issue", token: "#15"}]},
+  {id: "CLAIM-5", origin: "x.md:5", text: "t", refs: [{kind: "issue", token: "#13"}]},
+  {id: "CLAIM-6", origin: "x.md:6", text: "t", refs: [{kind: "issue", token: "#99"}]},
+  {id: "CLAIM-7", origin: "x.md:7", text: "t", refs: [{kind: "file_line", token: ".hidden/x.md:1"}]},
+  {id: "CLAIM-8", origin: "x.md:8", text: "t", refs: [{kind: "file_line", token: "docs/long.txt:1-25"}]}
 ]}' > "$TEST_DIR/rows-edge.json"
 run_helper csc_fixture facts --rows "$TEST_DIR/rows-edge.json" --repo o/r --out "$TEST_DIR/facts-edge.json"
 E="$TEST_DIR/facts-edge.json"
+if [ "$RC" -eq 0 ] && grep -q 'refs=8; errors=0$' <<<"$OUT"; then
+  pass "facts: 存在しない番号 (GraphQL NOT_FOUND・exit 1) を error に数えない"
+else
+  fail "facts: edge marker (rc=$RC out=$OUT err=$ERR)"
+fi
+if [ "$(jq -c '.refs["issue:#99"]' "$E")" = '{"exists":false,"repo":"o/r","number":99}' ]; then
+  pass "facts: 存在しない Issue/PR 番号は exists=false"
+else
+  fail "facts: 存在しない番号 $(jq -c '.refs["issue:#99"]' "$E")"
+fi
+if [ "$(jq -c '.refs["issue:#13"] | {closing: .closing_prs, referencing: [.referencing_prs[] | {number, base, files}]}' "$E")" = '{"closing":[],"referencing":[{"number":16,"base":"develop","files":["src/logger.js"]}]}' ]; then
+  pass "facts: 既定ブランチ以外へ入った PR は timeline の参照元として変更ファイルを記録"
+else
+  fail "facts: 参照元 PR $(jq -c '.refs["issue:#13"]' "$E")"
+fi
+if [ "$(jq -c '.refs["file_line:.hidden/x.md:1"].candidates[0] | {path, lines}' "$E")" = '{"path":"sub/.hidden/x.md","lines":["# hidden"]}' ]; then
+  pass "facts: ドットで始まるディレクトリの部分パスを解決する"
+else
+  fail "facts: ドット始まりの部分パス $(jq -c '.refs["file_line:.hidden/x.md:1"]' "$E")"
+fi
+if [ "$(jq -c '.refs["file_line:docs/long.txt:1-25"].candidates[0] | {n: (.lines | length), lines_truncated}' "$E")" = '{"n":20,"lines_truncated":true}' ]; then
+  pass "facts: 行の上限で切った内容に切り捨ての印を付ける"
+else
+  fail "facts: 行の切り捨て $(jq -c '.refs["file_line:docs/long.txt:1-25"]' "$E")"
+fi
 if [ "$(jq -c '.refs["file_line:src/logger.js:99"].candidates[0].in_range' "$E")" = "false" ]; then
   pass "facts: 行番号が範囲外なら in_range=false"
 else
@@ -173,8 +241,8 @@ if [ "$(jq -c --arg k "sha:$head_sha" '.refs[$k] | {where, files}' "$E")" = '{"w
 else
   fail "facts: ローカルのコミット $(jq -c --arg k "sha:$head_sha" '.refs[$k]' "$E")"
 fi
-if [ "$(jq -c '.refs | to_entries[] | select(.key | startswith("issue:")) | .value | {type, files}' "$E")" = '{"type":"pull_request","files":["src/other.js"]}' ]; then
-  pass "facts: PR 参照は PR の変更ファイル"
+if [ "$(jq -c '.refs["issue:#15"] | {type, files, files_truncated, files_total}' "$E")" = '{"type":"pull_request","files":["src/other.js"],"files_truncated":true,"files_total":101}' ]; then
+  pass "facts: PR 参照は PR の変更ファイル (上限で切れた一覧には印と総数)"
 else
   fail "facts: PR 参照"
 fi
@@ -223,6 +291,16 @@ expect_reason() {
 }
 drop_row() { grep -v "^| $1 |" <<<"$OK_ROWS"; }
 swap_row() { sed "s/^| $1 |.*$/$2/" <<<"$OK_ROWS"; }
+
+EQ_ROWS=$(swap_row CLAIM-1 "| CLAIM-1 | 不支持 | 実在・内容・含意 | Verification: repro gh api graphql -f query=@q.graphql -F n=15 => files に src\/logger.js が無い |" \
+  | sed "s/^| CLAIM-3 |.*$/| CLAIM-3 | 判定不能 | 実在 | Measurement-Blocked: gh api graphql -F n=12 --jq '.a == 1' => HTTP 503 |/")
+printf '%s\n%s\n' "$HEADER" "$EQ_ROWS" | table_input
+run_helper csc_fixture table --rows "$TEST_DIR/rows.json" --input "$TEST_DIR/table.md"
+if [ "$RC" -eq 0 ] && grep -q 'unsupported=1; undetermined=1' <<<"$OUT"; then
+  pass "table: コマンドに = を含む根拠 (-f query= / --jq の ==) を受理する"
+else
+  fail "table: = を含む根拠 (rc=$RC out=$OUT)"
+fi
 
 expect_reason "ID 欠落" id_set_mismatch "$(drop_row CLAIM-5)"
 expect_reason "ID 余剰" id_set_mismatch "$OK_ROWS"$'\n| CLAIM-9 | 支持 | 実在・内容・含意 | x |'

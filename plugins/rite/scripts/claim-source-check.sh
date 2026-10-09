@@ -39,7 +39,7 @@
 #   失敗時   — [CONTEXT] CLAIM_SOURCE_CHECK_FAILED=1; mode={mode}; reason={reason}; detail={detail}
 #
 # Reason SoT:
-#   extract: base_unresolved / git_failed / pr_body_fetch_failed
+#   extract: base_unresolved / git_failed / diff_header_unexpected / pr_body_fetch_failed
 #   facts:   rows_invalid
 #   table:   rows_invalid / input_missing / table_missing / table_malformed / id_set_mismatch /
 #            verdict_invalid / perspective_invalid / evidence_missing / anchor_missing
@@ -87,8 +87,12 @@ VERIFICATION_CLAIM_RE = re.compile(
 DOC_PATH_RE = re.compile(r"(?<![\w./\-])((?:[\w.\-]+/)*[\w.\-]+\.(?:md|mdx|rst|adoc|txt))(?![\w/:#])", re.ASCII)
 VERDICTS = ("支持", "不支持", "判定不能", "主張なし")
 PERSPECTIVES = ("実在", "内容", "含意")
-VERIFICATION_ANCHOR_RE = re.compile(r"Verification:\s*repro\s+[^=]+?=>\s*\S")
-BLOCKED_ANCHOR_RE = re.compile(r"Measurement-Blocked:\s*\S[^=]*?=>\s*\S")
+VERIFICATION_ANCHOR_RE = re.compile(r"Verification:\s*repro\s+(?:(?!=>).)+?=>\s*\S")
+BLOCKED_ANCHOR_RE = re.compile(r"Measurement-Blocked:\s*\S(?:(?!=>).)*?=>\s*\S")
+# Paths come back unquoted (non-ASCII names) and with fixed a/ b/ prefixes whatever the user's diff config.
+GIT = ["git", "-c", "core.quotePath=false"]
+PR_FIELDS = "number state merged baseRefName title files(first:100){totalCount nodes{path}}"
+MAX_FACT_LINES = 20
 
 
 def fail(mode, reason, detail=""):
@@ -150,18 +154,27 @@ def tokens_of(text):
 
 def added_doc_lines(merge_base):
     rc, out, err = run(
-        ["git", "diff", "--no-renames", "--no-ext-diff", "--no-textconv", "--no-color",
-         "--unified=0", merge_base, "--", *DOC_PATHSPECS]
+        GIT + ["diff", "--no-renames", "--no-ext-diff", "--no-textconv", "--no-color",
+               "--src-prefix=a/", "--dst-prefix=b/", "--unified=0", merge_base, "--", *DOC_PATHSPECS]
     )
     if rc != 0:
         fail("extract", "git_failed", err)
     lines = []
     path = None
     lineno = 0
+    in_header = False
     for raw in out.split("\n"):
-        if raw.startswith("+++ "):
-            target = raw[4:]
-            path = target[2:] if target.startswith("b/") else None
+        if raw.startswith("diff --git "):
+            in_header, path = True, None
+            continue
+        if in_header:
+            if raw.startswith("+++ "):
+                target = raw[4:]
+                if target.startswith("b/"):
+                    path = target[2:]
+                elif target != "/dev/null":
+                    fail("extract", "diff_header_unexpected", raw)
+                in_header = False
             continue
         if raw.startswith("@@"):
             m = re.match(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", raw)
@@ -170,10 +183,10 @@ def added_doc_lines(merge_base):
         if path and raw.startswith("+") and not raw.startswith("+++"):
             lines.append((f"{path}:{lineno}", raw[1:]))
             lineno += 1
-    rc, out, err = run(["git", "ls-files", "--others", "--exclude-standard", "--", *DOC_PATHSPECS])
+    rc, out, err = run(GIT + ["ls-files", "-z", "--others", "--exclude-standard", "--", *DOC_PATHSPECS])
     if rc != 0:
         fail("extract", "git_failed", err)
-    for untracked in sorted(p for p in out.split("\n") if p):
+    for untracked in sorted(p for p in out.split("\0") if p):
         try:
             with open(untracked, encoding="utf-8", errors="replace") as fh:
                 for n, text in enumerate(fh.read().split("\n"), start=1):
@@ -243,11 +256,11 @@ def repo_root():
 def resolve_path(root, path):
     if os.path.isfile(os.path.join(root, path)):
         return [path]
-    rc, out, _ = run(["git", "-C", root, "ls-files"])
+    rc, out, _ = run(GIT + ["-C", root, "ls-files", "-z"])
     if rc != 0:
         return []
-    suffix = "/" + path.lstrip("./")
-    return [p for p in out.split("\n") if p and p.endswith(suffix)]
+    suffix = "/" + re.sub(r"^(?:\.{1,2}/)+", "", path)
+    return [p for p in out.split("\0") if p and p.endswith(suffix)]
 
 
 def read_lines(root, path):
@@ -255,39 +268,77 @@ def read_lines(root, path):
         return fh.read().split("\n")
 
 
+def pr_fact(pr):
+    """A pull request with its changed files. A list cut at the query limit says so."""
+    files = [f["path"] for f in pr["files"]["nodes"]]
+    fact = {"number": pr["number"], "state": pr["state"], "merged": pr["merged"],
+            "base": pr["baseRefName"], "title": pr["title"], "files": files}
+    if pr["files"]["totalCount"] > len(files):
+        fact["files_truncated"] = True
+        fact["files_total"] = pr["files"]["totalCount"]
+    return fact
+
+
 def fact_issue(token, default_repo):
     repo, _, number = token.partition("#")
     repo = repo or default_repo
     owner, _, name = repo.partition("/")
+    # closedByPullRequestsReferences is only linked for pull requests into the default branch, so the
+    # pull requests that referenced or closed the Issue are collected from its timeline as well.
     query = (
         "query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){issueOrPullRequest(number:$n){"
-        "__typename ... on Issue{state title closedByPullRequestsReferences(first:20,includeClosedPrs:true)"
-        "{nodes{number state title files(first:100){nodes{path}}}}}"
-        " ... on PullRequest{state title merged files(first:100){nodes{path}}}}}}"
+        "__typename ... on Issue{state title"
+        " closedByPullRequestsReferences(first:20,includeClosedPrs:true){totalCount nodes{...P}}"
+        " timelineItems(first:100,itemTypes:[CROSS_REFERENCED_EVENT,CLOSED_EVENT]){totalCount nodes{__typename"
+        " ... on CrossReferencedEvent{source{__typename ... on PullRequest{...P}}}"
+        " ... on ClosedEvent{closer{__typename ... on PullRequest{...P} ... on Commit{oid}}}}}}"
+        " ... on PullRequest{...P}}}}"
+        f" fragment P on PullRequest{{{PR_FIELDS}}}"
     )
     cmd = ["gh", "api", "graphql", "-f", f"query={query}", "-f", f"o={owner}", "-f", f"r={name}", "-F", f"n={number}"]
+    command = "gh api graphql issueOrPullRequest"
     rc, out, err = run(cmd)
-    if rc != 0:
-        return {"error": err or f"gh exited {rc}", "command": "gh api graphql issueOrPullRequest"}
     try:
-        node = json.loads(out)["data"]["repository"]["issueOrPullRequest"]
-    except (ValueError, KeyError, TypeError) as exc:
-        return {"error": f"unexpected gh output: {exc}", "command": "gh api graphql issueOrPullRequest"}
-    if node is None:
-        return {"exists": False, "repo": repo, "number": int(number)}
-    fact = {"exists": True, "repo": repo, "number": int(number), "state": node.get("state"), "title": node.get("title")}
-    if node.get("__typename") == "PullRequest":
-        fact["type"] = "pull_request"
-        fact["merged"] = node.get("merged")
-        fact["files"] = [f["path"] for f in node["files"]["nodes"]]
-    else:
+        data = json.loads(out)
+    except ValueError:
+        data = None
+    if rc != 0:
+        # gh exits 1 for a number or repository that does not exist; GraphQL says so as NOT_FOUND.
+        errors = data.get("errors") if isinstance(data, dict) else None
+        if isinstance(errors, list) and any(isinstance(e, dict) and e.get("type") == "NOT_FOUND" for e in errors):
+            return {"exists": False, "repo": repo, "number": int(number)}
+        return {"error": err or f"gh exited {rc}", "command": command}
+    try:
+        node = data["data"]["repository"]["issueOrPullRequest"]
+        if node is None:
+            return {"exists": False, "repo": repo, "number": int(number)}
+        fact = {"exists": True, "repo": repo, "number": int(number), "state": node["state"], "title": node["title"]}
+        if node["__typename"] == "PullRequest":
+            fact["type"] = "pull_request"
+            fact.update({k: v for k, v in pr_fact(node).items() if k not in ("number", "state", "title")})
+            return fact
         fact["type"] = "issue"
-        fact["closing_prs"] = [
-            {"number": p["number"], "state": p["state"], "title": p["title"],
-             "files": [f["path"] for f in p["files"]["nodes"]]}
-            for p in node["closedByPullRequestsReferences"]["nodes"]
-        ]
-    return fact
+        closing = node["closedByPullRequestsReferences"]
+        fact["closing_prs"] = [pr_fact(p) for p in closing["nodes"]]
+        if closing["totalCount"] > len(closing["nodes"]):
+            fact["closing_prs_truncated"] = True
+        timeline = node["timelineItems"]
+        referencing, closer = {}, None
+        for event in timeline["nodes"]:
+            if event["__typename"] == "CrossReferencedEvent" and event["source"]["__typename"] == "PullRequest":
+                referencing[event["source"]["number"]] = pr_fact(event["source"])
+            elif event["__typename"] == "ClosedEvent" and event["closer"] is not None:
+                if event["closer"]["__typename"] == "PullRequest":
+                    closer = dict(pr_fact(event["closer"]), type="pull_request")
+                elif event["closer"]["__typename"] == "Commit":
+                    closer = {"type": "commit", "sha": event["closer"]["oid"]}
+        fact["referencing_prs"] = list(referencing.values())
+        fact["closer"] = closer
+        if timeline["totalCount"] > len(timeline["nodes"]):
+            fact["timeline_truncated"] = True
+        return fact
+    except (KeyError, TypeError) as exc:
+        return {"error": f"unexpected gh output: {exc!r}", "command": command}
 
 
 def fact_file_line(root, token):
@@ -304,7 +355,9 @@ def fact_file_line(root, token):
         total = len(lines) - (1 if lines and lines[-1] == "" else 0)
         entry = {"path": cand, "line_count": total, "in_range": start <= total and end <= total}
         if entry["in_range"]:
-            entry["lines"] = lines[start - 1:min(end, start + 19)]
+            entry["lines"] = lines[start - 1:min(end, start + MAX_FACT_LINES - 1)]
+            if end - start + 1 > MAX_FACT_LINES:
+                entry["lines_truncated"] = True
         found.append(entry)
     return {"exists": True, "candidates": found}
 
@@ -313,7 +366,7 @@ def fact_sha(token, default_repo):
     rc, _, _ = run(["git", "cat-file", "-e", token + "^{commit}"])
     if rc == 0:
         rc, subject, err = run(["git", "show", "-s", "--format=%H%x09%s", token])
-        rc2, files, err2 = run(["git", "show", "--name-only", "--format=", token])
+        rc2, files, err2 = run(GIT + ["show", "--name-only", "--format=", token])
         if rc != 0 or rc2 != 0:
             return {"error": err or err2, "command": f"git show {token}"}
         full, _, title = subject.strip().partition("\t")
