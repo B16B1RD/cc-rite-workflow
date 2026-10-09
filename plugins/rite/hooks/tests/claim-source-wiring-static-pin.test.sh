@@ -5,7 +5,7 @@
 # Pins mechanical rails only: the section sits right after Number-reference and
 # right before 5.3.0.M, runs every cycle, calls the three helper modes, the E2E
 # omit rule, both report templates, the issue-implement pre-commit call, and the
-# fix route that edits a PR-body row and returns to re-review.
+# fix route that edits a PR-body row and returns to re-review or stops on failure.
 # Each pin is also run against a mutant copy without the pinned text, so a pin
 # that matches nothing (or matches regardless) fails here.
 
@@ -68,10 +68,12 @@ check_implement() {
     && grep -qF 'table --rows <行 JSON> --input' "$1" \
     && ! grep -qE 'claim-source-check\.sh extract .*--pr ' "$1"
 }
-# fix は PR 本文の行を gh pr edit で直し、その marker で 5.1 の行 4 (再レビューへ戻す) に入る
+# fix は PR 本文の行を pr-body-edit で直し、成功の marker で 5.1 の行 4 (再レビューへ戻す) に、
+# 失敗の marker で行 2 ([fix:error]) に入る
 check_fix_pr_body() {
-  grep -qF "gh pr edit {pr_number} -R {owner_repo} --body-file '{pr_body_file}' && echo \"[CONTEXT] FIX_PR_BODY_EDITED=1" "$1" \
-    && grep -E '^\| 4 \|' "$1" | grep -qF '[CONTEXT] FIX_PR_BODY_EDITED=1'
+  grep -qF "bash {plugin_root}/scripts/fix-step.sh pr-body-edit --pr {pr_number} --owner-repo {owner_repo} --body-file" "$1" \
+    && grep -E '^\| 4 \|' "$1" | grep -qF '[CONTEXT] FIX_PR_BODY_EDITED=1' \
+    && grep -E '^\| 2 \|' "$1" | grep -qF '[CONTEXT] FIX_PR_BODY_EDIT_FAILED=1'
 }
 
 # pin を本物で通し、pin 対象を消した mutant で落ちることを確かめる
@@ -97,5 +99,6 @@ pin "E2E 例外 9 (照合 section の省略禁止)" check_e2e9 "$SKILL" "$PIN_E2
 pin "両テンプレートに照合 section" check_templates "$TEMPLATES" "$TEMPLATE_HEADING"
 pin "issue-implement は commit 前に PR 本文なしで照合する" check_implement "$IMPLEMENT" 'table --rows <行 JSON> --input'
 pin "fix は PR 本文の行を直して再レビューへ戻す" check_fix_pr_body "$FIX" 'FIX_PR_BODY_EDITED=1'
+pin "fix は PR 本文の更新の失敗を [fix:error] にする" check_fix_pr_body "$FIX" 'FIX_PR_BODY_EDIT_FAILED=1'
 
 print_summary "claim-source-wiring-static-pin.test.sh"

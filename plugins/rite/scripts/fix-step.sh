@@ -17,7 +17,7 @@
 # The fix commit itself is not here. The PreToolUse guard inspects `git commit`
 # in the Bash command text, so the skill runs the commit as a literal command.
 #
-# Free text written by the caller (reply body, findings_addressed JSON, the
+# Free text written by the caller (reply body, edited PR body, findings_addressed JSON, the
 # issue title and body filed by the NB sweep, the wiki raw source body and title,
 # the wiki commit message, the accepted finding JSON) arrives as a file the caller
 # wrote with its Write tool, never as an argument value.
@@ -48,6 +48,7 @@
 #   bash fix-step.sh scope-check --fix-plan-file F --fix-issue-file F
 #   bash fix-step.sh impact-scan --symbol S
 #   bash fix-step.sh reply-post --pr N --owner O --repo R --comment-id N --reply-body-file F
+#   bash fix-step.sh pr-body-edit --pr N --owner-repo O/R --body-file F
 #   bash fix-step.sh scope-verify --fix-plan-file F --fix-issue-file F
 #   bash fix-step.sh commit-guard
 #   bash fix-step.sh skip-cycle-state --pr N --findings-addressed-file F
@@ -994,6 +995,23 @@ if ! jq -n --rawfile body "$tmpfile" --argjson in_reply_to "$comment_id" \
   exit 1
 fi
 set +o pipefail
+}
+
+# --- pr-body-edit ---------------------------------------------------------------
+step_pr_body_edit() {
+# 出所が PR 本文の行の指摘を直した本文で PR 本文を置き換える。成功時だけ FIX_PR_BODY_EDITED を出し、
+# 失敗は FIX_PR_BODY_EDIT_FAILED と非 0 で止める（ステップ 5.1 が [fix:error] にする）
+if [ ! -s "$body_file" ]; then
+  echo "ERROR: PR 本文のファイルが無いか空です: $body_file" >&2
+  echo "[CONTEXT] FIX_PR_BODY_EDIT_FAILED=1; pr=$pr_number; reason=body_file_empty" >&2
+  exit 1
+fi
+if ! gh pr edit "$pr_number" -R "$owner_repo" --body-file "$body_file"; then
+  echo "ERROR: gh pr edit に失敗しました。gh auth status / network / PR #${pr_number} の存在を確認してください" >&2
+  echo "[CONTEXT] FIX_PR_BODY_EDIT_FAILED=1; pr=$pr_number; reason=gh_pr_edit_failed" >&2
+  exit 1
+fi
+echo "[CONTEXT] FIX_PR_BODY_EDITED=1; pr=$pr_number"
 }
 
 # --- scope-verify ---------------------------------------------------------------
@@ -2197,7 +2215,7 @@ options=" pr issue owner repo owner-repo keywords changed-paths arguments head-r
   pr-body-file history-file impl-status test-status doc-status reason status result
   finding-file review-cycle-id issue-title-file issue-body-file record-ids projects-enabled
   project-number project-owner content-file title-file content-write-failed trigger-exit
-  message-file attempt "
+  message-file attempt body-file "
 option_var() {
   case "$1" in
     pr) echo pr_number ;;
@@ -2287,6 +2305,7 @@ case "$subcommand" in
   scope-check) require fix-plan-file fix-issue-file; step_scope_check ;;
   impact-scan) require symbol; step_impact_scan ;;
   reply-post) require pr owner repo comment-id reply-body-file; step_reply_post ;;
+  pr-body-edit) require pr owner-repo body-file; step_pr_body_edit ;;
   scope-verify) require fix-plan-file fix-issue-file; step_scope_verify ;;
   commit-guard) step_commit_guard ;;
   skip-cycle-state)
