@@ -4,10 +4,12 @@
 # Coverage:
 #   extract — 文書ファイルの追加行だけを行にする (コードの追加行・アンカーリンクの行・出典の無い行は除外) /
 #             未追跡の文書も対象 / 出典トークン 4 種 (Issue・path:line・SHA・節) を完全一致で抽出 /
-#             PR 本文の検証主張の行と出典の行を行にする / PR 本文の取得失敗と base 解決失敗で止まる
-#   facts   — Issue を閉じた PR の変更ファイル / PR の変更ファイル / path:line の実在・行内容・範囲外・不在 /
-#             ローカルのコミットの変更ファイル / GitHub に無い SHA / 節の本文の切り出しと文書名の無い節 /
-#             gh 失敗を止めずに error として記録する
+#             PR 本文の検証主張の行と出典の行を行にする / PR 本文の取得失敗と base 解決失敗で止まる /
+#             非 ASCII・空白を含む名前、++ / --- で始まる追加行、diff の prefix 設定 / 引用符付きの名前で止まる
+#   facts   — Issue を閉じた PR・参照元 PR・closer (PR / コミット) / PR の変更ファイル / 切り捨ての印 /
+#             path:line の実在・行内容・範囲外・不在 / ローカルのコミットの変更ファイル / GitHub に無い SHA /
+#             存在しない番号 / 節の本文の切り出しと文書名の無い節 / gh 失敗・リポジトリ単位の NOT_FOUND・
+#             JSON 以外の応答を止めずに error として記録する
 #   table   — 正常 (件数・観点別の件数・報告行) / 見出し欠落 / ヘッダ不正 / ID 欠落・余剰・重複 /
 #             判定値不正 / 観点不正 / 支持で観点が欠ける / 主張なしの観点 / 根拠空 /
 #             不支持で Verification: が無い / 判定不能で Measurement-Blocked: が無い
@@ -149,6 +151,43 @@ for prefix_config in diff.mnemonicPrefix diff.noprefix; do
   fi
 done
 
+# git の出力の形に依存する箇所: 空白を含む名前 (+++ 行の末尾にタブが付く) と、本文が ++ / --- で始まる追加行
+SP_REPO="$TEST_DIR/repo-space"
+new_repo "$SP_REPO"
+printf '# repo\n' > "$SP_REPO/README.md"
+git -C "$SP_REPO" add -A
+git -C "$SP_REPO" commit -qm base
+git -C "$SP_REPO" tag base
+mkdir -p "$SP_REPO/docs"
+printf '# 例\n+++ b/x は #12 の例\n--- a/y も #13\n++ fixed in #14\nsee #15 here\n' > "$SP_REPO/docs/my notes.md"
+git -C "$SP_REPO" add -A
+git -C "$SP_REPO" commit -qm notes
+printf 'x #16\n' > "$SP_REPO/docs/new note.md"
+expected_sp='["docs/my notes.md:2","docs/my notes.md:3","docs/my notes.md:4","docs/my notes.md:5","docs/new note.md:1"]'
+HELPER_REPO="$SP_REPO" run_helper csc_fixture extract --base base --out "$TEST_DIR/rows-sp.json"
+if [ "$RC" -eq 0 ] && [ "$(jq -c '[.rows[].origin]' "$TEST_DIR/rows-sp.json")" = "$expected_sp" ]; then
+  pass "extract: 空白を含む名前と、++ / --- で始まる追加行も正しい行番号で抜き出す"
+else
+  fail "extract: 空白・++ 行 (rc=$RC out=$OUT err=$ERR rows=$(jq -c '[.rows[].origin]' "$TEST_DIR/rows-sp.json" 2>/dev/null))"
+fi
+
+# quotePath=false でも git が引用符で囲む名前 (") は、黙って捨てずに止まる
+QT_REPO="$TEST_DIR/repo-quote"
+new_repo "$QT_REPO"
+printf '# repo\n' > "$QT_REPO/README.md"
+git -C "$QT_REPO" add -A
+git -C "$QT_REPO" commit -qm base
+git -C "$QT_REPO" tag base
+printf 'see #12\n' > "$QT_REPO/a\"b.md"
+git -C "$QT_REPO" add -A
+git -C "$QT_REPO" commit -qm quoted
+HELPER_REPO="$QT_REPO" run_helper csc_fixture extract --base base --out "$TEST_DIR/rows-qt.json"
+if [ "$RC" -eq 1 ] && grep -q 'reason=diff_header_unexpected' <<<"$OUT"; then
+  pass "extract: 引用符付きになる名前の文書は diff_header_unexpected で止まる"
+else
+  fail "extract: 引用符付きの名前 (rc=$RC out=$OUT err=$ERR)"
+fi
+
 echo "=== facts ==="
 
 run_helper csc_fixture facts --rows "$TEST_DIR/rows.json" --repo o/r --out "$TEST_DIR/facts.json"
@@ -158,9 +197,9 @@ if [ "$RC" -eq 0 ] && grep -q '^\[CONTEXT\] CLAIM_SOURCE_FACTS=ok; refs=3; error
 else
   fail "facts: marker (rc=$RC out=$OUT err=$ERR)"
 fi
-issue_fact=$(jq -c '.refs | to_entries[] | select(.key | startswith("issue:")) | .value | {type, state, closing: [.closing_prs[] | .files], truncated: [.closing_prs[] | .files_truncated], closer: .closer.number}' "$F")
-if [ "$issue_fact" = '{"type":"issue","state":"CLOSED","closing":[["src/other.js"]],"truncated":[true],"closer":15}' ]; then
-  pass "facts: Issue を閉じた PR の変更ファイル一覧 (主張の src/logger.js を含まない)・切り捨ての印・closer を記録"
+issue_fact=$(jq -c '.refs | to_entries[] | select(.key | startswith("issue:")) | .value | {type, state, closing: [.closing_prs[] | .files], truncated: [.closing_prs[] | .files_truncated], closing_prs_truncated, timeline_truncated, closer: .closer.number}' "$F")
+if [ "$issue_fact" = '{"type":"issue","state":"CLOSED","closing":[["src/other.js"]],"truncated":[true],"closing_prs_truncated":true,"timeline_truncated":true,"closer":15}' ]; then
+  pass "facts: Issue を閉じた PR の変更ファイル一覧 (主張の src/logger.js を含まない)・切り捨ての印 (変更ファイル・閉じた PR・タイムライン)・closer を記録"
 else
   fail "facts: Issue の事実 $issue_fact"
 fi
@@ -197,11 +236,12 @@ jq -n --arg sha "$head_sha" '{rows: [
   {id: "CLAIM-5", origin: "x.md:5", text: "t", refs: [{kind: "issue", token: "#13"}]},
   {id: "CLAIM-6", origin: "x.md:6", text: "t", refs: [{kind: "issue", token: "#99"}]},
   {id: "CLAIM-7", origin: "x.md:7", text: "t", refs: [{kind: "file_line", token: ".hidden/x.md:1"}]},
-  {id: "CLAIM-8", origin: "x.md:8", text: "t", refs: [{kind: "file_line", token: "docs/long.txt:1-25"}]}
+  {id: "CLAIM-8", origin: "x.md:8", text: "t", refs: [{kind: "file_line", token: "docs/long.txt:1-25"}]},
+  {id: "CLAIM-9", origin: "x.md:9", text: "t", refs: [{kind: "issue", token: "#14"}]}
 ]}' > "$TEST_DIR/rows-edge.json"
 run_helper csc_fixture facts --rows "$TEST_DIR/rows-edge.json" --repo o/r --out "$TEST_DIR/facts-edge.json"
 E="$TEST_DIR/facts-edge.json"
-if [ "$RC" -eq 0 ] && grep -q 'refs=8; errors=0$' <<<"$OUT"; then
+if [ "$RC" -eq 0 ] && grep -q 'refs=9; errors=0$' <<<"$OUT"; then
   pass "facts: 存在しない番号 (GraphQL NOT_FOUND・exit 1) を error に数えない"
 else
   fail "facts: edge marker (rc=$RC out=$OUT err=$ERR)"
@@ -212,9 +252,26 @@ else
   fail "facts: 存在しない番号 $(jq -c '.refs["issue:#99"]' "$E")"
 fi
 if [ "$(jq -c '.refs["issue:#13"] | {closing: .closing_prs, referencing: [.referencing_prs[] | {number, base, files}]}' "$E")" = '{"closing":[],"referencing":[{"number":16,"base":"develop","files":["src/logger.js"]}]}' ]; then
-  pass "facts: 既定ブランチ以外へ入った PR は timeline の参照元として変更ファイルを記録"
+  pass "facts: 既定ブランチ以外へ入った PR は timeline の参照元として変更ファイルを記録 (Issue からの参照は除く)"
 else
   fail "facts: 参照元 PR $(jq -c '.refs["issue:#13"]' "$E")"
+fi
+if [ "$(jq -c '.refs["issue:#14"] | {closing: .closing_prs, referencing: .referencing_prs, closer}' "$E")" = '{"closing":[],"referencing":[],"closer":{"type":"commit","sha":"0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c"}}' ]; then
+  pass "facts: コミットが閉じた Issue は closer にコミットを記録"
+else
+  fail "facts: コミットの closer $(jq -c '.refs["issue:#14"]' "$E")"
+fi
+
+jq -n '{rows: [
+  {id: "CLAIM-1", origin: "x.md:1", text: "t", refs: [{kind: "issue", token: "x/y#98"}]},
+  {id: "CLAIM-2", origin: "x.md:2", text: "t", refs: [{kind: "issue", token: "#97"}]}
+]}' > "$TEST_DIR/rows-err.json"
+run_helper csc_fixture facts --rows "$TEST_DIR/rows-err.json" --repo o/r --out "$TEST_DIR/facts-err.json"
+if [ "$RC" -eq 0 ] && grep -q 'refs=2; errors=2$' <<<"$OUT" \
+    && [ "$(jq -c '[.refs["issue:x/y#98"], .refs["issue:#97"]] | map(has("error") and (has("exists") | not))' "$TEST_DIR/facts-err.json")" = '[true,true]' ]; then
+  pass "facts: リポジトリ単位の NOT_FOUND と JSON 以外の応答は不在と断定せず error に残す"
+else
+  fail "facts: リポジトリ単位の NOT_FOUND・JSON 以外 (rc=$RC out=$OUT facts=$(jq -c '.refs' "$TEST_DIR/facts-err.json" 2>/dev/null))"
 fi
 if [ "$(jq -c '.refs["file_line:.hidden/x.md:1"].candidates[0] | {path, lines}' "$E")" = '{"path":"sub/.hidden/x.md","lines":["# hidden"]}' ]; then
   pass "facts: ドットで始まるディレクトリの部分パスを解決する"

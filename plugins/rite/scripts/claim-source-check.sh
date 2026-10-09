@@ -171,7 +171,8 @@ def added_doc_lines(merge_base):
             if raw.startswith("+++ "):
                 target = raw[4:]
                 if target.startswith("b/"):
-                    path = target[2:]
+                    # git ends the header with a tab when the name contains a space.
+                    path = target[2:].rstrip("\t")
                 elif target != "/dev/null":
                     fail("extract", "diff_header_unexpected", raw)
                 in_header = False
@@ -180,7 +181,7 @@ def added_doc_lines(merge_base):
             m = re.match(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", raw)
             lineno = int(m.group(1)) if m else 0
             continue
-        if path and raw.startswith("+") and not raw.startswith("+++"):
+        if path and raw.startswith("+"):
             lines.append((f"{path}:{lineno}", raw[1:]))
             lineno += 1
     rc, out, err = run(GIT + ["ls-files", "-z", "--others", "--exclude-standard", "--", *DOC_PATHSPECS])
@@ -303,9 +304,13 @@ def fact_issue(token, default_repo):
     except ValueError:
         data = None
     if rc != 0:
-        # gh exits 1 for a number or repository that does not exist; GraphQL says so as NOT_FOUND.
+        # gh exits 1 for a number that does not exist; GraphQL reports NOT_FOUND at the number's node.
+        # A repository that is missing or not visible to the token is NOT_FOUND at the repository and
+        # stays an error, since it says nothing about the number.
         errors = data.get("errors") if isinstance(data, dict) else None
-        if isinstance(errors, list) and any(isinstance(e, dict) and e.get("type") == "NOT_FOUND" for e in errors):
+        if isinstance(errors, list) and any(isinstance(e, dict) and e.get("type") == "NOT_FOUND"
+                                            and e.get("path") == ["repository", "issueOrPullRequest"]
+                                            for e in errors):
             return {"exists": False, "repo": repo, "number": int(number)}
         return {"error": err or f"gh exited {rc}", "command": command}
     try:

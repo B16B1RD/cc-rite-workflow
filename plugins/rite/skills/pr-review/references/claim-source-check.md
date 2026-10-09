@@ -29,7 +29,7 @@ orchestrator は次を連結して `subagent_type: general-purpose` の Task を
 
 | 出典 | 確かめ方 |
 |---|---|
-| 「X は #N で解決／#N が入れた」 | 事実 JSON の Issue の `closing_prs[]`・`closer`・`referencing_prs[]`（既定ブランチ以外へ入った PR は `closing_prs` に載らず、参照元として出る）、または PR の `files` に、X に当たるファイル・経路が含まれるかを見る。マージ済みの PR のどれにも含まれなければ不支持。`exists: false` の番号は不支持。Issue が閉じておらず主張が「解決」なら不支持。マージ済みの PR が 1 件も無ければ自分で参照元を探し、見つからなければ判定不能にする。X がどのファイルに当たるかは作業先のコードを grep して決める |
+| 「X は #N で解決／#N が入れた」 | 上から順に、最初に当てはまる規則で判定する。(1) `exists: false` の番号は不支持。(2) Issue が閉じておらず主張が「解決」なら不支持。(3) 解決した変更を、Issue の `closer`（PR はその `files`、コミットは `git show --name-only --format= <sha>` の変更ファイル）、無ければ `closing_prs[]`、それも無ければ `referencing_prs[]`（既定ブランチ以外へ入った PR は `closing_prs` に載らず、参照元として出る）のマージ済み PR とし、X に当たるファイル・経路が含まれれば支持、含まれなければ不支持。PR 番号の出典はその PR の `files` で同じく判定する。(4) 解決した変更が 1 件も無ければ自分で参照元を探し、見つかれば (3) で判定し、見つからなければ判定不能にする。X がどのファイルに当たるかは作業先のコードを grep して決める |
 | `path:line` | 事実 JSON の行内容が、主張の述べる内容か。行がずれていれば、ずれ先を `git grep` で探し、根拠に書く |
 | コミット SHA | 事実 JSON の `files` と `subject` が主張に合うか |
 | 文書の節 | 事実 JSON の節本文（`doc: null` なら行の文脈から文書を探して読む）に、主張の要素（番号・経路・用語）があるか。節が実在しても要素が無ければ不支持 |
@@ -37,9 +37,9 @@ orchestrator は次を連結して `subagent_type: general-purpose` の Task を
 
 事実 JSON に `error` がある出典は、自分で同じ取得を 1 回試す。それでも取れなければ判定不能にする。推測で支持にしない。
 
-`files_truncated` / `closing_prs_truncated` / `timeline_truncated` / `lines_truncated` が true の一覧・行は上限で切れている。そこに無いことを不支持の根拠にせず、自分で全体を取得して確かめる（`gh pr view <N> --json files` など）。取得できなければ判定不能にする。
+`files_truncated` / `closing_prs_truncated` / `timeline_truncated` / `lines_truncated` と、節の `truncated` が true の一覧・行・節本文は上限で切れている。そこに無いことを不支持の根拠にせず、自分で全体を取得して確かめる（PR の変更ファイルは `gh api repos/<owner>/<repo>/pulls/<N>/files --paginate --jq '.[].filename'`、Issue の閉じた PR とタイムラインは `gh api graphql` を `after:` カーソルでページ送りする、行と節は作業先のファイルを読む）。取り直しに `gh pr view --json files` は使わない（同じ上限で切れる）。取得できなければ判定不能にする。
 
-例文・fixture・テンプレートの値など、PR が主張として述べていない行は「主張なし」にし、根拠にそう判断した理由（コードブロック内の例、fixture ファイル等）を書く。
+例文・fixture・テンプレートの値など、PR が主張として述べていない行は「主張なし」にし、根拠にそう判断した理由（コードブロック内の例、fixture ファイル等）を書く。レビュー対象の PR 自身の本文にある closing keyword の行（`Closes #N` など）は、この PR で閉じるという宣言であり、主張なしにする。
 
 ## 判定出力形式
 
