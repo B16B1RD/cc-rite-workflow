@@ -60,6 +60,12 @@
 #   "pif_normalize_fail"       - gh succeeds (default shapes); the failure is injected by the
 #                                jq shim in projects-items-fetch.test.sh (final `jq -s` exits 2)
 #
+# Scenarios (claim-source-check.sh): responses are files under MOCK_CSC_DIR
+#   "csc_fixture"  - `gh api graphql` prints graphql-<n>.json (n = the -F n=<n> value),
+#                    `gh pr view` prints pr-body.in, `gh api repos/*/commits/<sha>` prints
+#                    commit-<sha>.json; a missing file answers as GitHub does (HTTP 404, exit 1)
+#   "csc_fail"     - every gh call fails (stderr + exit 1)
+#
 # Both create-issue-with-projects.sh and projects-status-update.sh root their
 # GraphQL queries at `repository(owner:, name:)`, but with different sub-shapes:
 # create uses `repository.projectV2(number:)` (-> `data.repository.projectV2`)
@@ -77,6 +83,31 @@ MOCK_ITEM_ID="PVTI_mock456"
 if [ -n "${MOCK_GH_LOG:-}" ]; then
   echo "gh $*" >> "$MOCK_GH_LOG"
 fi
+
+case "$SCENARIO" in
+  csc_fail)
+    echo "error: connecting to api.github.com: network unreachable" >&2
+    exit 1
+    ;;
+  csc_fixture)
+    csc_file=""
+    if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
+      csc_file="$MOCK_CSC_DIR/pr-body.in"
+    elif [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
+      for arg in "$@"; do
+        case "$arg" in n=*) csc_file="$MOCK_CSC_DIR/graphql-${arg#n=}.json" ;; esac
+      done
+    elif [ "$1" = "api" ]; then
+      csc_file="$MOCK_CSC_DIR/commit-${2##*/}.json"
+    fi
+    if [ -z "$csc_file" ] || [ ! -f "$csc_file" ]; then
+      echo "gh: Not Found (HTTP 404)" >&2
+      exit 1
+    fi
+    cat "$csc_file"
+    exit 0
+    ;;
+esac
 
 case "$1" in
   issue)

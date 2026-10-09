@@ -546,6 +546,24 @@ rationale: references/rationale.md#production-constraint-churn
 
 ### 5.1.1 Commit and Push Changes
 
+#### 5.1.1.0 主張と出典の照合（commit 前）
+
+生成した文書の出典（「#N で解決」「出典は節 S」など）を、commit する前に全件、含意まで確かめる。Task の prompt と判定規則は [claim-source-check.md](../pr-review/references/claim-source-check.md) の「spawn ペイロード」「Prompt」「判定出力形式」「表の検査と報告」だけを使う（「指摘の形式」は pr-review 用で、ここでは使わない）。PR はまだ無いので PR 本文は対象外。`{claim_source_dir}` は作業ツリー外の既存ディレクトリ（ホストのスクラッチ領域、無ければ `/tmp`）の絶対パス。
+
+```bash
+bash {plugin_root}/scripts/claim-source-check.sh extract --base origin/{base_branch} --out {claim_source_dir}/claim-source-rows-{issue_number}.json
+```
+
+`CLAIM_SOURCE_ROWS=0` なら commit procedure へ進む。1 以上なら `facts`（`--rows` に上の行 JSON、`--repo {owner_repo}`、`--out {claim_source_dir}/claim-source-facts-{issue_number}.json`）を実行し、実装した agent とは別の Task を 1 回 spawn して、回収した出力を Write で `{claim_source_dir}/claim-source-table-{issue_number}.md` に保存し、`table --rows <行 JSON> --input <保存した出力>` にかける。
+
+| 結果 | Action |
+|---|---|
+| `CLAIM_SOURCE_TABLE=ok` かつ `unsupported=0`・`undetermined=0` | 確認範囲の 1 行（reference の形式）を work memory の決定事項に記録し、commit procedure へ |
+| `CLAIM_SOURCE_TABLE=ok` かつ `unsupported` ≥ 1 | 不支持の行を直す（出典を主張に合うものへ替えるか、主張を出典の述べる範囲へ直す）。直したら extract からやり直す。同じ行が 2 回続けて不支持なら、行と根拠を出力して停止する |
+| `CLAIM_SOURCE_TABLE=ok` かつ `undetermined` ≥ 1 | 未判定の行と `Measurement-Blocked:` の理由を出力し、commit せずに停止する |
+| `table` が rc=1、初回 | 診断を添えて Task を 1 回だけ再 spawn し、`table` を再実行する |
+| helper の rc ≠ 0（上の再 spawn 後を含む）、Task の回収失敗 | エラーを出力して停止する（commit しない） |
+
 **Commit procedure:**
 
 1. `git status --porcelain` で変更ファイルを確認。出力が空なら stderr に `ERROR: コミット対象の変更がありません` を出して停止する。commit / push / pr-create へ進まない。`git status` 自体が失敗したら既存の bash 失敗処理に従い `ERROR` で停止する。変更がある場合は手順 2 以降を従来どおり進め、この分岐からの追加出力は出さない。

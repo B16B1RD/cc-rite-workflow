@@ -33,7 +33,7 @@
 #      JSON に触らず CLASS_DEMOTION_GATE=noop を emit して exit 0 (再実行の冪等性はこの分岐が担う —
 #      降格発動後の JSON は blocking 0 のため常にここへ落ちる)
 #   1. 各 blocking finding の effective class を確定する
-#      - category="number_reference" は map の class にかかわらず class A に固定する。
+#      - category="number_reference" / "claim_source" は map の class にかかわらず class A に固定する。
 #        well-formed な class B が指定された場合は WARNING +
 #        CLASS_DEMOTION_CATEGORY_PINNED で矛盾を可視化する
 #      - verification.measured が boolean でない finding が 1 件でもあれば、分類と JSON 書き換えの
@@ -394,7 +394,7 @@ def effective_class($m; $ac; $ids):
           else {class: "A", scenario: null, unclassified: true, exclusion: null, claim: null} end
       else {class: "A", scenario: null, unclassified: true, exclusion: null, claim: null} end
     end) as $mapped
-  | (if .category == "number_reference" and $mapped.class == "B" then
+  | (if (.category == "number_reference" or .category == "claim_source") and $mapped.class == "B" then
        $mapped + {class: "A", pinned: true, exclusion: null}
      else $mapped + {pinned: false} end)
   | if .class == "B" and .exclusion == null and $ac[$fid] != null then
@@ -472,7 +472,7 @@ def is_demotable_b:
       blocking_after: $blocking_after,
       # map 由来の判定不能 (エントリ欠落 / class 不正 / B の判定文欠落 / ac_claim 不正 / 重複)。
       unclassified: ([$orig[] | select(gated) | effective_class($by_id; $ac_by_id; $ac_ids) | select(.unclassified)] | length),
-      # number_reference に well-formed な class B を指定し、category 固定で A へ戻した件数。
+      # 固定 category (number_reference / claim_source) に well-formed な class B を指定し、A へ戻した件数。
       category_pinned: ([$orig[] | select(gated) | effective_class($by_id; $ac_by_id; $ac_ids) | select(.pinned)] | length),
       excluded: $excluded,
       # excluded のうち acceptance_criteria[] の未充足行で除外した件数。
@@ -576,7 +576,7 @@ if [ "$unclassified" -gt 0 ]; then
 fi
 
 if [ "$category_pinned" -gt 0 ]; then
-  echo "WARNING: category=number_reference の blocking finding ${category_pinned} 件に well-formed な class B が指定されたため、category 固定で class A (blocking 維持) にしました" >&2
+  echo "WARNING: 固定 category (number_reference / claim_source) の blocking finding ${category_pinned} 件に well-formed な class B が指定されたため、category 固定で class A (blocking 維持) にしました" >&2
   echo "[CONTEXT] CLASS_DEMOTION_CATEGORY_PINNED=1; count=${category_pinned}" >&2
 fi
 

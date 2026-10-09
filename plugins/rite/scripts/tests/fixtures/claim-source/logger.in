@@ -1,0 +1,4 @@
+export function log(message) {
+  if (!message) return;
+  console.log(message);
+}

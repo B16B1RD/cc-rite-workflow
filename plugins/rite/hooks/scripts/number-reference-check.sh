@@ -3,6 +3,9 @@
 #
 # Detect bare Issue/PR number tokens (`#[0-9]{3,4}`) in persistent artifacts.
 # Grammar and exclusion rules live only here. Callers must not copy the regex.
+# scripts/claim-source-check.sh keeps a separate Issue/PR reference grammar on purpose:
+# it extracts every-digit references from user documents to verify them, while this
+# script forbids 3-4 digit numbers in rite's own persistent artifacts.
 #
 # Modes (exactly one):
 #   --all                 git ls-files 全件 − 除外パス

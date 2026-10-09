@@ -1,0 +1,1 @@
+{"data":{"repository":{"issueOrPullRequest":{"__typename":"PullRequest","state":"MERGED","title":"fix: other","merged":true,"files":{"nodes":[{"path":"src/other.js"}]}}}}}

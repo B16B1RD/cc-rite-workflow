@@ -762,6 +762,12 @@ When citing external specifications (library behavior, tool configuration, versi
 
 **Note**: External specification claims in findings are verified by the Fact-Checking Phase (`pr-review.md` ステップ 5 Critic Phase) using WebSearch/WebFetch against official documentation. Claims found to contradict official documentation are removed from the review report and recorded in a dedicated section. Reviewers benefit from accuracy here because contradicted findings are flagged as errors, reducing overall review quality.
 
+## 確認範囲の報告と PR 自身の主張
+
+- 参照・件数・出典を「照合した」「一致した」「確認した」と `所見` に書くときは、同じ `所見` に `確認範囲: 対象 N 件中 M 件・観点（実在／内容／含意）` を 1 行書く。M < N なら「抜き取り」と明記し、残り N − M 件の扱い（未確認のまま残す理由）を書く。実在しか見ていない参照を、内容や含意まで照合したと書かない。
+- PR 本文の「全件照合した」「確認済み」「テスト済み」などの主張は、レビューの前提ではなく反証の対象である。自分で確かめていない主張を理由に、確認を省いたり指摘を取り下げたりしない。
+- PR 自身が書いた主張と出典の組は、pr-review の「主張と出典の照合」が全件を確かめる（[claim-source-check.md](../skills/pr-review/references/claim-source-check.md)）。reviewer が同じ全件照合を繰り返す必要はないが、自分が照合した範囲は上の形式で示す。
+
 ## Input
 
 This agent receives the following input via Task tool's `prompt` parameter:

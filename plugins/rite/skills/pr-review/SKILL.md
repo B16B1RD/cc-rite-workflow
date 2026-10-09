@@ -56,7 +56,7 @@ rationale: references/design-rationale.md#e2e-askuser-split
 |-------|-----------|----------|
 | ステップ 3.3 (Confirm Reviewers) | `AskUserQuestion` で構成確認 | **`AskUserQuestion`（オプション選択）を skip**（pre-flight 確認のみ。flow-state ベース判定はステップ 3.3 参照）。`起動 reviewer {count} 名` サマリ行・省略された reviewer 表示は両経路で必須維持 |
 | ステップ 4 (Sub-Agent Execution) | Full execution | **Full execution** — sub-agents MUST run in parallel for every review cycle (including verification mode). No shortcut allowed. |
-| ステップ 5 (Consolidation) | Full findings table | Result pattern + summary counts only。**例外 1: ステップ 5.4 の `### レビュー範囲（cycle 2+ 差分スコープ）` section は `REVIEW_CYCLE_SCOPE == incremental` のとき E2E でも省略禁止** (cycle 2+ は E2E からしか発生しないため、ここを minimize すると「スキップした reviewer を記録する」要求が空文になる — SoT: [cycle-scope.md](references/cycle-scope.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 2: ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section は `non_blocking_count > 0` のとき E2E でも省略禁止** (ステップ 7 のトリアージ（候補ごとの `AskUserQuestion` は出さないが処理は省略しない）と同じ identity 制約 — 関連 Issue 記録コメントはポインタのみで全文は載せない。既定 `post_comment: false` では統合レポートも PR に載らないため、この E2E 出力が非実測指摘の全文を人間が同期的に見る経路であり、省略は「非実測指摘を破棄しない」という記録契約の喪失に直結する)。**例外 3: ステップ 5.4 の `### レビューレーン（XS/S 軽量レーン）` section は `COMPLEXITY_LANE == light` のとき E2E でも省略禁止** (軽量レーンが動機づけられた Scenario 1「XS が 1 サイクル収束して自律マージされる」は E2E ループでしか起きず、そこを minimize すると観測性の MUST が主対象シナリオでだけ空文になる — SoT: [complexity-lane.md](references/complexity-lane.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 4: ステップ 5.4 の `### Guardrail 監査ログ` section は `guardrail_audit_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` でも Category #2 の filter 判断を人間が確認できる同期経路を維持するため)。**例外 5: ステップ 5.4 の `### 総合評価` にある `**起動の直列化**` の 1 行は `SPAWN_SPREAD` が `serialized` / `undetermined` / 欠落を伴う `parallel` のとき E2E でも省略禁止** (直列化が起きるのは長時間 E2E セッションであり、そこを minimize すると本行が到達する経路が消える。既定 `post_comment: false` では統合レポートは PR にも載らないため、省略すると本行が主対象シナリオで空文になる。`serialized` / 欠落を伴う `parallel` では helper の stderr WARNING と結果 JSON のフラグが残るが、**`undetermined` では helper がフラグをキーごと書かない**ため、計測不能の**理由** (`reason=`) は揮発する stderr WARNING にしか残らない — 省略が最も高くつくのはこの条件。`reviewer_timings[]` はステップ 4.6 の timings ファイルが present のときだけ結果 JSON へ転記される)。**例外 6: ステップ 5.4 の `### 実測阻害` section は `measurement_blocked_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` ではこの出力が実測阻害の件数・内訳を人間が見る同期経路であり、省略は無言の measured=false 降格を再導入する)。**例外 7: ステップ 5.4 の `### 受入条件確認` section は E2E でも省略禁止** (未検証 AC は人間が動作チェックする対象そのものであり、既定 `post_comment: false` ではこの出力が判定表を人間が同期的に見る唯一の経路)。**例外 8: ステップ 5.4 の `### 根拠と主張の不対応` section は `evidence_claim_rejected_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` ではこの出力が不採用理由の人間同期経路。省略は記録契約の喪失) |
+| ステップ 5 (Consolidation) | Full findings table | Result pattern + summary counts only。**例外 1: ステップ 5.4 の `### レビュー範囲（cycle 2+ 差分スコープ）` section は `REVIEW_CYCLE_SCOPE == incremental` のとき E2E でも省略禁止** (cycle 2+ は E2E からしか発生しないため、ここを minimize すると「スキップした reviewer を記録する」要求が空文になる — SoT: [cycle-scope.md](references/cycle-scope.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 2: ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section は `non_blocking_count > 0` のとき E2E でも省略禁止** (ステップ 7 のトリアージ（候補ごとの `AskUserQuestion` は出さないが処理は省略しない）と同じ identity 制約 — 関連 Issue 記録コメントはポインタのみで全文は載せない。既定 `post_comment: false` では統合レポートも PR に載らないため、この E2E 出力が非実測指摘の全文を人間が同期的に見る経路であり、省略は「非実測指摘を破棄しない」という記録契約の喪失に直結する)。**例外 3: ステップ 5.4 の `### レビューレーン（XS/S 軽量レーン）` section は `COMPLEXITY_LANE == light` のとき E2E でも省略禁止** (軽量レーンが動機づけられた Scenario 1「XS が 1 サイクル収束して自律マージされる」は E2E ループでしか起きず、そこを minimize すると観測性の MUST が主対象シナリオでだけ空文になる — SoT: [complexity-lane.md](references/complexity-lane.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 4: ステップ 5.4 の `### Guardrail 監査ログ` section は `guardrail_audit_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` でも Category #2 の filter 判断を人間が確認できる同期経路を維持するため)。**例外 5: ステップ 5.4 の `### 総合評価` にある `**起動の直列化**` の 1 行は `SPAWN_SPREAD` が `serialized` / `undetermined` / 欠落を伴う `parallel` のとき E2E でも省略禁止** (直列化が起きるのは長時間 E2E セッションであり、そこを minimize すると本行が到達する経路が消える。既定 `post_comment: false` では統合レポートは PR にも載らないため、省略すると本行が主対象シナリオで空文になる。`serialized` / 欠落を伴う `parallel` では helper の stderr WARNING と結果 JSON のフラグが残るが、**`undetermined` では helper がフラグをキーごと書かない**ため、計測不能の**理由** (`reason=`) は揮発する stderr WARNING にしか残らない — 省略が最も高くつくのはこの条件。`reviewer_timings[]` はステップ 4.6 の timings ファイルが present のときだけ結果 JSON へ転記される)。**例外 6: ステップ 5.4 の `### 実測阻害` section は `measurement_blocked_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` ではこの出力が実測阻害の件数・内訳を人間が見る同期経路であり、省略は無言の measured=false 降格を再導入する)。**例外 7: ステップ 5.4 の `### 受入条件確認` section は E2E でも省略禁止** (未検証 AC は人間が動作チェックする対象そのものであり、既定 `post_comment: false` ではこの出力が判定表を人間が同期的に見る唯一の経路)。**例外 8: ステップ 5.4 の `### 根拠と主張の不対応` section は `evidence_claim_rejected_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` ではこの出力が不採用理由の人間同期経路。省略は記録契約の喪失)。**例外 9: ステップ 5.4 の `### 主張と出典の照合` section は E2E でも省略禁止** (確認範囲「N 件中 M 件・観点」と未判定の行を呼び出し側が見る唯一の経路。省略すると抜き取りと全件を区別できなくなる) |
 | ステップ 6 (PR Comment) | Full comment + display | Post comment silently, output pattern only |
 | ステップ 7 (Triage) | Full report + guidance | **Recommendations only** — detect scope-irrelevant recommendations (findings/recommendations containing 別 Issue / スコープ外 keywords). 候補の処分は採否ゲートの出口（file / record / fix / hold）だけで決め、候補ごとの `AskUserQuestion` は出さない。`[review:mergeable]` と受入条件未検証の停止のときに実行し、`[review:fix-needed:N]` では skip する。 |
 
@@ -1652,6 +1652,39 @@ rc=1 の finding（`findings[].verification` は書かない）:
 
 ゲート後も `findings[]` に残す（`non_blocking_findings[]` へ送らない）。5.3.0.C では `category == "number_reference"` を class A 固定とする（exclusion なし class B に倒さない）。
 
+#### 主張と出典の照合 (every cycle)
+
+PR 自身が書いた「主張 + 出典」の組を全件、含意まで確かめる機械レール。Number-reference の直後・5.3.0.M の前に毎 cycle 実行する。incremental / light / verification でも skip せず、前 cycle の判定を使い回さない。prompt・判定規則・指摘の形式の SoT は [claim-source-check.md](references/claim-source-check.md)。`{claim_source_dir}` は 5.1 の `{reviewer_completions_file}` と同じディレクトリの絶対パス。
+rationale: references/claim-source-check.md#why-full-coverage
+
+```bash
+bash {plugin_root}/scripts/claim-source-check.sh extract --base origin/{base_branch} --out {claim_source_dir}/claim-source-rows.json --pr {pr_number} --repo {owner_repo}
+```
+
+| 出力 | Action |
+|---|---|
+| `CLAIM_SOURCE_ROWS=0` | 照合対象なし。5.4 には `確認範囲: 照合対象 0 件` の 1 行だけを出し、5.3.0.M へ |
+| `CLAIM_SOURCE_ROWS=N`（N ≥ 1） | 下の facts へ |
+| rc ≠ 0 | 指摘を作らず `[review:error]` で停止 |
+
+```bash
+bash {plugin_root}/scripts/claim-source-check.sh facts --rows {claim_source_dir}/claim-source-rows.json --repo {owner_repo} --out {claim_source_dir}/claim-source-facts.json
+```
+
+rc ≠ 0 は `[review:error]`。`errors=` が 1 以上でも止めない（その出典の行は検証 agent が判定不能として表に出す）。続けて reference の「spawn ペイロード」で検証 Task を 1 回 spawn し、回収した出力を Write で `{claim_source_dir}/claim-source-table.md` に保存する。
+
+```bash
+bash {plugin_root}/scripts/claim-source-check.sh table --rows {claim_source_dir}/claim-source-rows.json --input {claim_source_dir}/claim-source-table.md
+```
+
+| 結果 | Action |
+|---|---|
+| rc=0 + `CLAIM_SOURCE_TABLE=ok` | marker の値を 5.4 用に retain する。`CLAIM_SOURCE_ROWS_JSON` の各行を reference の「指摘の形式」で 5.3.0.M step 1 の `findings[]` へ append する |
+| rc=1、初回 | 診断（`reason=` と `detail=`）を添えて検証 Task を 1 回だけ再 spawn し、本 helper を再実行する |
+| rc=1 の再発、rc=2、Task の回収失敗 | 指摘を作らず `[review:error]` で停止 |
+
+不支持の指摘は実測済み（`Verification:`）として blocking に残る。5.3.0.C では `category == "claim_source"` を class A 固定とする。判定不能の指摘は `Measurement-Blocked:` を持つため `### 実測阻害` に出る。
+
 #### 5.3.0.M 実測必須ゲート実行手順 (helper 委譲)
 
 # rationale: references/design-rationale.md#measured-gate-helper-notes
@@ -1745,7 +1778,7 @@ rationale: references/design-rationale.md#class-demotion-policy
 - **手順書・仕様書の散文への指摘でも、記述に字義どおり従う実行者が誤動作に至ることを、記述された手順（仕様書が記述する実装を含む）の実行で観測した指摘（authoring 層の挙動的帰結クラス。`Verification:` 付き）は class A** — 手順書に従って動く成果物の実行時挙動が変わるので、文書だけの PR でも実行時シナリオを書ける。不確実を理由に class B へ倒さない（上の既定より優先する）。判別は `Verification:` の観測対象で行う: `=>` の左辺が記述された手順、または仕様書が記述する実装の実行で、右辺がその誤動作の出力なら該当する（[_reviewer-base.md §手順書・仕様書ドメイン Finding Gate](../../agents/_reviewer-base.md#prose-domain-finding-gate) の例 3 を含む）。左辺が grep / diff / git show で文書のテキストを並べるだけなら該当しない。class B の「文書整合」は、文書のテキスト差分だけを観測した字面整合クラスを指す
 - **`scenario` (判定文) は 1 行で書き、raw `|` (パイプ) と改行を含めない** (パイプを含む表記は `¦` U+00A6 で代替)。判定文は helper が `demotion.reason` へそのまま写し、5.4 の `### 実測なし指摘 (non-blocking)` section の `内容` セル先頭と 6.1.d 記録コメントの降格理由列へ verbatim で差し込まれる — raw パイプは `/rite:fix` ステップ 1.2.1 の 6 列パースを列ズレさせる (`_reviewer-base.md` の `内容` 列規約と同じ理由)
 - 分類は本 consolidation コンテキストが行う (finding を発行した reviewer の自己申告は入力にしない)
-- **`category == "number_reference"` は class A 固定** — Number-reference `--diff` 節の「ゲート後も findings[] に残す」を拘束する。class B に倒さない。helper も map にかかわらずこの固定を強制する
+- **`category == "number_reference"` / `"claim_source"` は class A 固定** — Number-reference `--diff` 節と主張と出典の照合節の「ゲート後も findings[] に残す」を拘束する。class B に倒さない。helper も map にかかわらずこの固定を強制する
 
 判定結果を **Write tool** で `{review_tmp_dir}/rite-review-class-{pr_number}-{current_commit_sha}.json` に保存する (`{current_commit_sha}` は ステップ 1.2.5 で記録した本 cycle の commit SHA を**リテラル置換する**。**パスに cycle 識別子を含めるのは必須** — `${TMPDIR}` はセッション内不変のため、含めないと前 cycle の map が同一パスに残り、step 1 を飛ばして step 2 だけ実行した場合に helper が stale map を well-formed 入力として受理して**別 cycle の判定を無音で適用する**。識別子があれば同じ状況は `classification_missing` の loud fail として現れる — **ただし HEAD 不変で再入する cycle では前 cycle の map が同一パスに残る。識別上の制約は `scripts/pr-review-step.sh` の spawn-timings-check にある「既知の残余」を SoT とする**。4.6 の timings ファイルと同一の規約):
 
@@ -1793,7 +1826,7 @@ bash {plugin_root}/scripts/review-class-demotion-gate.sh \
 成功時に併記されうる観測 marker (WARNING と対。**分類を変えず、続行を妨げない**。ステップ 6 Retained flag mapping 登録済):
 
 - `[CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count={n}` — classification map のエントリ欠落・class 不正・class B の判定文欠落・class B の exclusion 不正・ac_claim 不正・同 id 重複により **class A 扱い (blocking 維持)** に倒した finding が {n} 件ある。silent 降格は存在しない — 判定不能が blocking を増やす方向にしか働かない。次 cycle で map の網羅を直す材料にする
-- `[CONTEXT] CLASS_DEMOTION_CATEGORY_PINNED=1; count={n}` — `category == "number_reference"` に well-formed な class B が指定されたため、helper が class A へ固定して blocking を維持した finding が {n} 件ある。map と category 固定の矛盾を WARNING と対で可視化する
+- `[CONTEXT] CLASS_DEMOTION_CATEGORY_PINNED=1; count={n}` — 固定 category（`number_reference` / `claim_source`）に well-formed な class B が指定されたため、helper が class A へ固定して blocking を維持した finding が {n} 件ある。map と category 固定の矛盾を WARNING と対で可視化する
 - `applied` / `not-triggered` の成功 marker 末尾の `; warning=ac_unmet_finding_missing; rows={AC-N:F-NN,...}` — `acceptance_criteria[]` の `unmet` 行の `finding_id` が `findings[]` に無く、除外に使えなかった行がある。`noop` と `acceptance_criteria` キー欠落の入力には付かない
 - 同じ成功 marker の末尾 (上の suffix があればその後ろ) の `; warning=ac_claim_disagreement; rows={AC-N:F-NN,...}` — `ac_claim` が主張する AC を acceptance が `unmet` と判定していない。指摘は blocking に残っており、acceptance と指摘のどちらの実測が正しいかを次 cycle で確かめる材料にする
 
@@ -1905,6 +1938,7 @@ bash {plugin_root}/scripts/pr-review-step.sh attribution-write --pr {pr_number} 
 **`### 実測なし指摘 (non-blocking)` の情報源**: ゲート適用済 JSON の `non_blocking_findings[]` を Read して描画する。記憶から再構成しない。`{non_blocking_count}` は 5.3.0.C 発動 cycle は移送後配列長、それ以外は `MEASURED_GATE` の `non_blocking_total=`。**`demotion` 付きは `内容` 先頭に `[class B 降格: {demotion.reason}]`**。**列は追加しない**（6 列固定）。
 **`### 実測阻害` の情報源**: ゲート適用済 JSON の `findings[]` と `non_blocking_findings[]` の和から `description` に `Measurement-Blocked:` を含む要素を抽出し描画する。記憶から再構成しない。`{measurement_blocked_count}` はその件数。0 件ならセクションごと省略。helper は本 marker を実測アンカーとして読まないため、当該 finding は通常 `non_blocking_findings[]` に入る。**列は `実測なし指摘` 表に足さない**（6 列固定）。本 section は E2E でも省略禁止（上記 E2E Output Minimization 表の例外 6）。
 **`### 受入条件確認` の情報源**: ゲート適用済 JSON の `acceptance_criteria` を Read して描画する。記憶から再構成しない。配列なら全行を `| AC | 判定 | 根拠 |` で描画し、判定は `satisfied` → 充足 / `unmet` → 未充足 / `unverified` → 未検証、未充足行の根拠に `finding_id` を併記する。`skipped` なら `受入条件確認: 対象外（{理由}）` の 1 行。本 section は E2E でも省略禁止（上記 E2E Output Minimization 表の例外 7）。
+**`### 主張と出典の照合` の情報源**: 5.3「主張と出典の照合」の table helper が出した marker の値と `CLAIM_SOURCE_ROWS_JSON`。記憶から再構成しない。reference の「表の検査と報告」の確認範囲の 1 行と、不支持・判定不能の行を描画する。抽出 0 件の cycle は `確認範囲: 照合対象 0 件` の 1 行。本 section は E2E でも省略禁止（例外 9）。
 **`### 根拠と主張の不対応` の情報源**: 5.2.2 が不採用とした指摘。`### 全指摘事項` より前。`### 矛盾により除外された指摘` と見出しを共用せず、`### 実測なし指摘` へ混ぜない。fix 1.2.1 の `### 全指摘事項` 起点は壊さない。`evidence_claim_rejected_count > 0` のとき E2E でも省略禁止（例外 8）。0 件ならセクションごと省略。
 
 ---
@@ -1936,7 +1970,7 @@ bash {plugin_root}/scripts/pr-review-step.sh attribution-write --pr {pr_number} 
 
 **Eval-order enumeration** (Pattern-2 documented-union input): ステップ 6.1.a emit sequence = (`pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `guardrail_audit_log_keys_violation` / `finding_id_format_or_uniqueness_violation` / `scope_enum_violation` / `critical_high_scope_nit_noted_invariant` / `mktemp_failure_mv_err` / `collision_resolution_exhausted` / `mv_failure`) — 15 件、bash block 内の実 emit 順 (`signal_aborted` は signal trap 由来で線形の emit 順に載らないため除外) (`scope_enum_violation` / `critical_high_scope_nit_noted_invariant` は finding_id_format_or_uniqueness_violation の直後に elif chain で配置); ステップ 6.1.b emit = (`p61b_post_comment_mode_invalid` / `p61b_pr_number_invalid` / `tmpfile_write_failure` / `iso_timestamp_from_p61a_unset` / `raw_json_timestamp_injection_failed` / `gh_comment_post_failure` / `json_saved_from_p61a_unset`) — `p61b_post_comment_mode_invalid` は post_comment_mode gate が bash block 冒頭で最初に評価されるため先頭に配置; ステップ 6.1.c emit = (`p61c_post_comment_mode_invalid` / `p61c_pr_number_invalid` / `p61c_file_timestamp_unset` / `p61c_file_timestamp_unknown_without_failure` / `p61c_local_save_failed_invalid` / `p61c_persistence_unrecoverable`) — `p61c_post_comment_mode_invalid` を先頭に配置 (6.1.b と対称); ステップ 6.1.d emit = (`unknown_option` / `pr_number_placeholder_residue` / `owner_repo_placeholder_residue` / `non_blocking_count_placeholder_residue` / `iteration_id_placeholder_residue` / `content_file_placeholder_residue` / `content_file_missing` / `related_issue_unresolved` / `body_file_empty` / `body_marker_missing` / `body_check_unavailable` / `body_sentinel_missing` / `count_body_mismatch` / `patch_failed` / `create_failed`) — 15 件、helper 内の実 emit 順 (引数解析ループ内の `unknown_option` → placeholder residue 5 種 + content_file 存在検査を引数 parse 直後にまとめて評価 → trap 設置後の関連 Issue 解決 → lookup → 本文の非空検査 → 1 行目 marker 検査 → 機械専用 sentinel 検査 (述語の評価自体が失敗した場合は `body_check_unavailable`) → 件数整合検査 → 却下台帳のエントリ数の集計 (集計できなかった場合も `body_check_unavailable`。同じ reason が 2 位置から出るため件数には 1 件として数える) → PATCH / create の分岐)。`patch_failed` と `create_failed` は排他分岐のため同一 run で両方は出ない。`signal_aborted` は signal trap 由来で線形の emit 順に載らないため本 enumeration から除外する (ステップ 6.1.a が observability marker を除外する慣行と同じ); ステップ 8.0.3 (機械強制) emit = (`pending_marker_placeholder_residue` / `pending_marker_unavailable` / `pending_marker_present` / `pending_marker_absent`) — 4 件、bash の `case` 分岐順 (placeholder 残留 → marker 未作成 → 残存 (`exit 1`) → 不在 (pass))。前 2 者は `NONBLOCKING_GATE=degraded`、`pending_marker_present` は `NONBLOCKING_GATE_FAILED=1`、`pending_marker_absent` は `NONBLOCKING_GATE=pass` に載る; ステップ 8.0.4 (機械強制) emit = (`save_pending_marker_placeholder_residue` / `save_pending_marker_unavailable` / `save_pending_marker_present` / `save_pending_marker_absent` / `save_result_json_undecidable` / `save_result_json_absent`) — 6 件、**2 層の評価順**: 前 4 件は marker 層 (`case` 分岐順。4 件とも 8.0.3 と同一順) が emit し、後 2 件は `esac` 後の `review-save-json-verify.sh` が入力検査 → 実在検査の順で評価する。`save_pending_marker_placeholder_residue` / `save_pending_marker_unavailable` / `save_result_json_undecidable` は `REVIEW_SAVE_GATE=degraded`、`save_pending_marker_present` / `save_result_json_absent` は `REVIEW_SAVE_GATE_FAILED=1`、`save_pending_marker_absent` は `REVIEW_SAVE_GATE=pass` に載る。helper の成功は reason を持たない observability marker `REVIEW_SAVE_JSON_OK=1` で、本列挙には含まれない (`MEASURED_DEMOTED_ON_ANCHOR` 等と同じ扱い)。**marker 層が degraded でも positive 層は実行される** — 層ごとに独立して評価するため、後 2 件は前 3 件 (`save_pending_marker_present` を除く — 同 reason の枝は `*)` arm 内の `exit 1` で `esac` 後の helper に到達しない) のいずれとも共起しうる。
 
-`CLASS_DEMOTION_CATEGORY_PINNED` はステップ 5.3.0.C の条件付き観測 marker として Retained flag mapping に含める。well-formed な class B と `number_reference` 固定の矛盾件数を表し、assessment 自体は直接変更しない。
+`CLASS_DEMOTION_CATEGORY_PINNED` はステップ 5.3.0.C の条件付き観測 marker として Retained flag mapping に含める。well-formed な class B と category 固定（`number_reference` / `claim_source`）の矛盾件数を表し、assessment 自体は直接変更しない。
 
 #### 6.1.a Local JSON File Save (Always Executed) <!-- D-01 / D-02 / D-04 -->
 

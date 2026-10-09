@@ -8,6 +8,8 @@
 
 AI レビュアーが外部仕様（ライブラリ動作、ツール設定、バージョン互換性等）と内部実発生（call site / 頻度 / 到達経路）について行う主張を検証し、誤情報が PR コメントに永続化するリスクを排除する。
 
+PR 自身（差分・PR 本文）が書いた主張と出典の組は本 Phase の対象外で、5.3 の「主張と出典の照合」が全件を確かめる（[claim-source-check.md](claim-source-check.md)）。
+
 Fact-Check Phase は Critic Phase パイプラインの 5.2.2 Evidence-Claim Correspondence と Specification Consistency Verification の間に位置する:
 
 ```
@@ -413,6 +415,7 @@ CONTRADICTED 指摘（Sub-Phase A または B 由来）が 1件以上ある場�
 ### 高信頼度の指摘（複数レビュアー合意）
 ### 外部仕様の検証結果（該当がある場合のみ）
 ### 矛盾により除外された指摘（該当がある場合のみ）
+### 主張と出典の照合
 ### 根拠と主張の不対応（該当がある場合のみ）
 ### 全指摘事項
 ### 推奨事項                                  ← HYPOTHETICAL 降格 finding の destination

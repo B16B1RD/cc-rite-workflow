@@ -202,7 +202,7 @@ For each finding in blocking:
   else:
     effective class = entry.class
     exclusion が非空文字列なら consequence_exclusion に判定文を記録 (降格しない)
-    category == "number_reference" なら effective class = A に固定。entry.class == B との
+    category ∈ {"number_reference", "claim_source"} なら effective class = A に固定。entry.class == B との
     矛盾は WARNING + CLASS_DEMOTION_CATEGORY_PINNED で可視化
     effective class == B ∧ exclusion なし ∧ acceptance_criteria[] の status == "unmet" 行の finding_id が本 finding の id:
       consequence_exclusion = "ac_unmet:AC-N" (同じ finding を指す行が複数なら行順に "ac_unmet:AC-1,AC-2")
@@ -240,7 +240,7 @@ else:
 
 **第 3 除外入力源 (指摘が主張する AC 未充足)**: classification map の任意キー `ac_claim` (AC ID の非空配列) は、finding が受入条件の未充足を実測付きで主張していることを表す。判定表の `unmet` 行は AC ごとに `finding_id` を 1 つしか持てず、同じ AC を指す 2 件目以降の指摘や、acceptance reviewer が未充足と判定しなかった AC への指摘を拾えない。有効な `ac_claim` を持つ class B で、map の exclusion も判定表の未充足行も無い finding は `consequence_exclusion` に `ac_claim:AC-N` を記録して降格しない。有効とは、`acceptance_criteria` が行配列で、値が `AC-N` 書式・重複なし・行配列に実在する AC ID の非空配列であること。それ以外は判定不能として class A に倒す。判定不能に倒れていないエントリで主張した AC の行が `unmet` でなければ、class A・B や除外の出所によらず判定を変えずに WARNING と成功 marker の `ac_claim_disagreement` suffix で食い違いを可視化する — 実測を伴う未充足の主張を、別の実測との食い違いだけを理由に降格しない。
 
-**category 固定**: `category == "number_reference"` の blocking finding は classification map の内容にかかわらず class A に固定する。well-formed な class B が指定された場合は WARNING + `[CONTEXT] CLASS_DEMOTION_CATEGORY_PINNED=1; count={n}` を emit し、map と固定の矛盾を silent に上書きしない。map 欠落・不正は従来の `CLASS_DEMOTION_UNCLASSIFIED` 経路だけを通る。
+**category 固定**: `category` が `"number_reference"` または `"claim_source"`（主張と出典の照合の不支持指摘）の blocking finding は classification map の内容にかかわらず class A に固定する。well-formed な class B が指定された場合は WARNING + `[CONTEXT] CLASS_DEMOTION_CATEGORY_PINNED=1; count={n}` を emit し、map と固定の矛盾を silent に上書きしない。map 欠落・不正は従来の `CLASS_DEMOTION_UNCLASSIFIED` 経路だけを通る。
 
 **判定不能の安全側**: map エントリの欠落・class 不正・class B の判定文欠落・class B の exclusion 不正・`ac_claim` の不正・同 id の重複エントリは、いずれも当該 finding を **class A 扱い (blocking 維持)** にして WARNING + `[CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count={n}` を emit する。gated finding の `verification.measured` が boolean でない場合は map 判定と書き換えの前に `[CONTEXT] CLASS_DEMOTION_GATE_FAILED=1; reason=measured_undetermined; count={n}; findings={ids}` で停止し、入力 JSON を byte-identical に保つ。silent 降格は存在しない — 降格に入る経路は「実測判定済み ∧ well-formed な class B エントリ ∧ exclusion なし」のみ。
 

@@ -155,6 +155,16 @@
 **影響**: `verification_post_condition == warning` または `error` の場合、該当 reviewer の指摘は全件 blocking 扱いとなり、総合評価は **`修正必要`** に昇格する。
 ここでの「全件 blocking 扱い」は verification-mode / severity 軸での降格を禁止する意味であり、ステップ 5.3.0.M の実測必須ゲートは orthogonal に後段で適用される (`Verification:` アンカーを持たない指摘は non-blocking に分類され `total_findings` から外れる)。escalation は総合評価を昇格させるが sentinel routing は `total_findings` が確定させる (詳細は pr-review/SKILL.md ステップ 5.1.1.1 の「escalation の効力範囲」注記)。
 
+### 主張と出典の照合
+<!-- ステップ 5.3「主張と出典の照合」の table helper の marker と CLAIM_SOURCE_ROWS_JSON から描画する。記憶から再構成しない。
+     抽出 0 件の cycle は「確認範囲: 照合対象 0 件」の 1 行だけ。E2E でも省略禁止（例外 9）。両 template で同一内容。 -->
+
+確認範囲: 対象 {total} 件中 {judged} 件を判定（支持 {supported} / 不支持 {unsupported} / 主張なし {no_claim}）、判定不能 {undetermined} 件。観点: 実在 {existence} 件・内容 {content} 件・含意 {implication} 件
+
+| ID | 判定 | 出所 | 根拠 |
+|----|------|------|------|
+| {claim_id} | {不支持 / 判定不能} | {origin} | {evidence} |
+
 ### 根拠と主張の不対応（該当がある場合のみ）
 <!-- ステップ 5.2.2 で不採用とした指摘。0 件なら省略。### 全指摘事項 より前。
      ### 矛盾により除外された指摘 と見出しを共用しない。### 実測なし指摘 へ混ぜない。
@@ -406,6 +416,16 @@
 
 **影響**: `verification_post_condition == warning` または `error` の場合、該当 reviewer の指摘は全件 blocking 扱いとなり、総合評価は **`修正必要`** に昇格する。
 ここでの「全件 blocking 扱い」は verification-mode / severity 軸での降格を禁止する意味であり、ステップ 5.3.0.M の実測必須ゲートは orthogonal に後段で適用される (`Verification:` アンカーを持たない指摘は non-blocking に分類され `total_findings` から外れる)。escalation は総合評価を昇格させるが sentinel routing は `total_findings` が確定させる (詳細は pr-review/SKILL.md ステップ 5.1.1.1 の「escalation の効力範囲」注記)。
+
+### 主張と出典の照合
+<!-- ステップ 5.3「主張と出典の照合」の table helper の marker と CLAIM_SOURCE_ROWS_JSON から描画する。記憶から再構成しない。
+     抽出 0 件の cycle は「確認範囲: 照合対象 0 件」の 1 行だけ。E2E でも省略禁止（例外 9）。両 template で同一内容。 -->
+
+確認範囲: 対象 {total} 件中 {judged} 件を判定（支持 {supported} / 不支持 {unsupported} / 主張なし {no_claim}）、判定不能 {undetermined} 件。観点: 実在 {existence} 件・内容 {content} 件・含意 {implication} 件
+
+| ID | 判定 | 出所 | 根拠 |
+|----|------|------|------|
+| {claim_id} | {不支持 / 判定不能} | {origin} | {evidence} |
 
 ### 根拠と主張の不対応（該当がある場合のみ）
 <!-- ステップ 5.2.2 で不採用とした指摘。0 件なら省略。### 全指摘事項 より前。
