@@ -251,12 +251,12 @@ if [ "$(jq -c '.refs["issue:#99"]' "$E")" = '{"exists":false,"repo":"o/r","numbe
 else
   fail "facts: 存在しない番号 $(jq -c '.refs["issue:#99"]' "$E")"
 fi
-if [ "$(jq -c '.refs["issue:#13"] | {closing: .closing_prs, referencing: [.referencing_prs[] | {number, base, files}]}' "$E")" = '{"closing":[],"referencing":[{"number":16,"base":"develop","files":["src/logger.js"]}]}' ]; then
+if [ "$(jq -c '.refs["issue:#13"] | {closing: .closing_prs, referencing: [.referencing_prs[] | {number, base, files}], closing_prs_truncated, timeline_truncated}' "$E")" = '{"closing":[],"referencing":[{"number":16,"base":"develop","files":["src/logger.js"]}],"closing_prs_truncated":null,"timeline_truncated":null}' ]; then
   pass "facts: 既定ブランチ以外へ入った PR は timeline の参照元として変更ファイルを記録 (Issue からの参照は除く)"
 else
   fail "facts: 参照元 PR $(jq -c '.refs["issue:#13"]' "$E")"
 fi
-if [ "$(jq -c '.refs["issue:#14"] | {closing: .closing_prs, referencing: .referencing_prs, closer}' "$E")" = '{"closing":[],"referencing":[],"closer":{"type":"commit","sha":"0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c"}}' ]; then
+if [ "$(jq -c '.refs["issue:#14"] | {closing: .closing_prs, referencing: .referencing_prs, closer, closing_prs_truncated, timeline_truncated}' "$E")" = '{"closing":[],"referencing":[],"closer":{"type":"commit","sha":"0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c"},"closing_prs_truncated":null,"timeline_truncated":null}' ]; then
   pass "facts: コミットが閉じた Issue は closer にコミットを記録"
 else
   fail "facts: コミットの closer $(jq -c '.refs["issue:#14"]' "$E")"
@@ -268,10 +268,32 @@ jq -n '{rows: [
 ]}' > "$TEST_DIR/rows-err.json"
 run_helper csc_fixture facts --rows "$TEST_DIR/rows-err.json" --repo o/r --out "$TEST_DIR/facts-err.json"
 if [ "$RC" -eq 0 ] && grep -q 'refs=2; errors=2$' <<<"$OUT" \
-    && [ "$(jq -c '[.refs["issue:x/y#98"], .refs["issue:#97"]] | map(has("error") and (has("exists") | not))' "$TEST_DIR/facts-err.json")" = '[true,true]' ]; then
+    && [ "$(jq -c '[.refs["issue:x/y#98"], .refs["issue:#97"]] | map(has("error") and (has("exists") | not))' "$TEST_DIR/facts-err.json")" = '[true,true]' ] \
+    && [ "$(jq -r '.refs["issue:#97"].error' "$TEST_DIR/facts-err.json")" = "gh output is not JSON: 'not json\\n'" ]; then
   pass "facts: リポジトリ単位の NOT_FOUND と JSON 以外の応答は不在と断定せず error に残す"
 else
   fail "facts: リポジトリ単位の NOT_FOUND・JSON 以外 (rc=$RC out=$OUT facts=$(jq -c '.refs' "$TEST_DIR/facts-err.json" 2>/dev/null))"
+fi
+
+# マージコミットの変更ファイル (git show は --first-parent が無いと何も出さない)
+MG_REPO="$TEST_DIR/repo-merge"
+new_repo "$MG_REPO"
+printf '# repo\n' > "$MG_REPO/README.md"
+git -C "$MG_REPO" add -A
+git -C "$MG_REPO" commit -qm base
+git -C "$MG_REPO" checkout -qb topic
+printf 'merged\n' > "$MG_REPO/merged.txt"
+git -C "$MG_REPO" add -A
+git -C "$MG_REPO" commit -qm topic
+git -C "$MG_REPO" checkout -q -
+git -C "$MG_REPO" merge -q --no-ff topic -m merge
+merge_sha=$(git -C "$MG_REPO" rev-parse --short=12 HEAD)
+jq -n --arg sha "$merge_sha" '{rows: [{id: "CLAIM-1", origin: "x.md:1", text: "t", refs: [{kind: "sha", token: $sha}]}]}' > "$TEST_DIR/rows-merge.json"
+HELPER_REPO="$MG_REPO" run_helper csc_fixture facts --rows "$TEST_DIR/rows-merge.json" --repo o/r --out "$TEST_DIR/facts-merge.json"
+if [ "$RC" -eq 0 ] && [ "$(jq -c --arg k "sha:$merge_sha" '.refs[$k].files' "$TEST_DIR/facts-merge.json")" = '["merged.txt"]' ]; then
+  pass "facts: マージコミットは最初の親との差分の変更ファイルを記録"
+else
+  fail "facts: マージコミット (rc=$RC facts=$(jq -c '.refs' "$TEST_DIR/facts-merge.json" 2>/dev/null))"
 fi
 if [ "$(jq -c '.refs["file_line:.hidden/x.md:1"].candidates[0] | {path, lines}' "$E")" = '{"path":"sub/.hidden/x.md","lines":["# hidden"]}' ]; then
   pass "facts: ドットで始まるディレクトリの部分パスを解決する"

@@ -313,6 +313,8 @@ def fact_issue(token, default_repo):
                                             for e in errors):
             return {"exists": False, "repo": repo, "number": int(number)}
         return {"error": err or f"gh exited {rc}", "command": command}
+    if data is None:
+        return {"error": f"gh output is not JSON: {out[:200]!r}", "command": command}
     try:
         node = data["data"]["repository"]["issueOrPullRequest"]
         if node is None:
@@ -371,7 +373,8 @@ def fact_sha(token, default_repo):
     rc, _, _ = run(["git", "cat-file", "-e", token + "^{commit}"])
     if rc == 0:
         rc, subject, err = run(["git", "show", "-s", "--format=%H%x09%s", token])
-        rc2, files, err2 = run(GIT + ["show", "--name-only", "--format=", token])
+        # A merge commit lists no files without --first-parent.
+        rc2, files, err2 = run(GIT + ["show", "--name-only", "--format=", "--first-parent", token])
         if rc != 0 or rc2 != 0:
             return {"error": err or err2, "command": f"git show {token}"}
         full, _, title = subject.strip().partition("\t")

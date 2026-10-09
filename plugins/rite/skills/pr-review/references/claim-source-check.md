@@ -29,7 +29,7 @@ orchestrator は次を連結して `subagent_type: general-purpose` の Task を
 
 | 出典 | 確かめ方 |
 |---|---|
-| 「X は #N で解決／#N が入れた」 | 上から順に、最初に当てはまる規則で判定する。(1) `exists: false` の番号は不支持。(2) Issue が閉じておらず主張が「解決」なら不支持。(3) 解決した変更を、Issue の `closer`（PR はその `files`、コミットは `git show --name-only --format= <sha>` の変更ファイル）、無ければ `closing_prs[]`、それも無ければ `referencing_prs[]`（既定ブランチ以外へ入った PR は `closing_prs` に載らず、参照元として出る）のマージ済み PR とし、X に当たるファイル・経路が含まれれば支持、含まれなければ不支持。PR 番号の出典はその PR の `files` で同じく判定する。(4) 解決した変更が 1 件も無ければ自分で参照元を探し、見つかれば (3) で判定し、見つからなければ判定不能にする。X がどのファイルに当たるかは作業先のコードを grep して決める |
+| 「X は #N で解決／#N が入れた」 | 上から順に、最初に当てはまる規則で判定する。(1) `exists: false` の番号は不支持。(2) Issue が閉じておらず主張が「解決」なら不支持。(3) 解決した変更を、Issue の `closer`、`closing_prs[]`、`referencing_prs[]`（既定ブランチ以外へ入った PR は `closing_prs` に載らず、参照元として出る）のマージ済み PR を合わせたものとし、そのどれかに X に当たるファイル・経路が含まれれば支持、どれにも含まれなければ不支持。closer がコミットなら、変更ファイルは `git show --name-only --format= --first-parent <sha>` で取り（マージコミットは `--first-parent` が無いと何も出ない）、作業先に無ければ `gh api repos/<owner>/<repo>/commits/<sha> --jq '.files[].filename'` で取る。どちらでも取れなければ判定不能にする。PR 番号の出典はその PR の `files` で同じく判定する。(4) 解決した変更が 1 件も無ければ自分で参照元を探し、見つかれば (3) で判定し、見つからなければ判定不能にする。X がどのファイルに当たるかは作業先のコードを grep して決める |
 | `path:line` | 事実 JSON の行内容が、主張の述べる内容か。行がずれていれば、ずれ先を `git grep` で探し、根拠に書く |
 | コミット SHA | 事実 JSON の `files` と `subject` が主張に合うか |
 | 文書の節 | 事実 JSON の節本文（`doc: null` なら行の文脈から文書を探して読む）に、主張の要素（番号・経路・用語）があるか。節が実在しても要素が無ければ不支持 |
@@ -49,7 +49,7 @@ orchestrator は次を連結して `subagent_type: general-purpose` の Task を
 ### 主張と出典の照合
 | ID | 判定 | 観点 | 根拠 |
 |----|------|------|------|
-| CLAIM-1 | 不支持 | 実在・内容・含意 | Verification: repro gh pr view <closing PR> -R <owner/repo> --json files => 変更ファイルに src/logger.js が無い (src/other.js のみ) |
+| CLAIM-1 | 不支持 | 実在・内容・含意 | Verification: repro gh api repos/<owner>/<repo>/pulls/<closing PR>/files --paginate --jq '.[].filename' => 変更ファイルに src/logger.js が無い (src/other.js のみ) |
 | CLAIM-2 | 支持 | 実在・内容・含意 | docs/spec.md の該当節に、主張の回数と経路がある |
 | CLAIM-3 | 判定不能 | 実在 | Measurement-Blocked: gh api repos/<owner/repo>/commits/<sha> => HTTP 503 |
 | CLAIM-4 | 主張なし | - | コードブロック内の書式例で、PR の主張ではない |
@@ -83,7 +83,7 @@ orchestrator は agent の出力を作業ツリー外のファイルに保存し
 | `category` | `"claim_source"` |
 | `severity` / `scope` | `"HIGH"` / `"current-pr"` |
 | `file` / `line` | 出所が `path:line` ならその path と行。`PR本文:N` なら PR の変更ファイルの先頭を `file` にし、`line: null` |
-| `suggestion` | 出典を主張に合うものへ直すか、主張を出典の述べる範囲へ直す。PR 本文の行は `gh pr edit` で直す |
+| `suggestion` | 出典を主張に合うものへ直すか、主張を出典の述べる範囲へ直す。PR 本文の行は fix が `gh pr edit` で本文を直し、同じ commit の再レビューで照合し直す |
 
 `description` はアンカーで始める（Number-reference 指摘と同じ先頭アンカー例外）。行の本文に含まれる `|` は `¦`、`=>` は `⇒` に置き換えて、アンカーの `=>` を 1 つに保つ。
 

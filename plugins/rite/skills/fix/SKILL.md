@@ -905,6 +905,12 @@ When "コードを修正する" is selected:
 
 修正案を chat に示し（これが修正案の提示）、確認を挟まずに Edit tool で適用する。修正が正しいかは、ステップ 3 の検証（`scope-verify`）の実行結果で判断する（AI が書いた修正を人間に確認させない — [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) 規則 5）。
 
+**PR 本文の行への指摘**: `category == "claim_source"` で出所が `PR本文:N` の指摘は、PR 本文の N 行目を直す（`file` は PR の変更ファイルの先頭で、直す対象ではない）。本文を取得して該当行を出典に合う主張へ直し、作業 worktree 外の `{pr_body_file}` へ Write してから次を実行する。`findings_addressed[]` には `changes: []` の `reply` として載せる（差分ゲートはコードの差分だけを照合する）。成功の marker があれば 5.1 は push と同じく再レビューへ戻し、同じ commit の再レビューが直した本文を照合し直す。
+
+```bash
+gh pr edit {pr_number} -R {owner_repo} --body-file '{pr_body_file}' && echo "[CONTEXT] FIX_PR_BODY_EDITED=1; pr={pr_number}"
+```
+
 ### 2.3.1 Propagation Scan
 
 After applying a fix (ステップ 2.3), perform a mandatory scan for similar patterns to prevent distributed propagation failures.
@@ -1609,7 +1615,7 @@ The `fix` flow-state write below records the v3 phase so a `/rite:recover` start
 - **sweep 完了** (`[fix:sweep-done]`): `--handoff "FINALIZE:fix:sweep-done:{pr_number}"` で**終了通知マーカー**をセットする。**ステップ 1 に戻らない**（再フルレビュー禁止）。
 - **エラー** (`[fix:error]`): `--handoff` を**付けない** (handoff はデフォルトクリア)。`[fix:error]` は clean terminal ではなく caller (`/rite:iterate` ステップ4) で1回自動再試行し、再失敗時に停止するため、完了通知を強制してはならない。
 
-判定入力は本ステップ時点で確定済み。**(push 完了 or 本 cycle accept) かつ fatal 未 set → 継続 handoff**。push 無しかつ accept なしかつ fatal 未 set → FINALIZE。fatal → `--handoff` なし。`WM_UPDATE_FAILED` は継続を打ち消さない。accept 条件の SoT は row 4/4.5/5 注記。
+判定入力は本ステップ時点で確定済み。**(push 完了 or 本 cycle accept or PR 本文の修正) かつ fatal 未 set → 継続 handoff**。push 無しかつ accept なしかつ fatal 未 set → FINALIZE。fatal → `--handoff` なし。`WM_UPDATE_FAILED` は継続を打ち消さない。accept 条件の SoT は row 4/4.5/5 注記。
 
 > `[fix:error]` 早期 exit では pr-review がセットした `/rite:fix` handoff を消さない。default-clear は iterate ステップ 3 の `--handoff` なし set。
 
@@ -1648,7 +1654,7 @@ Then, based on the ステップ 4.6 completion report content **and the WM_UPDAT
 | 2 | ステップ 2.4 で `[CONTEXT] REPLY_POST_FAILED=1` を context に set した | `[fix:error]` (人間由来 thread への reply post が失敗。push 済みの可能性はあるが、レビュアー通知の責務を果たせていないため caller は次の iteration ではなく手動介入を促す) |
 | 2.5 | ステップ 4.6 直前の gate が `[CONTEXT] FIX_REPORT_DIFF_GATE=error` を context に set した | `[fix:error]`（`map_missing` / `state_unreadable` / `diff_failed` / `jq_missing`。`unverified` / `passed` は本行にマッチしない） |
 | 3 | ステップ 4.5 (4.5.1 または 4.5.2) で `[CONTEXT] WM_UPDATE_FAILED=1` を context に set した (`reason` の値は下記 reason 表のいずれか — 固定列挙は行わず、reason 表を唯一の真実の源とする) | `[fix:pushed-wm-stale]` (ステップ 4.5 で work memory 更新が silent skip された旨を caller に明示伝達。caller は work memory が stale であることを認識して fix loop を再実行するか手動介入する) |
-| 4 | (Push completed (`プッシュ: 完了`) または 本 cycle 内で accept 決定が発生 [`[CONTEXT] ACCEPT_FINGERPRINT_PERSISTED=1` または `[CONTEXT] ACCEPT_FINGERPRINT_PERSIST_FAILED=1` が 1 回以上 context に出現]) かつ work memory 更新成功 | `[fix:pushed]` |
+| 4 | (Push completed (`プッシュ: 完了`) または 本 cycle 内で accept 決定が発生 [`[CONTEXT] ACCEPT_FINGERPRINT_PERSISTED=1` または `[CONTEXT] ACCEPT_FINGERPRINT_PERSIST_FAILED=1` が 1 回以上 context に出現] または PR 本文を直した [`[CONTEXT] FIX_PR_BODY_EDITED=1`]) かつ work memory 更新成功 | `[fix:pushed]` |
 | 4.5 | Push なし かつ 本 cycle 内で accept 決定なし (上記 2 マーカーがいずれも非出現) かつ `{fatal_count}=0` かつ `{non_fatal_moved_count}>0` かつ All findings replied | `[fix:non-fatal-only]`（5.S sweep へ） |
 | 5 | Push なし かつ 本 cycle 内で accept 決定なし (上記 2 マーカーがいずれも非出現) かつ All findings replied | `[fix:replied-only]`（5.S sweep 後も返信のみで終了） |
 | 6 | Unexpected state / error | `[fix:error]` |

@@ -4,7 +4,8 @@
 # Static-pin for the claim-source rail (主張と出典の照合) wiring.
 # Pins mechanical rails only: the section sits right after Number-reference and
 # right before 5.3.0.M, runs every cycle, calls the three helper modes, the E2E
-# omit rule, both report templates, and the issue-implement pre-commit call.
+# omit rule, both report templates, the issue-implement pre-commit call, and the
+# fix route that edits a PR-body row and returns to re-review.
 # Each pin is also run against a mutant copy without the pinned text, so a pin
 # that matches nothing (or matches regardless) fails here.
 
@@ -17,8 +18,9 @@ PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 SKILL="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
 TEMPLATES="$PLUGIN_ROOT/skills/pr-review/references/integrated-report-templates.md"
 IMPLEMENT="$PLUGIN_ROOT/skills/issue-implement/SKILL.md"
+FIX="$PLUGIN_ROOT/skills/fix/SKILL.md"
 
-for f in "$SKILL" "$TEMPLATES" "$IMPLEMENT"; do
+for f in "$SKILL" "$TEMPLATES" "$IMPLEMENT" "$FIX"; do
   if [ ! -f "$f" ]; then
     echo "ERROR: $f not found" >&2
     exit 1
@@ -66,6 +68,11 @@ check_implement() {
     && grep -qF 'table --rows <行 JSON> --input' "$1" \
     && ! grep -qE 'claim-source-check\.sh extract .*--pr ' "$1"
 }
+# fix は PR 本文の行を gh pr edit で直し、その marker で 5.1 の行 4 (再レビューへ戻す) に入る
+check_fix_pr_body() {
+  grep -qF "gh pr edit {pr_number} -R {owner_repo} --body-file '{pr_body_file}' && echo \"[CONTEXT] FIX_PR_BODY_EDITED=1" "$1" \
+    && grep -E '^\| 4 \|' "$1" | grep -qF '[CONTEXT] FIX_PR_BODY_EDITED=1'
+}
 
 # pin を本物で通し、pin 対象を消した mutant で落ちることを確かめる
 pin() {
@@ -89,5 +96,6 @@ pin "照合節は claim_source を class A に固定する" check_class_a "$SKIL
 pin "E2E 例外 9 (照合 section の省略禁止)" check_e2e9 "$SKILL" "$PIN_E2E9"
 pin "両テンプレートに照合 section" check_templates "$TEMPLATES" "$TEMPLATE_HEADING"
 pin "issue-implement は commit 前に PR 本文なしで照合する" check_implement "$IMPLEMENT" 'table --rows <行 JSON> --input'
+pin "fix は PR 本文の行を直して再レビューへ戻す" check_fix_pr_body "$FIX" 'FIX_PR_BODY_EDITED=1'
 
 print_summary "claim-source-wiring-static-pin.test.sh"
