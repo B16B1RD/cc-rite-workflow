@@ -2,6 +2,7 @@
 # decompose-empty-labels.test.sh
 #
 # Source-drift guard for the empty-labels_csv fix in decompose-issues.sh.
+# issue-create/SKILL.md ステップ 4.3 の labels_json も同じ idiom で、末尾の assert 群が担う。
 #
 # 挙動の回帰検証（共有ラベルなしでも全 Sub-Issue が作成されるか）は、実スクリプトを gh
 # stub で e2e 実行する scripts/tests/decompose-issues.test.sh の "Test 8" が担う。本ファイルは
@@ -52,6 +53,6 @@ assert "空 CSV は []"                 '[]'             "$(run_labels_line "")"
 assert "bug, fix は trim 済み配列"    '["bug","fix"]'  "$(run_labels_line "bug, fix")"
 
 if ! print_summary "$(basename "$0")" \
-  "drift: decompose-issues.sh の Sub ラベル生成が stdin パイプの jq -R に逆戻りした。空 labels_csv は jq -cn --arg 経由で [] にせよ（jq -R は空入力で空出力 + exit 0 となりガードをすり抜ける）。挙動の回帰検証は scripts/tests/decompose-issues.test.sh Test 8 が担う。"; then
+  "drift: decompose-issues.sh の Sub ラベル生成、または issue-create/SKILL.md ステップ 4.3 の labels_json が stdin パイプの jq -R に逆戻りした。空 labels_csv は jq -cn --arg 経由で [] にせよ（jq -R は空入力で空出力 + exit 0 となりガードをすり抜ける）。挙動の回帰検証は scripts/tests/decompose-issues.test.sh Test 8 が担う。"; then
   exit 1
 fi
