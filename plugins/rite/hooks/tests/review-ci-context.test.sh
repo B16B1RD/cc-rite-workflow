@@ -101,7 +101,7 @@ if [ "$1" = api ]; then
   if [ "$2" != graphql ]; then printf '%s\n' '[[]]'; exit 0; fi
   n=$(cat "$CI_SCRATCH/query-count")
   if [ "$n" -eq 1 ]; then fixture="$CI_SCRATCH/first.json"; else fixture="$CI_SCRATCH/later.json"; fi
-  jq '{data:{repository:{pullRequest:{headRefOid:.headRefOid,baseRefName:"develop",baseRef:{branchProtectionRule:{requiresStatusChecks:true,requiredStatusCheckContexts:(if (.statusCheckRollup|length)==0 then [] else ["tests (macos)"] end),requiredStatusChecks:[]}},commits:{nodes:[{commit:{oid:.headRefOid,statusCheckRollup:{contexts:{nodes:.statusCheckRollup,pageInfo:{hasNextPage:false,endCursor:null}}}}}]}}}}}' "$fixture"
+  jq '{data:{repository:{pullRequest:{headRefOid:.headRefOid,baseRefName:"develop",baseRef:{branchProtectionRule:{requiresStatusChecks:true,requiredStatusCheckContexts:(.requiredContexts // (if (.statusCheckRollup|length)==0 then [] else ["tests (macos)"] end)),requiredStatusChecks:[]}},commits:{nodes:[{commit:{oid:.headRefOid,statusCheckRollup:{contexts:{nodes:.statusCheckRollup,pageInfo:{hasNextPage:false,endCursor:null}}}}}]}}}}}' "$fixture"
   exit 0
 fi
 printf '%s\n' "$*" >> "$CI_SCRATCH/final-query"
@@ -125,7 +125,7 @@ STUB
 chmod +x "$scratch/bin/gh" "$scratch/bin/sleep"
 sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 jq -n --arg sha "$sha" '{pr_number:7,commit_sha:$sha,verdict:"mergeable",overall_assessment:"mergeable",measured_gate:{commit_sha:$sha}}' > "$scratch/review.json"
-printf '%s\n' '{"headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","statusCheckRollup":[{"__typename":"CheckRun","name":"tests (macos)","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/jobs/1"}]}' > "$scratch/success.json"
+printf '%s\n' '{"headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","statusCheckRollup":[{"__typename":"CheckRun","name":"tests (macos)","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/jobs/1"}],"mergeable":"MERGEABLE","baseRefName":"develop"}' > "$scratch/success.json"
 jq '.statusCheckRollup[0] |= (.status="IN_PROGRESS" | .conclusion=null)' "$scratch/success.json" > "$scratch/pending.json"
 jq '.workflowConclusion="SUCCESS" | .statusCheckRollup[0].conclusion="FAILURE" | .statusCheckRollup[0].continueOnError=true' "$scratch/success.json" > "$scratch/unhealthy.json"
 jq '.statusCheckRollup=[]' "$scratch/success.json" > "$scratch/none.json"
@@ -138,7 +138,7 @@ completion() {
   CI_CASE="$1" CI_SCRATCH="$scratch" PATH="$scratch/bin:$PATH" \
     bash "$PLUGIN_ROOT/scripts/pr-review-step.sh" ci-completion-check \
       --owner-repo owner/repo --pr 7 --input "$scratch/review.json" \
-      --wait-seconds 2 --poll-seconds 1 > "$scratch/final-out" 2> "$scratch/final-err"
+      --wait-seconds 2 --poll-seconds 1 "${@:2}" > "$scratch/final-out" 2> "$scratch/final-err"
   completion_rc=$?
 }
 completion_failed() {
@@ -150,7 +150,7 @@ cp "$scratch/success.json" "$scratch/first.json"
 completion success
 assert 'successful completion exits zero' 0 "$completion_rc"
 assert_grep 'all jobs successful passes' "$scratch/final-out" 'REVIEW_CI_FINAL=passed; state=healthy; waited=0'
-assert 'completion queries HEAD with checks' 'pr view 7 -R owner/repo --json headRefOid,statusCheckRollup' "$(cat "$scratch/final-query")"
+assert 'completion queries HEAD with checks and merge state' 'pr view 7 -R owner/repo --json headRefOid,statusCheckRollup,mergeable,baseRefName' "$(cat "$scratch/final-query")"
 assert 'success does not wait' false "$([ -f "$scratch/final-wait" ] && echo true || echo false)"
 
 cp "$scratch/pending.json" "$scratch/first.json"
@@ -165,6 +165,48 @@ completion_failed timeout
 assert 'bounded pending queries initial and both polls' 3 "$(cat "$scratch/query-count")"
 assert 'bounded pending waits twice' 2 "$(wc -l < "$scratch/final-wait" | tr -d ' ')"
 assert_grep 'timeout reports unverified stop' "$scratch/final-out" 'REVIEW_CI_FINAL=error; reason=timeout'
+
+# A conflicting PR starts no pull_request workflow: its required checks are missing,
+# not running, so the wait cannot end and is reported as a base conflict instead.
+jq '.statusCheckRollup=[] | .requiredContexts=["tests (macos)"] | .mergeable="CONFLICTING"' "$scratch/success.json" > "$scratch/conflict.json"
+cp "$scratch/conflict.json" "$scratch/first.json"
+completion conflict
+completion_failed conflict
+assert_grep 'conflicting PR with missing required checks is blocked' "$scratch/final-out" \
+  '^\[CONTEXT\] REVIEW_CI_FINAL=blocked; reason=base_conflict; base=develop$'
+assert_not_grep 'base conflict is not a timeout' "$scratch/final-out" 'reason=timeout'
+assert 'base conflict does not wait' false "$([ -f "$scratch/final-wait" ] && echo true || echo false)"
+assert 'base conflict queries once' 1 "$(cat "$scratch/query-count")"
+jq '.requiredContexts=[]' "$scratch/conflict.json" > "$scratch/first.json"
+completion conflict-no-required
+assert 'conflict without required checks still passes' 0 "$completion_rc"
+assert_grep 'conflict without required checks keeps state none' "$scratch/final-out" 'REVIEW_CI_FINAL=passed; state=none; waited=0'
+jq '.mergeable="CONFLICTING"' "$scratch/success.json" > "$scratch/first.json"
+completion conflict-healthy
+assert 'conflict after successful required checks still passes' 0 "$completion_rc"
+assert_grep 'conflict after successful required checks keeps state healthy' "$scratch/final-out" 'REVIEW_CI_FINAL=passed; state=healthy; waited=0'
+jq '.mergeable="UNKNOWN"' "$scratch/pending.json" > "$scratch/first.json"
+cp "$scratch/conflict.json" "$scratch/later.json"
+completion unknown-then-conflict
+completion_failed unknown-then-conflict
+assert_grep 'merge state computed during the wait is re-read' "$scratch/final-out" 'REVIEW_CI_FINAL=blocked; reason=base_conflict; base=develop'
+assert 'UNKNOWN merge state waits once before the conflict' 1 "$(cat "$scratch/final-wait")"
+assert 'UNKNOWN merge state is re-fetched' 2 "$(cat "$scratch/query-count")"
+cp "$scratch/pending.json" "$scratch/first.json"
+completion conflict-on-last-poll --wait-seconds 1
+completion_failed conflict-on-last-poll
+assert_grep 'conflict on the poll that reaches the limit is not a timeout' "$scratch/final-out" \
+  'REVIEW_CI_FINAL=blocked; reason=base_conflict; base=develop'
+jq '.mergeable="UNKNOWN"' "$scratch/pending.json" > "$scratch/first.json"
+cp "$scratch/first.json" "$scratch/later.json"
+completion unknown-timeout
+completion_failed unknown-timeout
+assert_grep 'merge state that stays UNKNOWN keeps the bounded wait' "$scratch/final-out" 'REVIEW_CI_FINAL=error; reason=timeout'
+jq 'del(.mergeable)' "$scratch/pending.json" > "$scratch/first.json"
+completion merge-state-missing
+completion_failed merge-state-missing
+assert_grep 'missing merge state is an error, not a mergeable PR' "$scratch/final-out" 'REVIEW_CI_FINAL=error; reason=merge_state_unavailable'
+assert 'missing merge state does not wait' false "$([ -f "$scratch/final-wait" ] && echo true || echo false)"
 
 cp "$scratch/unhealthy.json" "$scratch/first.json"
 cp "$scratch/success.json" "$scratch/later.json"

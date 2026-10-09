@@ -45,7 +45,7 @@ print((r/file).read_text())
    (root/file).unlink(missing_ok=True)
   nodes=nodes if nodes is not None else [node('required'),node('advisory','FAILURE')]
   contexts=contexts if contexts is not None else ['required']
-  dump(root/'pr.json',dict(headRefOid=sha,statusCheckRollup=nodes))
+  dump(root/'pr.json',dict(headRefOid=sha,statusCheckRollup=nodes,mergeable='MERGEABLE',baseRefName='release/a'))
   pull=dict(headRefOid=sha,baseRefName='release/a',baseRef=dict(branchProtectionRule=dict(requiresStatusChecks=enabled,requiredStatusCheckContexts=contexts,requiredStatusChecks=specs or [])),commits=dict(nodes=[dict(commit=dict(oid=sha,statusCheckRollup=dict(contexts=dict(nodes=nodes,pageInfo=dict(hasNextPage=False,endCursor=None)))))]))
   dump(root/'graphql.json',dict(data=dict(repository=dict(pullRequest=pull))))
   dump(root/'rules.json',rules if rules is not None else [[]])

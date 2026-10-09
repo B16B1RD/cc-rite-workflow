@@ -596,6 +596,78 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-retained-') as tmp:
     hook(reason='review run stopped')
     hook('git merge --continue', reason='review run stopped')
     hook('git merge main', reason='review run stopped')
+# A review that waits for CI a base conflict keeps from starting: the merge commit is
+# denied while the cycle collects, pr-review closes the cycle with review-abandon, and
+# the merge then commits and becomes the next cycle's HEAD at the same counter.
+with tempfile.TemporaryDirectory(prefix='rite-fix-scope-ci-conflict-') as tmp:
+    root = Path(tmp)
+    private = root / '.rite'
+    private.mkdir()
+    env = dict(os.environ)
+    for key in ('CODEX_THREAD_ID', 'GROK_SESSION_ID', 'CLAUDE_SESSION_ID',
+                'CLAUDE_CODE_SESSION_ID', 'RITE_SESSION_ID', 'RITE_HOST', 'RITE_STATE_ROOT',
+                'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE'):
+        env.pop(key, None)
+    env.update(RITE_HOST='claude', CLAUDE_CODE_SESSION_ID='fix-scope-test', RITE_STATE_ROOT=tmp, TMPDIR=tmp,
+               GIT_AUTHOR_NAME='Test', GIT_AUTHOR_EMAIL='test@example.invalid',
+               GIT_COMMITTER_NAME='Test', GIT_COMMITTER_EMAIL='test@example.invalid')
+
+    def run(args, ok=True):
+        result = subprocess.run(args, cwd=root, env=env, text=True, capture_output=True)
+        if ok:
+            check(result.returncode == 0, repr(args) + '\n' + result.stdout + result.stderr)
+        return result
+
+    def flow(*args):
+        return run(['bash', str(plugin / 'hooks/flow-state.sh'), *map(str, args)])
+
+    run(['git', 'init', '-q', '-b', 'feature'])
+    (root / '.git/info/exclude').write_text('.rite/\n')
+    (root / 'src').mkdir()
+    (root / 'src/a.py').write_text('original\n')
+    run(['git', 'add', 'src'])
+    run(['git', 'commit', '-q', '-m', 'fixture'])
+    run(['git', 'checkout', '-q', '-b', 'base-line'])
+    (root / 'src/b.py').write_text('from base\n')
+    run(['git', 'add', 'src/b.py'])
+    run(['git', 'commit', '-q', '-m', 'base change'])
+    run(['git', 'checkout', '-q', 'feature'])
+    flow('set', '--phase', 'pr', '--next', 'review', '--pr', 71, '--issue', 42,
+         '--worktree', str(root), '--require-worktree')
+    selection = private / 'selection.json'
+    dump(selection, ['code-quality-reviewer', 'acceptance-reviewer'])
+    flow('review-start', '--selection', selection, '--stagnation')
+    state_path = Path(flow('path').stdout.strip())
+    frozen = json.loads(state_path.read_text())['review_cycle']['review_context']
+    guard = plugin / 'hooks/pre-tool-bash-guard.sh'
+
+    def hook(command='git commit --no-edit', allowed=False):
+        payload = json.dumps(dict(tool_name='Bash', cwd=str(root), tool_input=dict(command=command)))
+        result = subprocess.run(['bash', str(guard)], input=payload, cwd=root, env=env,
+                                text=True, capture_output=True)
+        denied = bool(result.stdout.strip()) and json.loads(result.stdout).get('hookSpecificOutput', {}).get('permissionDecision') == 'deny'
+        check(not denied if allowed else denied, command + ': ' + result.stdout + result.stderr)
+        return result.stdout + result.stderr
+
+    text = hook()
+    check('review is incomplete' in text and 'base_conflict' not in text,
+          'no merge in progress: incomplete review is denied without the base-conflict route')
+    run(['git', 'merge', '--no-commit', '--no-ff', 'base-line'])
+    text = hook()
+    check('review is incomplete' in text and 'REVIEW_CI_FINAL=blocked; reason=base_conflict' in text,
+          'merge in progress: denial stays and names the base-conflict route: ' + text)
+    flow('review-abandon', '--reason', 'base conflict: required CI cannot start until base-line is taken in')
+    abandoned = json.loads(state_path.read_text())
+    check(abandoned.get('review_cycle') is None and abandoned['cycle_count'] == frozen['cycle_count'],
+          'abandon closes the cycle and keeps the counter')
+    hook(allowed=True)
+    run(['git', 'commit', '-q', '--no-edit'])
+    merged = run(['git', 'rev-parse', 'HEAD']).stdout.strip()
+    check(merged != frozen['commit_sha'], 'merge commit moved HEAD')
+    flow('review-start', '--selection', selection, '--stagnation')
+    nxt = json.loads(state_path.read_text())['review_cycle']['review_context']
+    check(nxt['commit_sha'] == merged and nxt['cycle_count'] == frozen['cycle_count']
+          and nxt['run_id'] == frozen['run_id'], 'next cycle reviews the merge commit in the same run and counter')
 # Taking the base branch into a reviewed branch: every merge route that moves HEAD
 # meets the same evidence check, and a base-intake plan carries the intake into the
 # next cycle of the same run even when the base touches the Issue's Non-Target files.
