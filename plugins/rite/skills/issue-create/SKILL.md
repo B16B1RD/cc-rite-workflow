@@ -284,7 +284,7 @@ ISSUE_BODY_EOF
 [ -s "$tmpfile" ] || { echo "ERROR: Issue body is empty" >&2; exit 1; }
 
 # {labels_csv} (例: "bug,fix") を JSON array に変換 (空 CSV は空配列)
-labels_json=$(printf '%s' "{labels_csv}" | jq -R 'split(",") | map(select(length>0) | gsub("^\\s+|\\s+$"; ""))')
+labels_json=$(jq -cn --arg csv "{labels_csv}" '$csv | split(",") | map(select(length>0) | gsub("^\\s+|\\s+$"; ""))')
 
 # 各ラベルを冪等に事前作成する (`gh issue create --label X` は X 未存在時に
 # `could not add label` で fail するため。skills/cleanup/SKILL.md ステップ 3 と同パターン)。
