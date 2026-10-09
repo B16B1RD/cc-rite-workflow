@@ -832,7 +832,9 @@ for spec in "ok:status=success" "stdin_hostile:status=success" \
       if ! grep -q -e '--input' "$d/gh.log"; then pass "T-pf ($mode): no --input (stdin) call"; else fail "T-pf ($mode): --input was used"; fi
       if [ -z "$(ls -A "$d/tmp")" ]; then pass "T-pf ($mode): no temporary file left behind"; else fail "T-pf ($mode): leftover files: $(ls -A "$d/tmp")"; fi ;;
     *)
-      if ls "$d/tmp"/rite-wm-backup-42-* >/dev/null 2>&1; then pass "T-pf ($mode): backup retained"; else fail "T-pf ($mode): backup not retained. tmp=$(ls "$d/tmp")"; fi ;;
+      if ls "$d/tmp"/rite-wm-backup-42-* >/dev/null 2>&1; then pass "T-pf ($mode): backup retained"; else fail "T-pf ($mode): backup not retained. tmp=$(ls "$d/tmp")"; fi
+      stray=$(find "$d/tmp" -mindepth 1 ! -name 'rite-wm-backup-42-*')
+      if [ -z "$stray" ]; then pass "T-pf ($mode): only the backup remains in tmp"; else fail "T-pf ($mode): stray temporary files: $stray"; fi ;;
   esac
 done
 echo ""
