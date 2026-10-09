@@ -1522,7 +1522,7 @@ BSD wc 空白は剥がす (2.1.A Step 7 と対称)。不在/空は `0`。state �
 iterate は本報告で次を決める:
 - `プッシュ: 完了` → re-review (範囲は pr-review 1.2.4。fix 側で宣言しない)
 - 本 cycle で accept 発生 → re-review
-- PR 本文を直した（`FIX_PR_BODY_EDITED=1`）→ re-review
+- 本 cycle で PR 本文を直した（`FIX_PR_BODY_EDITED=1`）→ re-review
 - `プッシュ: 未実行` かつ accept なし かつ PR 本文の修正なし かつ `全指摘 == 対応指摘` → 完了
 
 accept 発生の SoT は 5.1 row 4/4.5/5。
@@ -1616,7 +1616,7 @@ The `fix` flow-state write below records the v3 phase so a `/rite:recover` start
 - **sweep 完了** (`[fix:sweep-done]`): `--handoff "FINALIZE:fix:sweep-done:{pr_number}"` で**終了通知マーカー**をセットする。**ステップ 1 に戻らない**（再フルレビュー禁止）。
 - **エラー** (`[fix:error]`): `--handoff` を**付けない** (handoff はデフォルトクリア)。`[fix:error]` は clean terminal ではなく caller (`/rite:iterate` ステップ4) で1回自動再試行し、再失敗時に停止するため、完了通知を強制してはならない。
 
-判定入力は本ステップ時点で確定済み。**(push 完了 or 本 cycle accept or PR 本文の修正) かつ fatal 未 set → 継続 handoff**。push・accept・PR 本文の修正のいずれも無く fatal 未 set → FINALIZE。fatal → `--handoff` なし。`WM_UPDATE_FAILED` は継続を打ち消さない。accept 条件の SoT は row 4/4.5/5 注記。
+判定入力は本ステップ時点で確定済み。**(push 完了 or 本 cycle accept or 本 cycle の PR 本文の修正) かつ fatal 未 set → 継続 handoff**。push・accept・PR 本文の修正のいずれも無く fatal 未 set → FINALIZE。fatal → `--handoff` なし。`WM_UPDATE_FAILED` は継続を打ち消さない。accept 条件の SoT は row 4/4.5/5 注記。
 
 > `[fix:error]` 早期 exit では pr-review がセットした `/rite:fix` handoff を消さない。default-clear は iterate ステップ 3 の `--handoff` なし set。
 
@@ -1655,16 +1655,16 @@ Then, based on the ステップ 4.6 completion report content **and the WM_UPDAT
 | 2 | ステップ 2.4 で `[CONTEXT] REPLY_POST_FAILED=1`、またはステップ 2.3 で `[CONTEXT] FIX_PR_BODY_EDIT_FAILED=1` を context に set した | `[fix:error]` (人間由来 thread への reply post、または PR 本文の更新が失敗。push 済みの可能性はあるが、返信または本文の修正が PR に残っていないため caller は次の iteration ではなく手動介入を促す) |
 | 2.5 | ステップ 4.6 直前の gate が `[CONTEXT] FIX_REPORT_DIFF_GATE=error` を context に set した | `[fix:error]`（`map_missing` / `state_unreadable` / `diff_failed` / `jq_missing`。`unverified` / `passed` は本行にマッチしない） |
 | 3 | ステップ 4.5 (4.5.1 または 4.5.2) で `[CONTEXT] WM_UPDATE_FAILED=1` を context に set した (`reason` の値は下記 reason 表のいずれか — 固定列挙は行わず、reason 表を唯一の真実の源とする) | `[fix:pushed-wm-stale]` (ステップ 4.5 で work memory 更新が silent skip された旨を caller に明示伝達。caller は work memory が stale であることを認識して fix loop を再実行するか手動介入する) |
-| 4 | (Push completed (`プッシュ: 完了`) または 本 cycle 内で accept 決定が発生 [`[CONTEXT] ACCEPT_FINGERPRINT_PERSISTED=1` または `[CONTEXT] ACCEPT_FINGERPRINT_PERSIST_FAILED=1` が 1 回以上 context に出現] または PR 本文を直した [`[CONTEXT] FIX_PR_BODY_EDITED=1`]) かつ work memory 更新成功 | `[fix:pushed]` |
-| 4.5 | Push なし かつ 本 cycle 内で accept 決定なし (上記 2 マーカーがいずれも非出現) かつ PR 本文の修正なし (`[CONTEXT] FIX_PR_BODY_EDITED=1` 非出現) かつ `{fatal_count}=0` かつ `{non_fatal_moved_count}>0` かつ All findings replied | `[fix:non-fatal-only]`（5.S sweep へ） |
-| 5 | Push なし かつ 本 cycle 内で accept 決定なし (上記 2 マーカーがいずれも非出現) かつ PR 本文の修正なし (`[CONTEXT] FIX_PR_BODY_EDITED=1` 非出現) かつ All findings replied | `[fix:replied-only]`（5.S sweep 後も返信のみで終了） |
+| 4 | (Push completed (`プッシュ: 完了`) または 本 cycle 内で accept 決定が発生 [`[CONTEXT] ACCEPT_FINGERPRINT_PERSISTED=1` または `[CONTEXT] ACCEPT_FINGERPRINT_PERSIST_FAILED=1` が 1 回以上 context に出現] または 本 cycle 内で PR 本文を直した [`[CONTEXT] FIX_PR_BODY_EDITED=1`]) かつ work memory 更新成功 | `[fix:pushed]` |
+| 4.5 | Push なし かつ 本 cycle 内で accept 決定なし (上記 2 マーカーがいずれも非出現) かつ 本 cycle 内で PR 本文の修正なし (`[CONTEXT] FIX_PR_BODY_EDITED=1` 非出現) かつ `{fatal_count}=0` かつ `{non_fatal_moved_count}>0` かつ All findings replied | `[fix:non-fatal-only]`（5.S sweep へ） |
+| 5 | Push なし かつ 本 cycle 内で accept 決定なし (上記 2 マーカーがいずれも非出現) かつ 本 cycle 内で PR 本文の修正なし (`[CONTEXT] FIX_PR_BODY_EDITED=1` 非出現) かつ All findings replied | `[fix:replied-only]`（5.S sweep 後も返信のみで終了） |
 | 6 | Unexpected state / error | `[fix:error]` |
 
 上から最初にマッチした pattern を採用。fatal 旗 (`FIX_FALLBACK_FAILED` / `REPLY_POST_FAILED` / `FIX_PR_BODY_EDIT_FAILED` / `FIX_REPORT_DIFF_GATE=error`) → `[fix:error]`。次に `WM_UPDATE_FAILED` → `[fix:pushed-wm-stale]`。その後に通常終了。`FIX_REPORT_DIFF_GATE=unverified` / `passed` は fatal ではない。
 
 **row 4/4.5/5 の accept 条件 — 唯一の真実の源**: iterate ステップ 4 が読む sentinel の決定箇所。Handoff 節と 4.6 Note は参照のみ。
 
-「本 cycle 内で accept 決定が発生」= `ACCEPT_FINGERPRINT_PERSISTED=1` **または** `ACCEPT_FINGERPRINT_PERSIST_FAILED=1` の本 cycle 出現。`{accept_count}` (累計) は使わない。両マーカー欠落時は accept 無し。
+「本 cycle 内で accept 決定が発生」= `ACCEPT_FINGERPRINT_PERSISTED=1` **または** `ACCEPT_FINGERPRINT_PERSIST_FAILED=1` の本 cycle 出現。`{accept_count}` (累計) は使わない。両マーカー欠落時は accept 無し。「本 cycle 内で PR 本文を直した」も同じく `FIX_PR_BODY_EDITED=1` の本 cycle 出現で判定する。
 rationale: references/design-rationale.md#accept-cycle-markers
 
 `WM_UPDATE_FAILED=1` を会話から拾ったら `[fix:pushed-wm-stale]`。

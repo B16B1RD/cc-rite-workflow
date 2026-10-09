@@ -957,8 +957,8 @@ assert "only plain class B moves as non_fatal" 'B-1:non_fatal' "$(jq -r '[.non_b
 
 # Pin the actual prompt routing, including precedence and the outer batch success gate.
 assert_grep "fix retains fatal and moved counts" "$FIX_SKILL" '\{fatal_count\}=N.*\{non_fatal_moved_count\}=M'
-assert_grep "non-fatal-only requires no push/accept, fatal=0 and moved>0" "$FIX_SKILL" '^\| 4\.5 \| Push なし.*accept 決定なし.*\{fatal_count\}=0.*\{non_fatal_moved_count\}>0.*All findings replied.*\[fix:non-fatal-only\]'
-assert_grep "reply-only includes mixed transfers but requires no push/accept/PR body edit and all replies" "$FIX_SKILL" '^\| 5 \| Push なし かつ 本 cycle 内で accept 決定なし \(上記 2 マーカーがいずれも非出現\) かつ PR 本文の修正なし \(`\[CONTEXT\] FIX_PR_BODY_EDITED=1` 非出現\) かつ All findings replied \| `\[fix:replied-only\]`'
+assert_grep "non-fatal-only requires no push/accept/PR body edit, fatal=0 and moved>0" "$FIX_SKILL" '^\| 4\.5 \| Push なし.*accept 決定なし.* かつ 本 cycle 内で PR 本文の修正なし \(`\[CONTEXT\] FIX_PR_BODY_EDITED=1` 非出現\) かつ `\{fatal_count\}=0.*\{non_fatal_moved_count\}>0.*All findings replied.*\[fix:non-fatal-only\]'
+assert_grep "reply-only includes mixed transfers but requires no push/accept/PR body edit and all replies" "$FIX_SKILL" '^\| 5 \| Push なし かつ 本 cycle 内で accept 決定なし \(上記 2 マーカーがいずれも非出現\) かつ 本 cycle 内で PR 本文の修正なし \(`\[CONTEXT\] FIX_PR_BODY_EDITED=1` 非出現\) かつ All findings replied \| `\[fix:replied-only\]`'
 assert_grep "unhandled input still ends in error" "$FIX_SKILL" '^\| 6 \| Unexpected state / error \| `\[fix:error\]`'
 assert_grep "fatal error flags remain distinct from triage count" "$FIX_SKILL" '^\| 1 \(最優先\).*FIX_FALLBACK_FAILED=1.*\[fix:error\]'
 assert_grep "failed replies retain error precedence" "$FIX_SKILL" '^\| 2 \|.*REPLY_POST_FAILED=1.*\[fix:error\]'
