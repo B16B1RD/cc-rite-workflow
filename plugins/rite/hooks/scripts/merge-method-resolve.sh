@@ -75,6 +75,10 @@ case "${found%%$'\t'*}:$value" in
     ;;
 esac
 
-echo "ERROR: rite-config.yml の merge.method が不正です: '$value' (使える値: squash / merge)。$config を直してから再実行してください" >&2
+if [ "${found%%$'\t'*}" = inline ]; then
+  echo "ERROR: rite-config.yml の merge: に値 '$value' が直接書かれています。merge: の下の行に method: squash または method: merge と書いてください ($config)" >&2
+else
+  echo "ERROR: rite-config.yml の merge.method が不正です: '$value' (使える値: squash / merge)。$config を直してから再実行してください" >&2
+fi
 echo "[CONTEXT] MERGE_METHOD=invalid; value=$value; config=$config"
 exit 1

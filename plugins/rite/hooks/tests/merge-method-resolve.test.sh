@@ -82,6 +82,14 @@ config 'merge: merge'
 run "$MAIN"
 assert "T-04 inline scalar section rc" "1" "$RC"
 assert "T-04 inline scalar section stdout" "[CONTEXT] MERGE_METHOD=invalid; value=merge; config=$MAIN/rite-config.yml" "$OUT"
+case "$ERR" in
+  *"merge: に値 'merge' が直接書かれています"*"merge: の下の行に method: squash または method: merge"*) pass "T-04 inline scalar stderr points at the misplaced value" ;;
+  *) fail "T-04 inline scalar stderr points at the misplaced value (got '$ERR')" ;;
+esac
+case "$ERR" in
+  *"使える値"*) fail "T-04 inline scalar stderr must not call an accepted value invalid (got '$ERR')" ;;
+  *) pass "T-04 inline scalar stderr does not call an accepted value invalid" ;;
+esac
 
 echo "=== T-05: a nested method: under merge is not the method key ==="
 config $'merge:\n  options:\n    method: merge'
