@@ -48,7 +48,8 @@
 # Exit codes:
 #   0 = decomposition completed (per-sub create/link failures are non-blocking
 #       and counted, NOT fatal — per the counting contract)
-#   1 = fatal (missing/invalid spec, empty parent body, parent create failed)
+#   1 = fatal (missing/invalid spec, empty parent body, issue-create gate not passed,
+#       parent create failed)
 #   2 = usage error
 #
 # NOTE: `set -e` is intentionally omitted. The Sub-Issue loop counts per-item
@@ -182,10 +183,7 @@ parent_body_file=$(spec_get '.parent.body_file')
 [ -s "$parent_body_file" ] || { echo "ERROR: parent Issue body is empty" >&2; exit 1; }
 
 # create-issue-with-projects.sh も照合するが、ラベルの事前作成より前に止める
-bash "$SCRIPT_DIR/issue-create-gate.sh" verify || {
-  echo "ERROR: Issue は作成していません。/rite:issue-create を起動して起票してください" >&2
-  exit 1
-}
+bash "$SCRIPT_DIR/issue-create-gate.sh" verify || exit 1
 
 # Parent labels = "epic" prepended to the shared CSV (gsub trims whitespace,
 # select(length>0) drops empties — e.g. a trailing comma when labels_csv="").

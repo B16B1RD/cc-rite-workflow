@@ -110,6 +110,9 @@ if [ "$1" = "verify" ] && [ -n "${STUB_GATE_CLOSED:-}" ]; then
   echo "stub: gate closed" >&2
   exit 1
 fi
+if [ "$1" = "consume" ] && [ -n "${STUB_GATE_CONSUME_FAIL:-}" ]; then
+  exit 1
+fi
 exit 0
 STUB_GATE
 
@@ -474,10 +477,17 @@ spec15=$(build_spec "$wd15" "Epic15" "$wd15/parent.md" "refactor" "Sub One" "$wd
 STUB_NUM_FILE="$TEST_DIR/num15"; echo 1500 > "$STUB_NUM_FILE"; export STUB_NUM_FILE
 STUB_CREATE_LOG="$TEST_DIR/create15.log"; : > "$STUB_CREATE_LOG"; export STUB_CREATE_LOG
 STUB_GATE_CLOSED=1; export STUB_GATE_CLOSED
+# gh is stubbed so the label pre-creation that would follow the gate is observable
+gh_bin15="$TEST_DIR/gh15"; mkdir -p "$gh_bin15"
+printf '#!/bin/bash\nprintf "%%s\\n" "$*" >> "%s/gh15.log"\n' "$TEST_DIR" > "$gh_bin15/gh"; chmod +x "$gh_bin15/gh"
+: > "$TEST_DIR/gh15.log"
+saved_path15=$PATH; PATH="$gh_bin15:$PATH"
 run_decompose "$spec15"
+PATH=$saved_path15
 assert_rc 1 "exit 1 without the gate"
-assert_err_contains "/rite:issue-create を起動して" "guidance to start /rite:issue-create"
+assert_err_contains "stub: gate closed" "the gate's reason reaches stderr"
 if [ ! -s "$STUB_CREATE_LOG" ]; then pass "no Issue create call without the gate"; else fail "create called without the gate"; cat "$STUB_CREATE_LOG"; fi
+if grep -q 'label create' "$TEST_DIR/gh15.log"; then fail "labels pre-created before the gate"; cat "$TEST_DIR/gh15.log"; else pass "no label pre-creation without the gate"; fi
 unset STUB_GATE_CLOSED STUB_CREATE_LOG
 
 # -----------------------------------------------------------------
@@ -509,6 +519,18 @@ run_decompose "$spec17"
 assert_rc 1 "exit 1 when the parent helper fails after creating"
 if grep -qx consume "$STUB_GATE_LOG"; then pass "gate consumed on the failure exit"; else fail "gate left open after the parent was created"; fi
 unset STUB_CREATED_THEN_FAIL_TITLE STUB_GATE_LOG
+
+# -----------------------------------------------------------------
+echo "--- Test 18: a gate that cannot be consumed after the parent exists is reported ---"
+wd18="$TEST_DIR/wd18"; mkdir -p "$wd18"
+printf '%s' "Parent" > "$wd18/parent.md"; printf '%s' "Sub 1" > "$wd18/s1.md"
+spec18=$(build_spec "$wd18" "Epic18" "$wd18/parent.md" "refactor" "Sub One" "$wd18/s1.md" "M")
+STUB_NUM_FILE="$TEST_DIR/num18"; echo 1800 > "$STUB_NUM_FILE"; export STUB_NUM_FILE
+STUB_GATE_CONSUME_FAIL=1; export STUB_GATE_CONSUME_FAIL
+run_decompose "$spec18"
+assert_rc 0 "decomposition still completes"
+assert_err_contains "issue-create gate could not be consumed after creating the parent Issue" "consume failure reported on stderr"
+unset STUB_GATE_CONSUME_FAIL
 
 # -----------------------------------------------------------------
 echo "--- Test 6: usage / spec validation errors ---"

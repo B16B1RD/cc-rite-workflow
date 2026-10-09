@@ -14,7 +14,7 @@ argument-hint: "<title or description>"
 
 新規 Issue を作成し、GitHub Projects に登録する。重複検出・親 Issue 候補検出・XL 自動分解を含む。
 
-> **必ず本スキルを起動して起票する**。本ファイルを規約として読み、`create-issue-with-projects.sh` / `decompose-issues.sh` だけを直接呼ぶと、重複検出・4.1 の確認・本文のファクトチェックが飛ぶ。helper はステップ 2・4.1・4.2.1（分解は 5.1.1・5.2）の `issue-create-gate.sh record` の記録が無ければ Issue を作らずに止まる。
+> **必ず本スキルを起動して起票する**。本ファイルを規約として読み、`create-issue-with-projects.sh` / `decompose-issues.sh` だけを直接呼ぶと、重複検出・4.1 の確認・本文のファクトチェックが飛ぶ。helper はステップ 2 と、4.1・4.2.1（分解は 5.2・5.1.1）の `issue-create-gate.sh record` の記録が無ければ Issue を作らずに止まる。
 > rationale: references/rationale.md#issue-create-gate
 
 **途中で止まったらユーザーは `/rite:recover` で再開する**。
@@ -108,7 +108,7 @@ title 類似度 / label 一致 / 更新日時 / state（OPEN > CLOSED）で top 
 | 1 件 | (a) #{number} の拡張 → body に `Extends: #{number}` 追記 / (b) 既存 Issue を使用 → 終了 + `/rite:open {number}` 提案 / (c) 関連なし |
 | 2+ 件 | (a) #{番号} の拡張 / (b) 別 Issue 番号入力 / (c) 関連なし |
 
-次ステップへ進むとき（0 件・拡張・関連なし）は、重複検出を通った記録を残す（出力なし。前回の記録はここで作り直される）:
+終了以外で次ステップへ進むときは、選んだ分岐に関わらず重複検出を通った記録を残す（出力なし。前回の記録はここで作り直される。本ファイルの `record` が非ゼロで終わったら stderr を表示して止まる）:
 
 ```bash
 bash {plugin_root}/scripts/issue-create-gate.sh record --step duplicate_check
@@ -447,7 +447,7 @@ rationale: references/rationale.md#no-flow-state
 
 ### 5.1.1 仕様書の断定のファクトチェック
 
-5.1 の設計仕様書に ステップ 4.2.1 と同一の検査を適用する。**先に [`references/body-fact-check.md`](./references/body-fact-check.md) を Read する**。親仕様書は親 Complexity `XL` 固定のため **3 クラスすべて**を検査する。検査対象 0 件の silent skip・`CONTRADICTED` の 3 択・自己矛盾・`UNVERIFIED` 付記は 4.2.1 と同一。表面化は 5.2 より**前**。**承認反映後の仕様書を `{spec_document}` とする**。**5.2 で「分解を修正」なら本ステップを再実行**（決着済みは再質問しない）。対象は 5.1 の仕様書に閉じ、5.5 の Sub-Issue body は対象外。検査を終えたら 4.2.1 と同じ `record --step fact_check` を実行する（出力なし）。
+5.1 の設計仕様書に ステップ 4.2.1 と同一の検査を適用する。**先に [`references/body-fact-check.md`](./references/body-fact-check.md) を Read する**。親仕様書は親 Complexity `XL` 固定のため **3 クラスすべて**を検査する。検査対象 0 件の silent skip・`CONTRADICTED` の 3 択・自己矛盾・`UNVERIFIED` 付記は 4.2.1 と同一。表面化は 5.2 より**前**。**承認反映後の仕様書を `{spec_document}` とする**。**5.2 で「分解を修正」なら本ステップを再実行**（決着済みは再質問しない）。対象は 5.1 の仕様書に閉じ、5.5 の Sub-Issue body は対象外。検査を終えたら（検査対象 0 件の silent skip でも）4.2.1 と同じ `record --step fact_check` を実行する（出力なし）。
 rationale: references/rationale.md#fact-check-before-create
 
 ### 5.2 ユーザー確認
@@ -507,7 +507,7 @@ bash {plugin_root}/scripts/decompose-issues.sh --spec "{DECOMPOSE_WORKDIR}/spec.
 }
 ```
 
-> **marker 受け渡し**: helper は stdout に `[CONTEXT] PARENT_ISSUE_NUMBER=N` / `[CONTEXT] SUB_ISSUE_RESULT created=… failed=… link_failures=…` / `[CONTEXT] SUB_ISSUE_NUMBERS=…` を emit し、続けて fetch_output（`original_length=` / `tmpfile_read=` / `tmpfile_write=`）を出力する。Step 5.5 Step 2-3 はこれらを marker として LLM が literal 置換する。Sub-Issue 作成・link の失敗は helper 内で非 blocking にカウントされ、parent 作成失敗のみ helper が `exit 1` を返し上記 caller ガードで停止する。
+> **marker 受け渡し**: helper は stdout に `[CONTEXT] PARENT_ISSUE_NUMBER=N` / `[CONTEXT] SUB_ISSUE_RESULT created=… failed=… link_failures=…` / `[CONTEXT] SUB_ISSUE_NUMBERS=…` を emit し、続けて fetch_output（`original_length=` / `tmpfile_read=` / `tmpfile_write=`）を出力する。Step 5.5 Step 2-3 はこれらを marker として LLM が literal 置換する。Sub-Issue 作成・link の失敗は helper 内で非 blocking にカウントされ、issue-create gate 不成立と parent 作成失敗のみ helper が `exit 1` を返し上記 caller ガードで停止する。
 
 ### 5.5 Step 2: LLM 編集
 
@@ -608,6 +608,6 @@ rationale: references/rationale.md#no-flow-state
 
 - owner/repo 解決失敗（git-remote.sh + `gh repo view` fallback とも失敗）→ エラー、認証・remote 設定確認を案内
 - Projects 未設定 → warning、Projects 追加を skip
+- helper が `issue-create gate` で止まる（stderr の `不足:` に step 名）→ Issue は作られていない。下の「Issue 作成失敗」の再試行・手動作成には進まない。不足した step の `record` が実行されていないので、該当ステップ（`duplicate_check` = 2、`confirm` = 4.1 / 5.2、`fact_check` = 4.2.1 / 5.1.1）へ戻って手順を通す。記録は Issue 1 件（分解は 1 回）ごとに消費されるため、続けて別の Issue を作るときもステップ 2 からやり直す。stderr に `不足:` が無い停止（session を解決できない等）は、ステップへ戻らず stderr を表示して止まる
 - Issue 作成失敗 → 先に `gh issue list -R {owner_repo} --search "{title} in:title" --state open` で作成済みかを確かめ（作成済みなら再作成しない）、stderr から原因を分類する。一時障害なら 1 回だけ再試行する。それでも決まらないときだけ AskUserQuestion で「再試行 / 手動作成 / 中止」
 - 親-子リンク失敗 → warning、後で手動リンクを案内
-- helper が `issue-create gate` で止まる（stderr の `不足:` に step 名）→ Issue は作られていない。不足した step の `record` が実行されていないので、該当ステップ（`duplicate_check` = 2、`confirm` = 4.1 / 5.2、`fact_check` = 4.2.1 / 5.1.1）へ戻って手順を通す。記録は Issue 1 件（分解は 1 回）ごとに消費されるため、続けて別の Issue を作るときもステップ 2 からやり直す

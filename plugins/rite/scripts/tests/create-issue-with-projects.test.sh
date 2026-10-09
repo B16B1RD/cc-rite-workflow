@@ -1354,6 +1354,21 @@ for src in pr_review pr_create cleanup fingerprint_split quality_signal_3_split 
 done
 export CLAUDE_CODE_SESSION_ID="$saved_sid"
 
+echo "TC-047: a gate that cannot be consumed after the Issue exists is reported, not hidden"
+open_gate
+chmod a-w "$CONFIG_DIR/.rite/state"
+run_script_raw "$(gated_payload interactive)"
+chmod u+w "$CONFIG_DIR/.rite/state"
+if [ "$LAST_RC" -eq 0 ] && [ "$(json_field '.issue_number')" = "42" ] \
+   && grep -q 'issue-create gate could not be consumed' <<< "$(json_field '.warnings[]')" \
+   && grep -q 'ERROR: issue-create gate could not be consumed' "$LAST_STDERR" \
+   && [ -e "$GATE_FILE" ]; then
+  pass "Consume failure keeps rc=0, warns on stderr and in warnings[]"
+else
+  fail "Consume failure not reported (rc=$LAST_RC, stderr=$(cat "$LAST_STDERR"))"
+fi
+rm -f "$GATE_FILE"
+
 # --------------------------------------------------------------------------
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="

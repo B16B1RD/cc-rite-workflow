@@ -73,6 +73,9 @@ else
 fi
 
 echo "TC-7: consume makes the next verify fail"
+rm -f "$GATE_FILE"
+record_all duplicate_check confirm fact_check
+gate verify 2>/dev/null || fail "gate not open before consume"
 gate consume
 if [ ! -e "$GATE_FILE" ] && ! gate verify 2>/dev/null; then pass "consumed"; else fail "gate still open after consume"; fi
 
@@ -89,6 +92,25 @@ fi
 echo "TC-9: unknown step is refused"
 if gate record --step review 2>/dev/null; then fail "unknown step accepted"; else pass "unknown step refused"; fi
 
+echo "TC-9b: --step without a value is refused with a reason"
+if err=$(gate record --step 2>&1); then
+  fail "--step without a value accepted"
+elif grep -q -- '--step requires a value' <<< "$err"; then
+  pass "--step without a value refused with a reason"
+else
+  fail "--step without a value refused silently: '$err'"
+fi
+
+echo "TC-9c: a missing record prints the guidance to start /rite:issue-create"
+rm -f "$GATE_FILE"
+if err=$(gate verify 2>&1); then
+  fail "verify passed with no record"
+elif grep -q 'Issue は作成していません' <<< "$err" && grep -q '/rite:issue-create を起動して' <<< "$err"; then
+  pass "verify prints the guidance"
+else
+  fail "verify guidance missing: '$err'"
+fi
+
 echo "TC-10: the gate belongs to one session"
 rm -f "$GATE_FILE"
 record_all duplicate_check confirm fact_check
@@ -98,11 +120,13 @@ else
   pass "another session rejected"
 fi
 
-echo "TC-11: an unresolvable session fails verify instead of passing"
-if (cd "$REPO" && env -u CLAUDE_CODE_SESSION_ID bash "$GATE" verify 2>/dev/null); then
+echo "TC-11: an unresolvable session fails verify instead of passing, without the missing-record guidance"
+if err=$( (cd "$REPO" && env -u CLAUDE_CODE_SESSION_ID bash "$GATE" verify) 2>&1); then
   fail "verify passed without a session"
+elif grep -q 'session_id を解決できません' <<< "$err" && ! grep -q '/rite:issue-create を起動して' <<< "$err"; then
+  pass "verify failed without a session and reported that cause only"
 else
-  pass "verify failed without a session"
+  fail "unexpected verify output without a session: '$err'"
 fi
 
 echo ""

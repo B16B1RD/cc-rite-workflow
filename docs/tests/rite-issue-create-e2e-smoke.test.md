@@ -56,7 +56,7 @@
 | `✅ Issue #{N}` が出力されない | `skills/issue-create/SKILL.md` ステップ 4.4 のテンプレートが現行版か確認 |
 | `[create:returned-to-caller:{N}]` が user-visible な最終行になる | ステップ 4.4 / 5.6 完了レポート末尾の出力順序を確認（sentinel は HTML コメント化されているか。旧 `[create:completed:{N}]` から rename された形式） |
 | Projects 登録が `failed` | `create-issue-with-projects.sh` の戻り値 `project_registration` を確認、AskUserQuestion で retry / skip を選択 |
-| helper が `issue-create gate` で止まり Issue が作られない | stderr の `不足:` の step について、ステップ 2 / 4.1 / 4.2.1（分解は 5.1.1 / 5.2）の `issue-create-gate.sh record` が実行されたか確認 |
+| helper が `issue-create gate` で止まり Issue が作られない | stderr の `不足:` の step について、ステップ 2 と、4.1 / 4.2.1（分解は 5.2 / 5.1.1）の `issue-create-gate.sh record` が実行されたか確認。3 つとも不足なら、同じ session の直前の起票で記録が消費された可能性がある（記録は Issue 1 件・分解 1 回ごとに消える）ので、ステップ 2 からやり直す |
 
 ## シナリオ 2: Decompose path（ステップ 5 経路）
 

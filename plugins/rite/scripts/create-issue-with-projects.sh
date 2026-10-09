@@ -255,8 +255,7 @@ done
 GATED=false
 case "$SOURCE" in interactive|xl_decomposition) GATED=true ;; esac
 if [ "$GATED" = "true" ] && ! bash "$SCRIPT_DIR/issue-create-gate.sh" verify; then
-  echo "ERROR: Issue は作成していません。/rite:issue-create を起動して起票してください (このスクリプトを直接呼ぶと、重複検出・Issue 情報の確認・本文のファクトチェックが飛びます)" >&2
-  add_warning "issue-create gate not passed: start /rite:issue-create instead of calling this script directly"
+  add_warning "issue-create gate not passed (reason on stderr)"
   output_result "" 0 "" "" "failed"
   exit 1
 fi

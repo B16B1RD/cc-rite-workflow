@@ -38,7 +38,7 @@ sentinel は hook / grep 契約のため必須だが、HTML コメント化す�
 
 手順を飛ばした起票は、スキルを起動せず SKILL.md を規約として読み、helper だけを直接呼ぶ経路で起きる。
 helper を経由しない `gh issue create` は bash guard が遮るが、helper の直接呼び出しは遮れない。そのため
-照合は helper 自身に置き、ステップ 2・4.1・4.2.1（分解は 5.1.1・5.2）が session 単位で残した記録が
+照合は helper 自身に置き、ステップ 2 と、4.1・4.2.1（分解は 5.2・5.1.1）が session 単位で残した記録が
 無ければ Issue を作らない。PreToolUse hook はスキル実行中かを知る手段を持たず、同じ記録に頼ることに
 なるため置かない。記録は Issue 1 件（分解は 1 回）で消費し、1 回の手順で何件も起票させない。
 照合するのは `options.source` が `interactive` / `xl_decomposition` のときだけで、source は caller の

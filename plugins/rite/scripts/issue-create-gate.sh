@@ -13,7 +13,8 @@
 # record:  duplicate_check は記録を作り直す（中断した前回の実行の記録を持ち越さない）。
 #          confirm / fact_check は duplicate_check の後にだけ記録できる。両者の順序は問わない
 #          （単一 Issue は confirm → fact_check、分解は fact_check → confirm）。
-# verify:  3 step が揃えば exit 0。欠けていれば欠けた step を stderr に出して exit 1。
+# verify:  3 step が揃えば exit 0。欠けていれば、Issue を作っていないことと /rite:issue-create
+#          への案内・欠けた step を stderr に出して exit 1（案内文はここにだけ置く）。
 # consume: 記録を消す。1 回の記録で起票を繰り返させないため、起票した側が呼ぶ。
 #
 # 記録先: {state_root}/.rite/state/issue-create-gate-{session_id}（1 行 1 step）。
@@ -46,7 +47,7 @@ case "$cmd" in
     step=""
     while [ $# -gt 0 ]; do
       case "$1" in
-        --step) step="${2:-}"; shift 2 ;;
+        --step) [ $# -ge 2 ] || { echo "ERROR: --step requires a value" >&2; exit 1; }; step="$2"; shift 2 ;;
         *) echo "ERROR: unknown option: $1" >&2; exit 1 ;;
       esac
     done
@@ -72,7 +73,7 @@ case "$cmd" in
       grep -qx "$s" "$gate" 2>/dev/null || missing+=("$s")
     done
     if [ ${#missing[@]} -gt 0 ]; then
-      echo "ERROR: issue-create gate: /rite:issue-create の手順を通った記録がありません（不足: ${missing[*]}）" >&2
+      echo "ERROR: Issue は作成していません。/rite:issue-create を起動して起票してください (/rite:issue-create の手順を通った記録がありません。不足: ${missing[*]}。Issue 作成スクリプトを直接呼ぶと、重複検出・Issue 情報の確認・本文のファクトチェックが飛びます)" >&2
       exit 1
     fi
     ;;
