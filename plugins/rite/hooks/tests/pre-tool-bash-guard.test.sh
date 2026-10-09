@@ -1834,6 +1834,28 @@ fi
 rm -rf "$_mrg_tmp"
 echo ""
 
+echo "TC-205: --merge method goes through the same review gate as --squash"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+_mrg_write_json "$_mrg_tmp" "99-good.json" "$(_mrg_qualifying_json)"
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge 99 --merge") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-205 qualifying JSON allows gh pr merge 99 --merge"
+else
+  fail "TC-205 expected allow for --merge, got rc=$rc output=$output"
+fi
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge 55 --merge") || rc=$?
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [ "$(extract_hook_field "$output" permissionDecision)" = "deny" ] && [[ "$reason" == *"merge-review-json-absent"* ]]; then
+  pass "TC-205 --merge without review JSON denies with merge-review-json-absent"
+else
+  fail "TC-205 expected deny for --merge without JSON, got output=$output"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
 echo "TC-131 / T-04: sole-reviewer (reviewers length 1) JSON → deny"
 _mrg_tmp=$(mktemp -d)
 _mrg_setup_state "$_mrg_tmp"

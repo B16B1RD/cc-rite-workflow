@@ -127,7 +127,7 @@ rationale: references/rationale.md#four-command-split
 | `/rite:open <issue>` | Issue → branch → 実装 → lint → draft PR (Step 0 Resume Dispatch 含む) | orchestrator |
 | `/rite:iterate <pr>` | review ↔ fix を `[review:mergeable]` までループ (サーキットブレーカーあり: 収束トレンドの発散検出が主経路、`safety.max_review_cycles` は backstop; 発火時は batch / 対話とも人間に問わず機械的に停止し、再開は `/rite:iterate` の明示的な再実行のみ。手動中断は Ctrl+C) | orchestrator |
 | `/rite:ready <pr>` | Ready 化 + Projects Status + 親判定 + 完了レポート | self-contained command |
-| `/rite:merge <pr>` | `gh pr merge --squash` を叩くだけ (cleanup は分離) | self-contained command |
+| `/rite:merge <pr>` | `merge.method`（既定 squash）で `gh pr merge` を叩くだけ (cleanup は分離) | self-contained command |
 
 `/rite:issue-create` は flat single-file を維持。マージ後の cleanup は `/rite:cleanup` を別途実行。
 

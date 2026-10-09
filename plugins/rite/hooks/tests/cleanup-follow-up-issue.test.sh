@@ -140,7 +140,7 @@
 #   T-87 調査として引き受けた DIAGNOSE は命題・到達条件とその出所・完了条件つきの調査 Issue を 1 件
 #   T-88 REJECT / RESOLVED / LINK は起票せず all_recorded と件数。CLOSED の追跡先は LINK にしない
 #   T-89 対象 commit は basename の降順で最初に読める commit_sha (archive/ を含む)
-#   T-90 cleanup SKILL.md の判定記録の節・呼び出し引数・held の配線
+#   T-90 cleanup SKILL.md の判定記録の節・呼び出し引数・held の配線・手で起票済みの先送り行の tracker 規則
 #   T-92 PR 起因でも OPEN の追跡先がある LINK は起票も保留もせず決着し、record の出口 (LINK / REJECT / RESOLVED) を
 #        指摘は出典 JSON、先送り欠陥は <pr>-deferred を出典にして台帳へ書く。書いた台帳での再実行は処分済みの
 #        候補を列挙せず、追跡先も読み直さず保留もしない。壊れて改名された JSON の名前の出典も書けて再実行で
@@ -2533,6 +2533,13 @@ assert "T-89 archive/ の JSON も読む" "bbb2" "$(jq -r '.head' "$TMP_ROOT/t89
 
 echo "--- T-90: cleanup SKILL.md の判定記録と held の配線 ---"
 t90_section=$(awk '/^### 6\.0 /{ f = 1 } f && /^## ステップ 7/{ exit } f' "$CLEANUP_MD")
+t90_a_section=$(printf '%s\n' "$t90_section" | awk '/^#### 6\.0\.A /{ f = 1 } f && /^#### 6\.0\.C /{ exit } f')
+assert "T-90 手で起票済みの先送り行は OPEN の Issue だけを tracker に入れる" "1" \
+  "$(printf '%s\n' "$t90_a_section" | grep -cF '先送り欠陥の候補（`kind: deferred`）の本文が既存の Issue を指していれば（`→ #N で起票` など、人が手で起票した記録）、その Issue が同じ根因を追跡しているかを確かめ、OPEN なら記録の `tracker` にその番号を入れる（出口は LINK。')"
+assert "T-90 手で起票済みの先送り行が CLOSED の Issue を指すときは present で判定する" "1" \
+  "$(printf '%s\n' "$t90_a_section" | grep -cF 'CLOSED の Issue は上の規則どおり `tracker` に入れず、欠陥が残っているかを `present` で判定する。')"
+# rite の外でマージした PR でも先送り欠陥を候補にできるのは、helper が /rite:merge の状態を読まないため
+assert_not_grep "T-90 helper は flow-state を読まない" "$TARGET" 'flow-state'
 assert "T-90 判定記録の節が 6.0.C の前にあり、再検証の節は無い" "1" \
   "$(printf '%s\n' "$t90_section" | awk '/^#### 6\.0\.V /{ v = NR } /^#### 6\.0\.A /{ a = NR } /^#### 6\.0\.C /{ c = NR } END { print (!v && a && c && a < c) ? 1 : 0 }')"
 assert "T-90 列挙は --list-candidates で呼ぶ" "1" "$(printf '%s\n' "$t90_section" | grep -c -- '--list-candidates "${TMPDIR:-/tmp}/rite-follow-up-candidates-{pr_number}.json"')"

@@ -162,9 +162,9 @@ else
   fail "T-03 wiki-lint SKILL.md has a heavy bash block or is missing (rc=$heavy_rc): $heavy_out"
 fi
 
-# --- T-05: squash keeps delete-branch=false + match-head-commit; CI red does not reach merge ---
-assert_grep "T-05 squash keeps --delete-branch=false" "$MERGE" \
-  'squash --delete-branch=false --match-head-commit "\$verified_head"'
+# --- T-05: every merge method keeps delete-branch=false + match-head-commit; CI red does not reach merge ---
+assert_grep "T-05 merge keeps --delete-branch=false" "$MERGE" \
+  ' --\{merge_method\} --delete-branch=false --match-head-commit "\$verified_head"'
 assert_grep "T-05 CI unhealthy forbids gh pr merge" "$MERGE" \
   'ステップ 2 の `gh pr merge` は実行しない'
 

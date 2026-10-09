@@ -350,7 +350,9 @@ assert_grep "autonomous-execution preserves warnings with a different target, re
 assert_grep "batch-run delegates final-attempt and duplicate handling to the shared contract" "$BATCH_RUN" \
   '最終試行と重複の判定は \[Autonomous Execution\]'
 assert_grep "docs/SPEC pins the merge command in the decomposed workflow" "$SPEC" \
-  '`/rite:merge <pr>` runs `gh pr merge --squash`'
+  '`/rite:merge <pr>` runs `gh pr merge` with the method set in `merge.method` \(`squash` by default, or `merge`\)'
+assert_not_grep "docs/SPEC no longer says merge is squash-only" "$SPEC" \
+  'runs `gh pr merge --squash`'
 
 direct_warning_emit_count=$(grep -cE '^[[:space:]]*echo "WARNING:' "$OPEN")
 classified_warning_count=$(awk '

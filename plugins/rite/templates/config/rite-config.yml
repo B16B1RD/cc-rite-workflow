@@ -70,6 +70,12 @@ branch:
   #   - "i18n/{locale}"                    # e.g., i18n/zh-tw
   #   - "hotfix/{date}-{description}"      # e.g., hotfix/20250109-critical-fix
 
+# How /rite:merge merges a PR: squash (one commit on the base) or merge (a merge
+# commit that keeps the branch's commit SHAs). rebase is not accepted. Any other
+# value stops /rite:merge with an error. A config without this key merges with squash.
+merge:
+  method: squash   # squash | merge (default: squash)
+
 # Build/test/lint commands (null = auto-detect)
 commands:
   build: null
@@ -203,8 +209,8 @@ safety:
 # 処分済みの指摘は転記から外し、解消済みの指摘は採否ゲートが RESOLVED として記録して起票しない。却下台帳を
 # 読めなければ全候補を保留し、最新のレビュー結果 JSON を読めなければ台帳による除外を行わずに WARNING を出す）、
 # non_blocking_findings[] が非空の JSON を削除せず archive/ へ退避する（出口の出ていない候補があれば保留し、
-# 起票も退避・削除もしない）。指摘への対応内容は fix コミットメッセージに書くが、squash merge
-# のため develop の git log には残らず、PR の Commits タブ経由で参照する。
+# 起票も退避・削除もしない）。指摘への対応内容は fix コミットメッセージに書く。squash merge
+# では develop の git log には残らず、PR の Commits タブ経由で参照する。
 # post_comment: true では統合レポート側が全文を PR へ永続化する。
 pr_review:
   post_comment: false   # true で統合レポートを PR コメントへ投稿（--post-comment 同等、デフォルト: false。本キーは関連 Issue の非実測記録コメントを制御しない）

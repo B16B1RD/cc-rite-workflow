@@ -602,6 +602,7 @@ bash {plugin_root}/hooks/scripts/cleanup-follow-up-issue.sh \
 - record の出口（REJECT / RESOLVED / LINK）は helper が関連 Issue の却下台帳へ書く（`FOLLOW_UP_LEDGER=`）。再実行ではその行が候補を除くので、同じ候補を判定し直さない。プレビュー付きの実行は、起票せずに終わるとき（`all_recorded` / `already_exists`）だけ書く。6.0.C で「起票しない」を選んだ run は書かない（記録は残り、次の cleanup が再利用する）。
 - 全候補の `id` をちょうど 1 つの記録に入れる。1 記録 = 1 根因。候補がまだ HEAD に残っているかは記録の `present` で判定する（解消済みは `present: false` と解消の `evidence` で RESOLVED）。重要度（CRITICAL〜LOW）と class A/B では決めない。
 - 一覧の `ledger`（関連 Issue の台帳の `issued` / `LINK` / `REJECT` 行。`issued` と `LINK` の判定文に起票先・追跡先の `#N` がある）を読み、既存の Issue が候補と同じ根因を追跡していれば、文面・位置・id が変わっていても記録の `tracker` にその番号を入れる（閉じた Issue の番号は入れない）。`REJECT` 行が同じ根因・同じ前提の候補を処分していれば、その行を記録の `prior`（`{finding_id, file_line, disposition, premise}`。行の `id` を `finding_id`、`loc` を `file_line` に写し、`source` は写さない）に写す。helper が除外するのは id・位置・出典が一致する行だけなので、id・文面・位置が変わった候補はここで紐づける。
+- 先送り欠陥の候補（`kind: deferred`）の本文が既存の Issue を指していれば（`→ #N で起票` など、人が手で起票した記録）、その Issue が同じ根因を追跡しているかを確かめ、OPEN なら記録の `tracker` にその番号を入れる（出口は LINK。台帳に残り、再実行でも起票しない）。CLOSED の Issue は上の規則どおり `tracker` に入れず、欠陥が残っているかを `present` で判定する。
 - 起票になる記録（ADOPT・`origin=pre_existing`、調査として引き受けた DIAGNOSE）には `acceptance`（起票する Issue の受入条件の文）を必ず書く。調査は `proposition` の 4 項目と `investigate: true` も書く。
 - `reuse` は、前回の実行の記録のうち `head` が一覧と同じで、`ids` がすべて今回の候補にあり、採否ゲートが保留した候補を含まないもの。起票済みかどうかは記録の ids と起票済み Issue の marker の ids の重なりで決まるので、写した記録から同じ根因を二度起票しない。保留した候補（未処分）と、前回の記録から候補が欠けた記録の残りは `judge` に並ぶ。
 rationale: references/rationale.md#follow-up-adoption-records

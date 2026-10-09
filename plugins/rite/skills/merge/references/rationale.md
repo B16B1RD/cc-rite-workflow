@@ -21,10 +21,24 @@ review⇄fix とは別経路で、こちらは 1 回のみの再判定に留め�
 cleanup を呼び出さない（`pr.auto_cleanup_after_merge` 等の設定キーも追加しない）。マージ完了時点
 では `phase=ready` のまま。`completed` への遷移は `/rite:cleanup` 末尾で行う。
 
-## squash-hardcoded
+## merge-method
 
-`pr.merge_strategy` 等を追加すると将来対応スキャフォルディングになる。`merge` / `rebase` に
-変えたい場合は本ファイルを直接編集する。
+squash を禁じて merge commit でマージするリポジトリがある（作業ブランチのコミット SHA を出典として
+残すため）。squash 固定だとそこでは `/rite:merge` を使えず、人が rite の外でマージすることになる。
+そのため `merge.method` で `squash` / `merge` を選べるようにし、キーが無い設定は従来どおり squash にする。
+
+`rebase` は受け付けない。マージコミットが作られないので件名・本文の規約を適用する先が無く、
+別の設計が要るため。不正値を squash に倒すと、merge commit を求めるリポジトリで黙って squash して
+しまうので、helper は exit 1 で止める。
+
+方式は helper の出力を `--{merge_method}` へ literal substitute して渡す。シェル変数の形にすると、
+実行前 guard が merge の argv を静的に確かめられなくなる。
+
+develop → main の昇格を検証する `release-promotion-verify.sh` は squash 由来のコミットだけを前提にするが、
+これは plugin 自身のリリース手順専用で、配布先の `merge.method` とは関係しない。
+
+rite の外でマージした PR も、`/rite:cleanup <branch>` を実行すれば先送りした欠陥を follow-up に起票する。
+cleanup は PR の `mergedAt` と元 Issue の Decision Log だけを読み、`/rite:merge` を通ったかを見ない。
 
 ## stderr-split
 

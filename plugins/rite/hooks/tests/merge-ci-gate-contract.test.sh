@@ -84,7 +84,15 @@ else
   fail "merge reviewed-head calls ($gate_calls) must all pass --repo {owner_repo} ($gate_repo_calls)"
 fi
 assert_grep "merge pins the verified PR head on the merge command itself" "$MERGE" \
-  '^if gh pr merge \{pr_number\} -R \{owner_repo\} --squash --delete-branch=false --match-head-commit "\$verified_head" --subject "\$squash_subject" --body-file "\{squash_body_file\}" '
+  '^if gh pr merge \{pr_number\} -R \{owner_repo\} --\{merge_method\} --delete-branch=false --match-head-commit "\$verified_head" --subject "\$squash_subject" --body-file "\{squash_body_file\}" '
+method_line=$(grep -n 'hooks/scripts/merge-method-resolve.sh' "$MERGE" | head -1 | cut -d: -f1)
+if [ -n "$method_line" ] && [ -n "$merge_line" ] && [ "$method_line" -lt "$merge_line" ]; then
+  pass "merge method is resolved before gh pr merge"
+else
+  fail "merge-method-resolve.sh must be called before gh pr merge (method=$method_line merge=$merge_line)"
+fi
+assert "the merge command never hard-codes --squash" "0" "$(grep -c '^if gh pr merge .*--squash' "$MERGE" || true)"
+assert "the merge command takes the method placeholder exactly once" "1" "$(grep -c '^if gh pr merge .*--{merge_method} ' "$MERGE" || true)"
 assert_grep "verified head extraction is anchored on the match marker" "$MERGE" \
   'READY_REVIEWED_HEAD=match; reviewed=\[0-9a-f\]\*; head='
 ready_gate_calls=$(grep -c 'hooks/scripts/ready-reviewed-head-gate.sh' "$READY" || true)
@@ -411,18 +419,21 @@ rm -rf "$STEP1_SANDBOX"
 
 # --- extracted step-2 execution: the merge target is the head the final gate verified ---
 
-extract_step2_bash() {
-  awk '
-    /^## ステップ 2: マージ実行$/ { s=1 }
-    s && /^```bash$/ { f=1; next }
-    f && /^```$/ { exit }
-    f { print }
+# extract_step2_block <pattern> prints the step-2 bash block that has a line matching <pattern>
+extract_step2_block() {
+  awk -v pat="$1" '
+    /^## ステップ 2: マージ実行$/ { s=1; next }
+    s && /^## / { exit }
+    s && /^```bash$/ { f=1; blk=""; hit=0; next }
+    f && /^```$/ { f=0; if (hit) { printf "%s", blk; exit } next }
+    f { blk = blk $0 "\n"; if ($0 ~ pat) hit=1 }
   ' "$MERGE"
 }
+extract_step2_bash() { extract_step2_block '^if gh pr merge '; }
 
 run_step2() {
-  # args: reviewed_sha, head_at_gate, head_at_merge
-  local reviewed="$1" head_at_gate="$2" head_at_merge="$3" failure_state="${4:-CLEAN}"
+  # args: reviewed_sha, head_at_gate, head_at_merge, failure_state, merge_method
+  local reviewed="$1" head_at_gate="$2" head_at_merge="$3" failure_state="${4:-CLEAN}" method="${5:-squash}"
   local sandbox
   sandbox=$(mktemp -d "${TMPDIR:-/tmp}/merge-head-pin-XXXXXX") || { echo "ERROR: mktemp failed" >&2; return 1; }
   mkdir -p "$sandbox/bin" "$sandbox/plugin/hooks/scripts" "$sandbox/state/.rite/review-results"
@@ -462,7 +473,7 @@ STUB
   printf 'squash-subject-text\n' > "$sandbox/squash-subject.txt"
   extract_step2_bash \
     | sed -e "s|{pr_number}|1|g" -e "s|{owner_repo}|owner/repo|g" -e "s|{plugin_root}|$sandbox/plugin|g" \
-      -e "s|{squash_subject_file}|$sandbox/squash-subject.txt|g" \
+      -e "s|{squash_subject_file}|$sandbox/squash-subject.txt|g" -e "s|{merge_method}|$method|g" \
     > "$sandbox/step2.sh"
   MERGE_PIN_SANDBOX="$sandbox" MERGE_PIN_HEAD_AT_GATE="$head_at_gate" MERGE_PIN_HEAD_AT_MERGE="$head_at_merge" MERGE_PIN_FAILURE_STATE="$failure_state" \
     PATH="$sandbox/bin:$PATH" _timeout 8 bash "$sandbox/step2.sh" > "$sandbox/stdout" 2>"$sandbox/stderr"
@@ -481,6 +492,39 @@ run_step2 "$PIN_A" "$PIN_A" "$PIN_A"
 assert "stable head: step 2 succeeds" "0" "$STEP2_RC"
 assert "stable head: merge is pinned to the verified head" \
   "pr merge 1 -R owner/repo --squash --delete-branch=false --match-head-commit $PIN_A --subject squash-subject-text --body-file {squash_body_file}" "$STEP2_MERGE_ARGV"
+
+run_step2 "$PIN_A" "$PIN_A" "$PIN_A" CLEAN merge
+assert "merge method: the merge commit carries the same pin, subject and body" \
+  "pr merge 1 -R owner/repo --merge --delete-branch=false --match-head-commit $PIN_A --subject squash-subject-text --body-file {squash_body_file}" "$STEP2_MERGE_ARGV"
+assert "merge method: step 2 succeeds" "0" "$STEP2_RC"
+
+echo "=== merge method resolution block ==="
+# run_method_block <config text> → METHOD_RC / METHOD_OUT from the extracted helper block
+run_method_block() {
+  local sandbox
+  sandbox=$(mktemp -d "${TMPDIR:-/tmp}/merge-method-XXXXXX") || { echo "ERROR: mktemp failed" >&2; return 1; }
+  mkdir -p "$sandbox/plugin/hooks/scripts/lib" "$sandbox/repo"
+  cp "$SCRIPT_DIR/../scripts/merge-method-resolve.sh" "$sandbox/plugin/hooks/scripts/"
+  cp "$SCRIPT_DIR/../scripts/lib/rite-config-path.sh" "$sandbox/plugin/hooks/scripts/lib/"
+  printf '%s\n' "$1" > "$sandbox/repo/rite-config.yml"
+  extract_step2_block 'merge-method-resolve\.sh' | sed -e "s|{plugin_root}|$sandbox/plugin|g" > "$sandbox/method.sh"
+  METHOD_RC=0
+  METHOD_OUT=$(cd "$sandbox/repo" && _timeout 8 bash "$sandbox/method.sh" 2>/dev/null) || METHOD_RC=$?
+  rm -rf "$sandbox"
+}
+run_method_block $'merge:\n  method: merge'
+assert "method block: valid config" "0" "$METHOD_RC"
+assert "method block: emits the method marker" "[CONTEXT] MERGE_METHOD=merge" "$METHOD_OUT"
+run_method_block $'merge:\n  method: rebase'
+if [ "$METHOD_RC" -ne 0 ] && [[ "$METHOD_OUT" == *'MERGE_METHOD=invalid'* ]] \
+  && printf '%s\n' "$METHOD_OUT" | grep -c >/dev/null '^\[merge:error\]$' \
+  && [[ "$METHOD_OUT" != *'merge:returned-to-caller'* ]]; then
+  pass "method block: an invalid method stops with [merge:error] before any merge"
+else
+  fail "invalid method must stop with [merge:error] and MERGE_METHOD=invalid (rc=$METHOD_RC out=$METHOD_OUT)"
+fi
+method_block=$(extract_step2_block 'merge-method-resolve\.sh')
+assert "the method block does not call gh" "0" "$(printf '%s\n' "$method_block" | grep -c 'gh ' || true)"
 
 run_step2 "$PIN_A" "$PIN_A" "$PIN_B"
 assert "head moved after the gate: merge still carries only the verified head" \
