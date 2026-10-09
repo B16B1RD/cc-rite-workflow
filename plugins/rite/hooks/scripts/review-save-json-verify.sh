@@ -16,6 +16,7 @@
 #
 # Usage:
 #   bash review-save-json-verify.sh --pr N --commit-sha SHA [--results-dir PATH] [--since BASENAME]
+#   bash review-save-json-verify.sh --record-file PATH   (保存前: 選定・実行記録だけを検査)
 #
 # 出力 (stderr。stdout は使わない — caller は marker と exit code だけを読む):
 #   [CONTEXT] REVIEW_SAVE_JSON_OK=1; pr=<n>; result_json=<basename>            (exit 0)
@@ -23,6 +24,11 @@
 #   [CONTEXT] REVIEW_SAVE_GATE_FAILED=1; reason=save_result_json_absent; expected_sha=<sha> (exit 1)
 #   [CONTEXT] REVIEW_SAVE_GATE_FAILED=1; reason=gate_record_mismatch; expected_sha=<sha> (exit 1)
 #   [CONTEXT] REVIEW_SAVE_GATE_FAILED=1; reason=execution_record_invalid; expected_sha=<sha> (exit 1)
+#   --record-file (保存前検査。stdout は使わない):
+#   [CONTEXT] REVIEW_RECORD_OK=1                                                (exit 0)
+#   [CONTEXT] REVIEW_RECORD_INVALID=1; reason=execution_record_invalid          (exit 1)
+#   [CONTEXT] REVIEW_RECORD_INVALID=1; reason=record_file_unreadable            (exit 1)
+#   [CONTEXT] REVIEW_RECORD_INVALID=1; reason=record_file_invalid_json          (exit 1)
 #
 #   成功時に `REVIEW_SAVE_GATE=pass` を名乗らないのは、本 helper が marker 層の 3 arm すべてから
 #   呼ばれるため — degraded に降りた marker 層の直後に pass を重ねると、caller の「degraded を
@@ -70,8 +76,8 @@
 #
 # Exit codes:
 #   0  pass または degraded (どちらも caller は先へ進む)
-#   1  gate 失敗 (本 cycle の receipt 付き JSON が現 run に実在しない)
-#   2  caller 契約違反 (未知オプション。skill 定義のバグ)
+#   1  gate 失敗 (本 cycle の receipt 付き JSON が現 run に実在しない / --record-file の記録が不正・読めない)
+#   2  caller 契約違反 (未知オプション・値が空の --record-file。skill 定義のバグ)
 
 set -u
 
@@ -84,6 +90,8 @@ commit_sha=""
 results_dir=""
 since=""
 since_set=0
+record_file=""
+record_file_set=0
 
 usage() {
   cat <<'EOF'
@@ -96,12 +104,13 @@ Options:
   --since BASENAME  run 開始点の pin。この basename より新しい結果ファイルだけを現 run とみなす。
                     省略時は state root 配下 .rite/state/review-run-since-{pr}.txt を読む。
                     空文字を明示すると pin を読まず全件を現 run とみなす (sibling と同じ意味論)
+  --record-file F   保存前検査。結果 JSON F の選定・実行記録だけを検査して終了する (他の引数は不要)
   -h, --help        Show this help
 
 Exit codes:
   0  pass / degraded
-  1  gate 失敗 (本 cycle の JSON が現 run に実在しない)
-  2  未知オプション
+  1  gate 失敗 (本 cycle の JSON が現 run に実在しない / --record-file の記録が不正)
+  2  未知オプション / 値が空の --record-file
 EOF
 }
 
@@ -109,6 +118,7 @@ EOF
 # sibling: scripts/review-cycle-scope.sh、機械検査: hooks/tests/shift2-loop-hardening.test.sh)。
 while [ $# -gt 0 ]; do
   case "$1" in
+    --record-file)  record_file="${2:-}"; record_file_set=1; shift; shift ;;
     --pr)           pr_number="${2:-}"; shift; shift ;;
     --commit-sha)   commit_sha="${2:-}"; shift; shift ;;
     --results-dir)  results_dir="${2:-}"; shift; shift ;;
@@ -117,6 +127,56 @@ while [ $# -gt 0 ]; do
     *) echo "ERROR: review-save-json-verify: unknown argument '$1'" >&2; usage >&2; exit 2 ;;
   esac
 done
+
+# 選定・実行記録の契約。保存前検査 (--record-file) と保存後の最終検査が同じ式を使う。
+# 新しい記録 (review_context / reviewer_selection / reviewer_execution のいずれかを持つ) は全欄必須で、
+# 除外行も selection_reason (候補になった根拠) と exclusion_reason (除外理由) を非空で持つ。
+# 旧形式 (3 欄とも無い) は従来の receipt 検証だけを維持する。
+EXECUTION_RECORD_JQ='
+  def text: type == "string" and test("\\S");
+  if has("review_context") or has("reviewer_selection") or has("reviewer_execution") then
+    .reviewers as $roster |
+    (.reviewers | type == "array" and length > 0 and all(.[]; text))
+    and ($roster | length == (unique | length))
+    and (.reviewer_selection | type == "array" and length > 0)
+    and (all(.reviewer_selection[];
+      (.reviewer | text) and (.selected | type == "boolean")
+      and (.selection_reason | text)
+      and (if .selected then has("exclusion_reason") and .exclusion_reason == null
+           else (.exclusion_reason | text) end)))
+    and ([.reviewer_selection[].reviewer] | length == (unique | length))
+    and ([.reviewer_selection[] | select(.selected) | .reviewer] | sort) == ($roster | sort)
+    and (.reviewer_execution | type == "array" and length > 0)
+    and (all(.reviewer_execution[]; (.reviewer | text) and (.model | text) and (.effort | text)))
+    and ([.reviewer_execution[].reviewer] | sort) == ($roster | sort)
+  else true end
+'
+
+# 保存前検査: 書き出した結果 JSON の選定・実行記録だけを検査して終了する。
+# 保存後は receipt を書き換えられず停止するため、不正は保存前に止める。
+if [ "$record_file_set" -eq 1 ]; then
+  [ -n "$record_file" ] || { echo "ERROR: review-save-json-verify: --record-file の値が空です。caller の {review_tmp_dir} / {pr_number} 置換漏れの可能性があります" >&2; exit 2; }
+  command -v jq >/dev/null 2>&1 || { echo "ERROR: review-save-json-verify: jq が PATH 上にありません" >&2; exit 1; }
+  record_shown=$(printf '%s' "$record_file" | tr -d '[:cntrl:]')
+  if [ ! -r "$record_file" ]; then
+    echo "ERROR: 結果 JSON を読めません ($record_shown)。Write の保存先パスと権限を確認してください" >&2
+    echo "[CONTEXT] REVIEW_RECORD_INVALID=1; reason=record_file_unreadable" >&2
+    exit 1
+  fi
+  if ! jq -e . "$record_file" >/dev/null 2>&1; then
+    echo "ERROR: 結果 JSON を JSON として解析できません ($record_shown)。保存せず JSON を書き直してください" >&2
+    echo "[CONTEXT] REVIEW_RECORD_INVALID=1; reason=record_file_invalid_json" >&2
+    exit 1
+  fi
+  record_valid=$(jq -r "$EXECUTION_RECORD_JQ" "$record_file" 2>/dev/null) || record_valid=false
+  if [ "$record_valid" = true ]; then
+    echo "[CONTEXT] REVIEW_RECORD_OK=1" >&2
+    exit 0
+  fi
+  echo "ERROR: 選定・実行記録が欠落または不正です ($record_shown)。次の条件をすべて確認してください: reviewers[] は非空・重複なし / reviewer_selection[] は非空で、各行の reviewer は非空・互いに重複しない、selected は boolean、selection_reason (候補になった根拠) は全行で非空、除外行は exclusion_reason も非空、選定済み行の exclusion_reason は null / 選定済み行の名簿が reviewers[] と一致 / reviewer_execution[] は非空で、各行の reviewer・model・effort が非空、名簿が reviewers[] と一致。保存せず JSON を直してください" >&2
+  echo "[CONTEXT] REVIEW_RECORD_INVALID=1; reason=execution_record_invalid" >&2
+  exit 1
+fi
 
 # 診断・marker 行へ埋める外部由来の値から制御文字を落とす。**入力検査より前に定義する** —
 # `_degraded` は拒否した値そのものを WARNING にエコーするため、走査ブロックの直前に置くと
@@ -270,25 +330,7 @@ if [ -d "$results_dir" ]; then
       ' "$f" 2>/dev/null) || gate_valid=false
       # New cycles always have review_context. Preserve legacy receipts without
       # context/metadata; any supplied new metadata must satisfy the full contract.
-      execution_valid=$(jq -r '
-        def text: type == "string" and test("\\S");
-        if has("review_context") or has("reviewer_selection") or has("reviewer_execution") then
-          .reviewers as $roster |
-          (.reviewers | type == "array" and length > 0 and all(.[]; text))
-          and ($roster | length == (unique | length))
-          and (.reviewer_selection | type == "array" and length > 0)
-          and (all(.reviewer_selection[];
-            (.reviewer | text) and (.selected | type == "boolean")
-            and (.selection_reason | text)
-            and (if .selected then has("exclusion_reason") and .exclusion_reason == null
-                 else (.exclusion_reason | text) end)))
-          and ([.reviewer_selection[].reviewer] | length == (unique | length))
-          and ([.reviewer_selection[] | select(.selected) | .reviewer] | sort) == ($roster | sort)
-          and (.reviewer_execution | type == "array" and length > 0)
-          and (all(.reviewer_execution[]; (.reviewer | text) and (.model | text) and (.effort | text)))
-          and ([.reviewer_execution[].reviewer] | sort) == ($roster | sort)
-        else true end
-      ' "$f" 2>/dev/null) || execution_valid=false
+      execution_valid=$(jq -r "$EXECUTION_RECORD_JQ" "$f" 2>/dev/null) || execution_valid=false
       sha=$(_scrub "$sha" | tr '[:upper:]' '[:lower:]')
       gate_sha=$(_scrub "$gate_sha" | tr '[:upper:]' '[:lower:]')
       if [ -z "$sha" ]; then

@@ -384,6 +384,10 @@ key に `C-n` を使わないのは、run ごとに振り直すから。key を�
 
 blocking 0 で未検証だけが残る cycle を `[review:mergeable]` にしないのは、agent が観測できなかった AC を黙って合格扱いにするため。新 sentinel を足さず `[review:error]` + `REVIEW_STOP=ac_unverified` にするのは sentinel 語彙と caller の分岐表を増やさないため。ステップ 8.0 は 8.1 より先に flow-state を書くので、同じ条件の行で handoff を付けない — 付けると FINALIZE の mergeable 完了経路へ Stop hook が差し戻す。iterate が自動再試行しないのは、同じ HEAD では再実行しても観測できないため。
 
+## excluded-selection-reason
+
+除外行にも `selection_reason` を非空で残すのは、保存後の最終ゲートが選定済みか否かに依らず非空を要求し、保存後は receipt を書き換えられず停止するため。`exclusion_reason` の複写は検査を通るが根拠の情報量がゼロになるので、分岐ごとに「候補になった経緯」を書かせる。生成時に外れた記録は Write 直後の `--record-file` 検査で保存前に止める。
+
 ## ci-base-conflict
 
 PR が base と競合している間、GitHub は `pull_request` の workflow を起動しない。必須 check は欠落のまま終わらず、待機は上限まで続いても完了しない。上限判定より先に競合を見るのは、最後の取得で競合が見えた場合を期限超過と区別するためである。
