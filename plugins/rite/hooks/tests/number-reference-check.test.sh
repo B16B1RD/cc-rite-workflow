@@ -692,6 +692,27 @@ assert "--stdin excluded label is not scanned" "0" "$rc"
 rc=0; out=$(bash "$TARGET" --stdin --label docs/p.md --quiet <<< 'placeholder #123 only' 2>&1) || rc=$?
 assert "--stdin #123 placeholder is excluded" "0" "$rc"
 
+# decimal HTML numeric character references are not number tokens
+# (&#x1F; never matched; pinned as a regression guard)
+for charref in 'reference&#115;' 'cor&#112;us' 'amp &#1234; end' 'hex &#x1F; end'; do
+  rc=0; out=$(bash "$TARGET" --stdin --label docs/p.md --quiet <<< "$charref" 2>&1) || rc=$?
+  assert "--stdin char ref '$charref' → rc 0" "0" "$rc"
+  assert "--stdin char ref '$charref' → zero findings" "Total number-ref findings: 0" "$out"
+done
+
+# real numbers next to a char ref, or with only one of & / ; , still hit
+probe_input=$(printf 'x &#456; #456\nopen &#456 only\nsee #456; here')
+rc=0; out=$(bash "$TARGET" --stdin --label probe.md --quiet <<< "$probe_input" 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] \
+   && [ "$(printf '%s\n' "$out" | grep -c '^probe.md:')" -eq 3 ] \
+   && printf '%s' "$out" | grep -cF >/dev/null 'probe.md:1: x &#456; #456' \
+   && printf '%s' "$out" | grep -cF >/dev/null 'probe.md:2: open &#456 only' \
+   && printf '%s' "$out" | grep -cF >/dev/null 'probe.md:3: see #456; here'; then
+  pass "--stdin real number beside char ref / unterminated / no ampersand still hit"
+else
+  fail "--stdin char ref contrast failed rc=$rc: $out"
+fi
+
 # --------------------------------------------------------------------------
 # T-06 / T-09 / T-11 static pins (SKILL wiring)
 # --------------------------------------------------------------------------

@@ -93,7 +93,7 @@ Detects Issue/PR number tokens (`#NNN`, 3–4 digits) in persistent artifacts. G
 
 `--diff BASE` (lint Phase 3.5 preamble, blocking): added lines of `git diff BASE` (includes uncommitted). Origin-first base is the caller's job (`origin/{base_branch}` then `{base_branch}`). rc=1 findings and rc=2 (unreadable diff / usage) both increment `error_count` → `[lint:error]`.
 
-Detected: a 3-4 digit `#NNN` at a word boundary (subsumes `Issue #NNN` / `PR #NNN`). Not matched: placeholder `#123`, markdown heading anchors (`#NNN-letter`), `drift-check-ignore` lines, 1-2 digit and 5+ digit tokens. Functional code (`{issue_number}`, `issue-[0-9]+`, `/issues/.../` API paths) has no literal `#NNN`.
+Detected: a 3-4 digit `#NNN` at a word boundary (subsumes `Issue #NNN` / `PR #NNN`). Not matched: placeholder `#123`, markdown heading anchors (`#NNN-letter`), decimal HTML character references (`&#NNN;`), `drift-check-ignore` lines, 1-2 digit and 5+ digit tokens. Functional code (`{issue_number}`, `issue-[0-9]+`, `/issues/.../` API paths) has no literal `#NNN`.
 
 ## Sentinel contract check (sentinel-contract-check.sh)
 

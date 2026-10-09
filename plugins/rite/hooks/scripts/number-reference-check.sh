@@ -24,6 +24,7 @@
 #   - token is the literal placeholder #123
 #   - next character is [A-Za-z_] (not a bare number; heading ids / hex colors)
 #   - token is immediately followed by -[A-Za-z] (markdown heading anchors)
+#   - token is preceded by & and followed by ; (decimal HTML character reference &#NNN;)
 #   - line contains the marker drift-check-ignore
 #
 # Path exclusions:
@@ -70,7 +71,8 @@ Options:
 
 Detected: #[0-9]{3,4} tokens (Issue/PR number references).
 Exclusions: placeholder #123, word-char after digits, markdown anchors (#NNN-letter),
-            drift-check-ignore, wiki raw, script fixtures, detector test files.
+            decimal HTML character references (&#NNN;), drift-check-ignore,
+            wiki raw, script fixtures, detector test files.
 
 Exit codes:
   0  No reference detected
@@ -201,7 +203,7 @@ is_binary_file() {
 
 # Grammar SoT: this awk function only. --all / --stdin / --diff all call it.
 AWK_HAS_HIT='
-    function has_hit(s,    i, j, n, tok, nxt, nxt2) {
+    function has_hit(s,    i, j, n, tok, prev, nxt, nxt2) {
       i = 1
       while (i <= length(s)) {
         if (substr(s, i, 1) != "#") { i++; continue }
@@ -219,6 +221,8 @@ AWK_HAS_HIT='
           nxt2 = (j + 1 <= length(s)) ? substr(s, j + 1, 1) : ""
           if (nxt ~ /[A-Za-z_]/) { i = j; continue }
           if (nxt == "-" && nxt2 ~ /[A-Za-z]/) { i = j; continue }
+          prev = (i > 1) ? substr(s, i - 1, 1) : ""
+          if (prev == "&" && nxt == ";") { i = j; continue }
           return 1
         }
         i++
