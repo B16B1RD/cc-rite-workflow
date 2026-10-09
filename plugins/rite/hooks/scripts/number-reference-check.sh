@@ -71,7 +71,8 @@ Options:
 
 Detected: #[0-9]{3,4} tokens (Issue/PR number references).
 Exclusions: placeholder #123, word-char after digits, markdown anchors (#NNN-letter),
-            drift-check-ignore, wiki raw, script fixtures, detector test files.
+            decimal HTML character references (&#NNN;), drift-check-ignore,
+            wiki raw, script fixtures, detector test files.
 
 Exit codes:
   0  No reference detected
