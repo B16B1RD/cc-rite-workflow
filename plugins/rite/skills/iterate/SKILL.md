@@ -303,7 +303,7 @@ args: "{pr_number} --from-iterate"
 
 `REVIEW_STOP` は行頭 `[CONTEXT] ` の marker だけを判定に使う（診断文や引用の中の文字列では分岐しない）。同じ HEAD を再レビューしても観測できない AC は変わらないため再試行しない（下記の PR 内推奨の修正で HEAD が変わったときだけステップ 1 へ戻る）。
 
-**base 競合の停止での取り込み**: `base_conflict_intake_count`（retained flag、初期値 0）が 0 なら +1 してから、[fix-plan の base 取り込み](../fix/references/fix-plan.md#base-取り込み) の「CI 待ちの cycle を閉じた後」の手順で marker の `{base}` を取り込み、push する。競合の解消は両側の変更の意図を保つ。どちらの意図を採るかを Issue と両側の変更から決められない競合は `git merge --abort` で取り込み前に戻し、競合したファイルと決められない理由を示して停止する。merge が競合以外の理由で失敗したとき、または commit・push が非ゼロで終わったときも、失敗したコマンドと出力を示して停止する（競合で merge が非ゼロを返すのは想定どおりで、停止しない）。値が 1 のときに再び `base_conflict` を受けたら、取り込みで競合が解消しなかった（または base がさらに進んだ）ことを示して停止する。どの停止も PR 番号と止めた理由を示す。
+**base 競合の停止での取り込み**: `base_conflict_intake_count`（retained flag、初期値 0）が 0 なら +1 してから、[fix-plan の base 取り込み](../fix/references/fix-plan.md#base-取り込み) の「CI 待ちの cycle を閉じた後」の手順で marker の `{base}` を取り込み、push する。競合の解消は両側の変更の意図を保つ。どちらの意図を採るかを Issue と両側の変更から決められない競合は `git merge --abort` で取り込み前に戻し、競合したファイルと決められない理由を示して停止する。fetch が非ゼロで終わったとき、merge が競合以外の理由で失敗したとき、または commit・push が非ゼロで終わったときも、失敗したコマンドと出力を示して停止する（競合で merge が非ゼロを返すのは想定どおりで、停止しない）。値が 1 のときに再び `base_conflict` を受けたら、取り込みで競合が解消しなかった（または base がさらに進んだ）ことを示して停止する。どの停止も PR 番号と止めた理由を示す。
 rationale: references/rationale.md#base-conflict-intake-once
 
 **受入条件未検証の停止での PR 内推奨の修正**: 停止通知の前に、pr-review ステップ 7.2 がこの review で登録した PR 内推奨を、「5.S 後の PR 内推奨の修正」と同じ `review-pr-recommendations.sh check` で確かめる。5.S は通らない。

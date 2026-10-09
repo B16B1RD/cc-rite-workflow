@@ -80,7 +80,7 @@ mergeable のレビューの後に手で commit すると、その HEAD には f
 
 **CI 待ちの cycle を閉じた後**: PR が base と競合している間は必須 CI が起動しないため、pr-review ステップ 5.3.0.CI は cycle を放棄して `[CONTEXT] REVIEW_STOP=base_conflict; base={base}` で止まる。完了した cycle と保存済みレビューが無いので計画・`check`・`verify` は作れず、commit ガードもそれらを求めない。取り込み相手は marker の `{base}`（PR の base ブランチ）で、手順 1 の `branch.base` は読まない。上から順に行う:
 
-- `git fetch origin {base}` のあと `git merge --no-commit --no-ff origin/{base}` で取り込み、競合を解消して `git add` する
+- `git fetch origin {base}` のあと `git merge --no-commit --no-ff origin/{base}` で取り込み、競合を解消して `git add` する。merge が既に進行中（`MERGE_HEAD` がある）なら、取り込み相手が `origin/{base}` のときは競合解消と `git add` から始め、そうでなければ `git merge --abort` してから取り込む
 - 手順 3 の `base-intake-wiki-capture` を実行してから `git commit --no-edit` で確定する。`{changed_paths}` は `git diff --no-renames --name-only HEAD` の全パス、ページの記録と out の判定は手順 3 と同じ。phase が implement / fix ではないので commit 時の Wiki 適用ゲートは働かないが、次のレビューのゲートは取り込み前の証跡を拒否するため、取り直しは省かない
 - 手順 4 の head 更新と手順 5 の push を行う。手順 4 が非 0 で終わって capture からやり直すときの `{changed_paths}` は、`git diff --no-renames --name-only HEAD^ HEAD` のうち作業ツリーにあるもの
 - iterate のステップ 2 から実行しているときは手順 6 を行わず、iterate のステップ 1 へ戻る。それ以外は手順 6 の `/rite:iterate` を行う
