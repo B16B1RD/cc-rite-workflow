@@ -161,7 +161,7 @@ esac
 step_output_handoff() {
 case "$result" in
   pushed|pushed-wm-stale)
-    # 継続 ([fix:pushed] / [fix:pushed-wm-stale]: push 完了 OR 本 cycle accept 発生 & fatal フラグ無し) の場合 (継続 handoff):
+    # 継続 ([fix:pushed] / [fix:pushed-wm-stale]: push 完了 OR 本 cycle accept 発生 OR 本 cycle の PR 本文の修正 & fatal フラグ無し) の場合 (継続 handoff):
     bash "$plugin_root"/hooks/flow-state.sh set \
       --phase "fix" \
       --active true \

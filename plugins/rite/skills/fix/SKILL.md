@@ -1525,7 +1525,7 @@ iterate は本報告で次を決める:
 - 本 cycle で PR 本文を直した（`FIX_PR_BODY_EDITED=1`）→ re-review
 - `プッシュ: 未実行` かつ accept なし かつ PR 本文の修正なし かつ `全指摘 == 対応指摘` → 完了
 
-accept 発生の SoT は 5.1 row 4/4.5/5。
+accept・PR 本文の修正の SoT は 5.1 row 4/4.5/5。
 rationale: references/design-rationale.md#accept-cycle-markers
 
 
@@ -1616,7 +1616,7 @@ The `fix` flow-state write below records the v3 phase so a `/rite:recover` start
 - **sweep 完了** (`[fix:sweep-done]`): `--handoff "FINALIZE:fix:sweep-done:{pr_number}"` で**終了通知マーカー**をセットする。**ステップ 1 に戻らない**（再フルレビュー禁止）。
 - **エラー** (`[fix:error]`): `--handoff` を**付けない** (handoff はデフォルトクリア)。`[fix:error]` は clean terminal ではなく caller (`/rite:iterate` ステップ4) で1回自動再試行し、再失敗時に停止するため、完了通知を強制してはならない。
 
-判定入力は本ステップ時点で確定済み。**(push 完了 or 本 cycle accept or 本 cycle の PR 本文の修正) かつ fatal 未 set → 継続 handoff**。push・accept・PR 本文の修正のいずれも無く fatal 未 set → FINALIZE。fatal → `--handoff` なし。`WM_UPDATE_FAILED` は継続を打ち消さない。accept 条件の SoT は row 4/4.5/5 注記。
+判定入力は本ステップ時点で確定済み。**(push 完了 or 本 cycle accept or 本 cycle の PR 本文の修正) かつ fatal 未 set → 継続 handoff**。push・accept・PR 本文の修正のいずれも無く fatal 未 set → FINALIZE。fatal → `--handoff` なし。`WM_UPDATE_FAILED` は継続を打ち消さない。accept・PR 本文の修正の条件の SoT は row 4/4.5/5 注記。
 
 > `[fix:error]` 早期 exit では pr-review がセットした `/rite:fix` handoff を消さない。default-clear は iterate ステップ 3 の `--handoff` なし set。
 
@@ -1662,7 +1662,7 @@ Then, based on the ステップ 4.6 completion report content **and the WM_UPDAT
 
 上から最初にマッチした pattern を採用。fatal 旗 (`FIX_FALLBACK_FAILED` / `REPLY_POST_FAILED` / `FIX_PR_BODY_EDIT_FAILED` / `FIX_REPORT_DIFF_GATE=error`) → `[fix:error]`。次に `WM_UPDATE_FAILED` → `[fix:pushed-wm-stale]`。その後に通常終了。`FIX_REPORT_DIFF_GATE=unverified` / `passed` は fatal ではない。
 
-**row 4/4.5/5 の accept 条件 — 唯一の真実の源**: iterate ステップ 4 が読む sentinel の決定箇所。Handoff 節と 4.6 Note は参照のみ。
+**row 4/4.5/5 の accept・PR 本文の修正の条件 — 唯一の真実の源**: iterate ステップ 4 が読む sentinel の決定箇所。Handoff 節と 4.6 Note は参照のみ。
 
 「本 cycle 内で accept 決定が発生」= `ACCEPT_FINGERPRINT_PERSISTED=1` **または** `ACCEPT_FINGERPRINT_PERSIST_FAILED=1` の本 cycle 出現。`{accept_count}` (累計) は使わない。両マーカー欠落時は accept 無し。「本 cycle 内で PR 本文を直した」も同じく `FIX_PR_BODY_EDITED=1` の本 cycle 出現で判定する。
 rationale: references/design-rationale.md#accept-cycle-markers
