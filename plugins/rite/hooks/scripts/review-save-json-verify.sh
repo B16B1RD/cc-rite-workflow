@@ -173,7 +173,7 @@ if [ "$record_file_set" -eq 1 ]; then
     echo "[CONTEXT] REVIEW_RECORD_OK=1" >&2
     exit 0
   fi
-  echo "ERROR: 選定・実行記録が欠落または不正です ($record_shown)。次の全条件を確認してください: reviewers[] は非空・重複なし / reviewer_selection[] は全行で selection_reason (候補になった根拠) が非空、除外行は exclusion_reason も非空、選定済み行の exclusion_reason は null / 選定済み行の名簿が reviewers[] と一致 / reviewer_execution[] は全員分で model・effort が非空。保存せず JSON を直してください" >&2
+  echo "ERROR: 選定・実行記録が欠落または不正です ($record_shown)。次の条件をすべて確認してください: reviewers[] は非空・重複なし / reviewer_selection[] は非空で、各行の reviewer は非空・互いに重複しない、selected は boolean、selection_reason (候補になった根拠) は全行で非空、除外行は exclusion_reason も非空、選定済み行の exclusion_reason は null / 選定済み行の名簿が reviewers[] と一致 / reviewer_execution[] は非空で、各行の reviewer・model・effort が非空、名簿が reviewers[] と一致。保存せず JSON を直してください" >&2
   echo "[CONTEXT] REVIEW_RECORD_INVALID=1; reason=execution_record_invalid" >&2
   exit 1
 fi

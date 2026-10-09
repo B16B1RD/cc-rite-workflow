@@ -563,8 +563,13 @@ printf '%s' '{not json' > "$SANDBOX/broken-result.json"
 run_verify --record-file "$SANDBOX/broken-result.json"
 assert "T-14r: JSON として解析できない結果は rc=1" "1" "$RC"
 assert_grep "T-14s: 解析できない理由を名指しする" "$ERR" 'REVIEW_RECORD_INVALID=1; reason=record_file_invalid_json'
-run_verify --record-file "$d/962-20260101000001.json"
-assert_grep "T-14t: 契約違反の診断は selection_reason だけでなく名簿・実行条件の全条件を挙げる" "$ERR" 'reviewer_execution\[\] は全員分で model・effort が非空'
+# reviewer_selection[] の reviewer が重複した記録は、診断が該当条件を挙げる（落ちた条件を書き手が特定できる）。
+d="$SANDBOX/ex-dup"; make_excluded_case "$d" 963 '"CI 設定の glob に一致 0 件"'
+jq '.reviewer_selection[1].reviewer = .reviewer_selection[0].reviewer' "$d/963-20260101000001.json" > "$d/tmp" \
+  && mv "$d/tmp" "$d/963-20260101000001.json"
+run_verify --record-file "$d/963-20260101000001.json"
+assert "T-14t: reviewer が重複した記録は保存前検査で rc=1" "1" "$RC"
+assert_grep "T-14u: 診断は重複しない条件と実行条件を名指しする" "$ERR" '各行の reviewer は非空・互いに重複しない.*reviewer_execution\[\] は非空'
 
 # 生成指示 (SKILL.md ステップ 3.3) が除外行の非空と保存前検査の呼び出しを保持している。
 _sel_md="$SCRIPT_DIR/../../skills/pr-review/SKILL.md"
