@@ -2,6 +2,7 @@
 # decompose-empty-labels.test.sh
 #
 # Source-drift guard for the empty-labels_csv fix in decompose-issues.sh.
+# issue-create/SKILL.md ステップ 4.3 の labels_json も同じ idiom で、末尾の assert 群が担う。
 #
 # 挙動の回帰検証（共有ラベルなしでも全 Sub-Issue が作成されるか）は、実スクリプトを gh
 # stub で e2e 実行する scripts/tests/decompose-issues.test.sh の "Test 8" が担う。本ファイルは
@@ -36,7 +37,22 @@ assert_grep     "sub_labels_json は jq -cn --arg 経由"        "$SCRIPT" \
 assert_not_grep "Sub ラベルに stdin パイプの jq -R が残存しない" "$SCRIPT" \
   'labels_csv" \| jq -R'
 
+# issue-create のステップ 4.3 も同じ idiom で labels_json を作る。SKILL.md の該当行を取り出して
+# 実行し、空 CSV が [] になることを確認する（ソース pin だけでは実際の出力を保証できない）。
+CREATE_SKILL="$PLUGIN_ROOT/skills/issue-create/SKILL.md"
+labels_line=$(grep -m1 '^labels_json=' "$CREATE_SKILL")
+echo "=== issue-create labels_json: 空 CSV は [] ==="
+assert_not_grep "labels_json に stdin パイプの jq -R が残存しない" "$CREATE_SKILL" \
+  '^labels_json=.*jq -R'
+run_labels_line() {
+  local labels_json=""
+  eval "${labels_line//\{labels_csv\}/$1}" 2>/dev/null
+  printf '%s' "$labels_json" | jq -c . 2>/dev/null
+}
+assert "空 CSV は []"                 '[]'             "$(run_labels_line "")"
+assert "bug, fix は trim 済み配列"    '["bug","fix"]'  "$(run_labels_line "bug, fix")"
+
 if ! print_summary "$(basename "$0")" \
-  "drift: decompose-issues.sh の Sub ラベル生成が stdin パイプの jq -R に逆戻りした。空 labels_csv は jq -cn --arg 経由で [] にせよ（jq -R は空入力で空出力 + exit 0 となりガードをすり抜ける）。挙動の回帰検証は scripts/tests/decompose-issues.test.sh Test 8 が担う。"; then
+  "drift: decompose-issues.sh の Sub ラベル生成、または issue-create/SKILL.md ステップ 4.3 の labels_json が stdin パイプの jq -R に逆戻りした。空 labels_csv は jq -cn --arg 経由で [] にせよ（jq -R は空入力で空出力 + exit 0 となりガードをすり抜ける）。挙動の回帰検証は scripts/tests/decompose-issues.test.sh Test 8 が担う。"; then
   exit 1
 fi
