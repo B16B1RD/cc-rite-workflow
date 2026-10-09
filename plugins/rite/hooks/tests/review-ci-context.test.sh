@@ -101,7 +101,7 @@ if [ "$1" = api ]; then
   if [ "$2" != graphql ]; then printf '%s\n' '[[]]'; exit 0; fi
   n=$(cat "$CI_SCRATCH/query-count")
   if [ "$n" -eq 1 ]; then fixture="$CI_SCRATCH/first.json"; else fixture="$CI_SCRATCH/later.json"; fi
-  jq '{data:{repository:{pullRequest:{headRefOid:.headRefOid,baseRefName:"develop",baseRef:{branchProtectionRule:{requiresStatusChecks:true,requiredStatusCheckContexts:(.requiredContexts // (if (.statusCheckRollup|length)==0 then [] else ["tests (macos)"] end)),requiredStatusChecks:[]}},commits:{nodes:[{commit:{oid:.headRefOid,statusCheckRollup:{contexts:{nodes:.statusCheckRollup,pageInfo:{hasNextPage:false,endCursor:null}}}}}]}}}}}' "$fixture"
+  jq '{data:{repository:{pullRequest:{headRefOid:.headRefOid,baseRefName:(.baseRefName // "develop"),baseRef:{branchProtectionRule:{requiresStatusChecks:true,requiredStatusCheckContexts:(.requiredContexts // (if (.statusCheckRollup|length)==0 then [] else ["tests (macos)"] end)),requiredStatusChecks:[]}},commits:{nodes:[{commit:{oid:.headRefOid,statusCheckRollup:{contexts:{nodes:.statusCheckRollup,pageInfo:{hasNextPage:false,endCursor:null}}}}}]}}}}}' "$fixture"
   exit 0
 fi
 printf '%s\n' "$*" >> "$CI_SCRATCH/final-query"
@@ -168,12 +168,12 @@ assert_grep 'timeout reports unverified stop' "$scratch/final-out" 'REVIEW_CI_FI
 
 # A conflicting PR starts no pull_request workflow: its required checks are missing,
 # not running, so the wait cannot end and is reported as a base conflict instead.
-jq '.statusCheckRollup=[] | .requiredContexts=["tests (macos)"] | .mergeable="CONFLICTING"' "$scratch/success.json" > "$scratch/conflict.json"
+jq '.statusCheckRollup=[] | .requiredContexts=["tests (macos)"] | .mergeable="CONFLICTING" | .baseRefName="main"' "$scratch/success.json" > "$scratch/conflict.json"
 cp "$scratch/conflict.json" "$scratch/first.json"
 completion conflict
 completion_failed conflict
 assert_grep 'conflicting PR with missing required checks is blocked' "$scratch/final-out" \
-  '^\[CONTEXT\] REVIEW_CI_FINAL=blocked; reason=base_conflict; base=develop$'
+  '^\[CONTEXT\] REVIEW_CI_FINAL=blocked; reason=base_conflict; base=main$'
 assert_not_grep 'base conflict is not a timeout' "$scratch/final-out" 'reason=timeout'
 assert 'base conflict does not wait' false "$([ -f "$scratch/final-wait" ] && echo true || echo false)"
 assert 'base conflict queries once' 1 "$(cat "$scratch/query-count")"
@@ -189,14 +189,14 @@ jq '.mergeable="UNKNOWN"' "$scratch/pending.json" > "$scratch/first.json"
 cp "$scratch/conflict.json" "$scratch/later.json"
 completion unknown-then-conflict
 completion_failed unknown-then-conflict
-assert_grep 'merge state computed during the wait is re-read' "$scratch/final-out" 'REVIEW_CI_FINAL=blocked; reason=base_conflict; base=develop'
+assert_grep 'merge state computed during the wait is re-read' "$scratch/final-out" 'REVIEW_CI_FINAL=blocked; reason=base_conflict; base=main'
 assert 'UNKNOWN merge state waits once before the conflict' 1 "$(cat "$scratch/final-wait")"
 assert 'UNKNOWN merge state is re-fetched' 2 "$(cat "$scratch/query-count")"
 cp "$scratch/pending.json" "$scratch/first.json"
 completion conflict-on-last-poll --wait-seconds 1
 completion_failed conflict-on-last-poll
 assert_grep 'conflict on the poll that reaches the limit is not a timeout' "$scratch/final-out" \
-  'REVIEW_CI_FINAL=blocked; reason=base_conflict; base=develop'
+  'REVIEW_CI_FINAL=blocked; reason=base_conflict; base=main'
 jq '.mergeable="UNKNOWN"' "$scratch/pending.json" > "$scratch/first.json"
 cp "$scratch/first.json" "$scratch/later.json"
 completion unknown-timeout
@@ -207,6 +207,11 @@ completion merge-state-missing
 completion_failed merge-state-missing
 assert_grep 'missing merge state is an error, not a mergeable PR' "$scratch/final-out" 'REVIEW_CI_FINAL=error; reason=merge_state_unavailable'
 assert 'missing merge state does not wait' false "$([ -f "$scratch/final-wait" ] && echo true || echo false)"
+jq 'del(.baseRefName)' "$scratch/pending.json" > "$scratch/first.json"
+completion base-ref-missing
+completion_failed base-ref-missing
+assert_grep 'missing base branch is an error, not an empty base' "$scratch/final-out" 'REVIEW_CI_FINAL=error; reason=merge_state_unavailable'
+assert 'missing base branch does not wait' false "$([ -f "$scratch/final-wait" ] && echo true || echo false)"
 
 cp "$scratch/unhealthy.json" "$scratch/first.json"
 cp "$scratch/success.json" "$scratch/later.json"

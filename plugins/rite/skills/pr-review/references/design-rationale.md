@@ -383,3 +383,9 @@ key に `C-n` を使わないのは、run ごとに振り直すから。key を�
 判定表の AC-ID 集合と未充足 finding の残存を helper（`scripts/acceptance-criteria-check.sh`）で機械検査するのは、reviewer が AC を読み飛ばした出力や、降格ゲートで未充足 finding が消えた JSON を「全充足」と区別できないため。未充足行は降格されても未検証へ格下げしない — 不合格を観測した事実と finding の採否は別で、格下げは人間確認で通せる経路を再生産する。Accepted Fingerprint Suppression / Fact-Checking / Debate は免除せず、そこで finding が消えたら最終整合検査が error で止める（例外経路を増やさず fail-loud に倒す）。Deduplication だけ免除するのは、同じ file の別指摘へ統合されると `[AC-N]` 接頭辞の紐付けが壊れ、正常な未充足まで error になるため。
 
 blocking 0 で未検証だけが残る cycle を `[review:mergeable]` にしないのは、agent が観測できなかった AC を黙って合格扱いにするため。新 sentinel を足さず `[review:error]` + `REVIEW_STOP=ac_unverified` にするのは sentinel 語彙と caller の分岐表を増やさないため。ステップ 8.0 は 8.1 より先に flow-state を書くので、同じ条件の行で handoff を付けない — 付けると FINALIZE の mergeable 完了経路へ Stop hook が差し戻す。iterate が自動再試行しないのは、同じ HEAD では再実行しても観測できないため。
+
+## ci-base-conflict
+
+PR が base と競合している間、GitHub は `pull_request` の workflow を起動しない。必須 check は欠落のまま終わらず、待機は上限まで続いても完了しない。上限判定より先に競合を見るのは、最後の取得で競合が見えた場合を期限超過と区別するためである。
+
+競合で待てない cycle は、待っても閉じられない。5.3.0.CI は `review-finish` より前にあり、cycle はまだ証跡（manifest / content / result、保存済み receipt）を持たないので、`review-abandon` で閉じられる。放棄すると cycle が無くなり、commit ガードは base を取り込む merge commit を止めない。取り込んだ HEAD は次の cycle が、最後に保存したレビュー以降の差分としてレビューする。

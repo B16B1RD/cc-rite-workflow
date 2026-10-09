@@ -301,7 +301,7 @@ in_order "iterate: adoption_held 行が汎用 [review:error] 行より前" \
 in_order "iterate: base_conflict 行が汎用 [review:error] 行より前" \
   "$(line_of "$ITERATE" '| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=base_conflict; base={base}` |')" \
   "$(line_of "$ITERATE" '| `[review:error]` | 可逆な再試行を推奨として 1 回だけ自動実行')"
-pin "iterate: base_conflict は取り込んでステップ 1、2 回目は停止" "$ITERATE" '下記「base 競合の停止での取り込み」で `{base}` を取り込み、push してステップ 1 へ戻る（取り込んだ HEAD を次の cycle でレビューする）。同じ iterate 実行で 2 回目なら取り込まず、停止通知を出して終了する（成功 sentinel も新しい sentinel も出さない）'
+pin "iterate: base_conflict は取り込んでステップ 1、2 回目は停止" "$ITERATE" '下記「base 競合の停止での取り込み」で `{base}` を取り込み、push してステップ 1 へ戻る（取り込んだ HEAD を次の cycle でレビューする）。同じ iterate 実行で 2 回目なら取り込まず、下記の段落が定める停止の内容を示して終了する（成功 sentinel も新しい sentinel も出さない）'
 pin "iterate: base_conflict の取り込みは 1 回限り" "$ITERATE" '`base_conflict_intake_count`（retained flag、初期値 0）が 0 なら +1 してから'
 in_order "pr-review 5.3.0.CI: base_conflict 行がその他の非ゼロ行より前" \
   "$(line_of "$PR_REVIEW" '| rc=1 + `REVIEW_CI_FINAL=blocked; reason=base_conflict; base={base}` |')" \

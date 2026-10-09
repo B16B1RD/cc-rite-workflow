@@ -48,7 +48,7 @@ rationale: references/rationale.md#circuit-breaker-conditions
 ## Contract
 
 **Input**: PR number (required)
-**Output**: 完了通知（`[review:mergeable]` / `[fix:non-fatal-only]` 到達後 5.S sweep 完了（外向きは `[review:mergeable]`）or `[fix:replied-only]` 到達後 5.S sweep 完了（外向きも返信のみ） or `[fix:cancelled-by-user]` 中断 or サーキットブレーカー発火による停止（`[iterate:max-cycles-reached]` バッチ / `[iterate:max-cycles-stopped]` 対話。非収束による失敗で、マージには進まない）or sweep 失敗 `[iterate:nb-sweep-error]` or 5.S 後の目的逸脱 `[review:error]` + `[CONTEXT] REVIEW_STOP=purpose_unaligned`（完了通知へ進まない） or base 競合の取り込み後も再び競合した停止（`[review:error]` + `[CONTEXT] REVIEW_STOP=base_conflict`。完了通知へ進まない） or 採否保留による停止（`[review:error]` + `[CONTEXT] REVIEW_STOP=adoption_held`、または 5.S の `[fix:error] reason=nb_sweep_adoption_held` による `[iterate:nb-sweep-error]`。完了通知へ進まない） or Ctrl+C 中断）。発火後に review / fix は invoke しない。再開は `review_run` が無い legacy state では `/rite:iterate` の明示再実行、`review_run` がある停止はステップ 6.2 の `{resume_routes}`（通常の再実行では新 run にならない）。
+**Output**: 完了通知（`[review:mergeable]` / `[fix:non-fatal-only]` 到達後 5.S sweep 完了（外向きは `[review:mergeable]`）or `[fix:replied-only]` 到達後 5.S sweep 完了（外向きも返信のみ） or `[fix:cancelled-by-user]` 中断 or サーキットブレーカー発火による停止（`[iterate:max-cycles-reached]` バッチ / `[iterate:max-cycles-stopped]` 対話。非収束による失敗で、マージには進まない）or sweep 失敗 `[iterate:nb-sweep-error]` or 5.S 後の目的逸脱 `[review:error]` + `[CONTEXT] REVIEW_STOP=purpose_unaligned`（完了通知へ進まない） or base 競合の取り込みを止めた停止（再び競合した・どちらの意図を採るか決められない競合・取り込みや push の失敗。`[review:error]` + `[CONTEXT] REVIEW_STOP=base_conflict`。完了通知へ進まない） or 採否保留による停止（`[review:error]` + `[CONTEXT] REVIEW_STOP=adoption_held`、または 5.S の `[fix:error] reason=nb_sweep_adoption_held` による `[iterate:nb-sweep-error]`。完了通知へ進まない） or Ctrl+C 中断）。発火後に review / fix は invoke しない。再開は `review_run` が無い legacy state では `/rite:iterate` の明示再実行、`review_run` がある停止はステップ 6.2 の `{resume_routes}`（通常の再実行では新 run にならない）。
 
 ## E2E Output Minimization
 
@@ -297,13 +297,14 @@ args: "{pr_number} --from-iterate"
 | `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=ac_unverified; ac={ids}` | 受入条件未検証の停止。先に下記「受入条件未検証の停止での PR 内推奨の修正」を行い、`[fix:pushed]` / `[fix:pushed-wm-stale]` ならステップ 1 へ戻る。fix のその他の戻りは同段落の規則に従う。PR 内推奨が無ければ再試行せず、下記の停止通知を出して終了する（成功 sentinel も新しい sentinel も出さない） |
 | `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=purpose_unaligned` | 5.S 後の目的逸脱。再試行せず終了する（成功 sentinel も新しい sentinel も出さない） |
 | `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=adoption_held; kind={kind}; hold_file={path}` | 採否の出口待ちの保留、またはスコープ外処分の外部への書き込みが途中で失敗した停止（後者は一部が書き込み済み）。再試行せず、`hold_file` と、hold ファイルの resume（出口待ちのときはゲートの WARNING にも出る）に従って再開することを示して終了する。書き込み途中の停止で hold に書けなかったときは、hold の resume ではなく stderr の WARNING と flow-state の次アクションにある再開方法に従う（成功 sentinel も新しい sentinel も出さない） |
-| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=base_conflict; base={base}` | PR が base と競合して必須 CI を待てず、pr-review が cycle を放棄した停止。下記「base 競合の停止での取り込み」で `{base}` を取り込み、push してステップ 1 へ戻る（取り込んだ HEAD を次の cycle でレビューする）。同じ iterate 実行で 2 回目なら取り込まず、停止通知を出して終了する（成功 sentinel も新しい sentinel も出さない） |
+| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=base_conflict; base={base}` | PR が base と競合して必須 CI を待てず、pr-review が cycle を放棄した停止。下記「base 競合の停止での取り込み」で `{base}` を取り込み、push してステップ 1 へ戻る（取り込んだ HEAD を次の cycle でレビューする）。同じ iterate 実行で 2 回目なら取り込まず、下記の段落が定める停止の内容を示して終了する（成功 sentinel も新しい sentinel も出さない） |
 | `[review:error]` | 可逆な再試行を推奨として 1 回だけ自動実行し、work memory の既存決定事項へ理由を記録する。再失敗なら停止 |
 | sentinel 不在 | 可逆な再試行を推奨として 1 回だけ自動実行し、期待 sentinel と直近出力を既存 work memory へ記録する。再度不在なら停止 |
 
 `REVIEW_STOP` は行頭 `[CONTEXT] ` の marker だけを判定に使う（診断文や引用の中の文字列では分岐しない）。同じ HEAD を再レビューしても観測できない AC は変わらないため再試行しない（下記の PR 内推奨の修正で HEAD が変わったときだけステップ 1 へ戻る）。
 
-**base 競合の停止での取り込み**: `base_conflict_intake_count`（retained flag、初期値 0）が 0 なら +1 してから、[fix-plan の base 取り込み](../fix/references/fix-plan.md#base-取り込み) の「CI 待ちの cycle を閉じた後」の手順で marker の `{base}` を取り込み、push する。競合の解消は両側の変更の意図を保つ。どちらの意図を採るかを Issue と両側の変更から決められない競合は `git merge --abort` で取り込み前に戻し、競合したファイルと決められない理由を示して停止する。取り込み・push が非ゼロで終わったときも停止する。値が 1 のときに再び `base_conflict` を受けたら、取り込みで競合が解消しなかった（または base がさらに進んだ）ことを示して停止する。cycle の放棄は counter を進めないため、この上限がサーキットブレーカーに代わって取り込みの繰り返しを止める。
+**base 競合の停止での取り込み**: `base_conflict_intake_count`（retained flag、初期値 0）が 0 なら +1 してから、[fix-plan の base 取り込み](../fix/references/fix-plan.md#base-取り込み) の「CI 待ちの cycle を閉じた後」の手順で marker の `{base}` を取り込み、push する。競合の解消は両側の変更の意図を保つ。どちらの意図を採るかを Issue と両側の変更から決められない競合は `git merge --abort` で取り込み前に戻し、競合したファイルと決められない理由を示して停止する。merge が競合以外の理由で失敗したとき、または commit・push が非ゼロで終わったときも、失敗したコマンドと出力を示して停止する（競合で merge が非ゼロを返すのは想定どおりで、停止しない）。値が 1 のときに再び `base_conflict` を受けたら、取り込みで競合が解消しなかった（または base がさらに進んだ）ことを示して停止する。どの停止も PR 番号と止めた理由を示す。
+rationale: references/rationale.md#base-conflict-intake-once
 
 **受入条件未検証の停止での PR 内推奨の修正**: 停止通知の前に、pr-review ステップ 7.2 がこの review で登録した PR 内推奨を、「5.S 後の PR 内推奨の修正」と同じ `review-pr-recommendations.sh check` で確かめる。5.S は通らない。
 rationale: references/rationale.md#ac-unverified-pr-recommendation

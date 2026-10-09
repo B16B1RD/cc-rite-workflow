@@ -82,7 +82,8 @@ mergeable のレビューの後に手で commit すると、その HEAD には f
 
 - `git fetch origin {base}` のあと `git merge --no-commit --no-ff origin/{base}` で取り込み、競合を解消して `git add` する
 - 手順 3 の `base-intake-wiki-capture` を実行してから `git commit --no-edit` で確定する。`{changed_paths}` は `git diff --no-renames --name-only HEAD` の全パス、ページの記録と out の判定は手順 3 と同じ。phase が implement / fix ではないので commit 時の Wiki 適用ゲートは働かないが、次のレビューのゲートは取り込み前の証跡を拒否するため、取り直しは省かない
-- 手順 4 の head 更新、手順 5 の push、手順 6 の `/rite:iterate` を行う
+- 手順 4 の head 更新と手順 5 の push を行う。手順 4 が非 0 で終わって capture からやり直すときの `{changed_paths}` は、`git diff --no-renames --name-only HEAD^ HEAD` のうち作業ツリーにあるもの
+- iterate のステップ 2 から実行しているときは手順 6 を行わず、iterate のステップ 1 へ戻る。それ以外は手順 6 の `/rite:iterate` を行う
 
 制約の除外はファイル単位で、base 側が変更したファイル（merge-base から取り込み相手までの差分に出るファイル）だけが Issue の Non-Target / 閉じた対象の検査から外れる。競合を解消したファイルは base 側も変更しているので外れる。base 側が変更した symlink は、指す先が Non-Target でもそのパスの変更として取り込める。base-intake グループにだけ並べた symlink が覆うのはそのパス自体で、指す先は覆わない（他のグループにも並べた symlink は指す先も覆う）。指す先で base 側が変更していないファイルを変えたら、そのパスも `paths` に並べる（手順 2 の後で変えたなら追加し、手順 3 の `check` からやり直す）。並べたファイルは Issue の Non-Target / 閉じた対象の検査を受け、並べていない変更は verify / commit で計画外の変更として拒否される。base 側が変更していないファイル（base の変更に合わせて直した自ブランチのファイル等）は制約を受ける。
 

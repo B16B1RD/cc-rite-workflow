@@ -388,3 +388,10 @@ blocking が残っている review、`safety.max_review_cycles` に達した cyc
 空転する（PR 内推奨を同じレビュー済み commit につき一度だけ渡すのと同じ終端）。記録は完了記録（`completed_context` / `deferred_context`）
 を外す。残すと、逸脱が未処置のまま別の Issue へ切り替えられる。`D-NN` は記録した review context の
 計画だけが処置する。次の cycle の計画には要求しない（その cycle の完了前確認がまだ逸脱を見るなら、改めて記録する）。
+
+## base-conflict-intake-once
+
+base 競合で放棄した cycle は保存されないため、`review-abandon` は counter を進めない。取り込みのたびに新しい
+競合が出ても cycle 上限にも発散判定にも数えられず、サーキットブレーカーは取り込みの繰り返しを止めない。
+1 回の iterate 実行で取り込みを 1 回に限るのはこのためで、2 回目の `base_conflict` は取り込みで競合が
+解消しなかった（または base がさらに進んだ）ことの証拠として停止に回す。

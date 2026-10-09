@@ -217,8 +217,8 @@ BASE_INTAKE_CONCLUDE = ("if it takes in origin/<base>, resolve and stage it, add
                         "push, then re-run /rite:iterate; otherwise "
                         "git merge --abort and start over (skills/fix/references/fix-plan.md, section: base 取り込み)")
 # The same route, entered while the review still waits for CI that a base conflict keeps from starting.
-BASE_INTAKE_WAITING = ("if the review waits for CI while the PR conflicts with its base, re-run its CI completion check; "
-                       "pr-review abandons the cycle on REVIEW_CI_FINAL=blocked; reason=base_conflict, and the merge "
+BASE_INTAKE_WAITING = ("if the review waits for CI while the PR conflicts with its base, re-run the review (/rite:iterate); "
+                       "on REVIEW_CI_FINAL=blocked; reason=base_conflict pr-review abandons the cycle, and the merge "
                        "can then be committed (skills/fix/references/fix-plan.md, section: base 取り込み, CI 待ちの cycle を閉じた後)")
 
 
