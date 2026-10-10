@@ -596,6 +596,8 @@
 * **Skip**: [20261010T114351Z-pr-3754.md](raw/reviews/20261010T114351Z-pr-3754.md) — 修正後の契約テストと受入条件の確認結果のみで、新しいドメイン経験則はない。
 * **Skip**: [20261010T115345Z-pr-3755-review-final.md](raw/reviews/20261010T115345Z-pr-3755-review-final.md) — 説明修正後のレビューと検証結果のみで、新しいドメイン経験則はない。
 * **Skip**: [20261010T115345Z-pr-3755-review-initial.md](raw/reviews/20261010T115345Z-pr-3755-review-initial.md) — 配布検査の範囲に関する説明の不一致は修正済みで、追加するドメイン経験則はない。
+* **lint:warning** — contradictions=0, stale=74, orphans=0, missing_concept=1, unregistered_raw=776, broken_refs=0。自動比較: WIKI_CONTRADICTION_CHECK=complete; changed=0; screened=0; candidates=0; excluded=0; compared=0; carried=0; resolved=0（対象なし。比較本文の読取量 0 bytes、本文比較時間 0 秒）。
+  * 欠落概念: [修正結果](raw/fixes/20261009T162241Z-pr-3728.md) — 取り込み済みだが出典登録とスキップ記録がなく、外部出力の形式固定と失敗分類に関する経験則を持つ。
 
 ## 2026-10-07
 
