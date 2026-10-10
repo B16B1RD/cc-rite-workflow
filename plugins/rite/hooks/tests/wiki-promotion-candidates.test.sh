@@ -10,6 +10,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import shlex
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -160,7 +162,8 @@ try:
         p["finish"](root, "raw/reviews/example.md")
     else:
         p["log_event"](root, {"candidate":"old", "raw":"raw/reviews/example.md", "status":"unresolved", "reason":"x"*200})
-except OSError:
+except OSError as error:
+    print(str(error), file=sys.stderr)
     sys.exit(0)
 sys.exit(1)
 """
@@ -173,6 +176,7 @@ sys.exit(1)
                 result = subprocess.run(["python3", "-c", program, p.__file__, str(self.root), action],
                                         text=True, capture_output=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(str(self.root / ("log.md" if action == "log" else self.raw)), result.stderr)
                 self.assertEqual((self.root / self.raw).read_bytes(), before_raw)
                 self.assertEqual((self.root / "log.md").read_bytes(), before_log)
                 self.assertFalse(list(self.root.rglob(".rite-promotion-*.tmp")))
@@ -302,6 +306,52 @@ test "$(bash -c "$command")" = called
                                          self.caller + ' | sed \'1d;$d\')\ntest "$(bash -c "$command")" = "Read this rule"\n')
         self.publish()
         self.assertEqual(self.verify(), self.rev)
+
+    def test_reference_path_in_search_or_unread_arguments_stays_unresolved(self):
+        consumer = "plugins/rite/references/rule.md"
+        (self.cwd / consumer).parent.mkdir(parents=True)
+        (self.cwd / consumer).write_text("NEVER READ\n")
+        (self.cwd / "unrelated.txt").write_text(consumer + "\n")
+        self.item["consumer"] = consumer
+        self.item["work"]["consumer"] = consumer
+        commands = [
+            'printf "%s\\n" ' + consumer + ' | grep ' + consumer,
+            'grep -q ' + consumer + ' unrelated.txt',
+            "sed -n '1q' unrelated.txt " + consumer,
+            "cat --help " + consumer,
+        ]
+        for command in commands:
+            with self.subTest(command=command):
+                (self.cwd / self.caller).write_text('# Read references/rule.md\n\n```bash\n' + command + '\n```\n')
+                (self.cwd / self.test).write_text('set -e\ncommand=$(sed -n \'/^```bash/,/^```/p\' ' +
+                    self.caller + ' | sed \'1d;$d\')\nbash -c "$command" >/dev/null\n')
+                self.publish()
+                with self.assertRaisesRegex(ValueError, "not observed"):
+                    self.verify()
+
+    def test_actual_batch_fence_with_required_argument_substitutions_is_observed(self):
+        caller = "plugins/rite/skills/batch-run/SKILL.md"
+        consumer = "plugins/rite/hooks/scripts/wiki-promotion-candidates.sh"
+        original = (Path(p.__file__).resolve().parents[2] / "skills/batch-run/SKILL.md").read_text()
+        target = self.cwd / caller
+        target.parent.mkdir(parents=True)
+        target.write_text(original)
+        (self.cwd / consumer).write_text('#!/bin/bash\nprintf "called\\n"\n')
+        command = re.findall(r"```bash\n(.*?)\n[ \t]*```", original.split("## 昇格候補の消化", 1)[1], re.S)[0].strip()
+        for key, value in {"plugin_root": "plugins/rite", "wiki_root_abs": str(self.cwd / ".rite/wiki"),
+                           "execution_cwd": str(self.cwd), "owner_repo": self.repo}.items():
+            command = command.replace("{" + key + "}", value)
+        (self.cwd / self.test).write_text('set -e\ncat ' + caller + ' >/dev/null\ntest "$(bash -c ' +
+                                        shlex.quote(command) + ')" = called\n')
+        self.item["consumer"] = consumer
+        self.item["work"].update(consumer=consumer, caller=caller)
+        self.publish()
+        self.assertEqual(self.verify(), self.rev)
+        (self.cwd / self.test).write_text('set -e\ncat ' + caller + ' >/dev/null\nbash -c ' +
+                                        shlex.quote("printf unrelated; bash " + consumer) + '\n')
+        self.publish()
+        with self.assertRaisesRegex(ValueError, "not observed"):
+            self.verify()
 
     def test_script_dir_wrapper_has_observed_python_invocation(self):
         caller = "plugins/rite/hooks/scripts/wrapper.sh"

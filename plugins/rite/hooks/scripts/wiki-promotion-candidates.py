@@ -31,6 +31,8 @@ def atomic_write(path, text):
         if pending.read_text(encoding="utf-8") != text:
             raise ValueError(f"save verification failed: {path}")
         os.replace(pending, path)
+    except OSError as error:
+        raise OSError(error.errno, f"save failed: {path}: {error}") from error
     finally:
         if pending is not None:
             pending.unlink(missing_ok=True)
@@ -51,10 +53,16 @@ def observe_usage(directory, caller, consumer, test, originals):
                         inline_codes.add(body.replace("{plugin_root}", plugin_root))
         inline_case = ""
         if inline_codes:
-            patterns = " | ".join(shlex.quote(code) for code in sorted(inline_codes))
-            inline_case = "\ncase \"${BASH_EXECUTION_STRING:-}\" in\n" + patterns + ")\n" + (
+            patterns = []
+            for code in sorted(inline_codes):
+                parts = re.split(r"(?<!\$)(\{[a-z][a-z0-9_]*\})", code)
+                patterns.append("^" + "".join("[[:alnum:]_./:@=+, %-]+" if re.fullmatch(
+                    r"\{[a-z][a-z0-9_]*\}", part) else re.escape(part) for part in parts) + "$")
+            inline_case = "\n_rite_promotion_pattern=" + shlex.quote("(" + "|".join(patterns) + ")") + "\n" + (
+                "if [[ \"${BASH_EXECUTION_STRING:-}\" =~ $_rite_promotion_pattern ]]; then\n"
                 "printf 'doc-exec\\t%s\\t%s\\t%s\\n' \"$BASHPID\" \"$PPID\" \"$RITE_PROMOTION_CALLER\" >> \"$RITE_PROMOTION_TRACE\"\n"
-            ) + ";;\nesac\n"
+                "fi\n"
+            )
         bash_env.write_text("""
 _rite_promotion_trace() {
     for _rite_promotion_source in "${BASH_SOURCE[@]}"; do
@@ -78,7 +86,7 @@ def _note(event, args):
 sys.addaudithook(_note)
 """
         (probe / "sitecustomize.py").write_text(observer)
-        readers = {name: shutil.which(name) for name in ("cat", "sed", "awk", "grep")}
+        readers = {name: shutil.which(name) for name in ("cat", "sed")}
         readers = {name: path for name, path in readers.items() if path}
         tool_dir = probe / "bin"
         tool_dir.mkdir()
@@ -89,13 +97,25 @@ import json, os, subprocess, sys
 result = subprocess.run([EXECUTABLE, *sys.argv[1:]])
 if result.returncode == 0:
     targets = set(json.loads(os.environ["RITE_PROMOTION_TARGETS"]))
-    for argument in sys.argv[1:]:
+    arguments = sys.argv[1:]
+    files = []
+    if NAME == "cat":
+        if arguments[:1] == ["--"]:
+            arguments = arguments[1:]
+        if all(not argument.startswith("-") for argument in arguments):
+            files = arguments
+    else:
+        while arguments and arguments[0] in ("-n", "-E", "-r"):
+            arguments = arguments[1:]
+        if len(arguments) == 2 and not arguments[0].startswith("-") and not arguments[1].startswith("-"):
+            files = arguments[1:]
+    for argument in files:
         filename = os.path.realpath(argument)
         if filename in targets:
             with open(os.environ["RITE_PROMOTION_TRACE"], "a") as stream:
                 stream.write("read\\t" + str(os.getpid()) + "\\t" + str(os.getppid()) + "\\t" + filename + "\\n")
 sys.exit(result.returncode)
-""".replace("EXECUTABLE", repr(executable)))
+""".replace("EXECUTABLE", repr(executable)).replace("NAME", repr(name)))
             wrapper.chmod(0o700)
         environment = dict(os.environ, BASH_ENV=str(bash_env), RITE_PROMOTION_TRACE=str(trace),
                            RITE_PROMOTION_TARGETS=json.dumps(targets), RITE_PROMOTION_CALLER=targets[0])

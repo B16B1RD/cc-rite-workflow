@@ -431,7 +431,7 @@ record は raw の候補と log を保存・読み戻し、まだ `ingested: fal
 
 link の入力は work 配列。各要素は `candidate`（helper の id）、`raw`、`issue_url`、`condition`、`consumer` を持つ。実装結果の突合時は `pr_url`、`caller`、`test`、`revision` を加える。caller/test はリポジトリ相対パス、test は同じ consumer と caller の実利用を検証する `*.test.sh`。revision は対象 PR の merge commit。Issue/PR 番号の散文引用はせず、対応はリンク先として記録する。
 
-完了は helper/gate の実 caller 呼出し、原則/reference の明示読取、対応試験の成功、同じ Issue を閉じる PR の merge 確認がすべて揃う場合のみ。reconcile は GitHub の merge commit に固定した一時 checkout で試験を再実行し、別 PR/古い revision/無関係な caller の証拠は通さない。試験中に Bash の実行元、Python の実行・読取、`cat` / `sed` / `awk` / `grep` の読取を一時的に観測し、caller と consumer の利用および呼出し関係を照合する。Markdown caller の実行 fence は読取と実行の両方を要求する。コマンド文字列の表示、ファイルの存在確認、caller と無関係な consumer 実行は利用証拠にならない。観測できない利用は未解決とし、観測ファイルは試験後に削除する。log が complete でも再実行時に再検証する。候補保存・起票・draft・未利用 reference・検証失敗・証拠取得失敗は理由付き未解決として保持し、raw の候補理由と出典は完了後も消さない。
+完了は helper/gate の実 caller 呼出し、原則/reference の明示読取、対応試験の成功、同じ Issue を閉じる PR の merge 確認がすべて揃う場合のみ。reconcile は GitHub の merge commit に固定した一時 checkout で試験を再実行し、別 PR/古い revision/無関係な caller の証拠は通さない。試験中に Bash の実行元、Python の実行・読取、オプションなしの `cat`（`--` は可）と単一入力の `sed`（`-n` / `-E` / `-r` は可）の読取を一時的に観測し、caller と consumer の利用および呼出し関係を照合する。Markdown caller の実行 fence は読取と実行の両方を要求し、固定命令を保った通常の引数置換を照合する。検索語・プログラム引数や複数入力の早期終了を読取証拠にしない。コマンド文字列の表示、ファイルの存在確認、caller と無関係な consumer 実行は利用証拠にならない。観測できない利用は未解決とし、観測ファイルは試験後に削除する。log が complete でも再実行時に再検証する。候補保存・起票・draft・未利用 reference・検証失敗・証拠取得失敗は理由付き未解決として保持し、raw の候補理由と出典は完了後も消さない。
 
 配布先の record/finish/list は当該プロジェクト内の保存/読取だけで、外部送信とインストール済みプラグイン編集をしない。link/reconcile は実 source checkout と origin identity を照合した保守側でだけ使う。外部共有は利用者が明示的に依頼した場合に限り、環境固有情報を除いて配布境界を満たす候補を保守側へ渡す。両 Wiki ブランチ戦略の既存 commit/lint/push を維持する。
 
