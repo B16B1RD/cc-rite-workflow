@@ -491,6 +491,194 @@ class WorkflowContracts(unittest.TestCase):
             classifier = re.split(r"(?m)^#{1,3} ", classifier, maxsplit=1)[0]
             self.assertRegex(classifier, r"equivalent body execution|本文実行|host-workflow-operations\.md#skill-と-caller", skill_name)
 
+    def run_readability(self, command):
+        return subprocess.run(command, cwd=self.fixture, env=self.env,
+                              capture_output=True, text=True, timeout=20)
+
+    def readability_guard(self):
+        reference = (plugin / "references/body-readability-check.md").read_text(encoding="utf-8")
+        blocks = [b for b in re.findall(r"(?ms)^```python\n(.*?)^```", reference)
+                  if b.startswith("# readability-version-guard\n")]
+        self.assertEqual(len(blocks), 1)
+        guard = self.fixture / "readability_guard.py"
+        guard.write_text(blocks[0], encoding="utf-8")
+        return guard
+
+    def record_readability(self, guard, title, body, record, status="reviewed"):
+        command = ["python3", str(guard), "record", "--title-file", str(title),
+                   "--body-file", str(body), "--record-file", str(record), "--status", status]
+        if status != "reviewed":
+            warning = record.with_suffix(".warning")
+            warning.write_text("箇所: 冒頭; 不足: 続行理由\n", encoding="utf-8")
+            command += ["--warning-file", str(warning)]
+        result = self.run_readability(command)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_readability_divergence_requires_all_three_conditions(self):
+        text = (plugin / "references/body-readability-check.md").read_text(encoding="utf-8")
+        step = text.split("6. 次の順で停止条件を判定する。", 1)[1].split("\n7. ", 1)[0]
+        divergence = step.split("**発散**:", 1)[1].split("\n   - **点検不能**:", 1)[0]
+        for clause in ["前回の指摘がすべて解消済み", "4 つの問いにすべて根拠つきで答えられ",
+                       "新しい指摘が前回とは別の細部だけ", "三条件がすべて成立するときだけ",
+                       "前回指摘が未解消", "回答または根拠が不足", "新しい指摘が細部以外なら発散としない",
+                       "「不明」「推測が必要」が残る間", "書き直して再点検する"]:
+            self.assertIn(clause, divergence)
+        self.assertIn("発散も非収束と同じ下の Bash で stderr へ出し", step)
+        self.assertIn("利用者への確認を求めず", step)
+        self.assertIn("回数・点数による合否は設けない", step)
+
+    def test_readability_non_convergence_and_reader_contract_are_preserved(self):
+        text = (plugin / "references/body-readability-check.md").read_text(encoding="utf-8")
+        step = text.split("6. 次の順で停止条件を判定する。", 1)[1].split("\n7. ", 1)[0]
+        non_convergence = step.split("**非収束**:", 1)[1].split("\n   - **発散**:", 1)[0]
+        self.assertIn("同じ意味の指摘（不足している情報と本文の該当箇所が同じ）が再出現", non_convergence)
+        self.assertIn("書き直してもタイトル・冒頭本文が変わらなかった", non_convergence)
+        self.assertIn("表現や並び順の変更は解消と数えない", step)
+        self.assertIn("書き直した版は再点検前に記録しない", text)
+        for clause in ["会話を引き継がない新しい読み手", "同じエージェントへ follow-up しない",
+                       "図の読取失敗や共有観点の抽出失敗をこの経路へ回さない"]:
+            self.assertIn(clause, text)
+
+    def test_readability_version_checks_title_and_summary_boundary(self):
+        guard = self.readability_guard()
+        title, body, record = [self.fixture / name for name in ["title.txt", "body.md", "receipt.json"]]
+        title.write_text("本文の点検\n", encoding="utf-8")
+        original = "## 要約\n説明\n<details>契約</details>\n"
+        body.write_text(original, encoding="utf-8")
+        self.record_readability(guard, title, body, record)
+        check = ["python3", str(guard), "check", "--title-file", str(title),
+                 "--body-file", str(body), "--record-file", str(record)]
+        result = self.run_readability(check)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        body.write_text(original.replace("契約", "契約更新"), encoding="utf-8")
+        self.assertEqual(self.run_readability(check).returncode, 0)
+        for changed_title, changed_body in [("別のタイトル", original),
+                                            ("本文の点検", original.replace("説明", "書き直した説明"))]:
+            title.write_text(changed_title + "\n", encoding="utf-8")
+            body.write_text(changed_body, encoding="utf-8")
+            result = self.run_readability(check)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("作成せず手順 2 へ戻る", result.stderr)
+        record.unlink()
+        self.assertNotEqual(self.run_readability(check).returncode, 0)
+
+    def test_readability_continuation_status_and_warning_belong_to_one_version(self):
+        guard = self.readability_guard()
+        title, body, record = [self.fixture / name for name in ["title.txt", "body.md", "receipt.json"]]
+        title.write_text("作成前の点検\n", encoding="utf-8")
+        body.write_text("冒頭本文\n<details>契約</details>\n", encoding="utf-8")
+        labels = {"reviewed": "点検済み", "unreviewed": "未点検で続行",
+                  "non_convergent": "非収束で続行", "divergent": "発散で続行"}
+        for status, label in labels.items():
+            with self.subTest(status=status):
+                self.record_readability(guard, title, body, record, status)
+                check = ["python3", str(guard), "check", "--title-file", str(title),
+                         "--body-file", str(body), "--record-file", str(record)]
+                result = self.run_readability(check)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(label, result.stdout)
+                if status != "reviewed":
+                    self.assertNotIn("点検済み", result.stdout)
+                    self.assertIn("箇所: 冒頭; 不足: 続行理由", result.stdout)
+                body.write_text("変更した冒頭\n<details>契約</details>\n", encoding="utf-8")
+                self.assertNotEqual(self.run_readability(check).returncode, 0)
+                body.write_text("冒頭本文\n<details>契約</details>\n", encoding="utf-8")
+        result = self.run_readability(["python3", str(guard), "record", "--title-file", str(title),
+                                   "--body-file", str(body), "--record-file", str(record), "--status", "unreviewed"])
+        self.assertNotEqual(result.returncode, 0, "unreviewed continuation requires its reason")
+
+    def test_readability_spec_checks_parent_and_each_child_before_creation(self):
+        guard = self.readability_guard()
+        documents, records = [], {}
+        for name in ["parent", "child1", "child2"]:
+            title, body, record = [self.fixture / (name + suffix) for suffix in [".txt", ".md", ".json"]]
+            title.write_text(name + "\n", encoding="utf-8")
+            body.write_text(name + "\n<details>契約</details>\n", encoding="utf-8")
+            self.record_readability(guard, title, body, record)
+            documents.append({"title": name, "body_file": str(body)})
+            records[str(body)] = str(record)
+        spec, mapping = self.fixture / "spec.json", self.fixture / "readability-records.json"
+        mapping.write_text(json.dumps(records), encoding="utf-8")
+        for payload in [{"issue": documents[0]}, {"parent": documents[0], "sub_issues": documents[1:]}]:
+            spec.write_text(json.dumps(payload), encoding="utf-8")
+            command = ["python3", str(guard), "check-spec", "--spec-file", str(spec)]
+            command += (["--record-file", records[payload["issue"]["body_file"]]] if "issue" in payload
+                        else ["--records-file", str(mapping)])
+            self.assertEqual(self.run_readability(command).returncode, 0)
+            targets = [payload["issue"]] if "issue" in payload else [payload["parent"], *payload["sub_issues"]]
+            for doc in targets:
+                for defect in ["title", "body", "record"]:
+                    with self.subTest(document=doc["title"], defect=defect):
+                        body = pathlib.Path(doc["body_file"])
+                        record = pathlib.Path(records[str(body)])
+                        old_title, old_body, old_record = doc["title"], body.read_text(), record.read_text()
+                        if defect == "title":
+                            doc["title"] += " changed"
+                        elif defect == "body":
+                            body.write_text("書き直し\n<details>契約</details>\n", encoding="utf-8")
+                        else:
+                            record.unlink()
+                        spec.write_text(json.dumps(payload), encoding="utf-8")
+                        result = self.run_readability(command)
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertNotIn("READABILITY_VERSION=ok", result.stdout)
+                        doc["title"] = old_title
+                        body.write_text(old_body, encoding="utf-8")
+                        record.write_text(old_record, encoding="utf-8")
+
+    def test_readability_callers_gate_real_creation_and_keep_result(self):
+        issue = (plugin / "skills/issue-create/SKILL.md").read_text(encoding="utf-8")
+        pr = (plugin / "skills/pr-create/SKILL.md").read_text(encoding="utf-8")
+        sections = [issue.split("### 4.3 Issue 作成", 1)[1].split("### 4.4", 1)[0],
+                    issue.split("**(B) body / spec の生成", 1)[1].split("### 5.5 Step 2", 1)[0],
+                    pr.split("**(B) title / body の生成", 1)[1].split("### 3.5", 1)[0]]
+        for section, mutation in zip(sections, ["result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh",
+                                               "bash {plugin_root}/scripts/decompose-issues.sh",
+                                               "gh pr create -R"]):
+            self.assertLess(section.index("記号の作成前検査"), section.index("読みやすさ点検"))
+            self.assertLess(section.index("読みやすさ点検"), section.index("python3 "))
+            self.assertLess(section.index("python3 "), section.index(mutation))
+            self.assertIn("作成する版の記録と照合", section)
+            self.assertNotIn("三条件", section)
+            self.assertNotIn("**発散**", section)
+        self.assertEqual(issue.count("共通照合出力の点検結果と警告全文"), 2)
+        self.assertIn("E2E の表示省略時も caller へ返し", pr)
+        # Run the actual PR creation block: guard rejection must prevent the gh
+        # invocation and preserve files for a fresh reader, even with EXIT cleanup.
+        guard = self.readability_guard()
+        title, body, record = [self.fixture / name for name in ["pr_title.txt", "pr_body.md", "readability-record.json"]]
+        title.write_text("作成前の点検\n", encoding="utf-8")
+        body.write_text("冒頭\n<details>契約</details>\n", encoding="utf-8")
+        (self.fixture / "attachments.json").write_text("[]", encoding="utf-8")
+        self.record_readability(guard, title, body, record)
+        log = self.fixture / "create.log"
+        (self.bin / "gh").write_text('#!/bin/bash\nprintf "created\\n" >> "$CREATE_LOG"\nprintf "CREATE_CALLED\\n"\n', encoding="utf-8")
+        self.env["CREATE_LOG"] = str(log)
+        block = next(b for b in re.findall(r"(?ms)^```bash\n(.*?)^```", pr)
+                     if b.startswith('pr_workdir="{PR_CREATE_WORKDIR}"'))
+        for key, value in {"PR_CREATE_WORKDIR": str(self.fixture), "owner_repo": "fixture/repo",
+                           "base_branch": "develop", "branch_name": "feature"}.items():
+            block = block.replace("{" + key + "}", value)
+        for defect in ["missing", "title", "body"]:
+            saved = title.read_text(), body.read_text(), record.read_text()
+            if defect == "missing":
+                record.unlink()
+            elif defect == "title":
+                title.write_text("変更したタイトル\n", encoding="utf-8")
+            else:
+                body.write_text("書き直し後\n<details>契約</details>\n", encoding="utf-8")
+            result = self.run_readability(["bash", "-c", block])
+            self.assertNotEqual(result.returncode, 0, defect)
+            self.assertFalse(log.exists(), defect)
+            self.assertTrue(self.fixture.is_dir(), "failed check preserves workdir")
+            for target, contents in zip([title, body, record], saved):
+                target.write_text(contents, encoding="utf-8")
+        result = self.run_readability(["bash", "-c", block])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.fixture.exists(), "successful create cleans its scratch directory")
+        self.assertIn("CREATE_CALLED", result.stdout)
+        self.assertIn("READABILITY_VERSION=ok", result.stdout)
+
     def test_distribution_documentation_and_ci_inputs_stay_connected(self):
         for filename in ["README.md", "README.ja.md"]:
             body = (root / filename).read_text(encoding="utf-8")

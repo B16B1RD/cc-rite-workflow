@@ -284,7 +284,7 @@ bash {plugin_root}/scripts/issue-create-gate.sh record --step fact_check
 
 ### 4.3 Issue 作成 + Projects 登録
 
-作成前に [記号の作成前検査](../../templates/issue/template-structure.md#記号の作成前検査issue--pr-共通) を本文に実行し、違反時は作成 helper を呼ばず再生成する。続けて [読みやすさ点検](../../references/body-readability-check.md) をタイトル・本文と本文参照のローカル SVG に実行する。本文ファクトチェックと共通の図条件検査を通過した本文だけを対象にし、書き直し後も再検査する。点検が本文を書き直したときは、記号の作成前検査も作成の直前にもう一度実行する。
+作成前に [記号の作成前検査](../../templates/issue/template-structure.md#記号の作成前検査issue--pr-共通) を本文に実行し、違反時は作成 helper を呼ばず再生成する。続けて [読みやすさ点検](../../references/body-readability-check.md) をタイトル・本文と本文参照のローカル SVG に実行する。本文ファクトチェックと共通の図条件検査を通過した本文だけを対象にし、書き直し後も再検査する。点検が本文を書き直したときは、記号の作成前検査も作成の直前にもう一度実行する。共通手順の「作成する版の記録と照合」に従い、作業領域へ照合コードと対象の記録を保存する。`{READABILITY_GUARD_FILE}` と `{READABILITY_RECORD_FILE}` はその絶対パス。作成直前の照合失敗では作業ファイルを保持して共通手順 2 へ戻る。
 
 `create-issue-with-projects.sh` に委譲（Issue 作成 + Projects 追加 + status / priority / complexity 設定を 1 ステップで実行）。実 interface は JSON 単一引数 + body は tmpfile 経由（canonical SoT: [`issue-create-with-projects.md`](../../references/issue-create-with-projects.md)）:
 
@@ -349,6 +349,11 @@ args_json=$(jq -n \
     options: { source: $source, non_blocking_projects: true }
   }') || { echo "ERROR: args_json の jq 構築に失敗しました" >&2; exit 1; }
 
+# 作成に渡す同じ JSON を照合し、成功後は title / body / spec を変更しない。
+readability_spec=$(mktemp)
+printf '%s' "$args_json" > "$readability_spec"
+python3 "{READABILITY_GUARD_FILE}" check-spec --spec-file "$readability_spec" --record-file "{READABILITY_RECORD_FILE}" || { trap - EXIT; exit 1; }
+rm -f "$readability_spec"
 result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$args_json") || {
   rc=$?
   echo "ERROR: create-issue-with-projects.sh failed (exit $rc)" >&2
@@ -383,6 +388,8 @@ rationale: references/rationale.md#sentinel-html-comment
 
 ```markdown
 ✅ Issue #{issue_number} を作成しました
+
+読みやすさ点検: {共通照合出力の点検結果と警告全文}
 
 | 項目 | 内容 |
 |------|------|
@@ -468,7 +475,7 @@ echo "[CONTEXT] DECOMPOSE_WORKDIR=$workdir"
 
 **(B) body / spec の生成（Write tool）**
 
-分解経路の親も共通選択表に従う。親に SVG を付けるときは spec.json の `parent.attachments` に絶対パスを書く（省略時は `[]`）。Sub-Issue も本文単独で変更範囲が分かる図を置く（既存図で足りれば再掲可）。新規 SVG とローカル SVG の再掲は各 `sub_issues[i].attachments` に絶対パスを渡す。既存添付 URL / Mermaid の再掲は `[]`。Step 4.2 の上段要約・契約層と共通の図条件の作成前検査 Bash を親と各子の body ファイルに実行し、違反時は (C) を呼ばず当該本文を再生成する。 通過後は [記号の作成前検査](../../templates/issue/template-structure.md#記号の作成前検査issue--pr-共通) を親と各子の body ファイルに実行し、違反時は (C) を呼ばず当該本文を再生成する。続けて [読みやすさ点検](../../references/body-readability-check.md) を親と各子のタイトル・本文と各本文参照のローカル SVG に独立して実行し、更新を spec と body に反映する。点検が本文を書き直したときは、その本文に記号の作成前検査をもう一度実行してから (C) へ進む。
+分解経路の親も共通選択表に従う。親に SVG を付けるときは spec.json の `parent.attachments` に絶対パスを書く（省略時は `[]`）。Sub-Issue も本文単独で変更範囲が分かる図を置く（既存図で足りれば再掲可）。新規 SVG とローカル SVG の再掲は各 `sub_issues[i].attachments` に絶対パスを渡す。既存添付 URL / Mermaid の再掲は `[]`。Step 4.2 の上段要約・契約層と共通の図条件の作成前検査 Bash を親と各子の body ファイルに実行し、違反時は (C) を呼ばず当該本文を再生成する。 通過後は [記号の作成前検査](../../templates/issue/template-structure.md#記号の作成前検査issue--pr-共通) を親と各子の body ファイルに実行し、違反時は (C) を呼ばず当該本文を再生成する。続けて [読みやすさ点検](../../references/body-readability-check.md) を親と各子のタイトル・本文と各本文参照のローカル SVG に独立して実行し、更新を spec と body に反映する。点検が本文を書き直したときは、その本文に記号の作成前検査をもう一度実行してから (C) へ進む。共通手順の「作成する版の記録と照合」に従い、`{DECOMPOSE_WORKDIR}/readability_guard.py` に照合コード、`readability-records.json` に親・各子の body_file と別々の記録ファイルの対応を保存する。
 
 直前の `[CONTEXT] DECOMPOSE_WORKDIR=` から `{DECOMPOSE_WORKDIR}` を読み取り、以下を **Write tool** で書く（heredoc を使わない）:
 
@@ -501,6 +508,8 @@ echo "[CONTEXT] DECOMPOSE_WORKDIR=$workdir"
 **(C) helper 呼び出し（単一 bash block）**
 
 ```bash
+# 全対象の照合に成功してから作成する。不一致なら保持して共通手順 2 へ戻る。
+python3 "{DECOMPOSE_WORKDIR}/readability_guard.py" check-spec --spec-file "{DECOMPOSE_WORKDIR}/spec.json" --records-file "{DECOMPOSE_WORKDIR}/readability-records.json" || exit 1
 bash {plugin_root}/scripts/decompose-issues.sh --spec "{DECOMPOSE_WORKDIR}/spec.json" || {
   echo "ERROR: Issue 分解失敗 (decompose-issues.sh 非ゼロ終了)" >&2
   exit 1
@@ -550,6 +559,8 @@ rationale: references/rationale.md#sentinel-html-comment
 
 ```markdown
 ✅ Issue #{parent_issue_number} を分解して {sub_count} 件の Sub-Issue を作成しました
+
+読みやすさ点検: {親と各子の共通照合出力の点検結果と警告全文}
 
 ### 親 Issue
 - #{parent_issue_number} {parent_title}
