@@ -1,6 +1,10 @@
 # Directory Update Log
 
 ## 2026-10-11
+* **Promotion**: [候補の出典](raw/reviews/20261010T210103Z-pr-3772.md) — skipped <!-- rite-promotion: {"candidate": "", "raw": "raw/reviews/20261010T210103Z-pr-3772.md", "reason": "追加試験の回帰検出と既存の受入条件未検証を再確認した記録。初回レビューと修正記録の候補を超える新しい経験則はない。", "status": "skipped"} -->
+* **Promotion**: [候補の出典](raw/reviews/20261010T203854Z-pr-3772.md) — unresolved <!-- rite-promotion: {"candidate": "9670b09e04eeb478f41ad0a2a655c2f7c065470774c3e86ad86c3bf5ac8f3e78", "raw": "raw/reviews/20261010T203854Z-pr-3772.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
+* **Promotion**: [候補の出典](raw/reviews/20261010T203854Z-pr-3772.md) — unresolved <!-- rite-promotion: {"candidate": "581e9e2748ec1ded517727b9543c713493c4fca8ae458ba85c58aca6fe4093d4", "raw": "raw/reviews/20261010T203854Z-pr-3772.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
+* **Promotion**: [候補の出典](raw/fixes/20261010T204511Z-pr-3772.md) — unresolved <!-- rite-promotion: {"candidate": "82be80cad1b12467326a984794fc0c4c89655b66a494475bbe872bf0fe27db57", "raw": "raw/fixes/20261010T204511Z-pr-3772.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
 * **Promotion**: [候補の出典](raw/reviews/20261010T194004Z-pr-3771.md) — skipped <!-- rite-promotion: {"candidate": "", "raw": "raw/reviews/20261010T194004Z-pr-3771.md", "reason": "再レビューの完了確認のみで、新しい経験則は含まれない。", "status": "skipped"} -->
 * **Promotion**: [候補の出典](raw/reviews/20261010T192656Z-pr-3771.md) — unresolved <!-- rite-promotion: {"candidate": "9d9ee3274515ed3c0f0078d78996a5495089b0687db23ab9d12cfbbb1588408f", "raw": "raw/reviews/20261010T192656Z-pr-3771.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
 * **Promotion**: [候補の出典](raw/fixes/20261010T193115Z-pr-3771.md) — unresolved <!-- rite-promotion: {"candidate": "8d060450a96c53bdc6a34ae97b20a6098042633f9291d5a71849312f576594b4", "raw": "raw/fixes/20261010T193115Z-pr-3771.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
