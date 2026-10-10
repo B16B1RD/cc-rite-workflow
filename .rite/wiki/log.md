@@ -585,6 +585,9 @@
 * **Skip**: [20261010T084034Z-pr-3752.md](raw/reviews/20261010T084034Z-pr-3752.md) — rite の Wiki ログ読取・停止条件・検証手順の知見は、プロジェクト規約に従い plugin の実装・テスト・手順書で扱うため Wiki ページ化しない。
 * **Skip**: [20261010T091826Z-pr-3752.md](raw/reviews/20261010T091826Z-pr-3752.md) — rite の Wiki ログ読取・停止条件・検証手順の知見は、プロジェクト規約に従い plugin の実装・テスト・手順書で扱うため Wiki ページ化しない。
 * **Skip**: [20261010T093703Z-pr-3752.md](raw/reviews/20261010T093703Z-pr-3752.md) — rite の Wiki ログ読取・停止条件・検証手順の知見は、プロジェクト規約に従い plugin の実装・テスト・手順書で扱うため Wiki ページ化しない。
+* **lint:warning** — contradictions=0, stale=74, orphans=0, missing_concept=1, unregistered_raw=768, broken_refs=0
+  * auto comparison: WIKI_CONTRADICTION_CHECK=complete; changed=0; screened=0; candidates=0; excluded=0; compared=0; 対象なし（ページ変更なし）。全体の索引・source 登録・リンク検査は実行済み。
+  * missing_concept: raw/fixes/20261009T162241Z-pr-3728.md — 処理済み raw に対応する sources 登録とスキップ記録がない。
 
 ## 2026-10-07
 
