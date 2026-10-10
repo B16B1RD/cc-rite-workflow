@@ -12,6 +12,9 @@
 * **lint:warning** — contradictions=0, stale=76, orphans=0, missing_concept=1, unregistered_raw=795, broken_refs=0; WIKI_CONTRADICTION_CHECK=complete; changed=0, screened=0, candidates=0, excluded=0, compared=0, carried=0, resolved=0; elapsed_seconds=0, read_bytes=0; 理由: 対象なし（昇格候補のみを保存し、ページ本文の変更なし）。
   * 欠落概念: [出典未登録の修正記録](raw/fixes/20261009T162241Z-pr-3728.md) — 抽出済みだが、対応ページの出典とスキップ記録の両方が無い。
 
+* **lint:warning** — contradictions=0, stale=76, orphans=0, missing_concept=1, unregistered_raw=798, broken_refs=0; WIKI_CONTRADICTION_CHECK=complete; changed=0, screened=0, candidates=0, excluded=0, compared=0, carried=0, resolved=0; elapsed_seconds=0, read_bytes=0; 理由: 対象なし（rite の昇格候補のみを保存し、ページ本文の変更なし）。
+  * 欠落概念: [出典未登録の修正記録](raw/fixes/20261009T162241Z-pr-3728.md) — 抽出済みだが、対応ページの出典とスキップ記録の両方が無い。
+
 ## 2026-10-10
 
 * **Update**: [新規 exit 1 経路 / sentinel type 追加時は同一ファイル内 canonical 一覧を同期更新し、『N site 対称化』counter 宣言を drift 検出アンカーとして活用する](pages/heuristics/canonical-list-count-claim-drift-anchor.md) — 除外規則の同期漏れのfix 結果を統合
