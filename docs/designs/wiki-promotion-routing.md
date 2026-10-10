@@ -180,4 +180,4 @@ raw・skip 理由・log・候補の完了報告は既にあるため、候補の
 
 この文書の確認では (a)(b)(c) の採否と根拠、代表例での判定、固定 commit の件数、無印例、変更ファイルの限定を検証する。文書内の相対リンクと禁止される番号参照は、このファイルを明示して確認する。`git diff --check` で差分の空白を確認し、計測コードを実行して値を照合する。
 
-既存の `bash plugins/rite/scripts/tests/distribution-boundary-promotion-contract.test.sh` は plugin の配布境界・manifest・リンクを検査する。この設計文書は `docs/` にあり、その scan 範囲には入らないため、同テストだけで文書検証済みとは扱わない。機構に取り込み済みとした tempfile の代表例は `bash plugins/rite/hooks/tests/tempfile-lib.test.sh` で確認する。検証が失敗したら文書か判定を修正してから commit・PR 作成へ進む。
+既存の `bash plugins/rite/scripts/tests/distribution-boundary-promotion-contract.test.sh` は plugin 配下の環境固有トークン・symlink・昇格分類を検査する。この設計文書は `docs/` にあり、その scan 範囲には入らないため、同テストだけで文書検証済みとは扱わない。機構に取り込み済みとした tempfile の代表例は `bash plugins/rite/hooks/tests/tempfile-lib.test.sh` で確認する。検証が失敗したら文書か判定を修正してから commit・PR 作成へ進む。
