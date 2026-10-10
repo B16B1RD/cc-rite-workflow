@@ -31,9 +31,6 @@ squash を禁じて merge commit でマージするリポジトリがある（�
 別の設計が要るため。不正値を squash に倒すと、merge commit を求めるリポジトリで黙って squash して
 しまうので、helper は exit 1 で止める。
 
-方式は helper の出力を `--{merge_method}` へ literal substitute して渡す。シェル変数の形にすると、
-実行前 guard が merge の argv を静的に確かめられなくなる。
-
 develop → main の昇格を検証する `release-promotion-verify.sh` は squash 由来のコミットだけを前提にするが、
 これは plugin 自身のリリース手順専用で、配布先の `merge.method` とは関係しない。
 

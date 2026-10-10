@@ -65,7 +65,7 @@ The command prefix `rite` was chosen for:
 | `/rite:issue-edit` | Interactively edit existing Issue | `<Issue number>` |
 | `/rite:open` | Start work end-to-end (branch → plan → implement → lint → draft PR) | `<Issue number>` |
 | `/rite:iterate` | Loop review ⇄ fix until mergeable | `<PR number>` |
-| `/rite:merge` | Squash-merge the PR | `<PR number>` |
+| `/rite:merge` | Merge the PR with the method set in `merge.method` (squash by default) | `<PR number>` |
 | `/rite:pr-create` | Create draft PR | `[PR title]` |
 | `/rite:ready` | Mark as Ready for review | `[PR number]` |
 | `/rite:pr-review` | Multi-reviewer review | `[PR number]` |
@@ -118,7 +118,7 @@ Resuming a saved comparison first reconciles unfinished writes and commits the c
 /rite:ready <pr> (Ready for Review)
  │ Status role: in_review
  ▼
-/rite:merge <pr> (Squash-Merge)
+/rite:merge <pr> (merge.method, default squash)
  │
  ▼
 /rite:cleanup <pr> (Post-Merge Cleanup)
@@ -479,6 +479,7 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 | `issue.auto_decompose_threshold` | Threshold for skipping the decomposition prompt |
 | `review.*` | `loop.*` (convergence_monitoring / auto_propagation_scan / pre_commit_drift_check), `doc_heavy.*`, `fact_check.*` (incl. `use_context7`), `debate.*`, `security_reviewer.*`, `confidence_threshold`. **DEPRECATED**: `observed_likelihood_gate.*` / `fail_fast_first.*` were removed entirely — see CONFIGURATION.md for the deprecation note. The `separate_issue_creation.*` keys were removed entirely along with the `[fix:issues-created:N]` sentinel and `fix.md` Phase 4.3 |
 | `fix.*` | **DEPRECATED**: `severity_gating.*` and `fail_fast_response` were removed entirely (no config surface remains) |
+| `merge.method` | How `/rite:merge` merges the PR — `squash` (default when the key is absent) or `merge`; any other value stops the merge |
 | `verification.*` | `run_tests_before_pr`, `acceptance_criteria_check` |
 | `tdd.*` | Canon TDD cycle in the implementation phase — `enabled` (default `true`, opt-out). When on, `/rite:issue-implement` (§ 5.0.T) drives a test-list → Red → Green → Refactor cycle seeded from the Issue's Section 6 Test Specification; degrades to test-list discipline only when `commands.test` is unset, and is skipped entirely when `enabled: false`. See [CONFIGURATION.md](./CONFIGURATION.md) `### tdd` |
 | `parallel.*` | Parallel implementation (per-Issue sub-agent fan-out within one session) |

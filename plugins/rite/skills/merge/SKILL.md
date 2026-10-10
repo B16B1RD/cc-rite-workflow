@@ -330,7 +330,7 @@ fi
 | 終了 status | アクション |
 |------------|-----------|
 | `[merge:returned-to-caller]` emit | ステップ 3 完了通知へ |
-| `[merge:error]` + `[CONTEXT] MERGE_METHOD=invalid` | 設定の誤りで、`gh pr merge` は実行していない。再試行も AskUserQuestion もせずに停止し、stderr の値・使える値（squash / merge）・rite-config.yml の場所を示して、`merge.method` を直してから再実行するよう案内する |
+| `[merge:error]` + `[CONTEXT] MERGE_METHOD=invalid` | 設定の誤りで、`gh pr merge` は実行していない。再試行も質問もせずに停止し、stderr の値・使える値（squash / merge）・rite-config.yml の場所を示して、`merge.method` を直してから再実行するよう案内する |
 | `[merge:error]` + `[CONTEXT] MERGE_ERROR=behind` | 停止し、上の復旧手順を案内する。手順 2 は [fix-plan の base 取り込み](../fix/references/fix-plan.md#base-取り込み) を使用する（対象 Issue・branch・worktree を照合して fix phase へ記録してから実施する）。reviewed HEAD が変わるため、再レビューと全 CI job の完了・成功確認を飛ばさない。base を取り込む前の merge 再試行・`/rite:recover` だけの再開・「再試行 / 中止」の質問へ合流しない。保護設定や ruleset は変更しない |
 | `[merge:error]` emit | bash block が stderr に gh error 詳細を出力済み。LLM は先に stderr から原因を分類する。ネットワーク・API の一時障害なら承認済みの merge を 1 回だけ再実行し、conflict・必須チェック未通過・権限不足なら原因と対処を示して停止する。どれとも判定できないときだけ、原因を question_resolution 規則 6 の 4 要素で示して AskUserQuestion で「再試行 / 中止」を提示 |
 
