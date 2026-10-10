@@ -599,6 +599,23 @@
 * **lint:warning** — contradictions=0, stale=74, orphans=0, missing_concept=1, unregistered_raw=776, broken_refs=0。自動比較: WIKI_CONTRADICTION_CHECK=complete; changed=0; screened=0; candidates=0; excluded=0; compared=0; carried=0; resolved=0（対象なし。比較本文の読取量 0 bytes、本文比較時間 0 秒）。
   * 欠落概念: [修正結果](raw/fixes/20261009T162241Z-pr-3728.md) — 取り込み済みだが出典登録とスキップ記録がなく、外部出力の形式固定と失敗分類に関する経験則を持つ。
 
+* **Skip**: [修正結果](raw/fixes/20261010T142108Z-pr-3762.md) — rite workflow 自体の実装・検証記録であり、プロジェクトドメインの経験則として Wiki ページへ統合しない
+* **Skip**: [修正結果](raw/fixes/20261010T152527Z-pr-3769.md) — rite workflow 自体の実装・検証記録であり、プロジェクトドメインの経験則として Wiki ページへ統合しない
+* **Skip**: [修正結果](raw/fixes/20261010T154939Z-pr-3769.md) — rite workflow 自体の実装・検証記録であり、プロジェクトドメインの経験則として Wiki ページへ統合しない
+* **Skip**: [修正結果](raw/fixes/20261010T160238Z-pr-3769.md) — rite workflow 自体の実装・検証記録であり、プロジェクトドメインの経験則として Wiki ページへ統合しない
+* **Skip**: [修正結果](raw/fixes/20261010T164433Z-pr-3769.md) — rite workflow 自体の実装・検証記録であり、プロジェクトドメインの経験則として Wiki ページへ統合しない
+* **Skip**: [修正結果](raw/fixes/20261010T172359Z-pr-3769.md) — rite workflow 自体の実装・検証記録であり、プロジェクトドメインの経験則として Wiki ページへ統合しない
+* **Skip**: [レビュー結果](raw/reviews/20261010T135356Z-pr-3761.md) — rite workflow 自体の実装・検証記録であり、プロジェクトドメインの経験則として Wiki ページへ統合しない
+* **Skip**: [レビュー結果](raw/reviews/20261010T141446Z-pr-3762.md) — rite workflow 自体の実装・検証記録であり、プロジェクトドメインの経験則として Wiki ページへ統合しない
+* **Skip**: [レビュー結果](raw/reviews/20261010T143743Z-pr-3762.md) — rite workflow 自体の実装・検証記録であり、プロジェクトドメインの経験則として Wiki ページへ統合しない
+* **Skip**: [レビュー結果](raw/reviews/20261010T145319Z-pr-3769.md) — rite workflow 自体の実装・検証記録であり、プロジェクトドメインの経験則として Wiki ページへ統合しない
+* **Skip**: [レビュー結果](raw/reviews/20261010T154156Z-pr-3769.md) — rite workflow 自体の実装・検証記録であり、プロジェクトドメインの経験則として Wiki ページへ統合しない
+* **Skip**: [レビュー結果](raw/reviews/20261010T160016Z-pr-3769.md) — rite workflow 自体の実装・検証記録であり、プロジェクトドメインの経験則として Wiki ページへ統合しない
+* **Skip**: [レビュー結果](raw/reviews/20261010T161101Z-pr-3769.md) — rite workflow 自体の実装・検証記録であり、プロジェクトドメインの経験則として Wiki ページへ統合しない
+* **Skip**: [レビュー結果](raw/reviews/20261010T163523Z-pr-3769.md) — rite workflow 自体の実装・検証記録であり、プロジェクトドメインの経験則として Wiki ページへ統合しない
+* **Skip**: [レビュー結果](raw/reviews/20261010T171333Z-pr-3769.md) — rite workflow 自体の実装・検証記録であり、プロジェクトドメインの経験則として Wiki ページへ統合しない
+* **Skip**: [レビュー結果](raw/reviews/20261010T174423Z-pr-3769.md) — rite workflow 自体の実装・検証記録であり、プロジェクトドメインの経験則として Wiki ページへ統合しない
+
 ## 2026-10-07
 
 * **Skip**: [レビュー結果](raw/reviews/20261006T224853Z-pr-3705.md) — 指摘なしのレビュー記録のみで新規経験則なし
