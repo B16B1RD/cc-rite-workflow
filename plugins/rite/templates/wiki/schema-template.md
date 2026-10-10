@@ -54,7 +54,7 @@ confidence: high | medium | low
 | `created` | yes | 初出日時（ISO 8601）。rite 独自拡張。`generated.at` とは役割が異なる |
 | `generated` | yes | OKF trust。`by` は `rite-wiki-ingest/<model-id>`、`at` は最終内容変更時刻 |
 | `verified` | no | 補強サイクルでのみ `{by, at}` を追記。空配列は書かない。改訂・混在サイクルでは追記しない |
-| `status` | no | `deprecated` のときのみ明示（現行 ingest の新規/追記/統合では書かない） |
+| `status` | no | `deprecated` のときのみ明示（ingest は、同じ PR の後の raw がページの結論全体を否定したときだけ書く。新規/追記/統合では書かない） |
 | `stale_after` | no | 本文に絶対日付拘束がある経験則にのみ `YYYY-MM-DD` |
 | `sources` | yes | 元データへの参照（空配列可）。各エントリの `resource` は raw ファイルパス |
 | `tags` | no | 自由タグ（検索補助） |

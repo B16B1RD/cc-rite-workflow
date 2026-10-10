@@ -14,7 +14,7 @@ Wiki データは `.rite/wiki/` 配下に3層構造で格納されます。
 .rite/wiki/
 ├── SCHEMA.md                 # Schema: 蓄積規約（人間 + LLM 共同管理）
 ├── index.md                  # 全ページのカタログ（Ingest 時に自動更新）
-├── log.md                    # 変更履歴ログ（OKF 形式・人間向け・append-only）
+├── log.md                    # 変更履歴ログ（OKF 形式・人間向け・append-only。lint エントリの「未解消の矛盾」行だけは lint と ingest が読む）
 ├── raw/                      # Raw Sources（不変の一次データ）
 │   ├── reviews/              #   レビュー結果
 │   ├── retrospectives/       #   Issue 振り返り
@@ -345,7 +345,7 @@ rite Wiki bundle（`.rite/wiki/`）は [Open Knowledge Format (OKF) v0.2](https:
 |------|-------------|---------|
 | **page frontmatter** | concept 種別を `type:`（`patterns` / `heuristics` / `anti-patterns`）で宣言し、`description:` を持つ | `templates/wiki/page-template.md` |
 | **index.md** | frontmatter に `okf_version: "0.2"` を持ち、ページカタログを `## ページ一覧` の 5 列テーブル（列順: ページ / ドメイン / サマリー / 更新日 / 確信度）で表現。箇条書きテンプレートが配布されていた期間に初期化された bundle の index.md は箇条書きのまま残るため、consumer は行単位で両形式を受けることが要件（本リポジトリの wiki ブランチでは未観測。両形式対応は外部 bundle への防御的サポート）。`/rite:wiki-query` の Pass 1 は行単位で両形式を受ける（テーブル行はセルの `\|` エスケープを復元し、ページ列の最初のリンクを候補にする） | `templates/wiki/index-template.md` |
-| **log.md** | 変更履歴を OKF 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、新しい順、append-only、人間向け）で記録 | `templates/wiki/log-template.md` |
+| **log.md** | 変更履歴を OKF 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、新しい順、append-only、人間向け）で記録。lint エントリの「未解消の矛盾」行だけは次回の lint と ingest が読む未解消の記録 | `templates/wiki/log-template.md` |
 | **raw frontmatter** | ingest skip 状態を `ingest_status: skipped` + `skip_reason:` で保持（skip の Source of Truth。log.md には保持しない） | `skills/wiki-ingest/SKILL.md` ステップ 5 |
 | **SCHEMA.md** | 蓄積規約（人間 + LLM 共同管理）。OKF 予約ファイルとして bundle ルートに常駐 | `templates/wiki/schema-template.md` |
 

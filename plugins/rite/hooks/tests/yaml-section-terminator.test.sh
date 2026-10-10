@@ -83,6 +83,8 @@ NOT_TERMINATORS = {
     ("hooks/scripts/lib/projects-status-config.sh", "^[a-z_]+[ \\t]*:[ \\t]*"),
     ("hooks/scripts/lib/projects-status-config.sh", "^[a-zA-Z_][a-zA-Z_0-9-]*[ \\t]*:"),
     ("skills/setup/SKILL.md", "^[a-zA-Z_][a-zA-Z_0-9-]*[ \\t]*:"),
+    # Selects the indented sub-lines of a log.md bullet; log.md is not YAML.
+    ("hooks/scripts/wiki-lint-open-contradictions.sh", "^[[:space:]]"),
 }
 
 # Terminators allowed to end a section on a column-0 comment. They are not
