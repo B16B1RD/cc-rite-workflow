@@ -704,7 +704,7 @@ echo "[CONTEXT] PR_CREATE_WORKDIR=$pr_workdir"
 3. 新規生成または描き直しで SVG を選んだときだけ `{PR_CREATE_WORKDIR}/diagram.svg` ← テーマ中立の図。本文の参照と添付は同じ絶対パスを使う。再掲時は書かない
 4. `{PR_CREATE_WORKDIR}/attachments.json` ← その SVG の絶対パス配列。再掲・図なし・Mermaid は必ず `[]` を書く
 
-(C) の前に [記号の作成前検査](../../templates/issue/template-structure.md#記号の作成前検査issue--pr-共通) を body に実行し、違反時は (C) を呼ばず body を再生成する。続けて [読みやすさ点検](../../references/body-readability-check.md) を title / body と本文参照のローカル SVG に実行する。共通の図条件検査を通過した本文だけを対象にし、書き直し後も再検査して作成用ファイルへ反映する。点検が body を書き直したときは、記号の作成前検査も (C) の直前にもう一度実行する。
+(C) の前に [記号の作成前検査](../../templates/issue/template-structure.md#記号の作成前検査issue--pr-共通) を body に実行し、違反時は (C) を呼ばず body を再生成する。続けて [読みやすさ点検](../../references/body-readability-check.md) を title / body と本文参照のローカル SVG に実行する。共通の図条件検査を通過した本文だけを対象にし、書き直し後も再検査して作成用ファイルへ反映する。点検が body を書き直したときは、記号の作成前検査も (C) の直前にもう一度実行する。共通手順の「作成する版の記録と照合」に従い、`{PR_CREATE_WORKDIR}/readability_guard.py` に照合コード、`readability-record.json` にこの PR の入力の記録を保存する。照合失敗では作業ファイルを保持して共通手順 2 へ戻る。
 
 **(C) gh pr create（単一 bash block）**
 
@@ -738,6 +738,8 @@ while IFS= read -r attachment; do
   [ -f "$attachment" ] || { echo "ERROR: attachment not found: $attachment" >&2; exit 1; }
   attach_args+=(--attach "$attachment")
 done < "$pr_workdir/attachment-paths"
+# 作成直前に照合する。不一致では cleanup を解除し再点検用ファイルを保持する。
+python3 "$pr_workdir/readability_guard.py" check --title-file "$pr_workdir/pr_title.txt" --body-file "$pr_workdir/pr_body.md" --record-file "$pr_workdir/readability-record.json" || { trap - EXIT; exit 1; }
 gh pr create -R {owner_repo} --draft --base "{base_branch}" --head "{branch_name}" --title "$pr_title" --body-file "$pr_workdir/pr_body.md" "${attach_args[@]}"
 ```
 
@@ -876,6 +878,8 @@ rm -f "$pr_info_tmp"
 
 ### 4.2 Completion Report
 
+共通手順の照合出力から点検結果と警告全文を完了レポートに保持する。E2E の表示省略時も caller へ返し、cleanup 後に失わない。
+
 ```
 ドラフト PR #{pr_number} を作成しました
 
@@ -883,6 +887,8 @@ rm -f "$pr_info_tmp"
 URL: {pr_url}
 
 関連 Issue: #{issue_number}
+
+読みやすさ点検: {共通照合出力の点検結果と警告全文}
 
 次のステップ:
 1. PR の内容を確認

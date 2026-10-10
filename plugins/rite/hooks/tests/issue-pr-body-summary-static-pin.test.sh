@@ -519,7 +519,12 @@ for mode in empty spaces failure; do
   case_dir="$work/$mode"
   mkdir "$case_dir"
   printf 'Plain title\n' > "$case_dir/pr_title.txt"
-  printf 'PR body\n' > "$case_dir/pr_body.md"
+  printf 'PR body\n<details>Contract</details>\n' > "$case_dir/pr_body.md"
+  # Prepare the real pre-create receipt while retaining the attachment fixtures.
+  awk '/^```python$/ { active=1; next } active && /^```$/ { exit } active { print }' \
+    "$PLUGIN_ROOT/references/body-readability-check.md" > "$case_dir/readability_guard.py"
+  python3 "$case_dir/readability_guard.py" record --title-file "$case_dir/pr_title.txt" \
+    --body-file "$case_dir/pr_body.md" --record-file "$case_dir/readability-record.json" --status reviewed
   attachment="$case_dir/diagram with spaces.svg"
   printf '<svg/>\n' > "$attachment"
   if [ "$mode" = empty ]; then printf '[]\n' > "$case_dir/attachments.json"; else jq -n --arg a "$attachment" '[$a]' > "$case_dir/attachments.json"; fi
@@ -537,7 +542,7 @@ for mode in empty spaces failure; do
   actual_args=$(jq -c '[range(length) as $i | select(.[$i] == "--attach") | .[$i+1]]' "$work/$mode.argv")
   assert "PR $mode attachment argv" "$expected_args" "$actual_args"
   if [ "$mode" = failure ]; then
-    assert 'failed upload preserves PR URL' 'https://github.com/example/repo/pull/42' "$(cat "$work/$mode.out")"
+    assert 'failed upload preserves PR URL' 'https://github.com/example/repo/pull/42' "$(tail -1 "$work/$mode.out")"
     assert 'failed upload preserves stderr' 'upload failed: permission denied' "$(cat "$work/$mode.err")"
   fi
 done
