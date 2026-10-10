@@ -14,9 +14,11 @@
 # headings newest-first and appends bullets at the end of a date section, so the
 # latest entry is the LAST result bullet of the FIRST date section that has one.
 # Only that six-field result bullet is a record: other `**lint:...**` bullets
-# (scope notes, older formats without `contradictions=`) are skipped. An open line
-# under such a bullet (for example a result bullet whose heading lost the ` — `
-# separator) stops the read instead of being dropped with the bullet.
+# (scope notes, older formats without `contradictions=`) are skipped. Open lines
+# are written only directly under a result bullet, so an open line the chosen
+# bullet does not take in (under a bullet whose heading lost its format, or under
+# a non-lint bullet) stops the read, unless a result bullet later in the same date
+# section supersedes it.
 # Result bullets written before the fixed lines existed read as zero lines; the
 # count check below still applies to them.
 #
@@ -39,7 +41,7 @@
 # Exit codes:
 #   0  Normal (no lint entry yet also yields n_open=0)
 #   1  Fail-fast (placeholder residue / unknown branch_strategy / log.md unreadable /
-#      malformed open line / open line under a non-result lint bullet /
+#      malformed open line / open line outside the latest result bullet /
 #      contradictions=N disagrees with the number of open lines)
 #   2  Invocation error
 #
@@ -65,7 +67,7 @@ Options:
 Exit codes:
   0  Normal
   1  Fail-fast (placeholder residue / unknown branch_strategy / log.md unreadable /
-     malformed open line / open line under a non-result lint bullet / count mismatch)
+     malformed open line / open line outside the latest result bullet / count mismatch)
   2  Invocation error
 EOF
 }
@@ -126,39 +128,36 @@ fi
 # the indented lines that directly follow the bullet.
 if ! entry=$(printf '%s\n' "$log_content" | awk '
   /^## [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/ {
-    if (chosen) exit
+    if (chosen || stray_nr) exit
     in_entry = 0
-    in_other = 0
     next
   }
   /^\* \*\*lint:(clean|warning)\*\* — contradictions=[0-9]/ {
     chosen = 1
     in_entry = 1
-    in_other = 0
+    stray_nr = 0
     out = $0 "\n"
-    next
-  }
-  /^\* \*\*lint:/ {
-    in_entry = 0
-    in_other = 1
     next
   }
   in_entry && /^[[:space:]]/ {
     if ($0 ~ /^[[:space:]]+[*-] 未解消の矛盾:/) out = out $0 "\n"
     next
   }
-  in_other && /^[[:space:]]+[*-] 未解消の矛盾:/ {
-    print "ERROR: 6 フィールドの結果行でない lint bullet の下に未解消の矛盾の行があります (log.md " NR " 行目): " $0 > "/dev/stderr"
-    bad = 1
-    exit
-  }
-  in_other && /^[[:space:]]/ { next }
-  {
+  /^[[:space:]]*[*-] 未解消の矛盾:/ {
+    if (!stray_nr) {
+      stray_nr = NR
+      stray_line = $0
+    }
     in_entry = 0
-    in_other = 0
+    next
   }
+  { in_entry = 0 }
   END {
-    if (bad) exit 1
+    if (stray_nr) {
+      print "ERROR: 直近の lint 結果行に取り込まれない未解消の矛盾の行があります (log.md " stray_nr " 行目): " stray_line > "/dev/stderr"
+      print "  対処: /rite:wiki-lint（--auto なし）を実行して、全ページ比較による新しい記録を作ってください" > "/dev/stderr"
+      exit 1
+    }
     printf "%s", out
   }
 '); then

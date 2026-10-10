@@ -27,6 +27,9 @@
 #   TC-19 a non-result lint bullet after the result bullet → the result bullet is read
 #   TC-20 only older-format lint bullets without contradictions= → no record, 0 open
 #   TC-21 an open line under a result bullet whose heading lost ` — ` → exit 1, no marker block
+#   TC-22 a broken bullet with an open line, then a result bullet in the same section → the result bullet is read
+#   TC-23 an open line under a `- **lint:` bullet → exit 1
+#   TC-24 an open line under a non-lint bullet after the result bullet → exit 1
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -117,7 +120,6 @@ $OPEN_AB
   * 除外: 論点が異なる組
 $OPEN_CD
 * **Update**: [y](pages/patterns/y.md) — fix 結果を統合
-$OPEN_OLD
 
 ## 2026-10-10
 
@@ -382,13 +384,62 @@ repo=$(make_same_repo tc21 "# Directory Update Log
 ## 2026-10-12
 
 * **lint:warning**: contradictions=1, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0
+  * 比較: [a](pages/heuristics/a.md) ↔ [b](pages/anti-patterns/b.md) — 矛盾。方針逆転
 $OPEN_AB
 
 ## 2026-10-11
 
 * **lint:clean** — contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0")
 run_helper "$repo" --branch-strategy same_branch
-expect_stop "open line under a non-result lint bullet stops" 1 '6 フィールドの結果行でない lint bullet の下に未解消の矛盾の行があります'
+expect_stop "open line outside the result bullet stops" 1 '直近の lint 結果行に取り込まれない未解消の矛盾の行があります'
+if grep -q '対処: /rite:wiki-lint（--auto なし）' <<<"$HELPER_STDERR"; then
+  pass "the stop names the recovery"
+else
+  fail "no recovery line: $HELPER_STDERR"
+fi
+
+echo "TC-22: a broken bullet with an open line, then a result bullet in the same section"
+# A manual lint appends a new record to the same day's section; that record
+# supersedes the broken bullet above it, so the read must not stay stuck
+repo=$(make_same_repo tc22 "# Directory Update Log
+
+## 2026-10-12
+
+* **lint:warning**: contradictions=1, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0
+$OPEN_AB
+* **lint:warning** — contradictions=1, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0
+$OPEN_CD")
+run_helper "$repo" --branch-strategy same_branch
+expect_block "the later result bullet is read" '---open_contradictions_begin---
+.rite/wiki/pages/patterns/c.md|.rite/wiki/pages/patterns/d.md|重複情報|同じ結論を 2 ページが持つ
+---open_contradictions_end---
+n_open=1'
+
+echo "TC-23: an open line under a dash lint bullet"
+repo=$(make_same_repo tc23 "# Directory Update Log
+
+## 2026-10-12
+
+- **lint:warning** — contradictions=1, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0
+$OPEN_AB
+
+## 2026-10-11
+
+* **lint:clean** — contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0")
+run_helper "$repo" --branch-strategy same_branch
+expect_stop "dash bullet open line stops" 1 '直近の lint 結果行に取り込まれない未解消の矛盾の行があります'
+
+echo "TC-24: an open line under a non-lint bullet after the result bullet"
+repo=$(make_same_repo tc24 "# Directory Update Log
+
+## 2026-10-12
+
+* **lint:warning** — contradictions=1, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0
+$OPEN_CD
+* **Update**: [y](pages/patterns/y.md) — fix 結果を統合
+$OPEN_AB")
+run_helper "$repo" --branch-strategy same_branch
+expect_stop "open line under a non-lint bullet stops" 1 '直近の lint 結果行に取り込まれない未解消の矛盾の行があります'
 
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
