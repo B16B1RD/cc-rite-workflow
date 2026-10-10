@@ -30,7 +30,7 @@
 #   TC-22 a broken bullet with an open line, then a result bullet in the same section → the result bullet is read
 #   TC-23 an open line under a `- **lint:` bullet → exit 1
 #   TC-24 an open line under a non-lint bullet after the result bullet → exit 1
-#   TC-25 stray open lines with `-` / `+` markers or no indent → exit 1; `+` under the result bullet is read
+#   TC-25 stray open lines with `-` / `+` markers or no indent → exit 1; `-` / `+` under the result bullet are read
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -473,17 +473,19 @@ $stray")
   run_helper "$repo" --branch-strategy same_branch
   expect_stop "stray '${stray:0:4}' stops" 1 '直近の lint 結果行に取り込まれない未解消の矛盾の行があります'
 done
-repo=$(make_same_repo tc25-plus "# Directory Update Log
+for marker in - +; do
+  repo=$(make_same_repo "tc25-under-$tc25_n$marker" "# Directory Update Log
 
 ## 2026-10-12
 
 * **lint:warning** — contradictions=1, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0
-  + ${OPEN_CD#  \* }")
-run_helper "$repo" --branch-strategy same_branch
-expect_block "a '+' line under the result bullet is read" '---open_contradictions_begin---
+  $marker ${OPEN_CD#  \* }")
+  run_helper "$repo" --branch-strategy same_branch
+  expect_block "a '$marker' line under the result bullet is read" '---open_contradictions_begin---
 .rite/wiki/pages/patterns/c.md|.rite/wiki/pages/patterns/d.md|重複情報|同じ結論を 2 ページが持つ
 ---open_contradictions_end---
 n_open=1'
+done
 
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
