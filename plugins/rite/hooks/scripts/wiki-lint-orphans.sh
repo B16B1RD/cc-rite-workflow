@@ -254,6 +254,7 @@ index_defect_lines=$(printf '%s\n' "$index_content" | LC_ALL=C awk '
     }
   }
   END {
+    if (in_comment) { print "index.md の HTML コメントが閉じられないままファイル終端に達しました" > "/dev/stderr"; exit 2 }
     if (has_list_head) for (i = 1; i <= n; i++) if (!inl[i]) print "outside_section: " keys[i]
     for (j = 1; j <= m; j++) if (cnt[order[j]] >= 2) print "duplicate: " order[j] " (" cnt[order[j]] " 行)"
   }

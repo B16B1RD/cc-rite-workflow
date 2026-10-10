@@ -24,6 +24,7 @@
 #   TC-15 awk 失敗は rc=1 + ERROR で止まり、n_index_defects を出さない
 #   TC-16 前文の HTML コメント内の記法例は登録行に数えない
 #   TC-17 節外の散文リンクは数えず、節外の表行は数える
+#   TC-18 閉じていない HTML コメントは rc=1 + ERROR で止まる
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -340,12 +341,18 @@ repo=$(make_same_branch_sandbox tc16 1 '# Wiki Index
 |---------|------|
 | [Pattern A](pages/patterns/a.md) | patterns |
 | [Heuristic B](./pages/heuristics/b.md) | heuristics |
+
+## 統計
+
+| [Heuristic B](pages/heuristics/b.md) | heuristics |
 ')
 run_helper "$repo" "$PAGES_3" --branch-strategy same_branch
+# コメントの後ろの節外の表行は検出する (期待 2 件)。コメントが閉じない変異では 0 件になって落ちる。
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'n_index_defects=0' \
-   && ! printf '%s\n' "$HELPER_STDOUT" | grep -c >/dev/null '^outside_section:'; then
-  pass "TC-16 コメント内の記法例を節外の登録行と誤検出しない"
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'n_index_defects=2' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'outside_section: pages/heuristics/b\.md' \
+   && ! printf '%s\n' "$HELPER_STDOUT" | grep -c >/dev/null '{domain}'; then
+  pass "TC-16 コメント内の記法例を数えず、コメントの後ろの節外の行は検出する"
 else
   fail "TC-16 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
 fi
@@ -374,6 +381,31 @@ if [ "$HELPER_RC" -eq 0 ] \
   pass "TC-17 散文リンクは数えず、節外の表行だけを検出"
 else
   fail "TC-17 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+fi
+
+echo "=== TC-18: 閉じていない HTML コメントは問題なしとして通さず rc=1 + ERROR で止まる ==="
+repo=$(make_same_branch_sandbox tc18 1 '# Wiki Index
+
+<!-- 閉じ忘れたメモ
+
+## ページ一覧
+
+| タイトル | パス |
+|---------|------|
+| [Pattern A](pages/patterns/a.md) | patterns |
+
+## 統計
+
+| [Pattern A](pages/patterns/a.md) | patterns |
+')
+run_helper "$repo" "$PAGES_3" --branch-strategy same_branch
+if [ "$HELPER_RC" -eq 1 ] \
+   && printf '%s\n' "$HELPER_STDERR" | grep -c >/dev/null 'HTML コメントが閉じられない' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -c >/dev/null 'ERROR: index.md の登録行の重複・節外検査' \
+   && ! printf '%s\n' "$HELPER_STDOUT" | grep -c >/dev/null '^n_index_defects='; then
+  pass "TC-18 未閉鎖コメントで rc=1 + ERROR、n_index_defects を出さない"
+else
+  fail "TC-18 (rc=$HELPER_RC stdout=$HELPER_STDOUT stderr=$HELPER_STDERR)"
 fi
 
 echo ""
