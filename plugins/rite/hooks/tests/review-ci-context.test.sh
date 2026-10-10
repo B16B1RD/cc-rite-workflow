@@ -219,6 +219,26 @@ jq '.mergeable="BOGUS"' "$scratch/success.json" > "$scratch/first.json"
 completion mergeable-unrecognised
 completion_failed mergeable-unrecognised
 assert_grep 'unrecognised merge state is an error' "$scratch/final-out" 'REVIEW_CI_FINAL=error; reason=merge_state_unavailable'
+jq '.mergeable="UNKNOWN"' "$scratch/none.json" > "$scratch/first.json"
+cp "$scratch/none.json" "$scratch/later.json"
+jq 'del(.ci_status)' "$scratch/review.json" > "$scratch/review.tmp" && mv "$scratch/review.tmp" "$scratch/review.json"
+completion none-unknown-then-mergeable
+assert 'no required checks wait out an UNKNOWN merge state' 0 "$completion_rc"
+assert 'UNKNOWN merge state without required checks waits once' 1 "$(cat "$scratch/final-wait")"
+assert 'UNKNOWN merge state without required checks is re-fetched' 2 "$(cat "$scratch/query-count")"
+assert_grep 'no required checks pass only after the merge state is known' "$scratch/final-out" 'REVIEW_CI_FINAL=passed; state=none; waited=1'
+jq '.mergeable="UNKNOWN"' "$scratch/none.json" > "$scratch/first.json"
+cp "$scratch/first.json" "$scratch/later.json"
+completion none-unknown-timeout
+completion_failed none-unknown-timeout
+assert_grep 'no required checks with a stuck UNKNOWN merge state time out' "$scratch/final-out" 'REVIEW_CI_FINAL=error; reason=timeout'
+jq '.mergeable="UNKNOWN"' "$scratch/unhealthy.json" > "$scratch/first.json"
+cp "$scratch/first.json" "$scratch/later.json"
+completion unhealthy-unknown
+completion_failed unhealthy-unknown
+assert_grep 'failed checks are reported without waiting for the merge state' "$scratch/final-out" 'REVIEW_CI_FINAL=failed; reason=unhealthy'
+assert 'failed checks with UNKNOWN do not wait' false "$([ -f "$scratch/final-wait" ] && echo true || echo false)"
+assert 'failed checks with UNKNOWN query once' 1 "$(cat "$scratch/query-count")"
 jq '.mergeable="UNKNOWN"' "$scratch/pending.json" > "$scratch/first.json"
 cp "$scratch/conflict.json" "$scratch/later.json"
 completion unknown-then-conflict
