@@ -313,7 +313,7 @@ rite-workflow/
 │ ├── review-measured-gate.sh # pr-review 5.3.0.M 実測必須ゲートの決定論的分類
 │ ├── review-pr-recommendations.sh # pr-review 7.2 採否の出口 fix（ADOPT・origin=pr）の PR 内推奨の登録 / iterate 5.S 後の未着手判定と記録
 │ ├── acceptance-criteria-check.sh # pr-review 1.3.1 / 5.1.0.AC / 5.3.0.A / issue-implement 5.1.0.6.1 受入条件の抽出・判定表・最終整合検査
-│ ├── claim-source-check.sh # pr-review 5.3「主張と出典の照合」/ issue-implement 5.1.1.0 — 文書の追加行と PR 本文から主張と出典の組を全件抽出 (extract)・出典の確定事実を収集 (facts。gh 失敗は止めずに error を記録)・検証 agent の判定表を抽出結果と 1 対 1 で照合 (table)
+│ ├── claim-source-check.sh # pr-review 5.3「主張と出典の照合」/ issue-implement 5.1.1.0 — 文書の追加行と PR 本文から主張と出典の組を全件抽出 (extract)・出典の確定事実を収集 (facts。gh / git 失敗は止めずに error を記録)・検証 agent の判定表を抽出結果と 1 対 1 で照合 (table)
 │ ├── review-source-resolve.sh # fix.md 1.2.0 review source Priority chain 解決
 │ ├── review-target-comment-fetch.sh # fix target-comment reference: fetch / PR validation / handoff
 │ ├── migrate-review-state-to-1.1.sh # review-result schema 1.1.0 移行

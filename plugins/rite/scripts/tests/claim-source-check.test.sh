@@ -9,7 +9,8 @@
 #   facts   — Issue を閉じた PR・参照元 PR・closer (PR / コミット) / PR の変更ファイル / 切り捨ての印 /
 #             path:line の実在・行内容・範囲外・不在 / ローカルのコミットの変更ファイル / GitHub に無い SHA /
 #             存在しない番号 / 節の本文の切り出しと文書名の無い節 / gh 失敗・リポジトリ単位の NOT_FOUND・
-#             JSON 以外の応答を止めずに error として記録する
+#             JSON 以外の応答を止めずに error として記録する / git の ls-files・rev-parse の失敗を
+#             不在と断定せず (作業中のディレクトリへ落とさず) path:line と節の error として記録する
 #   table   — 正常 (件数・観点別の件数・報告行) / 見出し欠落 / ヘッダ不正 / ID 欠落・余剰・重複 /
 #             判定値不正 / 観点不正 / 支持で観点が欠ける / 主張なしの観点 / 根拠空 /
 #             不支持で Verification: が無い / 判定不能で Measurement-Blocked: が無い
@@ -333,6 +334,83 @@ if [ "$RC" -eq 0 ] && grep -q 'errors=2' <<<"$OUT" && [ -n "$issue_error" ] && [
   pass "facts: gh 失敗は止めずに出典ごとの error と WARNING に残す"
 else
   fail "facts: gh 失敗 (rc=$RC out=$OUT err=$ERR)"
+fi
+
+# git の失敗は不在と断定せず error に残す。部分パス (logger.js / spec.md) は ls-files まで進み、
+# 完全パス (src/logger.js) は git を呼ばずに解決される
+export REAL_GIT
+REAL_GIT=$(command -v git)
+failing_git() {
+  mkdir -p "$1"
+  cat > "$1/git" <<EOF
+#!/bin/bash
+for a in "\$@"; do
+  if [ "\$a" = "$2" ]; then echo "fatal: stub $2 failure" >&2; exit 128; fi
+done
+exec "\$REAL_GIT" "\$@"
+EOF
+  chmod +x "$1/git"
+}
+jq -n --arg sha "$head_sha" '{rows: [
+  {id: "CLAIM-1", origin: "x.md:1", text: "t", refs: [{kind: "file_line", token: "logger.js:3"}]},
+  {id: "CLAIM-2", origin: "x.md:2", text: "t", refs: [{kind: "file_line", token: "src/logger.js:3"}]},
+  {id: "CLAIM-3", origin: "x.md:3", text: "see spec.md", refs: [{kind: "section", token: "§1"}]},
+  {id: "CLAIM-4", origin: "x.md:4", text: "t", refs: [{kind: "sha", token: $sha}]},
+  {id: "CLAIM-5", origin: "x.md:5", text: "t", refs: [{kind: "issue", token: "#15"}]}
+]}' > "$TEST_DIR/rows-git.json"
+
+failing_git "$TEST_DIR/bin-ls-files" ls-files
+PATH="$TEST_DIR/bin-ls-files:$PATH" run_helper csc_fixture facts --rows "$TEST_DIR/rows-git.json" --repo o/r --out "$TEST_DIR/facts-ls.json"
+G="$TEST_DIR/facts-ls.json"
+if [ "$RC" -eq 0 ] && grep -q '^\[CONTEXT\] CLAIM_SOURCE_FACTS=ok; refs=4; errors=2$' <<<"$OUT" \
+    && [ "$(jq -c '.refs["file_line:logger.js:3"] | {error, command, exists: has("exists")}' "$G")" = '{"error":"fatal: stub ls-files failure","command":"git ls-files","exists":false}' ] \
+    && [ "$(jq -c '.sections["CLAIM-3"]' "$G")" = '[{"section":"§1","doc":"spec.md","error":"fatal: stub ls-files failure","command":"git ls-files"}]' ] \
+    && grep -q '^WARNING: claim-source facts: file_line:logger.js:3: fatal: stub ls-files failure$' <<<"$ERR" \
+    && grep -q '^WARNING: claim-source facts: section:CLAIM-3:§1:spec.md: fatal: stub ls-files failure$' <<<"$ERR"; then
+  pass "facts: git ls-files の失敗は path:line と節の error に残し、exists / doc_exists を出さない"
+else
+  fail "facts: ls-files 失敗 (rc=$RC out=$OUT err=$ERR facts=$(jq -c . "$G" 2>/dev/null))"
+fi
+if [ "$(jq -c '[.refs["file_line:src/logger.js:3"].exists, (.refs["file_line:src/logger.js:3"] | has("error")), (.refs["sha:" + $s] | has("error")), (.refs["issue:#15"] | has("error"))]' --arg s "$head_sha" "$G")" = '[true,false,false,false]' ]; then
+  pass "facts: ls-files が失敗しても完全パス・SHA・Issue の収集は続く"
+else
+  fail "facts: 他の出典の収集 $(jq -c '.refs' "$G")"
+fi
+
+# リポジトリの外では git が場所を答えない。同名のファイルが作業中のディレクトリにあっても読まない
+mkdir -p "$TEST_DIR/norepo/src"
+cp "$FIX/logger.in" "$TEST_DIR/norepo/src/logger.js"
+HELPER_REPO="$TEST_DIR/norepo" GIT_CEILING_DIRECTORIES="$TEST_DIR" run_helper csc_fixture facts --rows "$TEST_DIR/rows-git.json" --repo o/r --out "$TEST_DIR/facts-root.json"
+R="$TEST_DIR/facts-root.json"
+if [ "$RC" -eq 0 ] && grep -q '^\[CONTEXT\] CLAIM_SOURCE_FACTS=ok; refs=4; errors=3$' <<<"$OUT" \
+    && [ "$(jq -c '[.refs["file_line:logger.js:3"], .refs["file_line:src/logger.js:3"]] | map({command, exists: has("exists"), error: has("error")})' "$R")" = '[{"command":"git rev-parse --show-toplevel","exists":false,"error":true},{"command":"git rev-parse --show-toplevel","exists":false,"error":true}]' ] \
+    && [ "$(jq -c '.sections["CLAIM-3"][0] | {doc, command, doc_exists: has("doc_exists")}' "$R")" = '{"doc":"spec.md","command":"git rev-parse --show-toplevel","doc_exists":false}' ] \
+    && [ "$(jq -c '.refs["issue:#15"] | has("error")' "$R")" = 'false' ]; then
+  pass "facts: git rev-parse の失敗は作業中のディレクトリで続けず、ファイル系の出典と節を error にする"
+else
+  fail "facts: rev-parse 失敗 (rc=$RC out=$OUT facts=$(jq -c . "$R" 2>/dev/null))"
+fi
+
+# 同じ節に複数の文書名がある行は、文書ごとに error の件数と WARNING を残す
+jq -n '{rows: [{id: "CLAIM-1", origin: "x.md:1", text: "see spec.md and notes.md", refs: [{kind: "section", token: "§1"}]}]}' > "$TEST_DIR/rows-multi-doc.json"
+PATH="$TEST_DIR/bin-ls-files:$PATH" run_helper csc_fixture facts --rows "$TEST_DIR/rows-multi-doc.json" --repo o/r --out "$TEST_DIR/facts-multi-doc.json"
+if [ "$RC" -eq 0 ] && grep -q '^\[CONTEXT\] CLAIM_SOURCE_FACTS=ok; refs=0; errors=2$' <<<"$OUT" \
+    && [ "$(jq -c '.sections["CLAIM-1"] | map(.doc)' "$TEST_DIR/facts-multi-doc.json")" = '["spec.md","notes.md"]' ] \
+    && grep -q '^WARNING: claim-source facts: section:CLAIM-1:§1:spec.md: ' <<<"$ERR" \
+    && grep -q '^WARNING: claim-source facts: section:CLAIM-1:§1:notes.md: ' <<<"$ERR"; then
+  pass "facts: 同じ節に複数の文書があり git が失敗すると、文書ごとの error を数えて WARNING に名指す"
+else
+  fail "facts: 複数の文書の節 (rc=$RC out=$OUT err=$ERR)"
+fi
+
+# git が成功して文書が無い節は、従来どおり doc_exists: false で error にしない
+jq -n '{rows: [{id: "CLAIM-1", origin: "x.md:1", text: "see missing.md", refs: [{kind: "section", token: "§1"}]}]}' > "$TEST_DIR/rows-missing-doc.json"
+run_helper csc_fixture facts --rows "$TEST_DIR/rows-missing-doc.json" --repo o/r --out "$TEST_DIR/facts-missing-doc.json"
+if [ "$RC" -eq 0 ] && grep -q '^\[CONTEXT\] CLAIM_SOURCE_FACTS=ok; refs=0; errors=0$' <<<"$OUT" \
+    && [ "$(jq -c '.sections["CLAIM-1"]' "$TEST_DIR/facts-missing-doc.json")" = '[{"section":"§1","doc":"missing.md","doc_exists":false}]' ]; then
+  pass "facts: git が成功して文書が無い節は doc_exists=false のまま error にしない"
+else
+  fail "facts: 文書が無い節 (rc=$RC out=$OUT facts=$(jq -c '.sections' "$TEST_DIR/facts-missing-doc.json" 2>/dev/null))"
 fi
 
 echo "=== table ==="
