@@ -5,7 +5,7 @@ domain: "heuristics"
 promote: rite-plugin
 description: "採否ゲートは PR 起因の候補を外部へ起票せず保留するため、非 blocking でも残すと完了やマージ後の cleanup で止まる。停滞診断の見直しを受けたら blocking と同じ PR 起因の非 blocking もまとめて計画に入れ、mergeable 後に見つかった欠陥も手で commit せず計画を通して直す。"
 created: "2026-09-29T16:54:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
+generated: { by: "manual/claude-opus-5-5", at: "2026-10-10T02:51:06Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
 sources:
@@ -42,6 +42,7 @@ confidence: medium
 ## 関連ページ
 
 - [呼び出し元で挙動を分ける規則は、永続状態から推定せず呼び出し元が渡す明示の引数で分ける](./caller-context-branch-uses-explicit-flag-not-persisted-state.md)
+- [レビューループを止めるのは reviewer を減らすことではなく disposition 規則を変えること](./review-loop-stopped-by-disposition-not-fewer-reviewers.md) — 対象が異なる。あちらは 2 回以上書き換えた行への非実測の文言推敲で、先回りで直さず却下台帳へ送る。こちらは採否ゲートが PR 起因の欠陥として採用した候補で、同じ PR で直す
 
 ## ソース
 

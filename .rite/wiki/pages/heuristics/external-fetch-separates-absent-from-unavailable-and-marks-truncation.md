@@ -4,7 +4,7 @@ title: "外部からの取得は「存在しない」と「取得できない」
 domain: "heuristics"
 description: "取得の失敗を一律に error として扱うと「存在しない」という判定材料が「判定不能」に化け、上限で黙って切った一覧は否定の根拠に使われる。失敗の種類を分け、切り捨てを事実として記録し、判定側は印のある一覧を否定の根拠にしない。"
 created: "2026-10-09T19:10:23Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
+generated: { by: "manual/claude-opus-5-5", at: "2026-10-10T02:51:06Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20261009T154300Z-pr-3728.md"
@@ -12,8 +12,6 @@ sources:
     resource: "raw/fixes/20261009T155126Z-pr-3728.md"
   - type: "reviews"
     resource: "raw/reviews/20261009T161152Z-pr-3728.md"
-  - type: "fixes"
-    resource: "raw/fixes/20261009T162241Z-pr-3728.md"
   - type: "fixes"
     resource: "raw/fixes/20261009T165610Z-pr-3728.md"
 tags: ["gh-api", "error-classification", "truncation", "mock-fidelity"]
@@ -58,5 +56,4 @@ PR の文書と本文で出典を挙げた行を全件確かめる helper を足
 - [レビュー結果（取得の分類・上限・リンクの前提）](../../raw/reviews/20261009T154300Z-pr-3728.md)
 - [fix 結果（NOT_FOUND の分離と切り捨ての印）](../../raw/fixes/20261009T155126Z-pr-3728.md)
 - [レビュー結果（取り直す手段の上限）](../../raw/reviews/20261009T161152Z-pr-3728.md)
-- [fix 結果（前 cycle の内容の重複）](../../raw/fixes/20261009T162241Z-pr-3728.md)
 - [fix 結果（マージコミットの変更ファイルと境界のテスト）](../../raw/fixes/20261009T165610Z-pr-3728.md)

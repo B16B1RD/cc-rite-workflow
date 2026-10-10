@@ -4,7 +4,7 @@ title: "固定だった挙動を設定化したら、仕様書と README の固�
 domain: "patterns"
 description: "固定の挙動を設定で選べるようにすると、仕様書のコマンド表・フロー図・設定表や README に固定の記述が散らばって残る。一部だけ直すとレビューのたびに残りが指摘されるので、旧挙動を表す語で一度に全数を洗い出してから直す。"
 created: "2026-10-10T01:04:42Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-10T01:04:42Z" }
+generated: { by: "manual/claude-opus-5-5", at: "2026-10-10T02:51:06Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20261009T233431Z-pr-3735.md"
@@ -31,13 +31,14 @@ squash 固定だったマージを設定で squash / merge から選べるよう
 1. 旧挙動を表す語（大文字小文字・ハイフンの有無の表記ゆれを含む）で、仕様書・README 英日・設定文書・skill をまとめて grep する
 2. ヒットをすべて一覧にし、新しい挙動に合わせる行と、条件付きで正しい行（「既定の squash では」など）を分ける
 3. 設定キーを足したら、設定の一覧表（トップレベル節の表）にも行を足す
-4. 直した後に同じ grep を回し、残りが条件付きで正しい行だけであることを確かめる
+4. 直した後に同じ grep を回して確かめられるのは、旧挙動の語が条件付きで正しい行のほかに残っていないことだけである。直すべき箇所を取りこぼしていないことは、対象の性質から導いた別の検索（新しい設定キーの出現箇所、設定表やコマンド表の行など、新しい挙動を書くべき場所の一覧）で確かめる（[スイープの検証 grep にスイープ対象と同一パターンを再利用する](../anti-patterns/sweep-verification-grep-shares-blind-spot.md)）
 
 英日の README のように内容を揃える文書は、片方だけ直さず両方を同じ変更で直す。
 
 ## 関連ページ
 
 - [「網羅」を主張する列挙は grep 全数棚卸し + scope note で構造的に収束させる](../heuristics/exhaustiveness-claims-require-mechanical-inventory.md)
+- [スイープの検証 grep にスイープ対象と同一パターンを再利用する](../anti-patterns/sweep-verification-grep-shares-blind-spot.md)
 
 ## ソース
 

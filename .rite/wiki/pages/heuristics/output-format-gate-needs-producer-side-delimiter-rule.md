@@ -4,7 +4,7 @@ title: "出力形式の gate を新設したら、producer 側にも同じ区切
 domain: "heuristics"
 description: "reviewer の出力のような形式を検査する gate を足すとき、gate 側だけで「どこまでを値とみなすか」を決めると、正しい内容の出力が付記行（時刻記録など）で落とされる。gate の範囲を狭めて誤検出を避けると、今度は fail-loud で拾うべき不備を取りこぼす。区切り規則は producer への指示と再生成の指示にも同じ形で書く。"
 created: "2026-09-30T05:38:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
+generated: { by: "manual/claude-opus-5-5", at: "2026-10-10T02:51:06Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260930T052103Z-pr-3521.md"
@@ -46,6 +46,7 @@ reviewer の出力で、推奨事項の後ろに「関連ファイル」など�
 ## 関連ページ
 
 - [消費側の許可リストが生産側の値域を詰まらせる](../anti-patterns/consumer-allowlist-wedges-producer-value-range.md)
+- [続きの行と項目を見分ける検査は、字面の列挙を足さず入力の文法を閉じ、出力指示が許す書き方を受理側の fixture に先に置く](./input-grammar-close-not-enumerate-continuation-lines.md) — gate が値を検査する範囲を狭めて誤検出を避けるのは不可だが、あちらのように項目とみなす行の文法を閉じ、producer への指示も同じ規則で書くのは可で、不備を拾ったまま誤拒否が止まる
 
 ## ソース
 

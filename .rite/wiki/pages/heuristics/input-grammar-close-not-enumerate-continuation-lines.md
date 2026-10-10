@@ -4,7 +4,7 @@ title: "続きの行と項目を見分ける検査は、字面の列挙を足さ
 domain: "heuristics"
 description: "複合値と注記を字面の列挙で見分ける検査は、cycle ごとに取りこぼしと誤拒否を入れ替える。producer の出力指示が続きの行に許す書き方（字下げした散文）を受理側の fixture に先に置き、項目とみなす条件を箇条書き記号と固定の見出し語の両方に絞って文法を閉じる。"
 created: "2026-09-30T07:59:11Z"
-generated: { by: "rite-wiki-ingest/gpt-6.1-sol", at: "2026-09-30T10:11:01Z" }
+generated: { by: "manual/claude-opus-5-5", at: "2026-10-10T02:51:06Z" }
 sources:
   - type: "fixes"
     resource: "raw/fixes/20260930T073649Z-pr-3521.md"
@@ -51,7 +51,7 @@ confidence: medium
 
 ## 関連ページ
 
-- （関連ページなし）
+- [出力形式の gate を新設したら、producer 側にも同じ区切り規則を書く](./output-format-gate-needs-producer-side-delimiter-rule.md) — 項目とみなす条件を絞って文法を閉じ、producer への指示も同じ規則で書くのは可だが、誤検出を避けるために値の検査範囲を狭めるのは不備を取りこぼすので不可
 
 ## ソース
 
