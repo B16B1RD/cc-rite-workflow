@@ -152,9 +152,11 @@ ERROR / WARNING が唯一のシグナルなのでステップ 9 の未完了事�
 ## log-human-only
 
 log.md は人間向けの変更履歴。skip 等の機械可読状態は raw frontmatter の `ingest_status` が
-SoT で、本ログには保持しない。例外は lint エントリの「未解消の矛盾」の行だけで、矛盾は
-ページ間の関係なので 1 つのページや raw の frontmatter には置けず、書き手の lint が
+SoT で、本ログには保持しない。例外は lint エントリの「未解消の矛盾」と
+`rite-promotion` コメントの候補/作業対応。矛盾はページ間の関係なので 1 つのページや
+raw の frontmatter には置けず、書き手の lint が
 検出結果を残す場所として既に使っている lint エントリに載せる。
+候補の再照合に使う作業対応は既存 log に残し、候補の正本は raw のまま保持する。
 
 ## auto-lint-inline-parser
 
