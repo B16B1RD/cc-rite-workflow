@@ -616,6 +616,10 @@
 * **Skip**: [レビュー結果](raw/reviews/20261010T171333Z-pr-3769.md) — rite workflow 自体の実装・検証記録であり、プロジェクトドメインの経験則として Wiki ページへ統合しない
 * **Skip**: [レビュー結果](raw/reviews/20261010T174423Z-pr-3769.md) — rite workflow 自体の実装・検証記録であり、プロジェクトドメインの経験則として Wiki ページへ統合しない
 
+* **lint:warning** — contradictions=0, stale=76, orphans=0, missing_concept=1, unregistered_raw=792, broken_refs=0。自動比較: WIKI_CONTRADICTION_CHECK=complete; changed=0; screened=0; candidates=0; excluded=0; compared=0; carried=0; resolved=0（ページ変更なしで比較対象なし。本文比較の実行時間と読取量は対象なし／0 bytes）。
+  * 欠落概念: [外部コマンド出力と取得結果の扱いに関する修正記録](raw/fixes/20261009T162241Z-pr-3728.md) — 取り込み済みの原文に対応ページとスキップ記録がない。
+  * 全686 Markdownページの索引とリンク、原文の登録対応を検査。陳腐化76件とスキップ済み原文792件は情報値。番号参照0件。
+
 ## 2026-10-07
 
 * **Skip**: [レビュー結果](raw/reviews/20261006T224853Z-pr-3705.md) — 指摘なしのレビュー記録のみで新規経験則なし
