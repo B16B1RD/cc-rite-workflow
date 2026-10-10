@@ -159,7 +159,7 @@ run_id・cycle counter・観測・修正・見直し・再試行権はそのま�
 
 ## 完了前確認の逸脱
 
-iterate の完了前確認が PR の追加行に逸脱を見つけたときは、停止ではなく `flow-state.sh review-deviate --input <逸脱 JSON の絶対パス>` で同じ run に記録し、通常の fix へ渡す。受理するのは、completed の cycle が停止しておらず、保存済み receipt が不変で blocking を持たず、`cycle_count` が `safety.max_review_cycles` 未満で、逸脱の `file:line` が `origin/<branch.base>...HEAD` の追加行と重なり、この context の `D-NN` を処置した fix の計画検査記録が無いときだけで、それ以外は state を変えずに拒否する。記録は `review_run.deviations[]` に `D-NN` と記録時の review context を残し、`phase=fix` にして handoff と、この context の完了・保留記録を外す。fix の計画はこの context の `D-NN` を blocking と同じく処置し、修正後の再レビューは同じ run の次の cycle として数える。
+iterate の完了前確認が PR の追加行に逸脱を見つけたときは、停止ではなく `flow-state.sh review-deviate --input <逸脱 JSON の絶対パス>` で同じ run に記録し、通常の fix へ渡す。受理するのは、completed の cycle が停止しておらず、保存済み receipt が不変で blocking を持たず、`cycle_count` が `safety.max_review_cycles` 未満で、逸脱の `file:line` が `origin/<PR の baseRefName>...HEAD` の追加行と重なり（設定済みの `branch.base` が `baseRefName` と食い違えば拒否）、この context の `D-NN` を処置した fix の計画検査記録が無いときだけで、それ以外は state を変えずに拒否する。記録は `review_run.deviations[]` に `D-NN` と記録時の review context を残し、`phase=fix` にして handoff と、この context の完了・保留記録を外す。fix の計画はこの context の `D-NN` を blocking と同じく処置し、修正後の再レビューは同じ run の次の cycle として数える。
 
 ## 停止後の退路と再開
 

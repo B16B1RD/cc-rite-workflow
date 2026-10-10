@@ -1003,6 +1003,28 @@ def external_plan(f, *ids):
     dump(f.plan_path, plan)
 
 
+# T-06: the added-line base is the PR's baseRefName, so no rite-config.yml is needed;
+# a branch.base that differs from it is refused and records nothing.
+f = deviation_review()
+try:
+    f.flow('review-close')
+    (f.root / 'rite-config.yml').unlink()
+    f.wm_log.write_text('')
+    deviate(f, line=3)
+    check([(d['id'], d['file'], d['line'], d['end'], d['review_context']) for d in f.state()['review_run']['deviations']]
+          == [('D-01', 'source.txt', 3, 3, f.context())],
+          'T-06: without a config the deviation is judged against the PR base')
+    check(f.wm_calls('pr view') == ['pr view 71 --json baseRefName --jq .baseRefName'],
+          'T-06: the base is read from the PR: %r' % f.wm_calls('pr view'))
+    (f.root / 'rite-config.yml').write_text('branch:\n  base: main\n')
+    result = deviate(f, ok=False, line=4)
+    check(result.returncode != 0 and "'main'" in result.stderr and "'develop'" in result.stderr,
+          'T-06: a branch.base that differs from baseRefName is refused with both values:\n' + result.stderr)
+    check([d['id'] for d in f.state()['review_run']['deviations']] == ['D-01'],
+          'T-06: the refused deviation records nothing')
+finally:
+    f.close()
+
 f = deviation_review()
 try:
     f.flow('review-close')

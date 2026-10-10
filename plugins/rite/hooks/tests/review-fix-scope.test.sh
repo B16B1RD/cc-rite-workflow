@@ -620,31 +620,88 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
          'commit', '-q', '--allow-empty', '-m', 'changed HEAD'])
     check(invoke(ok=False).returncode != 0, 'changed HEAD rejects stale review and plan')
 
-    # base_branch(): branch: 節が数字始まりのトップレベルキー（例: 2fa:）で終わることを
-    # 確認する。branch: に base: を持たせず、直後の 2fa: 配下にだけ base: wrong を置く。
-    # 旧実装 ([A-Za-z_]) は "2fa:" で節終了を検出できず base: wrong を拾ってしまう。
+    # base_branch(): the PR's baseRefName decides the base; a branch.base in rite-config.yml
+    # is only checked against it. gh is the shared stub, so no real gh is ever reached.
     lib_dir = plugin / 'hooks/scripts/lib'
     if str(lib_dir) not in sys.path:
         sys.path.insert(0, str(lib_dir))
     review_fix_scope = importlib.import_module('review-fix-scope')
-    with tempfile.TemporaryDirectory(prefix='rite-fix-scope-basebranch-') as bb_tmp:
+    with tempfile.TemporaryDirectory(prefix='rite-fix-scope-basebranch-') as bb_tmp, \
+            tempfile.TemporaryDirectory(prefix='rite-fix-scope-ghstub-') as gh_tmp:
         bb_root = Path(bb_tmp)
         subprocess.run(['git', 'init', '-q'], cwd=bb_root, check=True)
-        (bb_root / 'rite-config.yml').write_text(
-            'branch:\n  pattern: "{type}/issue-{number}-{slug}"\n2fa:\n  base: wrong\n',
-            encoding='utf-8')
+        config_file = bb_root / 'rite-config.yml'
+        gh_log = Path(gh_tmp) / 'gh.log'
+        (Path(gh_tmp) / 'gh').symlink_to(plugin / 'hooks/tests/_work-memory-gh-stub.sh')
+        saved_env = {name: os.environ.get(name) for name in ('PATH', 'RITE_TEST_BASE_REF', 'RITE_TEST_WM_LOG')}
         cwd_before = os.getcwd()
+        os.environ['PATH'] = gh_tmp + os.pathsep + os.environ['PATH']
+        os.environ['RITE_TEST_WM_LOG'] = str(gh_log)
         os.chdir(bb_root)
-        try:
-            leaked = None
+
+        def base_of(ref, pr_number=71):
+            """('ok', base) or ('error', message); ref None = gh pr view fails. Also returns the gh calls made."""
+            if ref is None:
+                os.environ.pop('RITE_TEST_BASE_REF', None)
+            else:
+                os.environ['RITE_TEST_BASE_REF'] = ref
+            gh_log.write_text('')
             try:
-                leaked = review_fix_scope.base_branch()
-            except Exception:
-                pass
+                outcome = ('ok', review_fix_scope.base_branch(pr_number))
+            except review_fix_scope.cycle.InvalidReview as error:
+                outcome = ('error', str(error))
+            return outcome, gh_log.read_text().splitlines()
+
+        try:
+            # T-01: no rite-config.yml, baseRefName read from the PR with exactly this gh call
+            outcome, calls = base_of('develop')
+            check(outcome == ('ok', 'develop') and calls == ['pr view 71 --json baseRefName --jq .baseRefName'],
+                  'T-01: no config, base is the PR baseRefName (got %r, %r)' % (outcome, calls))
+            # T-02: a matching branch.base passes; so does a config that sets no branch.base
+            config_file.write_text('branch:\n  base: "develop"  # dev line\n', encoding='utf-8')
+            check(base_of('develop')[0] == ('ok', 'develop'), 'T-02: matching branch.base returns the base')
+            config_file.write_text('branch:\n  pattern: "{type}/issue-{number}-{slug}"\n', encoding='utf-8')
+            check(base_of('develop')[0] == ('ok', 'develop'), 'T-02: a config without branch.base is not checked')
+            # T-03: a differing branch.base is refused with both values
+            config_file.write_text('branch:\n  base: develop\n', encoding='utf-8')
+            outcome, _ = base_of('main')
+            check(outcome[0] == 'error' and "'develop'" in outcome[1] and "'main'" in outcome[1],
+                  'T-03: mismatch names branch.base and baseRefName (got ' + repr(outcome) + ')')
+            # T-04: gh failing is an error carrying gh's own reason, never a fallback to the config
+            outcome, _ = base_of(None)
+            check(outcome[0] == 'error' and 'cannot read baseRefName of PR 71' in outcome[1]
+                  and 'RITE_TEST_BASE_REF unset' in outcome[1],
+                  'T-04: failing gh pr view is refused with its reason (got ' + repr(outcome) + ')')
+            # T-05: an empty baseRefName is its own error, not the gh failure above
+            outcome, _ = base_of('')
+            check(outcome[0] == 'error' and 'empty baseRefName' in outcome[1] and 'cannot read' not in outcome[1],
+                  'T-05: empty baseRefName is refused (got ' + repr(outcome) + ')')
+            # The PR number must be a positive int before gh is called
+            for bad in (None, 0, -1, True, '71'):
+                outcome, calls = base_of('develop', bad)
+                check(outcome[0] == 'error' and 'PR number' in outcome[1] and calls == [],
+                      'a PR number of %r is refused before gh is called (got %r, %r)' % (bad, outcome, calls))
+            # An unreadable config is an error, not an unset branch.base
+            config_file.write_bytes(b'branch:\n  base: \xff\n')
+            outcome, _ = base_of('develop')
+            check(outcome[0] == 'error' and 'cannot read rite-config.yml' in outcome[1],
+                  'an unreadable config is refused (got ' + repr(outcome) + ')')
+            # T-07: branch: ends at a digit-led top-level key (e.g. 2fa:), so its base: is not branch.base
+            config_file.write_text('branch:\n  pattern: "{type}/issue-{number}-{slug}"\n2fa:\n  base: wrong\n',
+                                   encoding='utf-8')
+            check(review_fix_scope.configured_base() is None,
+                  'T-07: configured_base() does not leak base: from a non-alpha top-level key section')
+            config_file.write_text('branch:\n  base: develop\n2fa:\n  base: wrong\n', encoding='utf-8')
+            check(review_fix_scope.configured_base() == 'develop', 'T-07: configured_base() reads branch.base')
+            config_file.unlink()
+            check(review_fix_scope.configured_base() is None, 'T-07: configured_base() is None without a config')
         finally:
             os.chdir(cwd_before)
-        check(leaked != 'wrong',
-              'base_branch() does not leak base: from a non-alpha top-level key section (got %r)' % leaked)
+            for name, value in saved_env.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
 
     # A directory input leaves out the Python bytecode cache found beneath it, and
     # only that: source, untracked and ignored files still change the key, a cache

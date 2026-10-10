@@ -3,6 +3,7 @@
 # reach review-close. Install it as `gh` on PATH and point it at its files:
 #   RITE_TEST_WM_BODY     the comment body (absent = the Issue has no work memory)
 #   RITE_TEST_WM_LOG      every call is appended here
+#   RITE_TEST_BASE_REF    baseRefName that `pr view` prints (unset = `pr view` fails, empty = prints nothing)
 #   RITE_TEST_WM_FAIL     when this file exists, the named call fails:
 #                         "list" (comment list), "patch", or "refetch" (every
 #                         read after a successful PATCH; the mark sits next to
@@ -21,6 +22,10 @@ if [ "$fail" = refetch ] && [ -f "$patched" ]; then
 fi
 case "$*" in
   "repo view"*) echo testowner/testrepo ;;
+  "pr view"*)
+    # RITE_TEST_BASE_REF: the PR's baseRefName. Unset = gh fails; set empty = gh prints an empty name
+    [ -n "${RITE_TEST_BASE_REF+set}" ] || { echo "gh: no pull request (RITE_TEST_BASE_REF unset)" >&2; exit 1; }
+    printf '%s\n' "$RITE_TEST_BASE_REF" ;;
   *issues/[0-9]*/comments*)
     [ "$fail" = list ] && { echo "HTTP 500: Internal Server Error" >&2; exit 1; }
     [ -f "$RITE_TEST_WM_BODY" ] || exit 0

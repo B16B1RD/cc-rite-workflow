@@ -228,12 +228,15 @@ def merge_head():
     return merge.stdout.strip() if merge.returncode == 0 and merge.stdout.strip() else None
 
 
-def base_branch():
-    """branch.base from rite-config.yml. It decides what base intake may exempt, so it has no default."""
+def configured_base():
+    """branch.base from rite-config.yml, or None when the file is absent or the key is unset.
+
+    An unreadable config is an error, not an unset key.
+    """
     located = subprocess.run(["bash", str(Path(__file__).with_name("rite-config-path.sh"))],
                              capture_output=True, text=True)
-    require(located.returncode != 1, "rite-config.yml not found: " + located.stderr.strip()
-            + "; base intake cannot identify the base branch")
+    if located.returncode == 1:
+        return None
     require(located.returncode == 0, "cannot read rite-config.yml: " + located.stderr.strip())
     config = Path(located.stdout.strip())
     try:
@@ -251,14 +254,34 @@ def base_branch():
             if value and value != "null":
                 return value
             break
-    require(False, "branch.base is not set in " + str(config) + "; base intake cannot identify the base branch")
+    return None
 
 
-def base_intake_paths():
-    """Paths the in-progress merge brings in from origin/<branch.base>."""
+def base_branch(pr_number):
+    """The PR's own base branch (baseRefName). It decides what base intake may exempt, so it has no default.
+
+    A branch.base set in rite-config.yml is checked against it, never used in its place.
+    """
+    require(type(pr_number) is int and pr_number > 0,
+            "base intake needs the PR number from the flow state; got " + repr(pr_number))
+    found = subprocess.run(["gh", "pr", "view", str(pr_number), "--json", "baseRefName", "--jq", ".baseRefName"],
+                           capture_output=True, text=True)
+    require(found.returncode == 0,
+            "cannot read baseRefName of PR " + str(pr_number) + " with gh pr view: " + found.stderr.strip())
+    base = found.stdout.strip()
+    require(base, "PR " + str(pr_number) + " has an empty baseRefName; base intake cannot identify the base branch")
+    configured = configured_base()
+    require(configured is None or configured == base,
+            "branch.base in rite-config.yml is " + repr(configured) + " but PR " + str(pr_number)
+            + " targets baseRefName " + repr(base) + "; fix the setting or retarget the PR")
+    return base
+
+
+def base_intake_paths(state):
+    """Paths the in-progress merge brings in from origin/<the PR's base branch>."""
     other = merge_head()
     require(other, "base intake requires a merge in progress; start it with git merge --no-commit --no-ff origin/<base>")
-    base = base_branch()
+    base = base_branch(state.get("pr_number"))
     remote = "refs/remotes/origin/" + base
     require(subprocess.run(["git", "rev-parse", "-q", "--verify", remote], capture_output=True).returncode == 0,
             "base intake needs origin/" + base + "; run git fetch origin " + base)
@@ -340,7 +363,7 @@ def validate_plan(plan, issue, state, receipt):
             # constraints do not apply to them; any other listed path stays checked.
             # A symlink among them covers only itself when changes are matched (planned).
             require(group_paths, "base intake requires the merged paths")
-            merged = base_intake_paths()
+            merged = base_intake_paths(state)
             constrained.extend(p for p in group_paths if p not in merged)
         else:
             constrained.extend(group_paths)

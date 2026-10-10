@@ -151,7 +151,8 @@ class Fixture:
         stub.mkdir()
         (stub / 'gh').symlink_to(plugin / 'hooks/tests/_work-memory-gh-stub.sh')
         self.env.update(PATH=str(stub) + os.pathsep + self.env['PATH'], RITE_TEST_WM_BODY=str(self.wm_body),
-                        RITE_TEST_WM_LOG=str(self.wm_log), RITE_TEST_WM_FAIL=str(self.wm_fail))
+                        RITE_TEST_WM_LOG=str(self.wm_log), RITE_TEST_WM_FAIL=str(self.wm_fail),
+                        RITE_TEST_BASE_REF='develop')
 
     def wm_calls(self, kind):
         calls = self.wm_log.read_text().splitlines() if self.wm_log.exists() else []

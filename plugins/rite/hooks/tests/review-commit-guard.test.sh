@@ -691,7 +691,8 @@ for closed_targets in (False, True):
         (wm_bin / 'gh').symlink_to(plugin / 'hooks/tests/_work-memory-gh-stub.sh')
         (private / 'wm-comment.md').write_text(
             '## 📜 rite 作業メモリ\n\n- **Issue**: #42\n\n### レビュー対応履歴\n\n### 次のステップ\n', encoding='utf-8')
-        env.update(PATH=str(wm_bin) + os.pathsep + env['PATH'], RITE_TEST_WM_BODY=str(private / 'wm-comment.md'))
+        env.update(PATH=str(wm_bin) + os.pathsep + env['PATH'], RITE_TEST_WM_BODY=str(private / 'wm-comment.md'),
+                   RITE_TEST_BASE_REF='trunk')
 
         def run(args, ok=True, cwd=None):
             result = subprocess.run(args, cwd=cwd or root, env=env, text=True, capture_output=True)
@@ -1200,11 +1201,34 @@ for closed_targets in (False, True):
                      'closed target violation: src/feature.py')
         config = root / 'rite-config.yml'
         saved_config = config.read_text()
+        # The PR's own base decides the intake: no config, or no branch.base in it, does not stop the check.
+        # wiki.base differs from the PR's base, so reading a base: outside the branch: section would fail here.
         config.unlink()
-        rejected(plan_for([group(merged)]), 'rite-config.yml not found')
-        for text in ('branch:\n  prefix: x\n', 'branch:\n  base: null\n', 'wiki:\n  base: trunk\n'):
+        run(['bash', str(helper), 'check', '--plan', str(plan_for([group(merged)])), '--issue', str(issue_file)])
+        for text in ('branch:\n  prefix: x\n', 'branch:\n  base: null\n', 'wiki:\n  base: other\n'):
             config.write_text(text)
-            rejected(plan_for([group(merged)]), 'branch.base is not set in')
+            run(['bash', str(helper), 'check', '--plan', str(plan_for([group(merged)])), '--issue', str(issue_file)])
+        # A branch.base that differs from the PR's baseRefName stops the check and names both.
+        config.write_text(saved_config)
+        env['RITE_TEST_BASE_REF'] = 'main'
+        mismatch = run(['bash', str(helper), 'check', '--plan', str(plan_for([group(merged)])), '--issue', str(issue_file)],
+                       ok=False)
+        env['RITE_TEST_BASE_REF'] = 'trunk'
+        check(mismatch.returncode != 0 and "'trunk'" in mismatch.stderr and "'main'" in mismatch.stderr,
+              'a branch.base that differs from baseRefName is refused with both values: ' + mismatch.stderr)
+        # An unreadable PR base is refused, not replaced by the configured one.
+        del env['RITE_TEST_BASE_REF']
+        unreadable = run(['bash', str(helper), 'check', '--plan', str(plan_for([group(merged)])), '--issue', str(issue_file)],
+                         ok=False)
+        env['RITE_TEST_BASE_REF'] = 'trunk'
+        check(unreadable.returncode != 0 and 'cannot read baseRefName of PR' in unreadable.stderr,
+              'a failing gh pr view is refused: ' + unreadable.stderr)
+        env['RITE_TEST_BASE_REF'] = ''
+        empty = run(['bash', str(helper), 'check', '--plan', str(plan_for([group(merged)])), '--issue', str(issue_file)],
+                    ok=False)
+        env['RITE_TEST_BASE_REF'] = 'trunk'
+        check(empty.returncode != 0 and 'empty baseRefName' in empty.stderr,
+              'an empty baseRefName is refused: ' + empty.stderr)
         config.write_bytes(b'branch:\n  base: \xff\n')
         rejected(plan_for([group(merged)]), 'cannot read rite-config.yml')
         if os.getuid() != 0:

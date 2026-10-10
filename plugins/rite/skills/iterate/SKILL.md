@@ -492,7 +492,7 @@ PR が追加した行の逸脱は、作業ツリー外の絶対パス `{deviatio
 bash {plugin_root}/hooks/flow-state.sh review-deviate --input "{deviation_file}"
 ```
 
-記録は mergeable の review・未停止・blocking 0・`safety.max_review_cycles` 未満・`file:line` が `origin/{branch.base}...HEAD` の追加行と重なること・この review の `D-NN` を fix がまだ処置していないことを要求し、満たさなければ state を変えずに拒否する。記録した `D-NN` は fix の計画が blocking と同じく処置する。
+記録は mergeable の review・未停止・blocking 0・`safety.max_review_cycles` 未満・`file:line` が `origin/{PR の baseRefName}...HEAD` の追加行と重なること（設定済みの `branch.base` が食い違えば拒否）・この review の `D-NN` を fix がまだ処置していないことを要求し、満たさなければ state を変えずに拒否する。記録した `D-NN` は fix の計画が blocking と同じく処置する。
 rationale: references/rationale.md#purpose-deviation-reopen
 
 上記以外の逸脱時は CB fire と同型の fenced bash を実行する（`--handoff` なし。新 sentinel は出さない）:

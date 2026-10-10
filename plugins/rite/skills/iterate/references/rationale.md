@@ -380,7 +380,7 @@ sweep する。
 それを blocking と同じく処置必須にする。修正は通常の fix と検証記録を通り、再レビューは同じ run の次の
 cycle になるので、counter と発散判定はそのまま続く。
 
-origin=pr の判定は、逸脱の `file:line` が `origin/{branch.base}...HEAD` の追加行と重なることで機械的に行う
+origin=pr の判定は、逸脱の `file:line` が `origin/{PR の baseRefName}...HEAD` の追加行と重なることで機械的に行う（設定済みの `branch.base` が `baseRefName` と食い違えば拒否する）
 （`lib/diff-hunks.sh`）。重ならない逸脱（base 由来や PR 外の欠陥）と、
 blocking が残っている review、`safety.max_review_cycles` に達した cycle（修正を再レビューできない）は
 拒否し、従来の `purpose_unaligned` 停止に落とす。この review context の `D-NN` を fix の計画が処置した後の記録も
