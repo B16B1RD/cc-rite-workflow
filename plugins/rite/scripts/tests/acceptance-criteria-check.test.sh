@@ -235,6 +235,29 @@ run_check extract --body-file "$TEST_DIR/body-outside-fenced.md"
 if [ "$CHECK_RC" -eq 0 ] && [ "$CHECK_STDOUT" = 'AC-1,AC-2,AC-3' ]; then pass "extract: 節外のフェンス内 AC 風の行では止まらない"
 else fail "extract outside fenced (rc=$CHECK_RC out=$CHECK_STDOUT err=$CHECK_STDERR)"; fi
 
+# Completion checks must not look like definitions outside the AC section.
+cat > "$TEST_DIR/body-generated.md" <<'EOF'
+## 5. Acceptance Criteria
+### AC-1: first
+### AC-2: second
+### AC-3: third
+## 6. Test Specification
+| ID | Related AC |
+|----|------------|
+| T-01 | AC-1, AC-2, AC-3 |
+```markdown
+- [ ] AC-1〜AC-3 を確認した。
+```
+## 8. Definition of Done
+- [ ] AC-1〜AC-3 を確認した。
+EOF
+expect_failure "extract: 実測した完了条件の AC 範囲表現を節外項目として拒否" ac_item_outside_section extract --body-file "$TEST_DIR/body-generated.md"
+sed '$s/AC-1〜AC-3/受入条件3件/' "$TEST_DIR/body-generated.md" > "$TEST_DIR/body-generated-fixed.md"
+run_check extract --body-file "$TEST_DIR/body-generated-fixed.md"
+if [ "$CHECK_RC" -eq 0 ] && [ "$CHECK_STDOUT" = 'AC-1,AC-2,AC-3' ]; then
+  pass "extract: 修正後の完了条件・対応表・閉じた例示では節内定義だけを返す"
+else fail "extract generated fixed (rc=$CHECK_RC out=$CHECK_STDOUT err=$CHECK_STDERR)"; fi
+
 # A parser failure is not absence of AC (and must not emit a skipped marker).
 mkdir -p "$TEST_DIR/awk-fail"
 printf '#!/bin/bash\nexit 7\n' > "$TEST_DIR/awk-fail/awk"

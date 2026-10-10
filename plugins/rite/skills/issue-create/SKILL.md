@@ -266,7 +266,7 @@ File 列のセルが実パス ⇔ (`/` を含む、または `.` + 英数字の�
 
 図の選択表に従い、`svg_allowed=true` なら SVG を第一候補として Write tool で `.svg` を生成する。図なしは列挙条件に該当する場合だけ上段に `<!-- 図なし: {条件} -->` を残す。共通の作成前検査 Bash を本文に対して実行し、違反したら helper を呼ばず当該本文を再生成する。**Write tool** で添付パス配列を JSON ファイルへ保存する（添付なしは `[]`）。その絶対パスを `{ATTACHMENTS_JSON_FILE}` として 4.3 へ渡す。添付 SVG は作成コマンドの終了まで保持する。
 
-生成した body はそのまま Step 4.2.1 の検証を経て Step 4.3 で `create-issue-with-projects.sh` に tmpfile 経由で渡す。
+受入条件の定義は対応する節内だけに置く。完了条件は「受入条件を確認した」などの表現にし、数値 AC ID で始まるチェック項目を節外に生成しない。書式判定の正本は `scripts/acceptance-criteria-check.sh extract`（[入口検査との責務分担](../open/references/acceptance-id-preflight.md)）。生成した body は Step 4.2.1 の検証を経て Step 4.3 で最終版を同 reader に渡してから作成する。
 
 ### 4.2.1 本文の断定のファクトチェック
 
@@ -292,6 +292,8 @@ bash {plugin_root}/scripts/issue-create-gate.sh record --step fact_check
 ### 4.3 Issue 作成 + Projects 登録
 
 作成前に [記号の作成前検査](../../templates/issue/template-structure.md#記号の作成前検査issue--pr-共通) を本文に実行し、違反時は作成 helper を呼ばず再生成する。続けて [読みやすさ点検](../../references/body-readability-check.md) をタイトル・本文と本文参照のローカル SVG に実行する。本文ファクトチェックと共通の図条件検査を通過した本文だけを対象にし、書き直し後も再検査する。点検が本文を書き直したときは、記号の作成前検査も作成の直前にもう一度実行する。共通手順の「作成する版の記録と照合」に従い、作業領域へ照合コードと対象の記録を保存する。`{READABILITY_GUARD_FILE}` と `{READABILITY_RECORD_FILE}` はその絶対パス。作成直前の照合失敗では作業ファイルを保持して共通手順 2 へ戻る。
+
+照合後の最終本文を共通 reader で検査する。形式不正の非ゼロ終了では診断を表示し、起票せず 4.2 の本文生成へ戻る。書き直した最終版で全検査をやり直す。reader 呼出不可・本文読取不能では原因を示して停止する。失敗を `no_ac_section` や成功へ置き換えない。
 
 `create-issue-with-projects.sh` に委譲（Issue 作成 + Projects 追加 + status / priority / complexity 設定を 1 ステップで実行）。実 interface は JSON 単一引数 + body は tmpfile 経由（canonical SoT: [`issue-create-with-projects.md`](../../references/issue-create-with-projects.md)）:
 
@@ -361,6 +363,11 @@ readability_spec=$(mktemp)
 printf '%s' "$args_json" > "$readability_spec"
 python3 "{READABILITY_GUARD_FILE}" check-spec --spec-file "$readability_spec" --record-file "{READABILITY_RECORD_FILE}" || { trap - EXIT; exit 1; }
 rm -f "$readability_spec"
+bash {plugin_root}/scripts/acceptance-criteria-check.sh extract --body-file "$tmpfile" || {
+  echo "ERROR: 受入条件の書式検査に失敗しました。Issue は作成しません" >&2
+  trap - EXIT
+  exit 1
+}
 result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$args_json") || {
   rc=$?
   echo "ERROR: create-issue-with-projects.sh failed (exit $rc)" >&2
@@ -514,9 +521,18 @@ echo "[CONTEXT] DECOMPOSE_WORKDIR=$workdir"
 
 **(C) helper 呼び出し（単一 bash block）**
 
+読みやすさ照合後、全子 Issue の最終本文を共通 reader で検査してから親・子の作成 helper を呼ぶ。形式不正では診断を表示し、起票せず 5.3 (B) の当該本文生成へ戻り、書き直した最終版で再検査する。reader 呼出不可・本文読取不能では原因を示して停止し、失敗を `no_ac_section` や成功へ置き換えない。
+
 ```bash
 # 全対象の照合に成功してから作成する。不一致なら保持して共通手順 2 へ戻る。
 python3 "{DECOMPOSE_WORKDIR}/readability_guard.py" check-spec --spec-file "{DECOMPOSE_WORKDIR}/spec.json" --records-file "{DECOMPOSE_WORKDIR}/readability-records.json" || exit 1
+jq -r '.sub_issues[].body_file' "{DECOMPOSE_WORKDIR}/spec.json" > "{DECOMPOSE_WORKDIR}/ac-body-files" || exit 1
+while IFS= read -r body_file; do
+  bash {plugin_root}/scripts/acceptance-criteria-check.sh extract --body-file "$body_file" || {
+    echo "ERROR: 受入条件の書式検査に失敗しました ($body_file)。親・子 Issue は作成しません" >&2
+    exit 1
+  }
+done < "{DECOMPOSE_WORKDIR}/ac-body-files"
 bash {plugin_root}/scripts/decompose-issues.sh --spec "{DECOMPOSE_WORKDIR}/spec.json" || {
   echo "ERROR: Issue 分解失敗 (decompose-issues.sh 非ゼロ終了)" >&2
   exit 1

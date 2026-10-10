@@ -109,6 +109,8 @@ After generating the Issue body, verify all items:
 - [ ] All MUST sections for the complexity level are present
 - [ ] AC count matches complexity guideline
 - [ ] Each AC has a corresponding Test Case ID (T-xx)
+- [ ] 受入条件の定義は対応する節内だけにあり、完了条件のチェック項目は数値 AC ID で始まらない
+- [ ] 単一 Issue・各子 Issue の最終本文が `scripts/acceptance-criteria-check.sh extract --body-file` を通過した。非ゼロでは起票せず診断を示し、形式不正は本文を再生成して最終版を再検査する（reader 呼出不可・本文読取不能は停止）
 - [ ] Target Files の File 列に実パスが 1 行以上ある（「（コード変更なし）」「なし」「N/A」等の非パスのみは不可）
 - [ ] All MUST requirements are testable (no vague verbs)
 - [ ] No empty headings (remove section if no content)

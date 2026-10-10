@@ -4,7 +4,7 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../../../.." && pwd)
 python3 - "$root" <<'PY'
-import json, os, shlex, shutil, subprocess, sys, tempfile
+import json, os, re, shlex, shutil, subprocess, sys, tempfile
 from pathlib import Path
 root = Path(sys.argv[1])
 reference = root / 'plugins/rite/skills/open/references/acceptance-id-preflight.md'
@@ -102,7 +102,89 @@ else:
     original = '## 完了条件\n- [ ] 内容\n'
     result, body, calls = run(original)
     check(result.returncode == 0 and body == original and calls == ['issue view'], 'unrecognized unrelated heading remains untouched and skipped')
-    for original, reason in [('## Acceptance Criteria (extra)\n- [ ] 内容\n','unsupported_ac_section'), ('## 受入条件\n- [ ] AC-bad: A\n','malformed_ac_item'), ('## 受入条件\n- [ ] AC-1: A\n- [ ] AC-1: B\n','duplicate_ac_id')]:
+    for original, reason in [('## Acceptance Criteria (extra)\n- [ ] 内容\n','unsupported_ac_section'), ('## 受入条件\n- [ ] AC-bad: A\n','malformed_ac_item'), ('## 受入条件\n- [ ] AC-1: A\n- [ ] AC-1: B\n','duplicate_ac_id'), ('## 受入条件\n## Notes\n','no_ac_ids')]:
         result, body, calls = run(original)
         check(result.returncode != 0 and body == original and calls == ['issue view'] and reason in result.stderr, 'strict reader rejects '+reason+' without writing')
+    generated = ('## 5. Acceptance Criteria\n### AC-1: first\n### AC-2: second\n### AC-3: third\n'
+                 '## 6. Test Specification\n| ID | Related AC |\n| T-01 | AC-1, AC-2, AC-3 |\n'
+                 '```markdown\n- [ ] AC-1〜AC-3 を確認した。\n```\n'
+                 '## 8. Definition of Done\n- [ ] 受入条件3件を確認した。\n')
+    invalid = generated.replace('- [ ] 受入条件3件', '- [ ] AC-1〜AC-3')
+    result, body, calls = run(invalid)
+    check(result.returncode != 0 and 'ac_item_outside_section' in result.stderr and
+          'format_not_repairable' in result.stderr and body == invalid and calls == ['issue view'],
+          'observed completion check is rejected without repair')
+    result, body, calls = run(generated)
+    check(result.returncode == 0 and body == generated and calls == ['issue view'],
+          'generated completion text, mapping and fenced example pass entry unchanged')
+
+    # Execute the actual creation blocks; replace only transport and readability.
+    skill = (root / 'plugins/rite/skills/issue-create/SKILL.md').read_text()
+    single = re.search(r'```bash\n(.*?)\n```', skill.split('### 4.3 Issue 作成 + Projects 登録', 1)[1], re.S).group(1)
+    decompose = re.search(r'```bash\n(.*?)\n```', skill.split('**(C) helper 呼び出し（単一 bash block）**', 1)[1], re.S).group(1)
+    plugin = work / 'plugin'
+    (plugin / 'scripts').mkdir(parents=True)
+    trace = work / 'trace'
+    reader = plugin / 'scripts/acceptance-criteria-check.sh'
+    reader.write_text('#!/bin/bash\nprintf "reader\\n" >> "$AC_TEST_DIR/trace"\nexec bash '+
+                      shlex.quote(str(root / 'plugins/rite/scripts/acceptance-criteria-check.sh'))+' "$@"\n')
+    for name in ['create-issue-with-projects.sh', 'decompose-issues.sh']:
+        (plugin / 'scripts' / name).write_text(
+            '#!/bin/bash\nprintf "create\\n" >> "$AC_TEST_DIR/trace"\n'
+            'printf \'{"issue_number":42,"project_registration":"success"}\\n\'\n')
+    (work / 'readability_guard.py').write_text('')
+    (work / 'attachments.json').write_text('[]')
+    replacements = {'plugin_root': str(plugin), 'READABILITY_GUARD_FILE': str(work / 'readability_guard.py'),
+                    'READABILITY_RECORD_FILE': str(work / 'record.json'), 'ATTACHMENTS_JSON_FILE': str(work / 'attachments.json'),
+                    'DECOMPOSE_WORKDIR': str(work), 'title': 'title', 'labels_csv': '', 'project_number': '1',
+                    'owner': 'o', 'repo': 'r', 'owner_repo': 'o/r', 'priority': 'Medium', 'complexity': 'S',
+                    'field_name_status': 'Status', 'field_name_priority': 'Priority', 'field_name_complexity': 'Complexity'}
+    def create(mode, bodies, reader_missing=False, body_missing=False):
+        trace.write_text('')
+        text = single if mode == 'single' else decompose
+        for key, value in replacements.items():
+            text = text.replace('{'+key+'}', value)
+        if mode == 'single':
+            text = text.replace('\n{body}\n', '\n'+bodies[0]+'\n')
+            if body_missing:
+                text = text.replace('bash '+str(plugin / 'scripts/acceptance-criteria-check.sh'),
+                                    'rm -f "$tmpfile"\nbash '+str(plugin / 'scripts/acceptance-criteria-check.sh'))
+        else:
+            children = []
+            for i, content in enumerate(bodies):
+                path = work / ('sub_'+str(i)+'_body.md')
+                path.write_text(content)
+                children.append({'body_file': str(path)})
+            if body_missing:
+                Path(children[-1]['body_file']).unlink()
+            (work / 'spec.json').write_text(json.dumps({'sub_issues': children}))
+        absent = reader.with_suffix('.absent')
+        if reader_missing:
+            reader.rename(absent)
+        try:
+            result = subprocess.run(['bash', '-c', text], cwd=work, env=env, text=True, capture_output=True)
+            return result, trace.read_text().splitlines()
+        finally:
+            if reader_missing:
+                absent.rename(reader)
+    for mode in ['single', 'decompose']:
+        bodies = [generated] if mode == 'single' else [generated, generated]
+        result, events = create(mode, bodies)
+        check(result.returncode == 0 and events == ['reader']*len(bodies)+['create'],
+              mode+': every final body passes the real reader before one creation call: '+repr((result.returncode, events, result.stderr)))
+        bodies[-1] = invalid
+        result, events = create(mode, bodies)
+        check(result.returncode != 0 and 'ac_item_outside_section' in result.stderr and
+              events == ['reader']*len(bodies), mode+': later invalid body prevents any creation')
+        bodies[-1] = generated
+        result, events = create(mode, bodies)
+        check(result.returncode == 0 and events == ['reader']*len(bodies)+['create'],
+              mode+': regenerated final body is inspected again')
+        for missing_reader, missing_body in [(True, False), (False, True)]:
+            result, events = create(mode, bodies, missing_reader, missing_body)
+            check(result.returncode != 0 and result.stderr and 'create' not in events,
+                  mode+': missing reader/body stops with diagnostics and no creation')
+    check('4.2' in skill.split('### 4.3 Issue 作成 + Projects 登録', 1)[1].split('```bash', 1)[0] and
+          '5.3 (B)' in skill.split('**(C) helper 呼び出し（単一 bash block）**', 1)[1].split('```bash', 1)[0],
+          'both creation paths route rejected bodies back to generation')
 PY

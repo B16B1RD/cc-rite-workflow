@@ -2,6 +2,8 @@
 
 open の品質評価後、claim・ブランチ作成・実装の前に実行する。`plugin_root`、Issue 番号、`owner_repo` は入口で確定した値を渡し、repo identity を cwd から取り直さない。検査・付与は helper に委譲する。非ゼロなら open を停止し、実装へ進まない。
 
+書式判定の正本は `scripts/acceptance-criteria-check.sh extract`。[issue-create](../../issue-create/SKILL.md) は単一 Issue・各子 Issue の最終本文を作成前に同 reader で検査し、形式不正では起票せず生成へ戻る。完了条件は数値 AC ID で始まるチェック項目を使わず、受入条件を確認した旨を書く。入口は既存 Issue の検査と ID 欠落だけの補修を担い、生成側の不正を通すために受理範囲を広げない。
+
 strict reader は変更しない。まず原文を検査し、ID 欠落だけを補う。フェンス内・対応しない見出し・既存 ID・本文は書き換えない。番号は受理された節の既存 ID と衝突しない最小未使用番号を使う。読み手は本文全体で ID の一意性を要求するため、他の受理された節の ID も予約する。空節・重複 ID・その他の形式不正は候補検査で停止する。
 
 ```bash
