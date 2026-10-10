@@ -237,7 +237,7 @@ run ID を解決できない、または `gh api .../jobs` が 1 件でも失敗
 
 `gh pr merge` の直前に AC enforce を再実行し、そこで照合した PR head をマージ対象として固定する。`--force-ci` は CI だけの override であり、reviewed HEAD / AC gate を迂回しない。マージコミットの件名・本文は [commit-convention.md](../../references/commit-convention.md) で生成し、本文ファイルは作業ツリー外へ置く。`--delete-branch=false` と `--match-head-commit "$verified_head"` は外さない。
 
-先にマージ方式を決める。出力の `[CONTEXT] MERGE_METHOD=` の値を下のブロックの `{merge_method}` に literal substitute する（シェル変数で渡さない）。rationale: references/rationale.md#merge-method
+先にマージ方式を決める。出力の `[CONTEXT] MERGE_METHOD=` の値を下のブロックの `{merge_method}` に literal substitute する。rationale: references/rationale.md#merge-method
 
 ```bash
 bash "{plugin_root}/hooks/scripts/merge-method-resolve.sh" || { echo "[merge:error]"; exit 1; }
