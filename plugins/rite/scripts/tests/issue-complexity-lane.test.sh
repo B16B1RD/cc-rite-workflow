@@ -488,6 +488,243 @@ assert_contains "TC-4.12d: gh stderr の行構造を保つ" "$LANE_STDERR" "$(pr
 [ "$LANE_RC" -eq 0 ] && pass "TC-4.13: issue_fetch_failed でも exit code は 0" \
   || fail "TC-4.13: issue_fetch_failed でも exit code は 0 (実際: $LANE_RC)"
 
+echo "=== Projects の Complexity フィールド (本文に次ぐ 2 番目の入力源) ==="
+
+# rite-config.yml を toplevel に置いた別 repo。既存の TEST_REPO は設定を持たない = 連携無効のまま
+# 残し、従来経路で gh の追加呼び出しが 0 回であることを既存 shim (issue view 以外は失敗) で保つ。
+PJ_REPO="$TEST_DIR/pj-repo"
+PJ_BIN="$TEST_DIR/bin-pj"
+mkdir -p "$PJ_REPO" "$PJ_BIN"
+git init -q "$PJ_REPO"
+git -C "$PJ_REPO" remote add origin https://github.com/owner/repo.git
+cat > "$PJ_BIN/gh" <<'GH_SHIM'
+#!/bin/bash
+# issue view は本文を、api graphql は fixture JSON に helper の --jq 式を適用した結果を返す。
+# graphql の引数 (owner / repo / Issue 番号) を検査し、照会先の取り違えを素通りさせない。
+case "$1 $2" in
+  "issue view")
+    case "$*" in *" -R owner/repo "*) ;; *) echo "gh shim: -R が想定外: $*" >&2; exit 1 ;; esac
+    cat "$RITE_TEST_BODY_FILE"; exit 0 ;;
+  "api graphql")
+    case "$*" in *" owner=owner "*" repo=repo "*" number=42 "*) ;; *) echo "gh shim: graphql 引数が想定外: $*" >&2; exit 1 ;; esac
+    if [ -n "${RITE_TEST_PJ_FAIL:-}" ]; then echo "gh: GraphQL: API rate limit exceeded" >&2; exit 1; fi
+    jq_expr=""; prev=""
+    for a in "$@"; do [ "$prev" = "--jq" ] && jq_expr="$a"; prev="$a"; done
+    jq -r "$jq_expr" "$RITE_TEST_PJ_FILE"; exit $? ;;
+  *) echo "unexpected gh invocation: $*" >&2; exit 1 ;;
+esac
+GH_SHIM
+chmod +x "$PJ_BIN/gh"
+
+# $1=enabled $2=project_number $3=fields.complexity 節の本文 (8 空白インデント)
+pj_config() {
+  cat > "$PJ_REPO/rite-config.yml" <<EOF
+github:
+  projects:
+    enabled: $1
+    project_number: $2  # Project 番号
+    owner: "owner"
+    fields:
+      status:
+        enabled: true
+      complexity:
+${3:-        enabled: true}
+EOF
+}
+# 1 item の JSON。$1=project 番号、以降は「フィールド名=値」。先頭の {} は single-select 以外の値の形。
+pj_item() {
+  local num="$1" nodes="{}" kv; shift
+  for kv in "$@"; do
+    nodes="$nodes,$(jq -cn --arg f "${kv%%=*}" --arg v "${kv#*=}" '{field: {name: $f}, name: $v}')"
+  done
+  printf '{"project":{"number":%s},"fieldValues":{"nodes":[%s]}}' "$num" "$nodes"
+}
+pj_items() {
+  local IFS=,
+  printf '{"data":{"repository":{"issue":{"projectItems":{"nodes":[%s]}}}}}' "$*" > "$TEST_DIR/pj.json"
+}
+run_pj() {
+  printf '%s' "$1" > "$TEST_DIR/body.txt"
+  LANE_STDERR=$(cd "$PJ_REPO" && RITE_TEST_BODY_FILE="$TEST_DIR/body.txt" RITE_TEST_PJ_FILE="$TEST_DIR/pj.json" \
+    RITE_TEST_PJ_FAIL="${PJ_FAIL:-}" PATH="$PJ_BIN:$PATH" bash "$TARGET" --issue 42 --repo owner/repo 2>&1)
+  LANE_RC=$?
+}
+NO_DECL='## 1. Goal
+
+Complexity の記載が無い Issue'
+
+pj_config true 11
+# 別 project の item を先に置き、食い違う値を持たせる。project_number で絞らない実装はここで M を拾う。
+pj_items "$(pj_item 99 Complexity=M)" "$(pj_item 11 Status=Todo Complexity=S)"
+run_pj "$NO_DECL"
+assert_contains "TC-6.1: 本文に宣言が無ければ Projects の値を使う" "$LANE_STDERR" "[CONTEXT] COMPLEXITY_LANE=light; complexity=S; source=projects_field"
+assert_not_contains "TC-6.1b: Projects の値で決まれば fallback ではない" "$LANE_STDERR" "COMPLEXITY_LANE_FALLBACK"
+[ "$LANE_RC" -eq 0 ] && pass "TC-6.1c: Projects 由来でも exit 0" || fail "TC-6.1c: rc=$LANE_RC"
+
+pj_items "$(pj_item 11 Complexity=M)"
+run_pj '**Complexity**: M'
+assert_contains "TC-6.2: 本文と Projects が一致すれば本文由来で通る" "$LANE_STDERR" "COMPLEXITY_LANE=full; complexity=M; source=body_meta"
+[ "$LANE_RC" -eq 0 ] && pass "TC-6.2b: 一致は exit 0" || fail "TC-6.2b: rc=$LANE_RC"
+
+pj_items "$(pj_item 11 Complexity=S)"
+run_pj '**Complexity**: M'
+[ "$LANE_RC" -eq 1 ] && pass "TC-6.3: 本文と Projects の食い違いは exit 1 で止まる" || fail "TC-6.3: rc=$LANE_RC"
+assert_contains "TC-6.3b: 食い違いの reason を名指しする" "$LANE_STDERR" "complexity_mismatch"
+assert_contains "TC-6.3c: 両方の値を同じ行に示す" "$LANE_STDERR" "(本文=M; Projects=S)"
+assert_not_contains "TC-6.3d: 食い違いでレーンを出さない (consumer が判定済みと読まない)" "$LANE_STDERR" "COMPLEXITY_LANE="
+
+pj_items "$(pj_item 11 Status=Todo)"
+run_pj "$NO_DECL"
+assert_contains "TC-6.4: どちらにも値が無ければ complexity_absent" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
+assert_contains "TC-6.4b: 追記する 1 行の書式を示す" "$LANE_STDERR" "追記してください (値は XS / S / M / L / XL のいずれか): **Complexity**: M"
+assert_contains "TC-6.4c: 本文の宣言を探したことを示す" "$LANE_STDERR" "探した場所: Issue 本文の宣言"
+assert_contains "TC-6.4d: Projects のフィールドを探したことを候補名つきで示す" "$LANE_STDERR" "Projects #11 の Complexity フィールド (候補名: 複雑度, Complexity)"
+assert_not_contains "TC-6.4e: 宣言不在の案内は崩れた記法の行番号 WARNING と別物" "$LANE_STDERR" "値を取り出せませんでした"
+[ "$LANE_RC" -eq 0 ] && pass "TC-6.4f: 欠落は従来どおり exit 0 (pr-review / issue-implement は full で続行)" || fail "TC-6.4f: rc=$LANE_RC"
+
+pj_items "$(pj_item 99 Complexity=S)"
+run_pj "$NO_DECL"
+assert_contains "TC-6.4g: Project 未登録は値なしとして扱う" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
+assert_contains "TC-6.4h: Project 未登録であることを案内に含める" "$LANE_STDERR" "Issue は Project に未登録"
+
+# 連携無効では Projects を探したと言わない。TEST_REPO は rite-config.yml を持たない。
+run_lane_with_body "$NO_DECL"
+assert_contains "TC-6.4i: 設定ファイルが無ければ Projects は未参照と示す" "$LANE_STDERR" "Projects 連携は無効のため Projects は参照していません"
+assert_not_contains "TC-6.4j: 設定ファイルが無ければ候補名を出さない" "$LANE_STDERR" "候補名"
+pj_config false 11
+pj_items "$(pj_item 11 Complexity=S)"
+run_pj "$NO_DECL"
+assert_contains "TC-6.4k: enabled: false なら Projects の値を読まない" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
+assert_contains "TC-6.4l: enabled: false でも未参照と示す" "$LANE_STDERR" "Projects 連携は無効のため"
+pj_config true 11 '        enabled: false'
+run_pj "$NO_DECL"
+assert_contains "TC-6.4m: fields.complexity.enabled: false は連携無効扱い" "$LANE_STDERR" "Projects 連携は無効のため"
+assert_not_contains "TC-6.4n: fields.complexity.enabled: false で Projects の値を使わない" "$LANE_STDERR" "source=projects_field"
+
+pj_config true 11
+pj_items "$(pj_item 11 "Complexity=$(printf 'Medium ZZZ_PJ \033[31m')")"
+run_pj "$NO_DECL"
+assert_contains "TC-6.5: Projects の値が不正な綴りなら complexity_invalid" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_invalid"
+assert_not_contains "TC-6.5b: 診断に Projects の生値を載せない" "$LANE_STDERR" "ZZZ_PJ"
+assert_not_contains "TC-6.5c: 診断に ESC を載せない" "$LANE_STDERR" "$(printf '\033')"
+
+PJ_FAIL=1 run_pj "$NO_DECL"
+assert_contains "TC-6.6: Projects の取得失敗は projects_fetch_failed" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=projects_fetch_failed"
+assert_not_contains "TC-6.6b: 取得失敗を値なしと誤報告しない" "$LANE_STDERR" "reason=complexity_absent"
+assert_contains "TC-6.6c: gh の stderr を診断として出す" "$LANE_STDERR" "API rate limit exceeded"
+[ "$LANE_RC" -eq 0 ] && pass "TC-6.6d: projects_fetch_failed は exit 0" || fail "TC-6.6d: rc=$LANE_RC"
+
+pj_items "$(pj_item 99 Complexity=M)"
+run_pj '**Complexity**: S'
+assert_contains "TC-6.7: 本文あり・Project 未登録は本文由来" "$LANE_STDERR" "COMPLEXITY_LANE=light; complexity=S; source=body_meta"
+pj_items "$(pj_item 11 Status=Todo)"
+run_pj '**Complexity**: S'
+assert_contains "TC-6.7b: 本文あり・Projects 値なしは本文由来" "$LANE_STDERR" "COMPLEXITY_LANE=light; complexity=S; source=body_meta"
+assert_not_contains "TC-6.7c: 本文があれば欠落の案内を出さない" "$LANE_STDERR" "Complexity が見つかりません"
+pj_items "$(pj_item 11 "Complexity=ZZZ_PJ")"
+run_pj '**Complexity**: S'
+assert_contains "TC-6.8: 本文あり・Projects 不正綴りは本文由来" "$LANE_STDERR" "COMPLEXITY_LANE=light; complexity=S; source=body_meta"
+assert_contains "TC-6.8b: Projects の不正値を WARNING で知らせる" "$LANE_STDERR" "いずれでもないため、本文の宣言 (S) だけで判定しました"
+assert_not_contains "TC-6.8c: WARNING に Projects の生値を載せない" "$LANE_STDERR" "ZZZ_PJ"
+PJ_FAIL=1 run_pj '**Complexity**: S'
+assert_contains "TC-6.9: 本文あり・取得失敗は本文由来" "$LANE_STDERR" "COMPLEXITY_LANE=light; complexity=S; source=body_meta"
+assert_contains "TC-6.9b: 一致を確かめていないことを WARNING で知らせる" "$LANE_STDERR" "本文との一致を確かめずに"
+pj_items "$(pj_item 11 Complexity=S)"
+run_pj '**Complexity**: ZZ'
+assert_contains "TC-6.10: 本文の不正綴りを Projects の値で補わない" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_invalid"
+assert_not_contains "TC-6.10b: 本文の不正綴りで Projects 由来にしない" "$LANE_STDERR" "source=projects_field"
+# 崩れた宣言（値を取り出せない形）は「宣言が無い」ではない。Projects の値で補うと、本文の M が
+# Projects の S で黙って上書きされて light に落ちる。宣言行は 2 行目に置き、行番号が定数と一致しないようにする。
+pj_items "$(pj_item 11 Complexity=S)"
+run_pj '冒頭の散文行
+**complexity**: M'
+assert_contains "TC-6.10d: 崩れた宣言は Projects の値で補わず complexity_absent" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
+assert_contains "TC-6.10e: 崩れた宣言の行番号 WARNING を出す" "$LANE_STDERR" "body の 2 行目から値を取り出せませんでした"
+assert_not_contains "TC-6.10f: 崩れた宣言で Projects 由来にしない" "$LANE_STDERR" "source=projects_field"
+# Projects の値を見つけたうえで使っていないので、「探して見つからなかった」と書かず、本文の宣言を直す案内にする。
+assert_contains "TC-6.10g: Projects の値を使っていない理由を示す" "$LANE_STDERR" "Projects #11 の Complexity フィールドは、本文 2 行目の宣言を読めないため使っていません"
+assert_contains "TC-6.10h: 追記ではなく宣言の行を直す案内を出す" "$LANE_STDERR" "本文 2 行目の宣言を次の書式に直してください"
+assert_not_contains "TC-6.10i: Projects の候補名を探した場所として出さない" "$LANE_STDERR" "候補名"
+# 取得失敗でも同じく、崩れた宣言を Projects で補わない (projects_fetch_failed ではなく complexity_absent)。
+PJ_FAIL=1 run_pj '冒頭の散文行
+**complexity**: M'
+assert_contains "TC-6.10j: 崩れた宣言 + 取得失敗も complexity_absent" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
+pj_items "$(pj_item 11 Complexity=ZZZ_PJ)"
+run_pj '冒頭の散文行
+**complexity**: M'
+assert_contains "TC-6.10k: 崩れた宣言 + Projects 不正値も complexity_absent" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
+# 連携無効では、崩れた宣言があっても Projects を参照したとは言わない。
+pj_config false 11
+pj_items "$(pj_item 11 Complexity=S)"
+run_pj '冒頭の散文行
+**complexity**: M'
+assert_contains "TC-6.10l: 崩れた宣言 + 連携無効は未参照と示す" "$LANE_STDERR" "Projects 連携は無効のため Projects は参照していません"
+assert_not_contains "TC-6.10m: 崩れた宣言 + 連携無効で Projects の値を使っていないと言わない" "$LANE_STDERR" "使っていません"
+# rite-config.yml を読めない (ディレクトリになっている) ときは Projects を確かめられない。
+rm -f "$PJ_REPO/rite-config.yml"
+mkdir "$PJ_REPO/rite-config.yml"
+run_pj "$NO_DECL"
+assert_contains "TC-6.10n: 設定を読めなければ projects_fetch_failed" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=projects_fetch_failed"
+assert_contains "TC-6.10o: 設定を読めないことを WARNING で示す" "$LANE_STDERR" "rite-config.yml を読めないため Projects の Complexity を確認できません"
+run_pj '冒頭の散文行
+**complexity**: M'
+assert_contains "TC-6.10p: 崩れた宣言 + 設定を読めないは complexity_absent" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
+assert_contains "TC-6.10q: 設定を読めないときは Projects を参照していないと示す" "$LANE_STDERR" "rite-config.yml を読めないため Projects は参照していません"
+assert_not_contains "TC-6.10r: 設定を読めないときに Project 番号の無い案内を出さない" "$LANE_STDERR" "Projects # の"
+rmdir "$PJ_REPO/rite-config.yml"
+pj_config true 11
+# 応答に Issue が無いのは取得できなかった扱いで、Project 未登録 (値なし) とは区別する。
+printf '%s' '{"data":{"repository":{"issue":null}}}' > "$TEST_DIR/pj.json"
+run_pj "$NO_DECL"
+assert_contains "TC-6.10s: 応答に Issue が無ければ projects_fetch_failed" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=projects_fetch_failed"
+assert_not_contains "TC-6.10t: 応答に Issue が無いことを Project 未登録と言わない" "$LANE_STDERR" "Issue は Project に未登録"
+pj_items "$(pj_item 11 Complexity=S)"
+run_pj '## 複雑度
+
+S'
+assert_contains "TC-6.10c: 記法 2 でも Projects と一致すれば本文由来" "$LANE_STDERR" "COMPLEXITY_LANE=light; complexity=S; source=body_section"
+
+# フィールド名の候補順: 設定の name → 複雑度 → Complexity。
+pj_config true 11 '        enabled: true
+        name: "規模"   # 任意'
+pj_items "$(pj_item 11 Complexity=M 規模=S)"
+run_pj "$NO_DECL"
+assert_contains "TC-6.11: 設定の name を既定名より優先する" "$LANE_STDERR" "COMPLEXITY_LANE=light; complexity=S; source=projects_field"
+pj_config true 11
+pj_items "$(pj_item 11 Complexity=M 複雑度=XS)"
+run_pj "$NO_DECL"
+assert_contains "TC-6.11b: 日本語エイリアスを英語正準名より優先する" "$LANE_STDERR" "COMPLEXITY_LANE=light; complexity=XS; source=projects_field"
+
+# 連携を有効にしたまま project_number が数値でない設定は、無効扱いにせず止める。
+for _pj_body in "$NO_DECL" '**Complexity**: S'; do
+  pj_config true '"abc"'
+  run_pj "$_pj_body"
+  [ "$LANE_RC" -eq 1 ] && pass "TC-6.12: project_number 不正は exit 1 で止まる" || fail "TC-6.12: rc=$LANE_RC"
+  assert_contains "TC-6.12b: 設定不正の reason を名指しする" "$LANE_STDERR" "projects_config_invalid"
+  assert_contains "TC-6.12c: 直すべき設定キーを示す" "$LANE_STDERR" "github.projects.project_number"
+  assert_not_contains "TC-6.12d: 設定不正でレーンを出さない" "$LANE_STDERR" "COMPLEXITY_LANE="
+done
+# null / 空は配布テンプレートと setup が既定で書く「未設定」。止めずに Projects を参照しない。
+for _pj_num in null '' '# Project 番号'; do
+  pj_config true "$_pj_num"
+  pj_items "$(pj_item 11 Complexity=M)"
+  run_pj '**Complexity**: S'
+  assert_contains "TC-6.13: project_number 未設定 ($_pj_num) は本文だけで判定する" "$LANE_STDERR" "COMPLEXITY_LANE=light; complexity=S; source=body_meta"
+  [ "$LANE_RC" -eq 0 ] && pass "TC-6.13b: project_number 未設定 ($_pj_num) で止めない" || fail "TC-6.13b: rc=$LANE_RC"
+  run_pj "$NO_DECL"
+  assert_contains "TC-6.13c: project_number 未設定 ($_pj_num) は未参照と案内する" "$LANE_STDERR" "github.projects.project_number が未設定のため Projects は参照していません"
+  # 崩れた宣言があっても、未設定を連携無効や「値を使っていない」と言い換えない。
+  run_pj '冒頭の散文行
+**complexity**: M'
+  assert_contains "TC-6.13d: 未設定 ($_pj_num) + 崩れた宣言も未設定と案内する" "$LANE_STDERR" "github.projects.project_number が未設定のため Projects は参照していません"
+  assert_not_contains "TC-6.13e: 未設定 ($_pj_num) + 崩れた宣言を連携無効と言わない" "$LANE_STDERR" "連携は無効"
+done
+pj_config true '"11"'
+pj_items "$(pj_item 11 Complexity=S)"
+run_pj "$NO_DECL"
+assert_contains "TC-6.12e: 引用符付きの project_number は数値として読む" "$LANE_STDERR" "COMPLEXITY_LANE=light; complexity=S; source=projects_field"
+pj_config true 11
+
 # 実呼出し block の終了値を測り、入口identityを保持したままforeign開始cwdを固定する。
 run_lane_with_body "**Complexity**: S"
 for invalid_cwd in relative "" "$TEST_DIR/absent"; do
@@ -507,18 +744,36 @@ for consumer in open pr-review issue-implement; do
     inside { body=body $0 "\n" }
   ' "$skill")
   [ -n "$block" ] || { fail "$consumer の実呼出し block が無い"; continue; }
-  for mode in mismatch pinned authentication; do
+  for mode in mismatch pinned authentication pj_mismatch pj_absent; do
     execution_cwd="$foreign_repo"; bindir="$TEST_DIR/bin"
+    printf '%s' '**Complexity**: S' > "$TEST_DIR/body.txt"
     [ "$mode" = pinned ] && execution_cwd="$TEST_REPO"
     [ "$mode" = authentication ] && execution_cwd="$TEST_REPO" && bindir="$TEST_DIR/bin-fail"
+    if [ "$mode" = pj_mismatch ] || [ "$mode" = pj_absent ]; then
+      execution_cwd="$PJ_REPO"; bindir="$PJ_BIN"
+      if [ "$mode" = pj_mismatch ]; then
+        printf '%s' '**Complexity**: M' > "$TEST_DIR/body.txt"; pj_items "$(pj_item 11 Complexity=S)"
+      else
+        printf '%s' "$NO_DECL" > "$TEST_DIR/body.txt"; pj_items "$(pj_item 11 Status=Todo)"
+      fi
+    fi
     printf '%s\n' "$block" | sed \
       -e "s|{execution_cwd}|$execution_cwd|g" \
       -e "s|{plugin_root}|$SCRIPT_DIR/../..|g" \
       -e 's|{issue_number}|42|g' -e 's|{owner_repo}|$ENTRY_OWNER_REPO|g' > "$TEST_DIR/consumer.sh"
     # A single tool block returns the helper status; only success permits the next phase.
-    LANE_STDERR=$(cd "$foreign_repo" && ENTRY_OWNER_REPO="$ENTRY_OWNER_REPO" RITE_TEST_BODY_FILE="$TEST_DIR/body.txt" PATH="$bindir:$PATH" bash "$TEST_DIR/consumer.sh" 2>&1); LANE_RC=$?
+    LANE_STDERR=$(cd "$foreign_repo" && ENTRY_OWNER_REPO="$ENTRY_OWNER_REPO" RITE_TEST_BODY_FILE="$TEST_DIR/body.txt" RITE_TEST_PJ_FILE="$TEST_DIR/pj.json" PATH="$bindir:$PATH" bash "$TEST_DIR/consumer.sh" 2>&1); LANE_RC=$?
     [ "$LANE_RC" -eq 0 ] && LANE_STDERR="$LANE_STDERR CONSUMER_CONTINUED"
-    if [ "$mode" = mismatch ]; then
+    if [ "$mode" = pj_mismatch ]; then
+      [ "$LANE_RC" -eq 1 ] && pass "$consumer: 本文と Projects の食い違いが停止へ伝播" || fail "$consumer: pj_mismatch rc=$LANE_RC"
+      assert_contains "$consumer: 食い違いの reason が届く" "$LANE_STDERR" "complexity_mismatch"
+      assert_not_contains "$consumer: 食い違い後に続行しない" "$LANE_STDERR" "CONSUMER_CONTINUED"
+    elif [ "$mode" = pj_absent ]; then
+      [ "$LANE_RC" -eq 0 ] && pass "$consumer: 両方に値が無くても helper は正常終了" || fail "$consumer: pj_absent rc=$LANE_RC"
+      assert_contains "$consumer: 両方に値が無ければ complexity_absent の fallback" "$LANE_STDERR" "COMPLEXITY_LANE_FALLBACK=1; reason=complexity_absent"
+      assert_contains "$consumer: 欠落時の案内が届く" "$LANE_STDERR" "**Complexity**: M"
+      assert_contains "$consumer: fallback 後に続行できる" "$LANE_STDERR" "CONSUMER_CONTINUED"
+    elif [ "$mode" = mismatch ]; then
       [ "$LANE_RC" -eq 1 ] && pass "$consumer: context 失敗が停止へ伝播" || fail "$consumer: rc=$LANE_RC"
       assert_not_contains "$consumer: context 失敗後に続行しない" "$LANE_STDERR" "CONSUMER_CONTINUED"
     elif [ "$mode" = pinned ]; then
@@ -556,6 +811,7 @@ echo "=== docstring が reason 語彙の SoT であること ==="
 # consumer 側 reason (issue_number_missing / helper_failed) も docstring に載せる — helper を
 # 呼べない状況を helper 自身が語れないと、reason 表がどこにも揃わなくなるため。
 for _r in gh_missing repo_unresolved issue_fetch_failed complexity_absent complexity_invalid \
+          projects_fetch_failed complexity_mismatch projects_config_invalid \
           issue_number_missing helper_failed; do
   if grep -q "$_r" "$TARGET"; then
     pass "TC-5: docstring が reason '$_r' を宣言している"

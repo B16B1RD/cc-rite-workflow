@@ -184,7 +184,7 @@ undefined を残すとステップ 5.4 の placeholder が literal または err
 
 `complexity_absent` を含む全 fail-safe を WARNING 付き `full` へ倒す理由。
 
-宣言 Complexity が無い Issue では定常的に出うるが、loud にする根拠は「宣言が必ずある」ことではなく、`full` へ倒れた事実が レーンの効果計測の分母になる観測値だから。正常終了時の marker 欠落 / Issue 番号未特定も同じ consumer 側既定。helper は明示された絶対 `--cwd` へ移動し、入口で保持した `--repo` と origin を照合する。helper 非ゼロは実行場所・repository context の失敗として停止し、full 継続に置き換えない。
+宣言 Complexity が無い Issue では定常的に出うるが、loud にする根拠は「宣言が必ずある」ことではなく、`full` へ倒れた事実が レーンの効果計測の分母になる観測値だから。正常終了時の marker 欠落 / Issue 番号未特定も同じ consumer 側既定。helper は明示された絶対 `--cwd` へ移動し、入口で保持した `--repo` と origin を照合する。helper 非ゼロは実行場所・repository context の失敗、および本文と Projects の Complexity の食い違い・Projects 設定不正として停止し、full 継続に置き換えない。
 
 ## doc-heavy-override-relationship
 
