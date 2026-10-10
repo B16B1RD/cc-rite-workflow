@@ -589,6 +589,40 @@ class WorkflowContracts(unittest.TestCase):
 
     def test_readability_spec_checks_parent_and_each_child_before_creation(self):
         guard = self.readability_guard()
+        issue = (plugin / "skills/issue-create/SKILL.md").read_text(encoding="utf-8")
+        blocks = re.findall(r"(?ms)^```bash\n(.*?)^```", issue)
+        single = next(b for b in blocks if "result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh" in b)
+        decomposed = next(b for b in blocks if "bash {plugin_root}/scripts/decompose-issues.sh --spec" in b)
+        mock_plugin = self.fixture / "creator"
+        (mock_plugin / "scripts").mkdir(parents=True)
+        log = self.fixture / "create.log"
+        for helper in ["create-issue-with-projects.sh", "decompose-issues.sh"]:
+            (mock_plugin / "scripts" / helper).write_text(
+                '#!/bin/bash\nprintf "%s\\n" "$@" > "$CREATE_LOG"\n'
+                'printf \'%s\\n\' \'{"issue_number":123,"project_registration":"registered"}\'\n',
+                encoding="utf-8")
+        (self.fixture / "attachments.json").write_text("[]", encoding="utf-8")
+        self.env["CREATE_LOG"] = str(log)
+        self.env["TMPDIR"] = str(self.fixture)
+
+        def execute_caller(payload):
+            values = {"plugin_root": str(mock_plugin), "owner_repo": "fixture/repo",
+                      "owner": "fixture", "project_number": "1", "labels_csv": "",
+                      "priority": "Medium", "complexity": "S", "field_name_status": "Status",
+                      "field_name_priority": "Priority", "field_name_complexity": "Complexity",
+                      "ATTACHMENTS_JSON_FILE": str(self.fixture / "attachments.json"),
+                      "READABILITY_GUARD_FILE": str(guard), "DECOMPOSE_WORKDIR": str(self.fixture)}
+            block = decomposed
+            if "issue" in payload:
+                doc = payload["issue"]
+                values.update(title=doc["title"],
+                              READABILITY_RECORD_FILE=records[doc["body_file"]])
+                block = single.replace("\n{body}\n", "\n" + pathlib.Path(doc["body_file"]).read_text() + "\n")
+            for key, value in values.items():
+                block = block.replace("{" + key + "}", value)
+            # Use each caller's own failure boundary, without adding set -e.
+            return self.run_readability(["bash", "-c", block])
+
         documents, records = [], {}
         for name in ["parent", "child1", "child2"]:
             title, body, record = [self.fixture / (name + suffix) for suffix in [".txt", ".md", ".json"]]
@@ -605,6 +639,11 @@ class WorkflowContracts(unittest.TestCase):
             command += (["--record-file", records[payload["issue"]["body_file"]]] if "issue" in payload
                         else ["--records-file", str(mapping)])
             self.assertEqual(self.run_readability(command).returncode, 0)
+            result = execute_caller(payload)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertTrue(log.is_file(), "matching versions reach the creation helper")
+            self.assertIn("READABILITY_VERSION=ok", result.stdout)
+            log.unlink()
             targets = [payload["issue"]] if "issue" in payload else [payload["parent"], *payload["sub_issues"]]
             for doc in targets:
                 for defect in ["title", "body", "record"]:
@@ -622,6 +661,17 @@ class WorkflowContracts(unittest.TestCase):
                         result = self.run_readability(command)
                         self.assertNotEqual(result.returncode, 0)
                         self.assertNotIn("READABILITY_VERSION=ok", result.stdout)
+                        retained = {path: path.read_bytes() for path in [body, spec, mapping, guard]
+                                    if path.exists()}
+                        if record.exists():
+                            retained[record] = record.read_bytes()
+                        result = execute_caller(payload)
+                        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                        self.assertFalse(log.exists(), "rejected versions must not call the creation helper")
+                        self.assertIn("作成せず手順 2 へ戻る", result.stderr)
+                        for path, contents in retained.items():
+                            self.assertTrue(path.is_file(), "rejection preserves " + path.name)
+                            self.assertEqual(path.read_bytes(), contents)
                         doc["title"] = old_title
                         body.write_text(old_body, encoding="utf-8")
                         record.write_text(old_record, encoding="utf-8")
