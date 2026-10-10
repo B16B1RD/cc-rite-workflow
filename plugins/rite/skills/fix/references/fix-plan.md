@@ -59,7 +59,7 @@ mergeable のレビューの後に手で commit すると、その HEAD には f
 
 レビューを始めた PR ブランチへ base ブランチを取り込む正規の手順。レビュー中の作業先では、検証を経ない merge commit は拒否される（自動で commit する `git merge <ref>`、計画なしの `git commit` / `git merge --continue`）。取り込み後の HEAD は次の `review-start` で検証済みでなければ再レビューできず、ready / merge にも進めないため、この順で行う:
 
-1. `git fetch origin <base>` のあと `git merge --no-commit --no-ff origin/<base>` で取り込み、競合を解消して `git add` する（HEAD はレビュー済み commit のまま）。`<base>` は `rite-config.yml` の `branch.base`（未設定なら取り込めず止まる）。merge が既に進行中（`MERGE_HEAD` がある）なら、取り込み相手が `origin/<base>` のときは競合解消と `git add` から始め、そうでなければ `git merge --abort` してからこの手順 1 に戻る
+1. `git fetch origin <base>` のあと `git merge --no-commit --no-ff origin/<base>` で取り込み、競合を解消して `git add` する（HEAD はレビュー済み commit のまま）。`<base>` は PR の `baseRefName`（`gh pr view <PR 番号> --json baseRefName`。`rite-config.yml` は不要で、取得できなければ止まる）。`branch.base` が設定済みで `baseRefName` と食い違うときも `check` が両方の値を示して止まる。merge が既に進行中（`MERGE_HEAD` がある）なら、取り込み相手が `origin/<base>` のときは競合解消と `git add` から始め、そうでなければ `git merge --abort` してからこの手順 1 に戻る
 2. `git diff --no-renames --name-only HEAD` の全パスを 1 つの `action: "base-intake"` グループの `paths` に並べ、全体検証を対応付ける。`finding_ids` は空でよい。改名は旧パスと新パスの 2 つとして並ぶ
 3. `check` → `verify --kind all` を通し、commit の直前に Wiki 適用証跡を取り直してから `git commit` で取り込みを確定する（`git merge --continue` で確定しても check / verify の検査は受けるが、Wiki 適用ゲートは `git commit` でだけ働くため、取り直しは省かない）。取り直さないと、commit と次のレビューのゲートは取り込み前の証跡を読み、取り込んだパスを `paths` / `stale_content` で拒否する。取り直しは [fix](../SKILL.md) の 0.5.W と同じ capture で、`{changed_paths}` は手順 2 の paths のカンマ区切り、`{keywords}` は取り込んだパスとその要点（`'` を含めない）。capture は作業ツリーの状態（symlink はリンク文字列）を記録し、ゲートは staged の内容と比べるため、全パスの `git add` を終えてから commit までの間に実行する。base 側が削除したパス（改名の旧パスを含む）は削除として記録され、ゲートはそのパスが index にも作業ツリーにも無いことを照合する。commit の前に、status が ok のページは 0.5.W と同じく証跡を書き切る。取り込みで見つかったページは、競合解消そのものに規則を当てた場合を除き out（base 側の変更の取り込みであり、この PR の修正ではない）と記録する。capture が非 0 で終わるか commit のゲートが deny なら commit せず、原因を報告して止まる
 
@@ -78,7 +78,7 @@ mergeable のレビューの後に手で commit すると、その HEAD には f
 5. `git push origin HEAD` で取り込み commit を PR に反映する
 6. `/rite:iterate` で次のレビュー cycle を回し、mergeable になってから ready / merge へ進む
 
-**CI 待ちの cycle を閉じた後**: PR が base と競合している間は必須 CI が起動しないため、pr-review ステップ 5.3.0.CI は cycle を放棄して `[CONTEXT] REVIEW_STOP=base_conflict; base={base}` で止まる。完了した cycle と保存済みレビューが無いので計画・`check`・`verify` は作れず、commit ガードもそれらを求めない。取り込み相手は marker の `{base}`（PR の base ブランチ）で、手順 1 の `branch.base` は読まない。上から順に行う:
+**CI 待ちの cycle を閉じた後**: PR が base と競合している間は必須 CI が起動しないため、pr-review ステップ 5.3.0.CI は cycle を放棄して `[CONTEXT] REVIEW_STOP=base_conflict; base={base}` で止まる。完了した cycle と保存済みレビューが無いので計画・`check`・`verify` は作れず、commit ガードもそれらを求めない。取り込み相手は marker の `{base}`（PR の base ブランチで、手順 1 の `<base>` と同じ）。上から順に行う:
 
 - `git fetch origin {base}` のあと `git merge --no-commit --no-ff origin/{base}` で取り込み、競合を解消して `git add` する。merge が既に進行中（`MERGE_HEAD` がある）なら、取り込み相手が `origin/{base}` のときは競合解消と `git add` から始め、そうでなければ `git merge --abort` してから取り込む
 - 手順 3 の `base-intake-wiki-capture` を実行してから `git commit --no-edit` で確定する。`{changed_paths}` は `git diff --no-renames --name-only HEAD` の全パス、ページの記録と out の判定は手順 3 と同じ。phase が implement / fix ではないので commit 時の Wiki 適用ゲートは働かないが、次のレビューのゲートは取り込み前の証跡を拒否するため、取り直しは省かない

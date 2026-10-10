@@ -616,9 +616,9 @@ def deviations(state, context):
     return [entry for entry in records if entry["review_context"] == context]
 
 
-def pr_added(file, start, end):
-    """Whether file:start-end overlaps a line this PR added against origin/<branch.base>."""
-    base = importlib.import_module("review-fix-scope").base_branch()
+def pr_added(state, file, start, end):
+    """Whether file:start-end overlaps a line this PR added against origin/<the PR's base branch>."""
+    base = importlib.import_module("review-fix-scope").base_branch(state.get("pr_number"))
     remote = "refs/remotes/origin/" + base
     require(subprocess.run(["git", "rev-parse", "-q", "--verify", remote], capture_output=True).returncode == 0,
             "recording a deviation needs origin/" + base + "; run git fetch origin " + base)
@@ -655,7 +655,7 @@ def deviate(state, args, directory):
     # The fix of this cycle could not be re-reviewed: the next review would trip max-cycles.
     require(state["cycle_count"] < review_cycle_cap(),
             "the review is at safety.max_review_cycles; its fix could not be re-reviewed")
-    require(pr_added(record["file"], line, end),
+    require(pr_added(state, record["file"], line, end),
             "deviation does not point at a line this PR added")
     # A fix that disposed this review's deviations without a new commit returns to
     # the same HEAD; handing it over again would loop without advancing a cycle.
