@@ -44,7 +44,8 @@
 #   table:   rows_invalid / input_missing / table_missing / table_malformed / id_set_mismatch /
 #            verdict_invalid / perspective_invalid / evidence_missing / anchor_missing
 #
-# facts の gh / git 失敗は止めずに、その出典の事実へ error を記録する (errors=E に数える)。
+# facts の gh / git 失敗は止めずに、その出典または節の事実へ error を記録する (errors=E に数える)。
+# git が失敗したときはファイルの有無を断定しない (exists: false は git が成功して無いときだけ)。
 # error の出典を含む行は、検証 agent が判定不能 (Measurement-Blocked:) として表に出す。
 #
 # Exit codes: 0 = 成功, 1 = 検査失敗 (CLAIM_SOURCE_CHECK_FAILED emit 済み), 2 = invocation error
@@ -249,19 +250,31 @@ def load_rows(mode, path):
     return rows
 
 
+def git_failure(rc, err, command):
+    return {"error": err or f"git exited {rc}", "command": command}
+
+
 def repo_root():
-    rc, out, _ = run(["git", "rev-parse", "--show-toplevel"])
-    return out.strip() if rc == 0 else os.getcwd()
-
-
-def resolve_path(root, path):
-    if os.path.isfile(os.path.join(root, path)):
-        return [path]
-    rc, out, _ = run(GIT + ["-C", root, "ls-files", "-z"])
+    """(root, None), or (None, failure) when git cannot name the repository; the working directory is no substitute."""
+    command = "git rev-parse --show-toplevel"
+    rc, out, err = run(command.split())
     if rc != 0:
-        return []
+        return None, git_failure(rc, err, command)
+    return out.strip(), None
+
+
+def resolve_path(repo, path):
+    """(candidates, None), or ([], failure) when git could not list the files: not knowing is not absence."""
+    root, failure = repo
+    if failure:
+        return [], failure
+    if os.path.isfile(os.path.join(root, path)):
+        return [path], None
+    rc, out, err = run(GIT + ["-C", root, "ls-files", "-z"])
+    if rc != 0:
+        return [], git_failure(rc, err, "git ls-files")
     suffix = "/" + re.sub(r"^(?:\.{1,2}/)+", "", path)
-    return [p for p in out.split("\0") if p and p.endswith(suffix)]
+    return [p for p in out.split("\0") if p and p.endswith(suffix)], None
 
 
 def read_lines(root, path):
@@ -348,17 +361,19 @@ def fact_issue(token, default_repo):
         return {"error": f"unexpected gh output: {exc!r}", "command": command}
 
 
-def fact_file_line(root, token):
+def fact_file_line(repo, token):
     path, _, span = token.rpartition(":")
     start, _, end = span.partition("-")
     start = int(start)
     end = int(end) if end else start
-    candidates = resolve_path(root, path)
+    candidates, failure = resolve_path(repo, path)
+    if failure:
+        return failure
     if not candidates:
         return {"exists": False, "path": path}
     found = []
     for cand in candidates:
-        lines = read_lines(root, cand)
+        lines = read_lines(repo[0], cand)
         total = len(lines) - (1 if lines and lines[-1] == "" else 0)
         entry = {"path": cand, "line_count": total, "in_range": start <= total and end <= total}
         if entry["in_range"]:
@@ -404,7 +419,7 @@ def section_key(token):
     return re.sub(r"^§\s*", "", token)
 
 
-def fact_sections(root, row):
+def fact_sections(repo, row):
     sections = [r["token"] for r in row["refs"] if r["kind"] == "section"]
     if not sections:
         return None
@@ -415,12 +430,15 @@ def fact_sections(root, row):
     for s in sections:
         key = section_key(s)
         for doc in docs:
-            candidates = resolve_path(root, doc)
+            candidates, failure = resolve_path(repo, doc)
+            if failure:
+                result.append({"section": s, "doc": doc, **failure})
+                continue
             if not candidates:
                 result.append({"section": s, "doc": doc, "doc_exists": False})
                 continue
             for cand in candidates:
-                lines = read_lines(root, cand)
+                lines = read_lines(repo[0], cand)
                 body = None
                 for i, line in enumerate(lines):
                     m = re.match(r"^(#{1,6})\s+(.*)$", line)
@@ -446,7 +464,7 @@ def cmd_facts(argv):
     if not all(k in opts for k in ("rows", "repo", "out")):
         usage_error("facts requires --rows, --repo and --out")
     rows = load_rows("facts", opts["rows"])
-    root = repo_root()
+    repo = repo_root()
     refs = {}
     sections = {}
     for row in rows:
@@ -457,15 +475,19 @@ def cmd_facts(argv):
             if ref["kind"] == "issue":
                 refs[key] = fact_issue(ref["token"], opts["repo"])
             elif ref["kind"] == "file_line":
-                refs[key] = fact_file_line(root, ref["token"])
+                refs[key] = fact_file_line(repo, ref["token"])
             elif ref["kind"] == "sha":
                 refs[key] = fact_sha(ref["token"], opts["repo"])
-        found = fact_sections(root, row)
+        found = fact_sections(repo, row)
         if found is not None:
             sections[row["id"]] = found
-    errors = [k for k, v in refs.items() if "error" in v]
-    for key in errors:
-        print(f"WARNING: claim-source facts: {key}: {refs[key]['error']}", file=sys.stderr)
+    errors = {k: v["error"] for k, v in refs.items() if "error" in v}
+    for row_id, entries in sections.items():
+        for entry in entries:
+            if "error" in entry:
+                errors[f"section:{row_id}:{entry['section']}"] = entry["error"]
+    for key, message in errors.items():
+        print(f"WARNING: claim-source facts: {key}: {message}", file=sys.stderr)
     with open(opts["out"], "w", encoding="utf-8") as fh:
         json.dump({"refs": refs, "sections": sections}, fh, ensure_ascii=False, indent=1)
     print(f"[CONTEXT] CLAIM_SOURCE_FACTS=ok; refs={len(refs)}; errors={len(errors)}")
