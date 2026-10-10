@@ -595,6 +595,7 @@ class WorkflowContracts(unittest.TestCase):
         decomposed = next(b for b in blocks if "bash {plugin_root}/scripts/decompose-issues.sh --spec" in b)
         mock_plugin = self.fixture / "creator"
         (mock_plugin / "scripts").mkdir(parents=True)
+        shutil.copy2(plugin / "scripts/acceptance-criteria-check.sh", mock_plugin / "scripts/acceptance-criteria-check.sh")
         log = self.fixture / "create.log"
         for helper in ["create-issue-with-projects.sh", "decompose-issues.sh"]:
             (mock_plugin / "scripts" / helper).write_text(
