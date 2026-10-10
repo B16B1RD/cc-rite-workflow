@@ -179,12 +179,66 @@ assert 'base conflict does not wait' false "$([ -f "$scratch/final-wait" ] && ec
 assert 'base conflict queries once' 1 "$(cat "$scratch/query-count")"
 jq '.requiredContexts=[]' "$scratch/conflict.json" > "$scratch/first.json"
 completion conflict-no-required
-assert 'conflict without required checks still passes' 0 "$completion_rc"
-assert_grep 'conflict without required checks keeps state none' "$scratch/final-out" 'REVIEW_CI_FINAL=passed; state=none; waited=0'
+completion_failed conflict-no-required
+assert_grep 'conflict without required checks is blocked' "$scratch/final-out" \
+  '^\[CONTEXT\] REVIEW_CI_FINAL=blocked; reason=base_conflict; base=main$'
 jq '.mergeable="CONFLICTING"' "$scratch/success.json" > "$scratch/first.json"
+jq 'del(.ci_status)' "$scratch/review.json" > "$scratch/review.tmp" && mv "$scratch/review.tmp" "$scratch/review.json"
 completion conflict-healthy
-assert 'conflict after successful required checks still passes' 0 "$completion_rc"
-assert_grep 'conflict after successful required checks keeps state healthy' "$scratch/final-out" 'REVIEW_CI_FINAL=passed; state=healthy; waited=0'
+completion_failed conflict-healthy
+assert_grep 'conflict after successful required checks is blocked' "$scratch/final-out" \
+  '^\[CONTEXT\] REVIEW_CI_FINAL=blocked; reason=base_conflict; base=develop$'
+assert 'conflict after successful checks does not wait' false "$([ -f "$scratch/final-wait" ] && echo true || echo false)"
+assert 'conflict after successful checks queries once' 1 "$(cat "$scratch/query-count")"
+assert 'conflict after successful checks leaves ci_status unwritten' null "$(jq -c '.ci_status' "$scratch/review.json")"
+jq '.mergeable="CONFLICTING"' "$scratch/unhealthy.json" > "$scratch/first.json"
+completion conflict-unhealthy
+completion_failed conflict-unhealthy
+assert_grep 'conflict takes precedence over failed checks' "$scratch/final-out" 'REVIEW_CI_FINAL=blocked; reason=base_conflict'
+jq '.mergeable="UNKNOWN"' "$scratch/success.json" > "$scratch/first.json"
+cp "$scratch/success.json" "$scratch/later.json"
+jq 'del(.ci_status)' "$scratch/review.json" > "$scratch/review.tmp" && mv "$scratch/review.tmp" "$scratch/review.json"
+completion healthy-unknown-then-mergeable
+assert 'successful checks wait out an UNKNOWN merge state' 0 "$completion_rc"
+assert 'UNKNOWN merge state after success waits once' 1 "$(cat "$scratch/final-wait")"
+assert 'UNKNOWN merge state after success is re-fetched' 2 "$(cat "$scratch/query-count")"
+assert_grep 'passes only after the merge state is known' "$scratch/final-out" 'REVIEW_CI_FINAL=passed; state=healthy; waited=1'
+assert 'ci_status is saved from the re-fetched result' healthy "$(jq -r '.ci_status.state' "$scratch/review.json")"
+jq '.mergeable="UNKNOWN"' "$scratch/success.json" > "$scratch/first.json"
+cp "$scratch/first.json" "$scratch/later.json"
+completion healthy-unknown-timeout
+completion_failed healthy-unknown-timeout
+assert_grep 'successful checks with a stuck UNKNOWN merge state time out' "$scratch/final-out" 'REVIEW_CI_FINAL=error; reason=timeout'
+assert 'stuck UNKNOWN after success queries initial and both polls' 3 "$(cat "$scratch/query-count")"
+jq '.mergeable="MERGEABLE"' "$scratch/success.json" > "$scratch/first.json"
+cp "$scratch/success.json" "$scratch/later.json"
+completion healthy-mergeable
+assert 'successful checks with MERGEABLE still pass' 0 "$completion_rc"
+assert_grep 'MERGEABLE keeps the passed result' "$scratch/final-out" 'REVIEW_CI_FINAL=passed; state=healthy; waited=0'
+jq '.mergeable="BOGUS"' "$scratch/success.json" > "$scratch/first.json"
+completion mergeable-unrecognised
+completion_failed mergeable-unrecognised
+assert_grep 'unrecognised merge state is an error' "$scratch/final-out" 'REVIEW_CI_FINAL=error; reason=merge_state_unavailable'
+jq '.mergeable="UNKNOWN"' "$scratch/none.json" > "$scratch/first.json"
+cp "$scratch/none.json" "$scratch/later.json"
+jq 'del(.ci_status)' "$scratch/review.json" > "$scratch/review.tmp" && mv "$scratch/review.tmp" "$scratch/review.json"
+completion none-unknown-then-mergeable
+assert 'no required checks wait out an UNKNOWN merge state' 0 "$completion_rc"
+assert 'UNKNOWN merge state without required checks waits once' 1 "$(cat "$scratch/final-wait")"
+assert 'UNKNOWN merge state without required checks is re-fetched' 2 "$(cat "$scratch/query-count")"
+assert_grep 'no required checks pass only after the merge state is known' "$scratch/final-out" 'REVIEW_CI_FINAL=passed; state=none; waited=1'
+jq '.mergeable="UNKNOWN"' "$scratch/none.json" > "$scratch/first.json"
+cp "$scratch/first.json" "$scratch/later.json"
+completion none-unknown-timeout
+completion_failed none-unknown-timeout
+assert_grep 'no required checks with a stuck UNKNOWN merge state time out' "$scratch/final-out" 'REVIEW_CI_FINAL=error; reason=timeout'
+jq '.mergeable="UNKNOWN"' "$scratch/unhealthy.json" > "$scratch/first.json"
+cp "$scratch/first.json" "$scratch/later.json"
+completion unhealthy-unknown
+completion_failed unhealthy-unknown
+assert_grep 'failed checks are reported without waiting for the merge state' "$scratch/final-out" 'REVIEW_CI_FINAL=failed; reason=unhealthy'
+assert 'failed checks with UNKNOWN do not wait' false "$([ -f "$scratch/final-wait" ] && echo true || echo false)"
+assert 'failed checks with UNKNOWN query once' 1 "$(cat "$scratch/query-count")"
 jq '.mergeable="UNKNOWN"' "$scratch/pending.json" > "$scratch/first.json"
 cp "$scratch/conflict.json" "$scratch/later.json"
 completion unknown-then-conflict
