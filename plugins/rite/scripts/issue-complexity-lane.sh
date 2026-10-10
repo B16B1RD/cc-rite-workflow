@@ -386,26 +386,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
   fi
 fi
 
-if [ -n "$_complexity" ]; then
-  case "$_pj_state" in
-    value)
-      if [ "$_pj_value" != "$_complexity" ]; then
-        echo "ERROR: issue-complexity-lane: complexity_mismatch: Issue 本文と Projects #${_pj_number} の Complexity が食い違っています (本文=${_complexity}; Projects=${_pj_value})。どちらかを正しい値に直してから再実行してください" >&2
-        exit 1
-      fi ;;
-    invalid)
-      echo "WARNING: issue-complexity-lane: Projects #${_pj_number} の Complexity フィールドの値が XS / S / M / L / XL のいずれでもないため、本文の宣言 (${_complexity}) だけで判定しました。診断に値は載せません — 第三者が書ける外部入力のため" >&2 ;;
-    failed)
-      echo "WARNING: issue-complexity-lane: Projects の Complexity を確認できなかったため、本文との一致を確かめずに本文の宣言 (${_complexity}) で判定しました" >&2 ;;
-  esac
-else
-  case "$_pj_state" in
-    value) _complexity="$_pj_value"; _source="projects_field" ;;
-    invalid) emit_full_fallback complexity_invalid ;;
-    failed) emit_full_fallback projects_fetch_failed ;;
-  esac
-fi
-
+_decl_line=""
 if [ -z "$_complexity" ]; then
   # 宣言らしき行はあるのに値を取り出せなかった場合だけ対象行の行番号を報告する
   # (sibling の review-cycle-scope.sh は target の値そのものを名指しするが、本 helper は
@@ -444,6 +425,32 @@ if [ -z "$_complexity" ]; then
     f && NF   { n = NR; exit }
     END { if (!n) n = h; if (n) print n }
   ')
+  # 宣言らしき行があるのに値を取り出せなかった本文は「宣言が無い」には当たらない。Projects の値で
+  # 補うと、崩れた宣言 (例: 本文 M) が Projects の値 (例: S) で黙って上書きされ、行番号 WARNING も
+  # 食い違いの検査も働かない。英字を取り出せた不正綴りを補わないのと同じく、下の欠落経路で止める。
+fi
+
+if [ -n "$_complexity" ]; then
+  case "$_pj_state" in
+    value)
+      if [ "$_pj_value" != "$_complexity" ]; then
+        echo "ERROR: issue-complexity-lane: complexity_mismatch: Issue 本文と Projects #${_pj_number} の Complexity が食い違っています (本文=${_complexity}; Projects=${_pj_value})。どちらかを正しい値に直してから再実行してください" >&2
+        exit 1
+      fi ;;
+    invalid)
+      echo "WARNING: issue-complexity-lane: Projects #${_pj_number} の Complexity フィールドの値が XS / S / M / L / XL のいずれでもないため、本文の宣言 (${_complexity}) だけで判定しました。診断に値は載せません — 第三者が書ける外部入力のため" >&2 ;;
+    failed)
+      echo "WARNING: issue-complexity-lane: Projects の Complexity を確認できなかったため、本文との一致を確かめずに本文の宣言 (${_complexity}) で判定しました" >&2 ;;
+  esac
+elif [ -z "$_decl_line" ]; then
+  case "$_pj_state" in
+    value) _complexity="$_pj_value"; _source="projects_field" ;;
+    invalid) emit_full_fallback complexity_invalid ;;
+    failed) emit_full_fallback projects_fetch_failed ;;
+  esac
+fi
+
+if [ -z "$_complexity" ]; then
   # 原因の分類は列挙しない。退避先が増えるたびに列挙と実態がずれ (記入漏れの空節は
   # 「崩れた記法」のどれにも当たらない)、同じ列挙を持つ散文 site との同期義務も増える。
   # reason ごとの原因分類は本 script の docstring と complexity-lane.md の reason 表が持つ。

@@ -633,6 +633,14 @@ pj_items "$(pj_item 11 Complexity=S)"
 run_pj '**Complexity**: ZZ'
 assert_contains "TC-6.10: 本文の不正綴りを Projects の値で補わない" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_invalid"
 assert_not_contains "TC-6.10b: 本文の不正綴りで Projects 由来にしない" "$LANE_STDERR" "source=projects_field"
+# 崩れた宣言（値を取り出せない形）は「宣言が無い」ではない。Projects の値で補うと、本文の M が
+# Projects の S で黙って上書きされて light に落ちる。宣言行は 2 行目に置き、行番号が定数と一致しないようにする。
+pj_items "$(pj_item 11 Complexity=S)"
+run_pj '冒頭の散文行
+**complexity**: M'
+assert_contains "TC-6.10d: 崩れた宣言は Projects の値で補わず complexity_absent" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
+assert_contains "TC-6.10e: 崩れた宣言の行番号 WARNING を出す" "$LANE_STDERR" "body の 2 行目から値を取り出せませんでした"
+assert_not_contains "TC-6.10f: 崩れた宣言で Projects 由来にしない" "$LANE_STDERR" "source=projects_field"
 pj_items "$(pj_item 11 Complexity=S)"
 run_pj '## 複雑度
 
