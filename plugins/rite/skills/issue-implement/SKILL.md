@@ -871,6 +871,8 @@ rationale: references/rationale.md#lint-atomic-pair
 
    **4b**: **Immediately** invoke `rite:lint` via Skill tool（停止禁止）
 
+   **4c**: lint の return 後、実装 sub-skill は sentinel と未実行理由を caller の open ステップ 5 へ返す。success / skipped は open が同じターンにステップ 6 を実行する。lint の継続 handoff を別の `flow-state.sh set` で消さず、継続案内だけでターンを終了しない。error / aborted の判定も open に返し、実装 sub-skill 自身は PR を作成しない。
+
 ### Mandatory Action After Phase 5.1.1 Completion (Absolute Requirement)
 
 > 停止禁止。

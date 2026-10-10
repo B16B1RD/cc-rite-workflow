@@ -1403,6 +1403,42 @@ if [ "$rc" -ne 0 ]; then pass 'successful resume with residual record stops'; el
 assert 'residual record cannot reach following step' '' "$out"
 assert_not_grep 'helper never overrides target session or review run' "$ENTRY" 'resume --session|review-restart|review-start|--phase|cycle_count'
 
+# Open uses the same one-shot consumer without requiring an active batch queue.
+for result in skipped success; do
+  d=$(new_sandbox)
+  RITE_STATE_ROOT="$d" bash "$FS" set --phase lint --issue 1168 --branch b --pr 0 \
+    --next 'consume lint result' --handoff "OPEN:$result:1168" --session "$SID" >/dev/null
+  out=$(stop_payload "$d" | bash "$HOOK" 2>"$d/open-error")
+  jq -r .reason <<< "$out" > "$d/open-reason"
+  assert "open/$result: early stop blocks" block "$(jq -r .decision <<< "$out")"
+  assert_grep "open/$result: caller result remains distinct" "$d/open-reason" "\[lint:$result\]"
+  assert_grep "open/$result: resumes PR step" "$d/open-reason" 'ステップ 6'
+  assert_not_grep "open/$result: no iterate reroute" "$d/open-reason" '/rite:iterate'
+  assert "open/$result: prefix is recognized" '' "$(cat "$d/open-error")"
+  assert "open/$result: second stop allows" '' "$(stop_payload "$d" "$SID" true | bash "$HOOK")"
+  RITE_STATE_ROOT="$d" bash "$FS" set --phase lint --next n \
+    --handoff "OPEN:$result:1168" --session "$SID" >/dev/null
+  RITE_STATE_ROOT="$d" bash "$FS" set --phase pr --pr 99 --next 'review when requested' \
+    --session "$SID" >/dev/null
+  assert "open/$result: completed PR clears pending return" ABSENT "$(jq -r '.handoff // "ABSENT"' "$(state_file_for "$d")")"
+  assert "open/$result: normal completion allows" '' "$(stop_payload "$d" | bash "$HOOK")"
+done
+
+# A stale open marker cannot revive a completed, interrupted, or unrelated state.
+for boundary in completed inactive interrupted different_issue; do
+  d=$(new_sandbox)
+  args=(--phase lint --issue 1168 --branch b --pr 0 --next n --handoff OPEN:skipped:1168 --session "$SID")
+  case "$boundary" in
+    completed) args+=(--phase pr --pr 99) ;;
+    inactive) args+=(--active false) ;;
+    interrupted) args+=(--stop-reason user-aborted) ;;
+    different_issue) args+=(--issue 1169) ;;
+  esac
+  RITE_STATE_ROOT="$d" bash "$FS" set "${args[@]}" >/dev/null
+  assert "open/$boundary: stale marker permits stop" '' "$(stop_payload "$d" | bash "$HOOK")"
+  assert "open/$boundary: stale marker consumed" ABSENT "$(jq -r '.handoff // "ABSENT"' "$(state_file_for "$d")")"
+done
+
 
 if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (pause record allows stop without re-injection or watchdog + review↔fix loop continuation + FINALIZE terminal backstop + skip bounce when iterate notice already present + remaining-field inspect on mergeable + WIKICHAIN cleanup-chain gate + C1 8-bit coverage via shared neutralize_ctrl + JSON emit fallback C0 neutralization + neutralize-failure placeholder degradation + notice missing/inspect-fail isolation + SIGPIPE-safe heading scan + batch run-queue watchdog)"; then
   exit 1

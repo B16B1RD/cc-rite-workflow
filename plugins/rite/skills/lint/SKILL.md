@@ -37,17 +37,20 @@ argument-hint: ""
 
 | Caller | Output Pattern | Subsequent Action |
 |-----------|-------------|---------------|
-| `/rite:open` (end-to-end flow) | Output (required) | `/rite:open` calls `rite:pr-create` at ステップ 6 after consuming the lint result at ステップ 5.1 |
+| `/rite:open` → `rite:issue-implement` → `rite:lint`（open の直接呼出し・再試行も含む） | Output (required) | 実装 sub-skill は結果を open に返し、open がステップ 5 で消費して同じターンにステップ 6 を実行する |
+| その他の caller（`/rite:ready` 等） | Output (required) | その caller へ返す。open の継続は設定しない |
 | Standalone execution | Output (required) | Display "next steps" guidance |
 
 | Condition | Result |
 |------|---------|
-| `rite:lint` was called via the `Skill` tool immediately prior within the same session | Within end-to-end flow |
+| 同じセッションの実際の呼出し履歴（native Skill または同等の本文実行）で caller を確認できる | Within end-to-end flow。open の呼出しチェーンなら `{lint_caller}=open`、それ以外は `other` |
 | Otherwise (user directly typed `/rite:lint`) | Standalone execution |
+
+standalone は `{lint_caller}=standalone`。保存 state・ブランチ・過去の open の会話だけで caller を推定しない。
 
 必須パターン: `[lint:success]` / `[lint:skipped]` / `[lint:error]` / `[lint:aborted]`
 
-E2E では **`rite:pr-create` を直接呼ばない**。sentinel を出して `/rite:open` に返す。
+E2E では **`rite:pr-create` を直接呼ばない**。sentinel を出して実 caller に返す。
 rationale: references/rationale.md#no-direct-pr-create
 
 ---
@@ -66,7 +69,7 @@ rationale: references/rationale.md#no-direct-pr-create
 
 | Condition | Result | Action |
 |------|---------|------|
-| Conversation history contains rich context from `/rite:open` | Within end-to-end flow | Work memory loading optional (information available in context) |
+| 現在の呼出しチェーンが `/rite:open` と確認できる | Within end-to-end flow | Work memory loading optional (information available in context) |
 | `/rite:lint` was executed standalone | Standalone execution | Can identify Issue from branch name |
 
 ### 0.2 Load Work Memory
@@ -176,9 +179,9 @@ lint コマンドを検出できませんでした
 
 | Choice | Subsequent Processing |
 |--------|----------|
-| **Skip and continue** | Record "lint skipped" in conversation context, skip Phase 2 onward, and complete normally. If called from `/rite:open`, proceed to the next step (PR creation) |
+| **Skip and continue** | Phase 2 / 3 の検査は省略する。結果表示前に Phase 4.0、4.4 を skipped と理由付きで実行してから、下記 sentinel を caller に返す |
 | **Specify command** | Follow up with `AskUserQuestion` to prompt for command input (see below), then execute Phase 2 onward with the entered command |
-| **Abort** | Abort processing and display guidance to "configure lint and run again" |
+| **Abort** | Phase 4.0 を aborted で実行して継続 handoff を消し、`[lint:aborted]` と「lint を設定して再実行」の案内を返す。PR は作成しない |
 
 スキップ時:
 
@@ -204,8 +207,9 @@ lint をスキップしました。
 🔄 **フロー継続**: 呼び出し元の `/rite:open` が ステップ 6（PR 作成）を実行
 ```
 
-> **CRITICAL**: `/rite:open` から呼ばれたときは上記を出して **終了**する。`rite:pr-create` は `/rite:open` ステップ 5.1 が sentinel を消費したあと ステップ 6 が呼ぶ。
+> **CRITICAL**: 上記は sub-skill の return でありターン終了ではない。open の呼出しチェーンでは、実装 sub-skill を経由して sentinel と理由を open に返し、open が同じターンにステップ 5 → 6 を実行する。継続案内の表示だけで停止しない。lint 自身は `rite:pr-create` を呼ばない。
 > rationale: references/rationale.md#no-direct-pr-create
+> rationale: [stop-loop-continuation-contract.md#open-lint-handoff](../../references/stop-loop-continuation-contract.md#open-lint-handoff)
 
 `[lint:skipped]` の PR 本文反映は `/rite:open` ステップ 5 の責務:
 
@@ -466,34 +470,47 @@ lint は auto-reconcile しない。`Done` 遷移は `/rite:cleanup` / `/rite:is
 
 ### 4.0 Defense-in-Depth: State Update Before Output (End-to-End Flow)
 
-結果パターンを出す**前に** flow-state を更新する。flow-state ファイルがあるときだけ（standalone は skip）。
+結果パターンを出す**前に**実行する。Phase 1.3 の早期 return（skip / abort）も本節を通す。standalone は state が存在しても更新しない。E2E は既存 state だけを更新する。
 rationale: references/rationale.md#defense-in-depth-state
+
+`{lint_handoff}` は実 caller と結果から決める。空欄は空文字列を substitute する。
+
+| Caller | Result | `{lint_handoff}` |
+|--------|--------|------------------|
+| `open` | `[lint:skipped]` | `OPEN:skipped:{issue_number}` |
+| `open` | `[lint:success]` | `OPEN:success:{issue_number}` |
+| `open` | `[lint:error]` / `[lint:aborted]` | 空 |
+| `other` / `standalone` | 全結果 | 空 |
 
 | Result | Phase | Phase Detail | Next Action |
 |--------|-------|-------------|-------------|
-| `[lint:success]` / `[lint:skipped]` | `lint` | `品質チェック完了` | `rite:lint completed successfully. Proceed to /rite:open ステップ 6 (PR 作成). Do NOT stop.` |
+| `[lint:success]` / `[lint:skipped]` | `lint` | `品質チェック完了` | `Return lint result and reason to caller. open consumes the result at Step 5 and executes Step 6 in this turn. Other callers resume their own next step.` |
 | `[lint:error]` | `lint` | `lint エラー検出` | `rite:lint found errors. Caller retries rite:lint once; on second failure stop and /rite:recover. Do NOT stop on first error.` |
 | `[lint:aborted]` | `lint` | `品質チェック中断` | `rite:lint was aborted by user. Proceed to caller 完了レポート (orchestrator 経由なら caller へ復帰 / standalone なら開発者復帰 — abort 時は PR 作成スキップ). Do NOT stop.` |
 
 ```bash
-bash {plugin_root}/hooks/flow-state.sh set \
-  --phase "{phase_value}" \
-  --active true \
-  --next "{next_action_value}" \
-  --if-exists
+# lint-result-state
+if [ "{lint_caller}" != "standalone" ]; then
+  bash {plugin_root}/hooks/flow-state.sh set \
+    --phase "{phase_value}" \
+    --active true \
+    --next "{next_action_value}" \
+    --handoff "{lint_handoff}" \
+    --if-exists || exit $?
+fi
 ```
 
 `{phase_value}` / `{next_action_value}` は上表。`error_count` は set のたびに 0（`--preserve-error-count` 以外）。
 rationale: references/rationale.md#defense-in-depth-state
 
-flow-state があるときはローカル work memory も同期。[Work Memory Format](../../skills/rite-workflow/references/work-memory-format.md#usage-in-commands)
+E2E で flow-state があるときだけローカル work memory も同期。`{lint_result_content}` は 4.4.3 の実結果・理由を含む履歴で、skip 時も未実行理由をローカル SoT に残す。[Work Memory Format](../../skills/rite-workflow/references/work-memory-format.md#usage-in-commands)
 
 ```bash
 WM_SOURCE="lint" \
   WM_PHASE="{phase_value}" \
   WM_PHASE_DETAIL="{phase_detail}" \
   WM_NEXT_ACTION="{next_action_value}" \
-  WM_BODY_TEXT="Post-lint phase sync." \
+  WM_BODY_TEXT="{lint_result_content}" \
   WM_REQUIRE_FLOW_STATE="true" \
   WM_READ_FROM_FLOW_STATE="true" \
   WM_ISSUE_NUMBER="{issue_number}" \
@@ -527,7 +544,7 @@ placeholder は上表の実値。lock 失敗は WARNING して続行（best-effo
 {output}
 ```
 
-> E2E では対象・コマンド・継続文を省く。出力して **終了**。`rite:pr-create` は呼ばない。
+> E2E では対象・コマンド・継続文を省き、結果を caller に返す。open の呼出しチェーンは同じターンにステップ 5 → 6 へ進む。`rite:pr-create` は本スキルから呼ばない。
 > rationale: references/rationale.md#no-direct-pr-create
 
 ### 4.2 When Issues Found
@@ -608,6 +625,8 @@ placeholder は上表の実値。lock 失敗は WARNING して続行（best-effo
 
 `issue-{number}` ブランチのときだけ。main/master や Issue 番号無しは実行しない。
 
+Phase 1.3 の skip も本節を実行する。結果を `skipped`、理由を「lint コマンド未設定・自動検出にも該当なし」と記録し、成功へ置換しない。standalone は open の継続状態を設定せず、履歴のみを記録する。
+
 #### 4.4.1 Identify Related Issue
 
 ブランチ名から Issue 番号:
@@ -646,7 +665,8 @@ rm -f "$lint_result_tmp"
 ### 品質チェック履歴
 
 #### {timestamp}: /rite:lint 実行
-- **結果**: {status}（問題なし / エラーあり）
+- **結果**: {status}（問題なし / エラーあり / スキップ）
+- **理由**: {result_reason}
 - **エラー**: {error_count}件
 - **警告**: {warning_count}件
 - **対象**: {target}
@@ -780,16 +800,16 @@ go vet {files}
 
 | Output Pattern | Action in End-to-End Flow |
 |-------------|---------------------------|
-| `[lint:success]` | `/rite:lint` execution completes, and the caller `/rite:open` consumes the sentinel at ステップ 5.1 then proceeds to ステップ 6 (PR creation) |
-| `[lint:skipped]` | `/rite:lint` execution completes, and the caller `/rite:open` consumes the sentinel at ステップ 5.1 then proceeds to ステップ 6 (PR creation) |
+| `[lint:success]` | `/rite:lint` execution completes, and the caller `/rite:open` consumes the sentinel at ステップ 5 then proceeds to ステップ 6 (PR creation) |
+| `[lint:skipped]` | `/rite:lint` execution completes, and the caller `/rite:open` consumes the sentinel at ステップ 5 then proceeds to ステップ 6 (PR creation) |
 | `[lint:error]` | Emit sentinel and return to caller. Caller retries rite:lint once; on second failure stop and /rite:recover. Do not return to Phase 3. |
 | `[lint:aborted]` | Flow ends (execution of `/rite:open` also ends) |
 
-standalone では ステップ 5.1 の sentinel 消費も ステップ 6 の PR 作成も **実行しない**。
+standalone では ステップ 5 の sentinel 消費も ステップ 6 の PR 作成も **実行しない**。
 
 ### 5.2 Processing After `/rite:lint` Completion
 
-`[lint:success]` / `[lint:skipped]` なら実行完了。`/rite:open` ステップ 5.1 が sentinel を消費し ステップ 6 で `rite:pr-create` を呼ぶ。本スキルは **`rite:pr-create` を直接呼ばない**。
+`[lint:success]` / `[lint:skipped]` なら実行完了。`/rite:open` ステップ 5 が sentinel を消費し ステップ 6 で `rite:pr-create` を呼ぶ。本スキルは **`rite:pr-create` を直接呼ばない**。
 rationale: references/rationale.md#checklist-guard
 
 ### 5.3 Standalone Execution Behavior
