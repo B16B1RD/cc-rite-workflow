@@ -270,6 +270,22 @@ fi
 #   それ以外                 = 未知 prefix。silent に既定動作へ吸収せず WARNING で可視化した上で
 #                             verbatim 再注入する (prefix 名前空間拡張時の分岐漏れ検出)
 case "$HANDOFF" in
+  OPEN:skipped:*|OPEN:success:*)
+    _open_issue="${HANDOFF##*:}"
+    _open_state="$STATE_ROOT/.rite/sessions/${SESSION_ID}.flow-state"
+    # A completed PR or an explicit interruption must not revive open.
+    if ! jq -e --arg issue "$_open_issue" '
+      .active == true and .phase == "lint" and (.pr_number // 0) == 0 and
+      (.issue_number | tostring) == $issue and (.stop_reason // "") == ""
+    ' "$_open_state" >/dev/null; then
+      exit 0
+    fi
+    _open_result="${HANDOFF#OPEN:}"
+    _open_result="${_open_result%%:*}"
+    _reason="rite の /rite:open が lint 結果 ([lint:${_open_result}]) を返した後、draft PR 作成を完了していません。停止せず open ステップ 5 で結果を消費し、同じターンにステップ 6 (push → rite:pr-create → PR 番号を flow-state に保存 → 完了通知) を実行してください。lint は再実行せず、skipped の未実行理由は PR 本文の Known Issues に残してください。実装 sub-skill を経由した return でも caller は open です。既存 draft PR があれば再利用し、Ready 化・レビュー・マージへは進まないでください。
+
+handoff は consume 済みのため、進捗なく再度停止した場合は停止が許可されます。"
+    ;;
   FINALIZE:*)
     _result="${HANDOFF#FINALIZE:}"
     _nb_note=""
