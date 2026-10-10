@@ -430,6 +430,20 @@ if [ -n "$MUT_DIR" ]; then
   else
     pass "wiki-trigger removes the content file when the trigger fails"
   fi
+  # タイトルが空で取り込みをスキップする経路でも本文ファイルは消える
+  printf '%s\n' 'body' > "$MUT_DIR/rite-wiki-body.md"
+  : > "$MUT_DIR/empty-title.txt"
+  wiki_out=$(bash "$FIXTURE/scripts/fix-step.sh" wiki-trigger --pr 7 \
+    --content-file "$MUT_DIR/rite-wiki-body.md" --title-file "$MUT_DIR/empty-title.txt" 2>&1)
+  case "$wiki_out" in
+    *"reason=input_file_missing"*) ;;
+    *) fail "an empty title skips the trigger with input_file_missing (output: $wiki_out)" ;;
+  esac
+  if [ -e "$MUT_DIR/rite-wiki-body.md" ]; then
+    fail "wiki-trigger removes the content file when the title is empty and the trigger is skipped"
+  else
+    pass "wiki-trigger removes the content file when the title is empty and the trigger is skipped"
+  fi
   wiki_out=$(bash "$FIXTURE/scripts/fix-step.sh" wiki-trigger --pr 7 \
     --content-file "$MUT_DIR/absent.md" --title-file "$MUT_DIR/wiki-title.txt" 2>&1)
   case "$wiki_out" in
