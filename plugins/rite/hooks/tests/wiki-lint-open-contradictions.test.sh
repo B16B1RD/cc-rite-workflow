@@ -26,6 +26,7 @@
 #   TC-18 round trip: a line rebuilt from the helper output reads back unchanged (reason kept)
 #   TC-19 a non-result lint bullet after the result bullet → the result bullet is read
 #   TC-20 only older-format lint bullets without contradictions= → no record, 0 open
+#   TC-21 an open line under a result bullet whose heading lost ` — ` → exit 1, no marker block
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -372,6 +373,22 @@ repo=$(make_same_repo tc20 "# Directory Update Log
 * **lint:clean**: 矛盾 0 / 孤児 0 / 欠落 0")
 run_helper "$repo" --branch-strategy same_branch
 expect_block "no record, 0 open" "$EMPTY_BLOCK"
+
+echo "TC-21: an open line under a result bullet whose heading lost the separator"
+# Skipping the newest bullet would silently fall back to the older record and drop
+# the open pair, so the read has to stop instead
+repo=$(make_same_repo tc21 "# Directory Update Log
+
+## 2026-10-12
+
+* **lint:warning**: contradictions=1, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0
+$OPEN_AB
+
+## 2026-10-11
+
+* **lint:clean** — contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0")
+run_helper "$repo" --branch-strategy same_branch
+expect_stop "open line under a non-result lint bullet stops" 1 '6 フィールドの結果行でない lint bullet の下に未解消の矛盾の行があります'
 
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
