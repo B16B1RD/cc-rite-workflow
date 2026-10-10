@@ -93,6 +93,21 @@ class Caller(unittest.TestCase):
         self.assertIn("Original condition", (self.wiki / self.raw).read_text())
         self.assertEqual(len(json.loads(self.invoke(0).stdout)), 1)
 
+    def test_promotion_handoff_retains_explicit_merge_mode(self):
+        entry = batch.split("## 昇格候補の消化", 1)[1].split("## ステップ 0:", 1)[0]
+        self.assertIn("`--merge {promotion_issue_numbers}`", entry)
+        parsing = "arg_str=" + batch.split('arg_str=', 1)[1].split('if [ "$arg_count"', 1)[0]
+        for arguments, mode in (("3 5", "default"), ("--merge 3 5", "merge")):
+            with self.subTest(arguments=arguments):
+                script = parsing.replace("{issue_numbers}", arguments)
+                result = subprocess.run(["bash", "-e", "-c", script +
+                                        '\nprintf "%s\\n%s\\n" "$arg_mode" "$arg_issues_json"'],
+                                        text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                actual_mode, issues = result.stdout.split("\n", 1)
+                self.assertEqual(actual_mode, mode)
+                self.assertEqual(json.loads(issues), [3, 5])
+
     def test_skill_handoffs_use_issue_create_gate_projects_open_iterate_and_recover(self):
         entry = batch.split("## 昇格候補の消化", 1)[1].split("## ステップ 0:", 1)[0]
         self.assertIn("skill: rite:issue-create", entry)

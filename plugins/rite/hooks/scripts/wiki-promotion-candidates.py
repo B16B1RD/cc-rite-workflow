@@ -3,6 +3,10 @@
 import argparse
 import hashlib
 import io
+import os
+import shutil
+import shlex
+import textwrap
 import json
 import re
 import subprocess
@@ -15,6 +19,127 @@ from pathlib import Path
 SECTION = re.compile(r"\n## Promotion candidates\n\n```json\n(.*?)\n```\n?", re.S)
 EVENT = re.compile(r"<!-- rite-promotion: (.*?) -->")
 SELF = "plugins/rite/hooks/scripts/wiki-promotion-candidates.py"
+
+
+def atomic_write(path, text):
+    pending = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                         prefix=".rite-promotion-", suffix=".tmp", delete=False) as stream:
+            pending = Path(stream.name)
+            stream.write(text)
+        if pending.read_text(encoding="utf-8") != text:
+            raise ValueError(f"save verification failed: {path}")
+        os.replace(pending, path)
+    finally:
+        if pending is not None:
+            pending.unlink(missing_ok=True)
+
+
+def observe_usage(directory, caller, consumer, test, originals):
+    targets = [str((Path(directory) / name).resolve()) for name in (caller, consumer)]
+    with tempfile.TemporaryDirectory(prefix="rite-promotion-observer-") as probe:
+        probe = Path(probe)
+        trace = probe / "trace"
+        trace.touch()
+        bash_env = probe / "bash-env"
+        inline_codes = set()
+        if caller.endswith(".md"):
+            for block in re.findall(r"```(?:bash|sh)\n(.*?)\n[ \t]*```", originals[caller], re.S):
+                for body in (block.strip(), textwrap.dedent(block).strip()):
+                    for plugin_root in ("plugins/rite", str(Path(directory) / "plugins/rite")):
+                        inline_codes.add(body.replace("{plugin_root}", plugin_root))
+        inline_case = ""
+        if inline_codes:
+            patterns = " | ".join(shlex.quote(code) for code in sorted(inline_codes))
+            inline_case = "\ncase \"${BASH_EXECUTION_STRING:-}\" in\n" + patterns + ")\n" + (
+                "printf 'doc-exec\\t%s\\t%s\\t%s\\n' \"$BASHPID\" \"$PPID\" \"$RITE_PROMOTION_CALLER\" >> \"$RITE_PROMOTION_TRACE\"\n"
+            ) + ";;\nesac\n"
+        bash_env.write_text("""
+_rite_promotion_trace() {
+    for _rite_promotion_source in "${BASH_SOURCE[@]}"; do
+        printf 'exec\\t%s\\t%s\\t%s\\n' "$BASHPID" "$PPID" "$_rite_promotion_source" >> "$RITE_PROMOTION_TRACE"
+    done
+""" + inline_case + """
+}
+trap '_rite_promotion_trace' DEBUG
+""")
+        observer = """
+import os, sys, json
+_targets = set(json.loads(os.environ["RITE_PROMOTION_TARGETS"]))
+def _note(event, args):
+    if event == "cpython.run_file" or event == "open":
+        filename = args[0]
+        if isinstance(filename, str):
+            filename = os.path.realpath(filename)
+            if filename in _targets:
+                with open(os.environ["RITE_PROMOTION_TRACE"], "a") as stream:
+                    stream.write(("exec" if event == "cpython.run_file" else "read") + "\\t" + str(os.getpid()) + "\\t" + str(os.getppid()) + "\\t" + filename + "\\n")
+sys.addaudithook(_note)
+"""
+        (probe / "sitecustomize.py").write_text(observer)
+        readers = {name: shutil.which(name) for name in ("cat", "sed", "awk", "grep")}
+        readers = {name: path for name, path in readers.items() if path}
+        tool_dir = probe / "bin"
+        tool_dir.mkdir()
+        for name, executable in readers.items():
+            wrapper = tool_dir / name
+            wrapper.write_text("#!" + sys.executable + "\n" + """
+import json, os, subprocess, sys
+result = subprocess.run([EXECUTABLE, *sys.argv[1:]])
+if result.returncode == 0:
+    targets = set(json.loads(os.environ["RITE_PROMOTION_TARGETS"]))
+    for argument in sys.argv[1:]:
+        filename = os.path.realpath(argument)
+        if filename in targets:
+            with open(os.environ["RITE_PROMOTION_TRACE"], "a") as stream:
+                stream.write("read\\t" + str(os.getpid()) + "\\t" + str(os.getppid()) + "\\t" + filename + "\\n")
+sys.exit(result.returncode)
+""".replace("EXECUTABLE", repr(executable)))
+            wrapper.chmod(0o700)
+        environment = dict(os.environ, BASH_ENV=str(bash_env), RITE_PROMOTION_TRACE=str(trace),
+                           RITE_PROMOTION_TARGETS=json.dumps(targets), RITE_PROMOTION_CALLER=targets[0])
+        environment["PYTHONPATH"] = str(probe) + os.pathsep + environment.get("PYTHONPATH", "")
+        environment["PATH"] = str(tool_dir) + os.pathsep + environment.get("PATH", "")
+        result = subprocess.run(["bash", test], cwd=directory, env=environment, text=True,
+                                capture_output=True)
+        if result.returncode:
+            raise ValueError(f"verification failed: {test}: {result.stderr.strip() or result.stdout.strip()}")
+        events = []
+        parents = {}
+        for line in trace.read_text().splitlines():
+            kind, pid, parent, filename = line.split("\t", 3)
+            filename = str((Path(directory) / filename).resolve())
+            events.append((kind, pid, parent, filename))
+            parents[pid] = parent
+        caller_kind = "doc-exec" if caller.endswith(".md") else "exec"
+        consumer_kind = "read" if consumer.endswith(".md") else "exec"
+        callers = [e for e in events if e[0] == caller_kind and e[3] == targets[0]]
+        consumers = [e for e in events if e[0] == consumer_kind and e[3] == targets[1]]
+        if not callers:
+            raise ValueError("runtime caller use not observed")
+        if not consumers:
+            raise ValueError("runtime consumer use not observed")
+        if caller.endswith(".md") and not any(e[0] == "read" and e[3] == targets[0] for e in events):
+            raise ValueError("caller instructions were not read")
+        owner_pids = {e[1] for e in callers}
+        reached = False
+        for event in consumers:
+            pid = event[1]
+            seen = set()
+            while pid not in seen:
+                if pid in owner_pids:
+                    reached = True
+                    break
+                seen.add(pid)
+                if pid not in parents:
+                    break
+                pid = parents[pid]
+        if not reached:
+            raise ValueError("consumer was not used through the caller")
+        for name, body in originals.items():
+            if (Path(directory) / name).read_text() != body:
+                raise ValueError(f"verification changed merged source: {name}")
 
 
 def command(args, cwd=None):
@@ -77,7 +202,7 @@ def candidate(raw, text, item):
     if type(start) is not int or type(end) is not int or not 1 <= start <= end <= len(lines):
         raise ValueError(f"{raw}: invalid original source range")
     excerpt = "\n".join(lines[start - 1:end])
-    identity = [raw, excerpt, item["condition"], item["consumer"]]
+    identity = [raw, start, end, excerpt, item["condition"], item["consumer"]]
     key = hashlib.sha256(json.dumps(identity, ensure_ascii=False).encode()).hexdigest()
     if item.get("id", key) != key or item.get("excerpt", excerpt) != excerpt:
         raise ValueError(f"{raw}: candidate source changed")
@@ -87,17 +212,16 @@ def candidate(raw, text, item):
 def raw_candidates(root, raw):
     text = read_raw(root, raw)
     data = routing(text)
-    if data is not None:
-        return [candidate(raw, text, item) for item in data["candidates"]]
-    reason = field(text, "skip_reason")
+    result = [candidate(raw, text, item) for item in data["candidates"]] if data else []
+    reason = data.get("legacy_reason", "") if data else field(text, "skip_reason")
     if reason.startswith(("detector-candidate:", "promotion-candidate:")):
-        body = text.split("\n---\n", 1)[1].strip("\n")
+        body = SECTION.sub("", text).split("\n---\n", 1)[1].strip("\n")
         # Legacy entries retain the original range; AI fills condition and consumer before linking.
-        return [dict(id=hashlib.sha256((raw + reason).encode()).hexdigest(), raw=raw,
+        result.append(dict(id=hashlib.sha256((raw + reason).encode()).hexdigest(), raw=raw,
                      summary=reason.split(":", 1)[1].strip(), source={"start_line": 1,
                      "end_line": len(body.splitlines())}, excerpt=body,
-                     condition="", consumer="", legacy=True)]
-    return []
+                     condition="", consumer="", legacy=True))
+    return result
 
 
 def events(root):
@@ -123,7 +247,7 @@ def log_event(root, item):
     else:
         head, separator, rest = text.partition("\n")
         text = head + "\n\n" + day + bullet + rest
-    path.write_text(text)
+    atomic_write(path, text)
     if marker not in path.read_text():
         raise ValueError(f"log save verification failed: {path}")
 
@@ -148,20 +272,20 @@ def record(root, raw, input_path):
         raise ValueError("empty routing requires a skip reason")
     data["pages"] = pages
     payload = "\n## Promotion candidates\n\n```json\n" + json.dumps(data, ensure_ascii=False, indent=2) + "\n```\n"
-    text = SECTION.sub("", text).rstrip() + "\n" + payload
+    text = SECTION.sub("", text).rstrip("\n") + "\n" + payload
     # A partial save remains extractable even if a later log/page write fails.
     text = set_field(text, "ingested", "false")
-    if data["candidates"]:
+    if data["candidates"] or data.get("legacy_reason"):
         text = set_field(text, "ingest_status", "partial" if pages else "skipped")
         text = set_field(text, "skip_reason", json.dumps("promotion-candidate: " +
-                         "; ".join(x["summary"] for x in data["candidates"]), ensure_ascii=False))
+                         ("; ".join(x["summary"] for x in data["candidates"]) or data["legacy_reason"]), ensure_ascii=False))
     elif data.get("skip_reason"):
         text = set_field(text, "ingest_status", "skipped")
         text = set_field(text, "skip_reason", json.dumps(data["skip_reason"], ensure_ascii=False))
-    local_path(root, raw).write_text(text)
+    atomic_write(local_path(root, raw), text)
     if routing(read_raw(root, raw)) != data:
         raise ValueError(f"candidate save verification failed: {raw}")
-    for item in data["candidates"]:
+    for item in raw_candidates(root, raw):
         if not any(event["candidate"] == item["id"] and event["raw"] == raw for event in events(root)):
             log_event(root, {"candidate": item["id"], "raw": raw, "status": "unresolved",
                             "reason": "caller, verification and merge evidence required"})
@@ -190,7 +314,7 @@ def finish(root, raw):
     if not data["candidates"] and not data["pages"] and not any(e["raw"] == raw for e in history):
         raise ValueError(f"{raw}: skip log missing")
     updated = set_field(text, "ingested", "true")
-    local_path(root, raw).write_text(updated)
+    atomic_write(local_path(root, raw), updated)
     if read_raw(root, raw) != updated:
         raise ValueError(f"raw extraction save verification failed: {raw}")
     print(f"PROMOTION_SAVED={raw}")
@@ -276,20 +400,10 @@ def proof(cwd, repo, item):
     test_body = command(["git", "show", revision + ":" + test], cwd)
     if not consumer_body.strip() or consumer == caller:
         raise ValueError("consumer is empty")
-    executable = "\n".join(re.findall(r"```(?:bash|sh)\n(.*?)\n[ \t]*```", caller_body, re.S)) if caller.endswith(".md") else caller_body
-    executable = re.sub(r"^\s*#.*$", "", executable, flags=re.M)
-    # Markdown links or unused prose cannot stand in for a caller invocation.
-    relative = consumer.removeprefix("plugins/rite/")
-    invoked = re.search(r"(?:bash|python3|source|\.)\s+[^\n]*" + re.escape(relative), executable)
-    if consumer.endswith(".md"):
-        invoked = re.search(r"(?:Read|読み込む|読取)[^\n]*" + re.escape(relative), caller_body)
-    if not invoked:
-        raise ValueError("caller invocation missing")
-    test_code = re.sub(r"^\s*#.*$", "", test_body, flags=re.M)
-    if consumer not in test_code and relative not in test_code:
-        raise ValueError("test is not tied to consumer")
-    if caller not in test_code and caller.removeprefix("plugins/rite/") not in test_code:
-        raise ValueError("test is not tied to caller")
+    if consumer.endswith(".md") and caller.endswith(".md"):
+        relative = consumer.removeprefix("plugins/rite/")
+        if not re.search(r"(?:Read|読み込む|読取)[^\n]*" + re.escape(relative), caller_body):
+            raise ValueError("reference read instruction missing")
     if not test.endswith(".test.sh"):
         raise ValueError("expected a repository shell test")
     archive = subprocess.run(["git", "archive", revision], cwd=cwd, capture_output=True, check=True).stdout
@@ -301,7 +415,7 @@ def proof(cwd, repo, item):
         command(["git", "add", "."], directory)
         command(["git", "-c", "user.name=rite", "-c", "user.email=rite@localhost",
                  "commit", "-qm", "verification snapshot"], directory)
-        command(["bash", test], directory)
+        observe_usage(directory, caller, consumer, test, {consumer: consumer_body, caller: caller_body, test: test_body})
     return revision
 
 

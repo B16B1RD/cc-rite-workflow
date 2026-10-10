@@ -72,14 +72,14 @@ class Candidates(unittest.TestCase):
 
     def test_raw_and_log_save_failure_preserve_reextractable_source(self):
         original = (self.root / self.raw).read_text()
-        real_write = Path.write_text
+        real_write = p.atomic_write
         for failing in (self.root / self.raw, self.root / "log.md"):
             (self.root / "log.md").write_text("# Directory Update Log\n")
             def write(path, text, *args, **kwargs):
                 if path == failing:
                     raise OSError("injected save failure")
                 return real_write(path, text, *args, **kwargs)
-            with self.subTest(path=failing), patch.object(Path, "write_text", write):
+            with self.subTest(path=failing), patch.object(p, "atomic_write", write):
                 with self.assertRaisesRegex(OSError, "injected"):
                     self.save()
             self.assertEqual(p.field(p.read_raw(self.root, self.raw), "ingested"), "false")
@@ -145,6 +145,71 @@ class Candidates(unittest.TestCase):
         with patch.object(p, "maintainer"), patch.object(p, "proof", return_value="a" * 40):
             p.reconcile(self.root, self.root, "example/project")
         self.assertEqual(p.listed(self.root)[0]["work"]["status"], "complete")
+
+    def test_partial_os_write_failures_keep_raw_and_log_originals(self):
+        program = """
+import pathlib, resource, runpy, signal, sys
+p = runpy.run_path(sys.argv[1])
+root = pathlib.Path(sys.argv[2])
+signal.signal(signal.SIGXFSZ, signal.SIG_IGN)
+resource.setrlimit(resource.RLIMIT_FSIZE, (64, 64))
+try:
+    if sys.argv[3] == "record":
+        p["record"](root, "raw/reviews/example.md", root / "input.json")
+    elif sys.argv[3] == "finish":
+        p["finish"](root, "raw/reviews/example.md")
+    else:
+        p["log_event"](root, {"candidate":"old", "raw":"raw/reviews/example.md", "status":"unresolved", "reason":"x"*200})
+except OSError:
+    sys.exit(0)
+sys.exit(1)
+"""
+        for action in ("record", "finish", "log"):
+            with self.subTest(action=action):
+                self.save()
+                before_raw = (self.root / self.raw).read_bytes()
+                before_log = (self.root / "log.md").read_bytes()
+                self.input.write_text(json.dumps({"candidates":[self.item], "pages":[]}))
+                result = subprocess.run(["python3", "-c", program, p.__file__, str(self.root), action],
+                                        text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual((self.root / self.raw).read_bytes(), before_raw)
+                self.assertEqual((self.root / "log.md").read_bytes(), before_log)
+                self.assertFalse(list(self.root.rglob(".rite-promotion-*.tmp")))
+
+    def test_legacy_candidate_reclassification_keeps_its_id_and_work(self):
+        original = (self.root / self.raw).read_text()
+        legacy = p.set_field(original, "skip_reason", '"detector-candidate: unresolved original"')
+        (self.root / self.raw).write_text(legacy)
+        item = p.listed(self.root)[0]
+        work = dict(candidate=item["id"], raw=self.raw, condition="trigger", consumer=self.item["consumer"],
+                    issue_url="https://github.com/example/project/issues/1")
+        self.input.write_text(json.dumps([work]))
+        p.link(self.root, self.input)
+        self.save(candidates=[], pages=["pages/patterns/domain.md"])
+        row = p.listed(self.root)[0]
+        self.assertEqual(row["id"], item["id"])
+        self.assertEqual(row["work"]["issue_url"], work["issue_url"])
+        self.assertEqual(p.field(p.read_raw(self.root, self.raw), "ingest_status"), "partial")
+
+    def test_identical_text_in_distinct_ranges_survives_replay(self):
+        (self.root / self.raw).write_text("---\ningested: false\n---\n\nRite insight\nMiddle\nRite insight\n")
+        second = dict(self.item, source={"end_line":3, "start_line":3})
+        self.save(candidates=[self.item, second])
+        first_ids = [x["id"] for x in p.listed(self.root)]
+        self.assertEqual(len(set(first_ids)), 2)
+        self.save(candidates=[self.item, dict(second, source={"start_line":3, "end_line":3})])
+        self.assertEqual([x["id"] for x in p.listed(self.root)], first_ids)
+        self.assertEqual({x["source"]["start_line"] for x in p.listed(self.root)}, {1,3})
+
+    def test_record_list_finish_preserve_original_trailing_spaces(self):
+        original = "---\ningested: false\n---\n\nRite insight  \n"
+        (self.root / self.raw).write_text(original)
+        self.save()
+        row = p.listed(self.root)[0]
+        self.assertEqual(row["excerpt"], "Rite insight  ")
+        p.finish(self.root, self.raw)
+        self.assertIn("Rite insight  \n", (self.root / self.raw).read_text())
 
     def test_work_history_uses_newest_event_and_keeps_distinct_conditions(self):
         self.save(candidates=[self.item, dict(self.item, condition="second condition")])
@@ -219,6 +284,58 @@ test "$(bash -c "$command")" = called
     def test_only_merged_caller_and_matching_verification_complete(self):
         self.assertEqual(self.verify(), self.rev)
 
+    def test_display_only_caller_and_presence_only_test_are_unresolved(self):
+        (self.cwd / self.caller).write_text('# Example\n\n```bash\nprintf "%s\\n" "bash plugins/rite/hooks/scripts/consumer.sh"\n```\n')
+        (self.cwd / self.test).write_text('test -f ' + self.caller + '\ntest -f ' + self.consumer + '\n')
+        self.publish()
+        with self.assertRaisesRegex(ValueError, "not observed"):
+            self.verify()
+
+    def test_reference_read_through_executed_caller_is_observed(self):
+        consumer = "plugins/rite/references/rule.md"
+        (self.cwd / consumer).parent.mkdir(parents=True)
+        (self.cwd / consumer).write_text("Read this rule\n")
+        (self.cwd / self.caller).write_text('# Read references/rule.md\n\n```bash\ncat plugins/rite/references/rule.md\n```\n')
+        self.item["consumer"] = consumer
+        self.item["work"]["consumer"] = consumer
+        (self.cwd / self.test).write_text('set -e\ncommand=$(sed -n \'/^\x60\x60\x60bash/,/^\x60\x60\x60/p\' ' +
+                                         self.caller + ' | sed \'1d;$d\')\ntest "$(bash -c "$command")" = "Read this rule"\n')
+        self.publish()
+        self.assertEqual(self.verify(), self.rev)
+
+    def test_script_dir_wrapper_has_observed_python_invocation(self):
+        caller = "plugins/rite/hooks/scripts/wrapper.sh"
+        consumer = "plugins/rite/hooks/scripts/consumer.py"
+        (self.cwd / caller).write_text('#!/bin/bash\nSCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\nexec python3 "$SCRIPT_DIR/consumer.py"\n')
+        (self.cwd / consumer).write_text('print("called")\n')
+        (self.cwd / self.test).write_text('test "$(bash ' + caller + ')" = called\n')
+        self.item["consumer"] = consumer
+        self.item["work"].update(consumer=consumer, caller=caller)
+        self.publish()
+        self.assertEqual(self.verify(), self.rev)
+
+    def test_reader_only_and_independent_consumer_calls_do_not_prove_caller_use(self):
+        caller = "plugins/rite/hooks/scripts/wrapper.sh"
+        (self.cwd / caller).write_text('#!/bin/bash\nprintf "other\\n"\n')
+        self.item["work"]["caller"] = caller
+        for commands in ("cat " + caller + " >/dev/null\n", "bash " + caller + " >/dev/null\n"):
+            (self.cwd / self.test).write_text(commands + 'test "$(bash ' + self.consumer + ')" = called\n')
+            self.publish()
+            with self.subTest(commands=commands), self.assertRaises(ValueError):
+                self.verify()
+
+    def test_unused_markdown_function_and_independent_call_do_not_complete(self):
+        (self.cwd / self.caller).write_text('# Example\n\n```bash\nunused() { bash plugins/rite/hooks/scripts/consumer.sh; }\ntrue\n```\n')
+        (self.cwd / self.test).write_text("""#!/bin/bash
+caller=plugins/rite/skills/example/SKILL.md
+command=$(sed -n '/^```bash/,/^```/p' "$caller" | sed '1d;$d;s@{plugin_root}@plugins/rite@g')
+bash -c "$command"
+test "$(bash plugins/rite/hooks/scripts/consumer.sh)" = called
+""")
+        self.publish()
+        with self.assertRaisesRegex(ValueError, "not used through"):
+            self.verify()
+
     def test_missing_draft_unmerged_other_issue_and_stale_revision_stay_unresolved(self):
         for key in ("pr_url", "consumer", "caller", "test", "revision"):
             original = self.item["work"].pop(key)
@@ -236,30 +353,25 @@ test "$(bash -c "$command")" = called
         with self.assertRaisesRegex(ValueError, "merged revision"):
             self.verify()
 
+    def publish(self):
+        self.git("add", ".")
+        self.git("-c", "user.name=fixture", "-c", "user.email=fixture@localhost", "commit", "-qm", "fixture change")
+        self.rev = self.git("rev-parse", "HEAD").strip()
+        self.pr["mergeCommit"]["oid"] = self.rev
+        self.item["work"]["revision"] = self.rev
+
     def test_reference_prose_is_not_an_invoked_consumer(self):
-        original = p.command
-        def command(args, cwd=None):
-            if args[0] == "gh":
-                return json.dumps(self.pr)
-            if args[:2] == ["git", "show"] and args[2].endswith(":" + self.caller):
-                return "See [consumer](../../hooks/scripts/consumer.sh)"
-            return original(args, cwd)
-        with patch.object(p, "command", command), self.assertRaisesRegex(ValueError, "invocation missing"):
-            p.proof(self.cwd, self.repo, self.item)
+        (self.cwd / self.caller).write_text("See [consumer](../../hooks/scripts/consumer.sh)")
+        self.publish()
+        with self.assertRaises(ValueError):
+            self.verify()
 
     def test_verification_failure_and_unrelated_test_do_not_complete(self):
-        original = p.command
-        for failure in ("failed", "unrelated"):
-            def command(args, cwd=None):
-                if args[0] == "gh":
-                    return json.dumps(self.pr)
-                if args[0] == "bash":
-                    raise ValueError("test failed")
-                if failure == "unrelated" and args[:2] == ["git", "show"] and args[2].endswith(":" + self.test):
-                    return "# unrelated test\nexit 0"
-                return original(args, cwd)
-            with self.subTest(failure=failure), patch.object(p, "command", command), self.assertRaises(ValueError):
-                p.proof(self.cwd, self.repo, self.item)
+        for code in ("exit 1", "exit 0"):
+            (self.cwd / self.test).write_text("#!/bin/bash\n" + code + "\n")
+            self.publish()
+            with self.subTest(code=code), self.assertRaises(ValueError):
+                self.verify()
 
 
 with contextlib.redirect_stdout(io.StringIO()):

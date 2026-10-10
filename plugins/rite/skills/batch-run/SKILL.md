@@ -108,7 +108,7 @@ Issue 番号を指定する通常入口と分け、保守リポジトリで明�
    bash {plugin_root}/hooks/scripts/wiki-promotion-candidates.sh link --wiki-root "{wiki_root_abs}" --cwd "{execution_cwd}" --repo {owner_repo} --input "{promotion_work_file}"
    ```
 
-5. **既存ループへ接続**: 対応 OPEN Issue の番号を重複排除して `{issue_numbers}` に置換し、通常のステップ 0 → open → iterate を続行する。`--merge` を明示したときのみ既存 merge 経路へ進む。他の未完了キューを上書きせず、先にそのキューを再開する。同じ Issue 群なら既存 cursor を維持する。対象 0 件なら候補の complete/未解決と理由を報告し、キューを新設しない。
+5. **既存ループへ接続**: 対応 OPEN Issue の番号を重複排除した空白区切りの値を `{promotion_issue_numbers}` とする。元の引数に `--merge` があれば `{issue_numbers}` を `--merge {promotion_issue_numbers}`、無ければ `{promotion_issue_numbers}` に置換し、通常のステップ 0 → open → iterate を続行する。`--merge` の指定は置換前に保持し、通常の引数パースへ引き継ぐ。`--merge` を明示したときのみ既存 merge 経路へ進む。他の未完了キューを上書きせず、先にそのキューを再開する。同じ Issue 群なら既存 cursor を維持する。対象 0 件なら候補の complete/未解決と理由を報告し、キューを新設しない。
 
 **結果の突合と再開**: 消化対象かは既存 log の対応 Issue で確認する（新しい状態フィールドを作らない）。通常起動・recover のいずれも、ステップ 6 の cursor 前進前、CLOSED の skip 前、全完了通知前に同じ reconcile を呼ぶ。merge が見つかる場合は、その merge commit の consumer/caller/test パスと `revision` を work に追記して link で保存してから照合する。helper は同じ候補・対応 Issue/PR・条件・消費先に属する、マージ済み revision の caller 利用と検証成功を要求する。実体が reference/原則なら caller の明示読取と対応試験を確認する。draft、未利用、検証失敗、取得失敗は未解決のまま。失敗理由は log と完了報告に残し、cursor の作業完了を候補の昇格完了と混同しない。API 作成/マージを試験で mock にしたことと実確認を区別する。
 
