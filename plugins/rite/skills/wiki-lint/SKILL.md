@@ -16,7 +16,7 @@ Wiki Lint エンジン。`.rite/wiki/pages/` の Wiki ページ、`.rite/wiki/ra
 2. 検査対象の収集 (pages_list / raw_list)
 3. 矛盾検出 (タイトル衝突 / 方針逆転 / 重複情報)
 4. 陳腐化検出 (`generated.at` frontmatter が閾値超過、`wiki-lint-stale.sh` 委譲)
-5. 孤児ページ検出 (`index.md` 未登録、`wiki-lint-orphans.sh` 委譲)
+5. 孤児ページ検出 (`index.md` 未登録、`wiki-lint-orphans.sh` 委譲)。同 helper が `index.md` の節外の登録行と重複行も検出する
 6. 欠落概念検出 (`missing_concept` + `unregistered_raw` の 3 分岐)
 7. 壊れた相互参照検出 (Markdown link 解決失敗、`wiki-lint-broken-refs.sh` 委譲)
 7.5. 番号参照検出 (ページ本文・`## ソース` 節・`index.md` エントリサマリー・`log.md` の Issue/PR 番号参照、informational)
@@ -31,12 +31,13 @@ rationale: references/rationale.md#helper-delegation
 | **矛盾** | 同じトピックで異なる結論を持つページ（タイトル衝突・方針逆転・重複情報） | Yes |
 | **陳腐化** | `generated.at` frontmatter が閾値（デフォルト 90 日）を超えて更新されていないページ。経過時間の計上でありページの正しさとは独立なため、件数のみ報告する informational 指標 | **No** (`n_warnings` 不加算) |
 | **孤児ページ** | `pages/` 配下に存在するが `index.md` のページカタログ（`## ページ一覧` の 5 列テーブル。箇条書きテンプレートが配布されていた期間に初期化された bundle の箇条書き `* [title](pages/...) - desc` も登録として扱う）に登録されていないページ | Yes |
+| **index 登録不整合** | `index.md` の `## ページ一覧` 節の外にある登録行（`](pages/...)` リンクを持つ表の行または箇条書きの行。前文の HTML コメント内の記法例と散文のリンクは数えない）、および節の内外を問わず同じページを指す登録行が 2 行以上ある重複。`## ページ一覧` 見出しが無い旧箇条書き index は節外判定の対象外で、重複のみ検査する。報告のみで `index.md` は書き換えない。件数は孤児ページと合算して `n_orphans`（`Lint:` 行の `orphans=`）に載る | Yes（`n_orphans` に合算） |
 | **欠落概念 (missing_concept)** | `raw/` に `ingested: true` の Raw Source があるが、対応ページも `sources.ref` 登録も `ingest_status: skipped` 記録（raw frontmatter）も存在しない真の欠落 | Yes |
 | **壊れた相互参照** | ページ本文の Markdown リンク `](...)` が `pages/` 配下の実在ファイルを指していない | Yes |
 | **未登録 raw (unregistered_raw)** | `ingested: true` で `sources.ref` 未登録だが、raw frontmatter に `ingest_status: skipped` 記録がある raw。意図的に経験則化しなかった件数の informational 指標 | **No** (`n_warnings` 不加算) |
 | **番号参照 (descriptive_number_ref)** | ページ本文・`## ソース` 節の bullet・`index.md` のエントリサマリー・`log.md` に残った Issue/PR 番号参照。検出文法は `number-reference-check.sh` に委譲する（3-4 桁の番号トークン。キーワードの有無を問わない）。Wiki は番号の受け皿ではなく Why 散文の場のため surface する。frontmatter の `sources:` ブロック・コードフェンス / スパン・TODO/FIXME は除外。`raw/**` / `SCHEMA.md` は走査しない（意図的除外） | **No** (`n_warnings` 不加算、ステップ 7.5) |
 
-**設計契約**: lint は **読み取り専用** (`log.md` への追記を除く)。**原則 exit 0**で終了し、検出件数・事前チェック失敗 (下記 (c) を除く)・ブランチ読取失敗は非ブロッキングとして扱う。例外は (a) `branch_strategy` 未知値検出 (ステップ 2.2 / 4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.2 / 8.3 で同型 fail-fast。うち 4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.3 は helper 内で実行)、(b) `{mode}` / `{pages_list}` / `{log_entry}` / counter 等の Claude placeholder 残留検知 (各 site で同型 fail-fast)、(c) `lib/wiki-config.sh` の source 失敗 (ステップ 1.1)、(d) `--auto` の変更一覧・索引・候補本文・比較の取得/完了失敗（ステップ 1.0 / 3）。
+**設計契約**: lint は **読み取り専用** (`log.md` への追記を除く)。**原則 exit 0**で終了し、検出件数・事前チェック失敗 (下記 (c) を除く)・ブランチ読取失敗は非ブロッキングとして扱う。例外は (a) `branch_strategy` 未知値検出 (ステップ 2.2 / 4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.2 / 8.3 で同型 fail-fast。うち 4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.3 は helper 内で実行)、(b) `{mode}` / `{pages_list}` / `{log_entry}` / counter 等の Claude placeholder 残留検知 (各 site で同型 fail-fast)、(c) `lib/wiki-config.sh` の source 失敗 (ステップ 1.1)、(d) `--auto` の変更一覧・索引・候補本文・比較の取得/完了失敗（ステップ 1.0 / 3）、(e) `index.md` の登録行検査 (awk) の失敗（HTML コメントが閉じられない場合を含む。ステップ 5 helper 内）。
 rationale: references/rationale.md#fail-loud-contract
 
 矛盾検出 (ステップ 3) と欠落概念検出 (ステップ 6) は LLM のセマンティック読解に依存する。`{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md) で解決する。共通パターンは [Wiki Patterns](../../references/wiki-patterns.md) を参照。
@@ -225,7 +226,7 @@ exit 0
 |------|--------|--------------------|
 | `n_contradictions` | 0 | ステップ 3 で矛盾検出するごとに +1 (LLM セマンティック判定) |
 | `n_stale` | 0 | ステップ 4 の `wiki-lint-stale.sh` が emit する `n_stale=` 値を転記 (LLM 独自カウント禁止)。informational 指標で `n_warnings` には加算せず、ステップ 8.1 の `lint_action` 判定にも含めない |
-| `n_orphans` | 0 | ステップ 5 の `wiki-lint-orphans.sh` が emit する `n_orphans=` 値を転記 (LLM 独自カウント禁止) |
+| `n_orphans` | 0 | ステップ 5 の `wiki-lint-orphans.sh` が emit する `n_orphan_category=` 値（孤児 + index 登録不整合の合算。helper の機械出力で、LLM は足し算しない）を転記 (LLM 独自カウント禁止) |
 | `n_missing_concept` | 0 | ステップ 6.2 で真の欠落（raw frontmatter の `ingest_status: skipped` 記録も `sources.ref` 登録も無い）を検出するごとに +1。ingest から呼ばれた場合、ingest 側 ステップ 8.5 で `n_warnings` に加算される（ブロッキング相当） |
 | `n_unregistered_raw` | 0 | ステップ 6.2 で raw frontmatter に `ingest_status: skipped` 記録ありの未登録 raw を検出するごとに +1。意図的に経験則化しなかった raw の informational 指標で `n_warnings` には加算しない |
 | `n_broken_refs` | 0 | ステップ 7 の `wiki-lint-broken-refs.sh` が emit する `n_broken_refs=` 値を転記 (LLM 独自カウント禁止) |
@@ -427,6 +428,10 @@ if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/wiki-lint-orphans
   echo "---orphans_begin---"
   echo "---orphans_end---"
   echo "orphan_check_ok=skipped_helper_missing"
+  echo "n_index_defects=0"
+  echo "---index_defects_begin---"
+  echo "---index_defects_end---"
+  echo "n_orphan_category=0"
 else
   bash "$plugin_root/hooks/scripts/wiki-lint-orphans.sh" \
     --branch-strategy "{branch_strategy}" \
@@ -436,7 +441,7 @@ PAGES_LIST_EOF
 fi
 ```
 
-**検出結果の記録**: LLM は stdout の `n_orphans=` 値を転記し、`---orphans_begin---` / `---orphans_end---` 間の各行を `issues[]` に append する:
+**検出結果の記録**: LLM は stdout の `n_orphan_category=` 値を `n_orphans` として転記し（`n_orphans=` と `n_index_defects=` の合算を helper が出す）、`---orphans_begin---` / `---orphans_end---` 間の各行を `issues[]` に append する:
 
 ```
 {
@@ -444,6 +449,15 @@ fi
   "page": ".rite/wiki/pages/patterns/new-page.md",
   "detail": "index.md のページカタログ（## ページ一覧 テーブル）に未登録"
 }
+```
+
+`---index_defects_begin---` / `---index_defects_end---` 間の各行（`outside_section: {page}` または `duplicate: {page} ({k} 行)`）も `issues[]` に append する。ブロック未受信は孤児ブロックと同じ扱いにし、`n_orphan_category=` が届かなければ 0 と推測せずステップ 9.1 で skip note を出す。helper が非 0 で終了した場合（`index.md` 検査の awk 失敗は ERROR を出して exit 1）は stderr の ERROR を表示して lint を停止し、`Lint:` 行も正常 return も出さない:
+
+`page` には helper の行の `pages/...` だけを、`detail` には行の種別（`outside_section` / `duplicate`）と `duplicate` の k 行を写す。種別ごとに 1 件ずつ append する:
+
+```
+{"category": "index_defect", "page": "pages/patterns/new-page.md", "detail": "outside_section: index.md の `## ページ一覧` 節の外にある登録行"}
+{"category": "index_defect", "page": "pages/patterns/dup-page.md", "detail": "duplicate: 同じページへの登録行が 2 行（k = 2）"}
 ```
 
 **`orphan_check_ok` enum**: `true` (通常実行) / `index_unreadable` (index.md 読出失敗、`n_orphans=0` のまま継続) / `index_empty` (登録ページ抽出 0 件、全ページ orphan 誤検出防止の skip) / `skipped_helper_missing` (上記 fallback)。`true` 以外はステップ 9.1 で skip note を表示する。marker block 未受信も同様に扱う。
@@ -852,7 +866,7 @@ Wiki Lint が完了しました。
 検出結果:
 - 矛盾: {n_contradictions} 件
 - 陳腐化: {n_stale} 件{stale_check_ok_note}（informational、`n_warnings` 不加算）
-- 孤児ページ: {n_orphans} 件{orphan_check_ok_note}
+- 孤児ページ・index 登録不整合: {n_orphans} 件{orphan_check_ok_note}（内訳は検出詳細の「孤児ページ」「index 登録不整合」）
 - 欠落概念: {n_missing_concept} 件{log_read_ok_note}{all_source_refs_read_ok_note}
 - 壊れた相互参照: {n_broken_refs} 件{broken_refs_read_ok_note}
 - 未登録 raw（skip 済）: {n_unregistered_raw} 件（informational、`n_warnings` 不加算）
@@ -867,6 +881,7 @@ Wiki Lint が完了しました。
 - 矛盾は手動で該当ページを統合してください
 - 陳腐化ページは informational です。内容が古いと判断した場合のみ /rite:wiki-ingest で新しい Raw Source を統合してください（`generated.at` は最終内容変更時刻であり、内容を変えずに日付だけ進めてはなりません）
 - 孤児ページは index.md に追加するか、不要なら削除してください
+- index 登録不整合は `index.md` を直接編集して、節外の登録行を `## ページ一覧` 節へ移すか削除し、重複行を 1 行にしてください（lint は修正しません）
 - 欠落概念は /rite:wiki-ingest で該当 Raw Source を再処理してください
 - 壊れた相互参照は該当ページを手動で修正してください
 - 未登録 raw（skip 済）は意図的な skip (`ingest_status: skipped`) なら放置で OK。skip 記録を取り消して経験則化したい場合は /rite:wiki-ingest で再処理してください
@@ -938,6 +953,10 @@ LLM は ステップ 6.0 stdout から `log_read_ok={value}`、ステップ 6.2 
 ### 孤児ページ
 - pages/patterns/new.md
 
+### index 登録不整合
+- outside_section: pages/patterns/a.md
+- duplicate: pages/patterns/a.md (2 行)
+
 ### 欠落概念
 - raw/reviews/20260410T...md
 
@@ -977,6 +996,7 @@ rationale: references/rationale.md#returned-to-caller
   - ステップ 8.1 の counter placeholder (`n_*` 4 種) 残留 / 非整数検知
   - ステップ 8.3 helper の fail-fast (`{branch_strategy}` / `{mode}` / `{wiki_lint_msg_file}` の残留、メッセージファイルの不在・空、未置換メッセージ)
   - GNU realpath (-m -s) 不在 (ステップ 7 helper 内)
+  - `index.md` の登録行検査 (awk) の失敗。HTML コメントが閉じられない場合を含む (ステップ 5 helper 内)
 - 内部 bash 構文エラー等の unrecoverable error のみ非 0 exit となる可能性あり
 rationale: references/rationale.md#fail-loud-contract
 
@@ -987,6 +1007,7 @@ rationale: references/rationale.md#fail-loud-contract
 | エラー | 対処 | ステップ |
 |--------|------|---------|
 | 自動矛盾検査の一覧欠落・不正 / 要約または本文の取得失敗 / 比較未完了 | 理由と未処理対象を出し `WIKI_CONTRADICTION_CHECK=failed` で停止。正常 return/未実施のみの完了は禁止 | ステップ 1.0 / 3 |
+| `index.md` の登録行検査 (awk) の失敗 (HTML コメントが閉じられない場合を含む) | **exit 1 で fail-fast** (stderr の ERROR を表示して lint を停止し、`Lint:` 行も正常 return も出さない。silent に件数 0 へ倒さない) | ステップ 5 (helper 内) |
 | `wiki.enabled: false` | 早期 return (`--auto` モード時は ステップ 9.2 の 3 行出力後 exit 0、それ以外は警告のみ exit 0) | ステップ 1.1 |
 | `lib/wiki-config.sh` 読込失敗 (helper 不在 / 解決失敗) | **exit 1 で fail-fast** (`[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1`。設定不明のまま「Wiki 無効」へ倒す silent default の防止。plugin インストール状態を確認するか `/rite:setup` を再実行) | ステップ 1.1 |
 | GNU date 非互換環境 | 陳腐化検出 skip（exit 0 + WARNING + `stale_check_ok=skipped_no_gnu_date`） | ステップ 4 (helper 内) |
