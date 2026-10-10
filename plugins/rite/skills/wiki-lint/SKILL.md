@@ -37,7 +37,7 @@ rationale: references/rationale.md#helper-delegation
 | **未登録 raw (unregistered_raw)** | `ingested: true` で `sources.ref` 未登録だが、raw frontmatter に `ingest_status: skipped` 記録がある raw。意図的に経験則化しなかった件数の informational 指標 | **No** (`n_warnings` 不加算) |
 | **番号参照 (descriptive_number_ref)** | ページ本文・`## ソース` 節の bullet・`index.md` のエントリサマリー・`log.md` に残った Issue/PR 番号参照。検出文法は `number-reference-check.sh` に委譲する（3-4 桁の番号トークン。キーワードの有無を問わない）。Wiki は番号の受け皿ではなく Why 散文の場のため surface する。frontmatter の `sources:` ブロック・コードフェンス / スパン・TODO/FIXME は除外。`raw/**` / `SCHEMA.md` は走査しない（意図的除外） | **No** (`n_warnings` 不加算、ステップ 7.5) |
 
-**設計契約**: lint は **読み取り専用** (`log.md` への追記を除く)。**原則 exit 0**で終了し、検出件数・事前チェック失敗 (下記 (c) を除く)・ブランチ読取失敗は非ブロッキングとして扱う。例外は (a) `branch_strategy` 未知値検出 (ステップ 2.2 / 4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.2 / 8.3 で同型 fail-fast。うち 4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.3 は helper 内で実行)、(b) `{mode}` / `{pages_list}` / `{log_entry}` / counter 等の Claude placeholder 残留検知 (各 site で同型 fail-fast)、(c) `lib/wiki-config.sh` の source 失敗 (ステップ 1.1)、(d) `--auto` の変更一覧・索引・候補本文・比較の取得/完了失敗（ステップ 1.0 / 3）。
+**設計契約**: lint は **読み取り専用** (`log.md` への追記を除く)。**原則 exit 0**で終了し、検出件数・事前チェック失敗 (下記 (c) を除く)・ブランチ読取失敗は非ブロッキングとして扱う。例外は (a) `branch_strategy` 未知値検出 (ステップ 2.2 / 4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.2 / 8.3 で同型 fail-fast。うち 4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.3 は helper 内で実行)、(b) `{mode}` / `{pages_list}` / `{log_entry}` / counter 等の Claude placeholder 残留検知 (各 site で同型 fail-fast)、(c) `lib/wiki-config.sh` の source 失敗 (ステップ 1.1)、(d) `--auto` の変更一覧・索引・候補本文・比較の取得/完了失敗（ステップ 1.0 / 3）、(e) `index.md` の登録行検査 (awk) の失敗（HTML コメントが閉じられない場合を含む。ステップ 5 helper 内）。
 rationale: references/rationale.md#fail-loud-contract
 
 矛盾検出 (ステップ 3) と欠落概念検出 (ステップ 6) は LLM のセマンティック読解に依存する。`{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md) で解決する。共通パターンは [Wiki Patterns](../../references/wiki-patterns.md) を参照。
@@ -453,12 +453,11 @@ fi
 
 `---index_defects_begin---` / `---index_defects_end---` 間の各行（`outside_section: {page}` または `duplicate: {page} ({k} 行)`）も `issues[]` に append する。ブロック未受信は孤児ブロックと同じ扱いにし、`n_orphan_category=` が届かなければ 0 と推測せずステップ 9.1 で skip note を出す。helper が非 0 で終了した場合（`index.md` 検査の awk 失敗は ERROR を出して exit 1）は stderr の ERROR を表示して lint を停止し、`Lint:` 行も正常 return も出さない:
 
+`page` には helper の行の `pages/...` だけを、`detail` には行の種別（`outside_section` / `duplicate`）と `duplicate` の k 行を写す。種別ごとに 1 件ずつ append する:
+
 ```
-{
-  "category": "index_defect",
-  "page": "pages/patterns/new-page.md",
-  "detail": "outside_section: index.md の `## ページ一覧` 節の外にある登録行 / duplicate: 同じページへの登録行が 2 行以上（k 行）"
-}
+{"category": "index_defect", "page": "pages/patterns/new-page.md", "detail": "outside_section: index.md の `## ページ一覧` 節の外にある登録行"}
+{"category": "index_defect", "page": "pages/patterns/dup-page.md", "detail": "duplicate: 同じページへの登録行が 2 行（k = 2）"}
 ```
 
 **`orphan_check_ok` enum**: `true` (通常実行) / `index_unreadable` (index.md 読出失敗、`n_orphans=0` のまま継続) / `index_empty` (登録ページ抽出 0 件、全ページ orphan 誤検出防止の skip) / `skipped_helper_missing` (上記 fallback)。`true` 以外はステップ 9.1 で skip note を表示する。marker block 未受信も同様に扱う。
@@ -997,6 +996,7 @@ rationale: references/rationale.md#returned-to-caller
   - ステップ 8.1 の counter placeholder (`n_*` 4 種) 残留 / 非整数検知
   - ステップ 8.3 helper の fail-fast (`{branch_strategy}` / `{mode}` / `{wiki_lint_msg_file}` の残留、メッセージファイルの不在・空、未置換メッセージ)
   - GNU realpath (-m -s) 不在 (ステップ 7 helper 内)
+  - `index.md` の登録行検査 (awk) の失敗。HTML コメントが閉じられない場合を含む (ステップ 5 helper 内)
 - 内部 bash 構文エラー等の unrecoverable error のみ非 0 exit となる可能性あり
 rationale: references/rationale.md#fail-loud-contract
 
@@ -1007,6 +1007,7 @@ rationale: references/rationale.md#fail-loud-contract
 | エラー | 対処 | ステップ |
 |--------|------|---------|
 | 自動矛盾検査の一覧欠落・不正 / 要約または本文の取得失敗 / 比較未完了 | 理由と未処理対象を出し `WIKI_CONTRADICTION_CHECK=failed` で停止。正常 return/未実施のみの完了は禁止 | ステップ 1.0 / 3 |
+| `index.md` の登録行検査 (awk) の失敗 (HTML コメントが閉じられない場合を含む) | **exit 1 で fail-fast** (stderr の ERROR を表示して lint を停止し、`Lint:` 行も正常 return も出さない。silent に件数 0 へ倒さない) | ステップ 5 (helper 内) |
 | `wiki.enabled: false` | 早期 return (`--auto` モード時は ステップ 9.2 の 3 行出力後 exit 0、それ以外は警告のみ exit 0) | ステップ 1.1 |
 | `lib/wiki-config.sh` 読込失敗 (helper 不在 / 解決失敗) | **exit 1 で fail-fast** (`[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1`。設定不明のまま「Wiki 無効」へ倒す silent default の防止。plugin インストール状態を確認するか `/rite:setup` を再実行) | ステップ 1.1 |
 | GNU date 非互換環境 | 陳腐化検出 skip（exit 0 + WARNING + `stale_check_ok=skipped_no_gnu_date`） | ステップ 4 (helper 内) |

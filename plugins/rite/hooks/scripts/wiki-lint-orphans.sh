@@ -48,7 +48,8 @@
 #
 # Exit codes:
 #   0  正常 (index 読出失敗 / 抽出 0 件の skip 含む — 非ブロッキング契約)
-#   1  fail-fast (placeholder residue / unknown branch_strategy)
+#   1  fail-fast (placeholder residue / unknown branch_strategy / index.md 走査 (awk) の失敗。
+#      HTML コメントが閉じられない index.md を含む)
 #   2  invocation error (引数欠落 / repo-root cd 失敗)
 #
 # NOTE on shell flags: sibling helpers と同じく per-command rc 管理のため
@@ -76,7 +77,8 @@ Options:
 
 Exit codes:
   0  Normal (incl. index-unreadable / index-empty skip)
-  1  Fail-fast (placeholder residue / unknown branch_strategy)
+  1  Fail-fast (placeholder residue / unknown branch_strategy / index.md scan failure,
+     including an unclosed HTML comment)
   2  Invocation error
 EOF
 }
