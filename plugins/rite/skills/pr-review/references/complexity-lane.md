@@ -72,9 +72,9 @@ cap 適用**後**に落とすフィルタとして実装すると、これらの
 |--------|------|--------------------------|
 | `gh_missing` | `gh` が PATH 上に無い | Complexity を読む手段が無い |
 | `issue_fetch_failed` | `gh issue view` が失敗（認証切れ / rate limit / Issue 不在） | 宣言値が不明 |
-| `complexity_absent` | どの記法からも**英字トークンを取り出せない**（宣言行が無い / 崩れた記法 = lowercase key・全角コロン・リスト項目化・太字なしの表セル / `{complexity}` のような未展開 placeholder と `<!-- ... -->` / 値行を持たない `## 複雑度` 節 — **記法 1 と 3 は値の先頭に英字を要求し、記法 2 は `{` `<` を値の開始と認めず節探索を次見出しで止めるため、同じ記入漏れが記法や見出し語の言語によって別 reason へ分裂しない**）かつ Projects にも値が無い（連携無効 / Project 未登録 / フィールド値なし）。helper は探した場所と本文へ追記する 1 行の書式を示す | rite 外で作られた Issue 等。宣言が無いものを小さいと決めつけない |
-| `complexity_invalid` | 英字トークンは取り出せたが XS/S/M/L/XL のいずれでもない（`Medium` / `Small` / `XSmall` / `ZZ` 等）。本文に宣言が無く Projects の値が同様に不正な場合も含む | 誤記を小さい側へ解釈しない |
-| `projects_fetch_failed` | 本文に宣言が無く、Projects の値を取得できない（`gh api graphql` の失敗 / rite-config.yml を読めない）。本文に宣言があるときは本文の値で判定し、一致を確かめられなかった旨の WARNING だけを出す | 宣言値が不明。値なし（`complexity_absent`）と区別し、取得失敗を Issue 側の不備と誤報告しない |
+| `complexity_absent` | どの記法からも**英字トークンを取り出せない**（宣言行が無い / 崩れた記法 = lowercase key・全角コロン・リスト項目化・太字なしの表セル / `{complexity}` のような未展開 placeholder と `<!-- ... -->` / 値行を持たない `## 複雑度` 節 — **記法 1 と 3 は値の先頭に英字を要求し、記法 2 は `{` `<` を値の開始と認めず節探索を次見出しで止めるため、同じ記入漏れが記法や見出し語の言語によって別 reason へ分裂しない**）。次の 2 つの場合がある。(1) 宣言らしき行が無く、Projects にも値が無い（連携無効 / Project 未登録 / フィールド値なし）。helper は探した場所と本文へ追記する 1 行の書式を示す。(2) 宣言らしき行はあるが値を取り出せない。Projects の状態に関わらず Projects の値では補わず、行番号 WARNING と、Projects の値を使っていないことと本文の宣言を直す案内を示す | rite 外で作られた Issue 等。宣言が無いものを小さいと決めつけない |
+| `complexity_invalid` | 英字トークンは取り出せたが XS/S/M/L/XL のいずれでもない（`Medium` / `Small` / `XSmall` / `ZZ` 等）。本文に宣言らしき行が無く Projects の値が同様に不正な場合も含む | 誤記を小さい側へ解釈しない |
+| `projects_fetch_failed` | 本文に宣言らしき行が無く、Projects の値を取得できない（`gh api graphql` の失敗 / rite-config.yml を読めない）。本文に宣言があるときは本文の値で判定し、一致を確かめられなかった旨の WARNING だけを出す | 宣言値が不明。値なし（`complexity_absent`）と区別し、取得失敗を Issue 側の不備と誤報告しない |
 | `issue_number_missing` | 関連 Issue を特定できず helper を呼べない（consumer 側） | 対象 Issue が分からなければ宣言値も存在しない |
 | `helper_failed` | helper が正常終了したが marker を出さない（consumer 側） | 判定結果が得られていない |
 

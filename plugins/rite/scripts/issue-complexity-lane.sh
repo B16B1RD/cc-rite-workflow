@@ -28,8 +28,8 @@
 #            skill は入口で保持した execution_cwd を明示する。
 #
 # Complexity の入力源は Issue body の宣言と、GitHub Projects の Complexity フィールドの 2 つ
-# (flow-state は complexity フィールドを持たない)。body に宣言があればそれを使い、無ければ
-# Projects の値を使う。Projects は rite-config.yml の github.projects.enabled: true のときだけ読み、
+# (flow-state は complexity フィールドを持たない)。body に宣言があればそれを使い、宣言らしき行が
+# 無ければ Projects の値を使う (宣言らしき行があるのに値を取り出せない body は Projects で補わない)。Projects は rite-config.yml の github.projects.enabled: true のときだけ読み、
 # body に宣言があっても読む — 両方に値があって食い違えば complexity_mismatch で停止する。
 # フィールド名は github.projects.fields.complexity.name → 複雑度 → Complexity の順で探す
 # (Issue 作成 helper と同じ候補順)。fields.complexity.enabled: false は連携無効と同じ扱い。
@@ -69,12 +69,16 @@
 #                            記法 1 と 3 は値の先頭に英字を要求し、記法 2 は `{` `<` を値の開始と
 #                            認めず節探索を次見出しで止めるため、これらはすべて「無い」側に合流する
 #                            — 記法や見出し語の言語で reason が分裂しない)
-#                           かつ Projects にも値が無い (連携無効 / Project 未登録 / フィールド値なし)。
-#                           このとき探した場所と追記する 1 行の書式を stderr に示す
+#                           次の 2 つの場合がある:
+#                           (1) 宣言らしき行が無く、Projects にも値が無い (連携無効 / Project 未登録 /
+#                               フィールド値なし)。探した場所と追記する 1 行の書式を stderr に示す
+#                           (2) 宣言らしき行はあるが値を取り出せない。Projects の状態 (有効値 / 不正値 /
+#                               取得失敗) に関わらず Projects の値では補わず、行番号 WARNING と、
+#                               Projects の値を使っていない旨と本文の宣言を直す案内を stderr に示す
 #   complexity_invalid    — 英字トークンは取り出せたが XS/S/M/L/XL のいずれでもない
 #                           (`Medium` / `Small` / `XSmall` / `ZZ` 等の綴り誤り・別語彙)。
-#                           body に宣言が無く Projects の値が同様に不正な場合も含む
-#   projects_fetch_failed — body に宣言が無く、Projects の値を取得できない (gh api graphql の失敗、
+#                           body に宣言らしき行が無く Projects の値が同様に不正な場合も含む
+#   projects_fetch_failed — body に宣言らしき行が無く、Projects の値を取得できない (gh api graphql の失敗、
 #                           応答に Issue が無い、rite-config.yml を読めない)。値なしとは区別する。
 #                           body に宣言があれば fallback せず、一致を確かめられなかった旨の
 #                           WARNING を出して body の値で判定する
@@ -427,7 +431,7 @@ if [ -z "$_complexity" ]; then
   ')
   # 宣言らしき行があるのに値を取り出せなかった本文は「宣言が無い」には当たらない。Projects の値で
   # 補うと、崩れた宣言 (例: 本文 M) が Projects の値 (例: S) で黙って上書きされ、行番号 WARNING も
-  # 食い違いの検査も働かない。英字を取り出せた不正綴りを補わないのと同じく、下の欠落経路で止める。
+  # 食い違いの検査も働かない。英字を取り出せた不正綴りを補わないのと同じく、下の欠落経路 (complexity_absent) へ倒す。
 fi
 
 if [ -n "$_complexity" ]; then
@@ -460,7 +464,11 @@ if [ -z "$_complexity" ]; then
   esac
   # 探した場所は実際に参照したものだけを示す。連携が無効なのに「Projects を探した」と言うと、
   # 利用者は Projects 側の値を直しに行って空振りする。
-  if [ "$_pj_unset" -eq 1 ]; then
+  if [ -n "$_decl_line" ] && [ "$_pj_state" != "disabled" ]; then
+    # 崩れた宣言があるときは Projects の値を見つけても使っていない。「探して見つからなかった」と
+    # 書くと、利用者は値の入った Projects 側を直しに行って空振りする。値は外部入力なので載せない。
+    _pj_where="Projects #${_pj_number} の Complexity フィールドは、本文 ${_decl_line} 行目の宣言を読めないため使っていません (本文の宣言を直してください)"
+  elif [ "$_pj_unset" -eq 1 ]; then
     _pj_where="github.projects.project_number が未設定のため Projects は参照していません"
   elif [ "$_pj_state" = "disabled" ]; then
     _pj_where="Projects 連携は無効のため Projects は参照していません"
@@ -469,7 +477,11 @@ if [ -z "$_complexity" ]; then
     [ "$_pj_not_on_board" -eq 1 ] && _pj_where="${_pj_where} — Issue は Project に未登録"
   fi
   echo "Complexity が見つかりません。探した場所: Issue 本文の宣言 (\`**Complexity**: X\` / \`## 複雑度\` 節 / \`| **Complexity** | X |\` 表行)、${_pj_where}" >&2
-  echo "  本文に次の 1 行を追記してください (値は XS / S / M / L / XL のいずれか): **Complexity**: M" >&2
+  if [ -n "$_decl_line" ]; then
+    echo "  本文 ${_decl_line} 行目の宣言を次の書式に直してください (値は XS / S / M / L / XL のいずれか): **Complexity**: M" >&2
+  else
+    echo "  本文に次の 1 行を追記してください (値は XS / S / M / L / XL のいずれか): **Complexity**: M" >&2
+  fi
   emit_full_fallback complexity_absent
 fi
 

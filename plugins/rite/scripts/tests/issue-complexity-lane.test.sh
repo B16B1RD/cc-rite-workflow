@@ -641,6 +641,14 @@ run_pj '冒頭の散文行
 assert_contains "TC-6.10d: 崩れた宣言は Projects の値で補わず complexity_absent" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
 assert_contains "TC-6.10e: 崩れた宣言の行番号 WARNING を出す" "$LANE_STDERR" "body の 2 行目から値を取り出せませんでした"
 assert_not_contains "TC-6.10f: 崩れた宣言で Projects 由来にしない" "$LANE_STDERR" "source=projects_field"
+# Projects の値を見つけたうえで使っていないので、「探して見つからなかった」と書かず、本文の宣言を直す案内にする。
+assert_contains "TC-6.10g: Projects の値を使っていない理由を示す" "$LANE_STDERR" "Projects #11 の Complexity フィールドは、本文 2 行目の宣言を読めないため使っていません"
+assert_contains "TC-6.10h: 追記ではなく宣言の行を直す案内を出す" "$LANE_STDERR" "本文 2 行目の宣言を次の書式に直してください"
+assert_not_contains "TC-6.10i: Projects の候補名を探した場所として出さない" "$LANE_STDERR" "候補名"
+# 取得失敗でも同じく、崩れた宣言を Projects で補わない (projects_fetch_failed ではなく complexity_absent)。
+PJ_FAIL=1 run_pj '冒頭の散文行
+**complexity**: M'
+assert_contains "TC-6.10j: 崩れた宣言 + 取得失敗も complexity_absent" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
 pj_items "$(pj_item 11 Complexity=S)"
 run_pj '## 複雑度
 
