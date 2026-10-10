@@ -375,6 +375,27 @@ step_ci_completion_check() {
       echo "[CONTEXT] REVIEW_CI_FINAL=error; reason=required_set_unavailable"
       return 1
     fi
+    # GitHub starts no pull_request workflow while the PR conflicts with its base, and a
+    # check that passed on an older commit says nothing about the merged result. A
+    # conflict therefore blocks whatever the CI state is, and is checked before the
+    # timeout so the last poll is not reported as one.
+    case "$ci_mergeable" in
+      MERGEABLE|UNKNOWN) ;;
+      CONFLICTING)
+        printf '%s' "$ci_classified" | jq -c --arg sha "$ci_sha" '. + {commit_sha:$sha}' || return 1
+        printf 'ERROR: the PR conflicts with %s\n' "$ci_base" >&2
+        printf '[CONTEXT] REVIEW_CI_FINAL=blocked; reason=base_conflict; base=%s\n' "$ci_base"
+        return 1 ;;
+      *)
+        echo "ERROR: CI completion check has unknown merge state" >&2
+        echo "[CONTEXT] REVIEW_CI_FINAL=error; reason=merge_state_unavailable"
+        return 1 ;;
+    esac
+    # While GitHub still computes the merge state, a passing CI is not final: wait on
+    # the same budget as a pending check.
+    if [ "$ci_mergeable" = UNKNOWN ] && { [ "$ci_state" = healthy ] || [ "$ci_state" = none ]; }; then
+      ci_state=pending
+    fi
     case "$ci_state" in
       healthy|none)
         local ci_saved
@@ -395,18 +416,9 @@ step_ci_completion_check() {
         printf '[CONTEXT] REVIEW_CI_FINAL=failed; reason=unhealthy; failed=%s\n' "$ci_failed"
         return 1 ;;
       pending)
-        # GitHub does not start pull_request workflows while the PR conflicts with
-        # its base, so required checks stay missing until the base is taken in.
-        # Checked before the timeout so the last poll is not reported as one.
-        if [ "$ci_mergeable" = CONFLICTING ]; then
-          printf '%s' "$ci_classified" | jq -c --arg sha "$ci_sha" '. + {commit_sha:$sha}' || return 1
-          printf 'ERROR: required CI cannot start while the PR conflicts with %s\n' "$ci_base" >&2
-          printf '[CONTEXT] REVIEW_CI_FINAL=blocked; reason=base_conflict; base=%s\n' "$ci_base"
-          return 1
-        fi
         if [ "$waited" -ge "$ci_wait_seconds" ]; then
           printf '%s' "$ci_classified" | jq -c --arg sha "$ci_sha" '. + {commit_sha:$sha}' || return 1
-          echo "ERROR: CI completion check timed out; jobs remain unverified" >&2
+          echo "ERROR: CI completion check timed out; jobs or merge state remain unverified" >&2
           echo "[CONTEXT] REVIEW_CI_FINAL=error; reason=timeout"
           return 1
         fi

@@ -297,7 +297,7 @@ args: "{pr_number} --from-iterate"
 | `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=ac_unverified; ac={ids}` | 受入条件未検証の停止。先に下記「受入条件未検証の停止での PR 内推奨の修正」を行い、`[fix:pushed]` / `[fix:pushed-wm-stale]` ならステップ 1 へ戻る。fix のその他の戻りは同段落の規則に従う。PR 内推奨が無ければ再試行せず、下記の停止通知を出して終了する（成功 sentinel も新しい sentinel も出さない） |
 | `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=purpose_unaligned` | 5.S 後の目的逸脱。再試行せず終了する（成功 sentinel も新しい sentinel も出さない） |
 | `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=adoption_held; kind={kind}; hold_file={path}` | 採否の出口待ちの保留、またはスコープ外処分の外部への書き込みが途中で失敗した停止（後者は一部が書き込み済み）。再試行せず、`hold_file` と、hold ファイルの resume（出口待ちのときはゲートの WARNING にも出る）に従って再開することを示して終了する。書き込み途中の停止で hold に書けなかったときは、hold の resume ではなく stderr の WARNING と flow-state の次アクションにある再開方法に従う（成功 sentinel も新しい sentinel も出さない） |
-| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=base_conflict; base={base}` | PR が base と競合して必須 CI を待てず、pr-review が cycle を放棄した停止。下記「base 競合の停止での取り込み」で `{base}` を取り込み、push してステップ 1 へ戻る（取り込んだ HEAD を次の cycle でレビューする）。同じ iterate 実行で 2 回目なら取り込まず、下記の段落が定める停止の内容を示して終了する（成功 sentinel も新しい sentinel も出さない） |
+| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=base_conflict; base={base}` | PR が base と競合しているため、pr-review が cycle を放棄した停止。下記「base 競合の停止での取り込み」で `{base}` を取り込み、push してステップ 1 へ戻る（取り込んだ HEAD を次の cycle でレビューする）。同じ iterate 実行で 2 回目なら取り込まず、下記の段落が定める停止の内容を示して終了する（成功 sentinel も新しい sentinel も出さない） |
 | `[review:error]` | 可逆な再試行を推奨として 1 回だけ自動実行し、work memory の既存決定事項へ理由を記録する。再失敗なら停止 |
 | sentinel 不在 | 可逆な再試行を推奨として 1 回だけ自動実行し、期待 sentinel と直近出力を既存 work memory へ記録する。再度不在なら停止 |
 

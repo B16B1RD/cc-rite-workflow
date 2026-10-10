@@ -390,6 +390,6 @@ blocking 0 で未検証だけが残る cycle を `[review:mergeable]` にしな�
 
 ## ci-base-conflict
 
-PR が base と競合している間、GitHub は `pull_request` の workflow を起動しない。必須 check は欠落のまま終わらず、待機は上限まで続いても完了しない。上限判定より先に競合を見るのは、最後の取得で競合が見えた場合を期限超過と区別するためである。
+PR が base と競合している間、GitHub は `pull_request` の workflow を起動しない。必須 check は欠落のまま終わらず、待機は上限まで続いても完了しない。上限判定より先に競合を見るのは、最後の取得で競合が見えた場合を期限超過と区別するためである。競合は CI の状態によらず見る。CI が古いコミットで成功済みでも、競合した PR の統合結果は検証されていないため、mergeable と確定させない。
 
 競合で待てない cycle は、待っても閉じられない。5.3.0.CI は `review-finish` より前にあり、cycle はまだ証跡（manifest / content / result、保存済み receipt）を持たないので、`review-abandon` で閉じられる。放棄すると cycle が無くなり、commit ガードは base を取り込む merge commit を止めない。取り込んだ HEAD は次の cycle が、最後に保存したレビュー以降の差分としてレビューする。
