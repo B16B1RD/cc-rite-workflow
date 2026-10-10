@@ -24,7 +24,7 @@ rite workflow のスキル間連携は、各 sub-skill が bash 出力に埋め�
 | `[fix:pushed]` | fix | iterate | fix 完了・push 済み（または本 cycle に accept か PR 本文の修正のいずれかあり）、review へ再突入。iterate のループ内部状態のため batch-run へは bubble しない |
 | `[fix:sweep-done]` | fix | iterate | NB digest sweep 完了。`/rite:fix --nb-sweep`（iterate 5.S）からのみ emit する。iterate は 5.S の戻りとして入口の終了理由を保持し、PR 内推奨の修正と完了前確認を経てステップ 5 完了通知へ（sweep の戻りでステップ 1 に戻らない） |
 | `[fix:pushed-wm-stale]` | fix | iterate | fix push 完了だが work memory 更新が失敗（non-blocking）。iterate 内部で処理され batch-run へは bubble しない |
-| `[fix:non-fatal-only]` | fix | iterate | fatal=0、非 fatal 移送が 1 件以上、全指摘に返信済み、push / 本 cycle の accept・PR 本文の修正なし。5.S sweep 成功後だけ外向きに review:mergeable を返す |
+| `[fix:non-fatal-only]` | fix | iterate | 通常終了（fix 5.1 row 4.5）: fatal=0、非 fatal 移送が 1 件以上、全指摘に返信済み、push / 本 cycle の accept・PR 本文の修正なし。別経路として、NB digest sweep が current-pr の非 fatal 指摘を PR 内推奨へ登録し、`NB_SWEEP_PR_FIX=pending` かつゲート成功なら、fix 5.1 を実行せず iterate 5.S 専用表へ早期 return する。この場合 sweep は未完了で、入口の `sweep_origin` を保持し、check → mark → 通常 fix → push → 再レビューへ進む。登録だけでは完了・mergeable を通知せず、5.S sweep 成功後の PR 内推奨の修正・完了前確認を経て外向きに review:mergeable を返す |
 | `[fix:replied-only]` | fix | iterate, batch-run | push / 本 cycle の accept・PR 本文の修正なしで全返信済み（非 fatal 移送との混在を含む）。5.S 成功後も返信のみで終了し、mergeable へ昇格しない |
 | `[fix:cancelled-by-user]` | fix | iterate, batch-run | ユーザーが fix 実行をキャンセル |
 | `[lint:success]` | lint | open, pr-create, ready | lint 全チェック pass |
