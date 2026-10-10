@@ -80,6 +80,7 @@
 #                           WARNING を出して body の値で判定する
 #   complexity_mismatch   — body と Projects の両方に有効な値があり食い違う (停止、fallback しない)
 #   projects_config_invalid — github.projects.enabled: true なのに project_number が数値でない
+#                           (null / 空 / キー無しは未設定として Projects を参照しない)
 #                           (停止、fallback しない。連携無効と見なすと設定の誤りが値なしに化ける)
 #
 # 上記に加え、**本 script では表現できない** consumer 側の reason が 2 つある。いずれも本 script を
@@ -260,19 +261,28 @@ fi
 # Projects の Complexity フィールドは本文に次ぐ 2 番目の入力源。本文に宣言があっても読む —
 # 両方に値があるときの食い違いを検出するため。読むのは github.projects.enabled: true の
 # ときだけで、rite-config.yml が無い / 連携無効 / fields.complexity.enabled: false なら本文だけで
-# 判定する (gh の追加呼び出しは 0 回)。連携を有効にしたまま project_number が数値でない設定は
+# 判定する (gh の追加呼び出しは 0 回)。project_number が null / 空 (配布テンプレートの既定) のときも
+# 参照しない。連携を有効にしたまま project_number に数値でない値を書いた設定は
 # 黙って無効扱いにせず停止する — 無効扱いにすると設定の誤りが「Projects に値が無い」に化ける。
 _pj_state="disabled"   # disabled | query | value | none | invalid | failed
 _pj_value=""
 _pj_number=""
 _pj_candidates=""
 _pj_not_on_board=0
+_pj_unset=0
 if _pj_cfg=$(bash "$_icl_dir/../hooks/scripts/lib/rite-config-path.sh" 2>&1); then
   _pj_enabled=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' "$_pj_cfg")
   _pj_number=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' "$_pj_cfg")
-  if [ "$_pj_enabled" = "true" ]; then
+  # YAML では引用符付きの数値 ("11" / '11') も正しい書き方なので、引用符を外してから判定する。
+  _pj_number=${_pj_number#[\"\']}; _pj_number=${_pj_number%[\"\']}
+  # null / 空 / キー無しは「未設定」で、配布テンプレートと setup が既定で書く形。矛盾ではないので
+  # 止めずに Projects を参照しない (projects-status-gate.sh が skipped とするのと同じ扱い)。
+  case "$_pj_number" in null|'~'|'#'*) _pj_number="" ;; esac
+  if [ "$_pj_enabled" = "true" ] && [ -z "$_pj_number" ]; then
+    _pj_unset=1
+  elif [ "$_pj_enabled" = "true" ]; then
     case "$_pj_number" in
-      ''|*[!0-9]*)
+      *[!0-9]*)
         echo "ERROR: issue-complexity-lane: projects_config_invalid: rite-config.yml の github.projects.enabled が true ですが、github.projects.project_number が数値ではありません。github.projects.project_number に Project 番号を設定するか、github.projects.enabled を false にしてください" >&2
         exit 1 ;;
     esac
@@ -443,7 +453,9 @@ if [ -z "$_complexity" ]; then
   esac
   # 探した場所は実際に参照したものだけを示す。連携が無効なのに「Projects を探した」と言うと、
   # 利用者は Projects 側の値を直しに行って空振りする。
-  if [ "$_pj_state" = "disabled" ]; then
+  if [ "$_pj_unset" -eq 1 ]; then
+    _pj_where="github.projects.project_number が未設定のため Projects は参照していません"
+  elif [ "$_pj_state" = "disabled" ]; then
     _pj_where="Projects 連携は無効のため Projects は参照していません"
   else
     _pj_where="Projects #${_pj_number} の Complexity フィールド (候補名: $(printf '%s' "$_pj_candidates" | tr '\n' ',' | sed 's/,/, /g' | neutralize_ctrl --keep-newline))"

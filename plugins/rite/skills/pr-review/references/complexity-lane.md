@@ -78,7 +78,7 @@ cap 適用**後**に落とすフィルタとして実装すると、これらの
 | `issue_number_missing` | 関連 Issue を特定できず helper を呼べない（consumer 側） | 対象 Issue が分からなければ宣言値も存在しない |
 | `helper_failed` | helper が正常終了したが marker を出さない（consumer 側） | 判定結果が得られていない |
 
-repo_unresolved / repo_mismatch / complexity_mismatch / projects_config_invalid はレーン未決定のまま非ゼロ終了する。consumer は停止し、helper_failed に変換しない。対象リポジトリと cwd の照合は [Host Runtime Contract](../../../references/host-runtime-contract.md#作業先と所有者) に従う。complexity_mismatch（本文と Projects の両方に有効な値があり食い違う）と projects_config_invalid（`github.projects.enabled: true` なのに `project_number` が数値でない）は情報の欠落ではなく入力の矛盾であり、どちらかを黙って採ると誤った Complexity が工程全体に流れるため full へも倒さない。
+repo_unresolved / repo_mismatch / complexity_mismatch / projects_config_invalid はレーン未決定のまま非ゼロ終了する。consumer は停止し、helper_failed に変換しない。対象リポジトリと cwd の照合は [Host Runtime Contract](../../../references/host-runtime-contract.md#作業先と所有者) に従う。complexity_mismatch（本文と Projects の両方に有効な値があり食い違う）と projects_config_invalid（`github.projects.enabled: true` なのに `project_number` に数値でない値がある。null / 空は配布テンプレートの既定である未設定として扱い、止めずに Projects を参照しない）は情報の欠落ではなく入力の矛盾であり、どちらかを黙って採ると誤った Complexity が工程全体に流れるため full へも倒さない。
 
 helper 側 5 fallback reason の語彙は [issue-complexity-lane.sh](../../../scripts/issue-complexity-lane.sh) の docstring が SoT。consumer 側 2 reason は helper が marker を出せない / 起動されない状況そのものを指すため helper 内では表現できず、[SKILL.md](../SKILL.md) ステップ 1.3.2 に置く（[cycle-scope.md](./cycle-scope.md#fail-safe-は必ずフルレビューへ倒す) の `helper_failed` と同型）。
 

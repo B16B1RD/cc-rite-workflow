@@ -659,6 +659,20 @@ for _pj_body in "$NO_DECL" '**Complexity**: S'; do
   assert_contains "TC-6.12c: 直すべき設定キーを示す" "$LANE_STDERR" "github.projects.project_number"
   assert_not_contains "TC-6.12d: 設定不正でレーンを出さない" "$LANE_STDERR" "COMPLEXITY_LANE="
 done
+# null / 空は配布テンプレートと setup が既定で書く「未設定」。止めずに Projects を参照しない。
+for _pj_num in null '' '# Project 番号'; do
+  pj_config true "$_pj_num"
+  pj_items "$(pj_item 11 Complexity=M)"
+  run_pj '**Complexity**: S'
+  assert_contains "TC-6.13: project_number 未設定 ($_pj_num) は本文だけで判定する" "$LANE_STDERR" "COMPLEXITY_LANE=light; complexity=S; source=body_meta"
+  [ "$LANE_RC" -eq 0 ] && pass "TC-6.13b: project_number 未設定 ($_pj_num) で止めない" || fail "TC-6.13b: rc=$LANE_RC"
+  run_pj "$NO_DECL"
+  assert_contains "TC-6.13c: project_number 未設定 ($_pj_num) は未参照と案内する" "$LANE_STDERR" "github.projects.project_number が未設定のため Projects は参照していません"
+done
+pj_config true '"11"'
+pj_items "$(pj_item 11 Complexity=S)"
+run_pj "$NO_DECL"
+assert_contains "TC-6.12e: 引用符付きの project_number は数値として読む" "$LANE_STDERR" "COMPLEXITY_LANE=light; complexity=S; source=projects_field"
 pj_config true 11
 
 # 実呼出し block の終了値を測り、入口identityを保持したままforeign開始cwdを固定する。
