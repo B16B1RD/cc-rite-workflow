@@ -21,6 +21,9 @@
 #   TC-12 正常 index は n_index_defects=0 / n_orphan_category が n_orphans と一致
 #   TC-13 検出後も index.md が書き換わらない
 #   TC-14 見出しなしの旧箇条書き index は節外判定の対象外 (重複のみ検査)
+#   TC-15 awk 失敗は rc=1 + ERROR で止まり、n_index_defects を出さない
+#   TC-16 前文の HTML コメント内の記法例は登録行に数えない
+#   TC-17 節外の散文リンクは数えず、節外の表行は数える
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -304,6 +307,73 @@ if [ "$ok_clean" -eq 1 ] \
   pass "TC-14 見出しなしでも誤検出せず、重複は検出"
 else
   fail "TC-14 (ok_clean=$ok_clean rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+fi
+
+echo "=== TC-15: 走査 (awk) の失敗は問題なしとして通さず rc=1 + ERROR で止まる ==="
+# 失敗する awk を PATH の先頭に置く。契約: 検査の失敗は n_index_defects=0 として通さない。
+awk_stub="$TEST_DIR/awk-stub"
+mkdir -p "$awk_stub"
+printf '#!/bin/sh\nexit 2\n' > "$awk_stub/awk"
+chmod +x "$awk_stub/awk"
+repo=$(make_same_branch_sandbox tc15 1)
+tc15_rc=0
+tc15_out=$(cd "$repo" && printf '%s\n' "$PAGES_3" | PATH="$awk_stub:$PATH" _timeout 10 bash "$SCRIPT" --repo-root "$repo" --branch-strategy same_branch 2>"$TEST_DIR/tc15_stderr") || tc15_rc=$?
+tc15_err=$(cat "$TEST_DIR/tc15_stderr")
+if [ "$tc15_rc" -eq 1 ] \
+   && printf '%s\n' "$tc15_err" | grep -c >/dev/null 'ERROR: index.md の登録行の重複・節外検査' \
+   && ! printf '%s\n' "$tc15_out" | grep -c >/dev/null '^n_index_defects='; then
+  pass "TC-15 awk 失敗で rc=1 + ERROR、n_index_defects を出さない"
+else
+  fail "TC-15 (rc=$tc15_rc stdout=$tc15_out stderr=$tc15_err)"
+fi
+
+echo "=== TC-16: 前文の HTML コメント内の記法例は登録行に数えない ==="
+repo=$(make_same_branch_sandbox tc16 1 '# Wiki Index
+
+<!-- 登録箇条書きの形式例:
+* [ページタイトル](pages/{domain}/{slug}.md) - 説明
+-->
+
+## ページ一覧
+
+| タイトル | パス |
+|---------|------|
+| [Pattern A](pages/patterns/a.md) | patterns |
+| [Heuristic B](./pages/heuristics/b.md) | heuristics |
+')
+run_helper "$repo" "$PAGES_3" --branch-strategy same_branch
+if [ "$HELPER_RC" -eq 0 ] \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'n_index_defects=0' \
+   && ! printf '%s\n' "$HELPER_STDOUT" | grep -c >/dev/null '^outside_section:'; then
+  pass "TC-16 コメント内の記法例を節外の登録行と誤検出しない"
+else
+  fail "TC-16 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+fi
+
+echo "=== TC-17: 節外の散文リンクは登録行に数えず、節外の表行は数える ==="
+repo=$(make_same_branch_sandbox tc17 1 '# Wiki Index
+
+詳細は [guide](pages/README.md) を参照。
+
+## ページ一覧
+
+| タイトル | パス |
+|---------|------|
+| [Pattern A](pages/patterns/a.md) | patterns |
+
+## 統計
+
+一覧は [pages/patterns/a.md](pages/patterns/a.md) を含む。
+| [Heuristic B](pages/heuristics/b.md) | heuristics |
+')
+run_helper "$repo" "$PAGES_3" --branch-strategy same_branch
+if [ "$HELPER_RC" -eq 0 ] \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'n_index_defects=1' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'outside_section: pages/heuristics/b\.md' \
+   && ! printf '%s\n' "$HELPER_STDOUT" | grep -c >/dev/null 'README\.md'; then
+  pass "TC-17 散文リンクは数えず、節外の表行だけを検出"
+else
+  fail "TC-17 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
 fi
 
 echo ""

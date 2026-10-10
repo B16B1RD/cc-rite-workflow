@@ -228,18 +228,24 @@ while IFS= read -r page_path; do
 done <<< "$pages_list"
 
 # ---- 登録行の重複・節外検出 ---------------------------------------------------
-# 登録行 = 行内の最初の `](pages/...)` リンクを持つ行 (サマリー内の相互リンクで重複を
-# 誤検出しない。wiki-index-update.sh の first_link_key と同じ規則)。節の範囲は
+# 登録行 = 表の行 (縦線始まり) または箇条書きの行で、行内の最初の `](pages/...)` リンクを
+# 持つもの (サマリー内の相互リンクや、前文・統計節の散文リンクを数えない)。リンク形式は上の
+# indexed_pages 抽出と同じ緩い regex (`./` `../` 付きも許す)。行頭が `<!--` の HTML コメント
+# ブロックは落とす: 箇条書きテンプレート期に初期化された bundle の前文には記法例
+# `* [ページタイトル](pages/{domain}/{slug}.md)` がコメント内に残り、数えると恒久的な節外
+# 登録行になる (wiki-lint-descriptive-refs.sh も同じ規則で落とす)。節の範囲は
 # wiki-index-update.sh の is_heading / is_list_head と同じ式で判定する (`###` は見出しでない)。
 # `## ページ一覧` 見出しが無い index (見出し導入前の箇条書き bundle) は節外判定の対象外とし、
 # 重複だけを検査する。index.md は読むだけで書き換えない。
 index_defect_lines=$(printf '%s\n' "$index_content" | LC_ALL=C awk '
   function is_heading(s)   { return s ~ /^##[^#]/ || s ~ /^##$/ }
   function is_list_head(s) { return s ~ /^##[ \t]*ページ一覧[ \t]*$/ }
+  /^[ \t]*<!--/ { in_comment = 1 }
+  in_comment { if (index($0, "-->") > 0) in_comment = 0; next }
   {
     if (is_heading($0)) in_list = is_list_head($0) ? 1 : 0
     if (is_list_head($0)) has_list_head = 1
-    if (match($0, /\]\(\.{0,2}\/?pages\/[^)]+\)/)) {
+    if ($0 ~ /^[ \t]*(\||[*+-][ \t])/ && match($0, /\]\(\.{0,2}\/?pages\/[^)]+\)/)) {
       key = substr($0, RSTART + 2, RLENGTH - 3)
       sub(/^\.{0,2}\/?/, "", key)
       n++; keys[n] = key; inl[n] = in_list ? 1 : 0

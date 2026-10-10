@@ -31,7 +31,7 @@ rationale: references/rationale.md#helper-delegation
 | **矛盾** | 同じトピックで異なる結論を持つページ（タイトル衝突・方針逆転・重複情報） | Yes |
 | **陳腐化** | `generated.at` frontmatter が閾値（デフォルト 90 日）を超えて更新されていないページ。経過時間の計上でありページの正しさとは独立なため、件数のみ報告する informational 指標 | **No** (`n_warnings` 不加算) |
 | **孤児ページ** | `pages/` 配下に存在するが `index.md` のページカタログ（`## ページ一覧` の 5 列テーブル。箇条書きテンプレートが配布されていた期間に初期化された bundle の箇条書き `* [title](pages/...) - desc` も登録として扱う）に登録されていないページ | Yes |
-| **index 登録不整合** | `index.md` の `## ページ一覧` 節の外にある登録行（`](pages/...)` リンクを持つ行）、および節の内外を問わず同じページを指す登録行が 2 行以上ある重複。`## ページ一覧` 見出しが無い旧箇条書き index は節外判定の対象外で、重複のみ検査する。報告のみで `index.md` は書き換えない。件数は孤児ページと合算して `n_orphans`（`Lint:` 行の `orphans=`）に載る | Yes（`n_orphans` に合算） |
+| **index 登録不整合** | `index.md` の `## ページ一覧` 節の外にある登録行（`](pages/...)` リンクを持つ表の行または箇条書きの行。前文の HTML コメント内の記法例と散文のリンクは数えない）、および節の内外を問わず同じページを指す登録行が 2 行以上ある重複。`## ページ一覧` 見出しが無い旧箇条書き index は節外判定の対象外で、重複のみ検査する。報告のみで `index.md` は書き換えない。件数は孤児ページと合算して `n_orphans`（`Lint:` 行の `orphans=`）に載る | Yes（`n_orphans` に合算） |
 | **欠落概念 (missing_concept)** | `raw/` に `ingested: true` の Raw Source があるが、対応ページも `sources.ref` 登録も `ingest_status: skipped` 記録（raw frontmatter）も存在しない真の欠落 | Yes |
 | **壊れた相互参照** | ページ本文の Markdown リンク `](...)` が `pages/` 配下の実在ファイルを指していない | Yes |
 | **未登録 raw (unregistered_raw)** | `ingested: true` で `sources.ref` 未登録だが、raw frontmatter に `ingest_status: skipped` 記録がある raw。意図的に経験則化しなかった件数の informational 指標 | **No** (`n_warnings` 不加算) |
