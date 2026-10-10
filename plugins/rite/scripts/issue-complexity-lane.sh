@@ -27,8 +27,13 @@
 #   --cwd    実行場所を絶対パスで固定する。省略時は現在の cwd を照合する。
 #            skill は入口で保持した execution_cwd を明示する。
 #
-# Complexity の抽出元は Issue body のみ (flow-state は complexity フィールドを持たない)。
-# リポジトリ内に 3 つの記法が併存するため**すべて**を受理する — 一部だけ読むと、他の記法で
+# Complexity の入力源は Issue body の宣言と、GitHub Projects の Complexity フィールドの 2 つ
+# (flow-state は complexity フィールドを持たない)。body に宣言があればそれを使い、無ければ
+# Projects の値を使う。Projects は rite-config.yml の github.projects.enabled: true のときだけ読み、
+# body に宣言があっても読む — 両方に値があって食い違えば complexity_mismatch で停止する。
+# フィールド名は github.projects.fields.complexity.name → 複雑度 → Complexity の順で探す
+# (Issue 作成 helper と同じ候補順)。fields.complexity.enabled: false は連携無効と同じ扱い。
+# body の宣言について、リポジトリ内に 3 つの記法が併存するため**すべて**を受理する — 一部だけ読むと、他の記法で
 # 書かれた Issue が全て complexity_absent で full へ倒れ、レーンが一度も発動しない:
 #   1. `**Complexity**: X`      — templates/issue/template-structure.md Section 0 Meta (現行 rite 形式)
 #   2. `## 複雑度` セクション    — skills/rite-workflow/references/common-principles.md の記載形式
@@ -41,8 +46,8 @@
 # 値は大小文字を問わず XS/S/M/L/XL に正規化する。
 #
 # Output — stderr (observability contract。stdout は使わない):
-#   [CONTEXT] COMPLEXITY_LANE=light; complexity=<XS|S>; source=<body_meta|body_table|body_section>
-#   [CONTEXT] COMPLEXITY_LANE=full; complexity=<M|L|XL>; source=<body_meta|body_table|body_section>
+#   [CONTEXT] COMPLEXITY_LANE=light; complexity=<XS|S>; source=<body_meta|body_table|body_section|projects_field>
+#   [CONTEXT] COMPLEXITY_LANE=full; complexity=<M|L|XL>; source=<body_meta|body_table|body_section|projects_field>
 #   [CONTEXT] COMPLEXITY_LANE=full; reason=<reason>                 ← fail-safe 経路
 #   [CONTEXT] COMPLEXITY_LANE_FALLBACK=1; reason=<reason>           ← fail-safe 経路で追加 emit
 #   ⚠️ Complexity レーン判定のフォールバック: ...                    ← 同上 (人間向け)
@@ -64,20 +69,30 @@
 #                            記法 1 と 3 は値の先頭に英字を要求し、記法 2 は `{` `<` を値の開始と
 #                            認めず節探索を次見出しで止めるため、これらはすべて「無い」側に合流する
 #                            — 記法や見出し語の言語で reason が分裂しない)
+#                           かつ Projects にも値が無い (連携無効 / Project 未登録 / フィールド値なし)。
+#                           このとき探した場所と追記する 1 行の書式を stderr に示す
 #   complexity_invalid    — 英字トークンは取り出せたが XS/S/M/L/XL のいずれでもない
-#                           (`Medium` / `Small` / `XSmall` / `ZZ` 等の綴り誤り・別語彙)
+#                           (`Medium` / `Small` / `XSmall` / `ZZ` 等の綴り誤り・別語彙)。
+#                           body に宣言が無く Projects の値が同様に不正な場合も含む
+#   projects_fetch_failed — body に宣言が無く、Projects の値を取得できない (gh api graphql の失敗、
+#                           応答に Issue が無い、rite-config.yml を読めない)。値なしとは区別する。
+#                           body に宣言があれば fallback せず、一致を確かめられなかった旨の
+#                           WARNING を出して body の値で判定する
+#   complexity_mismatch   — body と Projects の両方に有効な値があり食い違う (停止、fallback しない)
+#   projects_config_invalid — github.projects.enabled: true なのに project_number が数値でない
+#                           (停止、fallback しない。連携無効と見なすと設定の誤りが値なしに化ける)
 #
 # 上記に加え、**本 script では表現できない** consumer 側の reason が 2 つある。いずれも本 script を
 # 呼べない / 呼んだが marker が得られない状況そのものを指すため、caller 側 (SKILL.md) に置く:
 #   issue_number_missing  — 関連 Issue を特定できず --issue を渡せない (本 script は未起動)
 #   helper_failed         — 本 script が正常終了したが marker を出さない (consumer 側)
 #
-# repo_unresolved / repo_mismatch は停止する。それ以外の全 fallback reason は **full へ倒れる** (reason は分岐を変えない)。欠落時の安全側は常に
+# repo_unresolved / repo_mismatch / complexity_mismatch / projects_config_invalid は停止する。それ以外の全 fallback reason は **full へ倒れる** (reason は分岐を変えない)。欠落時の安全側は常に
 # 「儀式を減らさない方」= full である。詳細: complexity-lane.md「fail-safe は必ず full へ倒す」。
 #
 # Exit codes:
 #   0 = レーン決定完了 (light / full のいずれも正常終了)
-#   1 = repository context error (レーンを出さず停止)
+#   1 = 停止 (レーンを出さない): repository context error / complexity_mismatch / projects_config_invalid
 #   2 = usage error (--issue 欠落 / 非数値 / 未知フラグ)
 #
 # Why fail-safe instead of fail-loud:
@@ -86,6 +101,8 @@
 #   bash が失敗し、儀式コスト最適化の失敗がレビュー / 実装そのものの失敗に昇格してしまう。
 #   sibling の scripts/review-cycle-scope.sh と同じ判断で、同じく silent fallback ではない
 #   (全経路で reason 付き marker を emit する)。
+#   例外は complexity_mismatch と projects_config_invalid で、これらは情報の欠落ではなく
+#   入力の矛盾である。どちらかを黙って採ると誤った Complexity が工程全体に流れるため停止する。
 set -uo pipefail
 
 _icl_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -240,7 +257,146 @@ if [ -z "$_raw" ]; then
   _source="body_table"
 fi
 
-if [ -z "$_raw" ]; then
+# Projects の Complexity フィールドは本文に次ぐ 2 番目の入力源。本文に宣言があっても読む —
+# 両方に値があるときの食い違いを検出するため。読むのは github.projects.enabled: true の
+# ときだけで、rite-config.yml が無い / 連携無効 / fields.complexity.enabled: false なら本文だけで
+# 判定する (gh の追加呼び出しは 0 回)。連携を有効にしたまま project_number が数値でない設定は
+# 黙って無効扱いにせず停止する — 無効扱いにすると設定の誤りが「Projects に値が無い」に化ける。
+_pj_state="disabled"   # disabled | query | value | none | invalid | failed
+_pj_value=""
+_pj_number=""
+_pj_candidates=""
+_pj_not_on_board=0
+if _pj_cfg=$(bash "$_icl_dir/../hooks/scripts/lib/rite-config-path.sh" 2>&1); then
+  _pj_enabled=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' "$_pj_cfg")
+  _pj_number=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' "$_pj_cfg")
+  if [ "$_pj_enabled" = "true" ]; then
+    case "$_pj_number" in
+      ''|*[!0-9]*)
+        echo "ERROR: issue-complexity-lane: projects_config_invalid: rite-config.yml の github.projects.enabled が true ですが、github.projects.project_number が数値ではありません。github.projects.project_number に Project 番号を設定するか、github.projects.enabled を false にしてください" >&2
+        exit 1 ;;
+    esac
+    # github.projects.fields.complexity の enabled / name をインデントで節を追って読む。
+    _pj_cx_cfg=$(awk '
+      BEGIN { q = sprintf("%c", 39) }
+      /^[ ]*(#|$)/ { next }
+      { match($0, /^ */); ind = RLENGTH }
+      ind == 0 { g = ($0 ~ /^github:/); p = f = c = 0; next }
+      g && ind == 2 { p = ($0 ~ /^  projects:/); f = c = 0; next }
+      p && ind == 4 { f = ($0 ~ /^    fields:/); c = 0; next }
+      f && ind == 6 { c = ($0 ~ /^      complexity:/); next }
+      c && ind == 8 && /^        (enabled|name):/ {
+        k = $0; v = $0
+        sub(/^ */, "", k); sub(/:.*/, "", k)
+        sub(/^ *[a-z]*:[ \t]*/, "", v)
+        sub(/[ \t]+#.*$/, "", v)
+        if (length(v) >= 2 && (substr(v, 1, 1) == "\"" || substr(v, 1, 1) == q) && substr(v, length(v), 1) == substr(v, 1, 1)) v = substr(v, 2, length(v) - 2)
+        print k "=" v
+      }
+    ' "$_pj_cfg")
+    if [ "$(printf '%s\n' "$_pj_cx_cfg" | sed -n 's/^enabled=//p' | head -1)" != "false" ]; then
+      _pj_state="query"
+      # 候補名の順序は Issue 作成 helper と同じ (設定の name → 日本語エイリアス → 英語正準名)。
+      _pj_candidates=$(printf '%s\n' "$(printf '%s\n' "$_pj_cx_cfg" | sed -n 's/^name=//p' | head -1)" '複雑度' 'Complexity' \
+        | awk 'NF && !seen[$0]++')
+    fi
+  fi
+elif [ $? -ne 1 ]; then
+  # rc=1 は「設定ファイルが無い」= 連携無効。それ以外 (読めない / main checkout を解決できない) は
+  # Projects の値を確かめられない状態であり、無効扱いにしない。
+  _pj_state="failed"
+  echo "WARNING: issue-complexity-lane: rite-config.yml を読めないため Projects の Complexity を確認できません:" >&2
+  printf '%s\n' "$_pj_cfg" | head -3 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+fi
+
+_complexity=""
+if [ -n "$_raw" ]; then
+  _complexity=$(printf '%s' "$_raw" | tr '[:lower:]' '[:upper:]')
+  # 本文の宣言が壊れているときは Projects の値で補わない (「宣言が無い」には当たらない)。
+  case "$_complexity" in
+    XS|S|M|L|XL) ;;
+    *) emit_full_fallback complexity_invalid ;;
+  esac
+fi
+
+if [ "$_pj_state" = "query" ]; then
+  _pj_state="failed"
+  # 照会結果は 1 行ずつ: NOISSUE / NOTONBOARD / ONBOARD に続けて「V<TAB>フィールド名<TAB>値」。
+  # 値とフィールド名は外部入力なので区切り文字を潰して行構造を保つ。gh 内蔵の --jq を使い、
+  # jq コマンドへの依存を足さない。
+  _pj_jq='.data.repository.issue as $i
+    | if $i == null then "NOISSUE"
+      else ([$i.projectItems.nodes[]? | select(.project.number == '"$_pj_number"')][0]) as $it
+      | if $it == null then "NOTONBOARD"
+        else "ONBOARD", ($it.fieldValues.nodes[]? | select((.field.name // null) != null and (.name // null) != null)
+          | "V\t" + (.field.name | gsub("[\t\n\r]"; " ")) + "\t" + (.name | gsub("[\t\n\r]"; " ")))
+        end
+      end'
+  if rite_tempfile_new _icl_pj_err "complexity-lane-pj-err"; then
+    if _pj_out=$(gh api graphql -f query='
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      projectItems(first: 10) {
+        nodes {
+          project { number }
+          fieldValues(first: 20) {
+            nodes {
+              ... on ProjectV2ItemFieldSingleSelectValue {
+                field { ... on ProjectV2SingleSelectField { name } }
+                name
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}' -f owner="${OWNER_REPO%%/*}" -f repo="${OWNER_REPO#*/}" -F number="$ISSUE_NUMBER" --jq "$_pj_jq" 2>"$_icl_pj_err"); then
+      case "$_pj_out" in
+        NOTONBOARD) _pj_state="none"; _pj_not_on_board=1 ;;
+        ONBOARD*)
+          _pj_state="none"
+          while IFS= read -r _pj_field; do
+            _pj_raw=$(printf '%s\n' "$_pj_out" | _ICL_FIELD="$_pj_field" awk -F'\t' '$1 == "V" && $2 == ENVIRON["_ICL_FIELD"] { print $3; exit }')
+            [ -n "$_pj_raw" ] || continue
+            _pj_value=$(printf '%s' "$_pj_raw" | tr '[:lower:]' '[:upper:]')
+            case "$_pj_value" in
+              XS|S|M|L|XL) _pj_state="value" ;;
+              *) _pj_state="invalid"; _pj_value="" ;;
+            esac
+            break
+          done <<< "$_pj_candidates"
+          ;;
+      esac
+    elif [ -s "$_icl_pj_err" ]; then
+      echo "WARNING: issue-complexity-lane: Projects の Complexity の取得に失敗しました (issue=#${ISSUE_NUMBER}, project=${_pj_number}):" >&2
+      head -3 "$_icl_pj_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    fi
+  fi
+fi
+
+if [ -n "$_complexity" ]; then
+  case "$_pj_state" in
+    value)
+      if [ "$_pj_value" != "$_complexity" ]; then
+        echo "ERROR: issue-complexity-lane: complexity_mismatch: Issue 本文と Projects #${_pj_number} の Complexity が食い違っています (本文=${_complexity}; Projects=${_pj_value})。どちらかを正しい値に直してから再実行してください" >&2
+        exit 1
+      fi ;;
+    invalid)
+      echo "WARNING: issue-complexity-lane: Projects #${_pj_number} の Complexity フィールドの値が XS / S / M / L / XL のいずれでもないため、本文の宣言 (${_complexity}) だけで判定しました。診断に値は載せません — 第三者が書ける外部入力のため" >&2 ;;
+    failed)
+      echo "WARNING: issue-complexity-lane: Projects の Complexity を確認できなかったため、本文との一致を確かめずに本文の宣言 (${_complexity}) で判定しました" >&2 ;;
+  esac
+else
+  case "$_pj_state" in
+    value) _complexity="$_pj_value"; _source="projects_field" ;;
+    invalid) emit_full_fallback complexity_invalid ;;
+    failed) emit_full_fallback projects_fetch_failed ;;
+  esac
+fi
+
+if [ -z "$_complexity" ]; then
   # 宣言らしき行はあるのに値を取り出せなかった場合だけ対象行の行番号を報告する
   # (sibling の review-cycle-scope.sh は target の値そのものを名指しするが、本 helper は
   # 外部入力を診断へ通さないため位置だけを示す)。宣言が本当に無い Issue では出さない —
@@ -285,14 +441,22 @@ if [ -z "$_raw" ]; then
     ''|*[!0-9]*) : ;;
     *) echo "WARNING: issue-complexity-lane: Complexity 宣言らしき記述はありますが body の ${_decl_line} 行目から値を取り出せませんでした。診断に本文は載せません — 第三者が書ける外部入力のため" >&2 ;;
   esac
+  # 探した場所は実際に参照したものだけを示す。連携が無効なのに「Projects を探した」と言うと、
+  # 利用者は Projects 側の値を直しに行って空振りする。
+  if [ "$_pj_state" = "disabled" ]; then
+    _pj_where="Projects 連携は無効のため Projects は参照していません"
+  else
+    _pj_where="Projects #${_pj_number} の Complexity フィールド (候補名: $(printf '%s' "$_pj_candidates" | tr '\n' ',' | sed 's/,/, /g' | neutralize_ctrl --keep-newline))"
+    [ "$_pj_not_on_board" -eq 1 ] && _pj_where="${_pj_where} — Issue は Project に未登録"
+  fi
+  echo "Complexity が見つかりません。探した場所: Issue 本文の宣言 (\`**Complexity**: X\` / \`## 複雑度\` 節 / \`| **Complexity** | X |\` 表行)、${_pj_where}" >&2
+  echo "  本文に次の 1 行を追記してください (値は XS / S / M / L / XL のいずれか): **Complexity**: M" >&2
   emit_full_fallback complexity_absent
 fi
 
-_complexity=$(printf '%s' "$_raw" | tr '[:lower:]' '[:upper:]')
 case "$_complexity" in
   XS|S) _lane="light" ;;
-  M|L|XL) _lane="full" ;;
-  *) emit_full_fallback complexity_invalid ;;
+  *) _lane="full" ;;
 esac
 
 echo "[CONTEXT] COMPLEXITY_LANE=$_lane; complexity=$_complexity; source=$_source" >&2

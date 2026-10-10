@@ -30,7 +30,7 @@ assert_file_exists_or_fail "complexity-lane.md exists" "$LANE"
 assert_grep "1.3.2 invokes the complexity-lane helper" "$PR_REVIEW" \
   'scripts/issue-complexity-lane\.sh --issue \{issue_number\}'
 assert_grep "1.3.2 declares the Issue's own Complexity as the sole input" "$PR_REVIEW" \
-  '判定入力は Issue の\*\*宣言 Complexity\*\* のみ'
+  '判定入力は Issue の\*\*宣言 Complexity\*\*（本文の宣言、無ければ Projects の Complexity フィールド）のみ'
 # light/full の 2 値分岐表が本体に残っていること (marker を読んだ後の行動を決める唯一の表)。
 # レーンと cap と mandate が 1 行に同居していることを pin する — 3 つを別行に分けた形へ
 # 崩れると「light だが cap を渡さない」等の部分適用が green のまま通る。
@@ -43,7 +43,7 @@ echo "=== ステップ 1.3.2: fail-safe は必ず full へ倒れる (AC-2 / T-02
 # reason 語彙の列挙と「reason は分岐を変えない (全て full)」が 1 行に同居していることを pin する。
 # 語彙だけの pin だと「full へ倒す」規則が消えても green のままになる。
 assert_grep "1.3.2 enumerates every helper-side reason and pins that they all fall back to full" "$PR_REVIEW" \
-  'gh_missing.*issue_fetch_failed.*complexity_absent.*complexity_invalid.*reason は分岐を変えない.*`full`'
+  'gh_missing.*issue_fetch_failed.*complexity_absent.*complexity_invalid.*projects_fetch_failed.*reason は分岐を変えない.*`full`'
 assert_grep "helper docstring is the reason SoT" "$HELPER" \
   'Fallback reason 語彙 \(SoT'
 assert_grep "complexity-lane.md forbids narrowing on missing information" "$LANE" \
@@ -54,10 +54,18 @@ assert_grep "complexity-lane.md states the safe side is always the heavier lane"
 # 3 コピーのどれかが欠けると「その経路は fail-safe しない」と読める記述が残る
 # (cycle-scope の jq_missing が実際に 1 コピーから欠落していた前例の予防)。
 for _f in "$HELPER" "$PR_REVIEW" "$LANE"; do
-  for _r in gh_missing issue_fetch_failed complexity_absent complexity_invalid; do
+  for _r in gh_missing issue_fetch_failed complexity_absent complexity_invalid projects_fetch_failed; do
     assert_grep "$(basename "$_f") documents reason '$_r'" "$_f" "$_r"
   done
 done
+# 入力の矛盾 (本文と Projects の食い違い / Projects 設定不正) は full へ倒さず停止する。
+# 停止側の 1 行に載っていることを pin する — fallback 側の列挙へ紛れ込んでも語彙 pin は green のままになる。
+for _f in "$PR_REVIEW" "$IMPLEMENT"; do
+  assert_grep "$(basename "$(dirname "$_f")") stops on body/Projects contradictions" "$_f" \
+    'helper の非ゼロ終了（repo_unresolved / repo_mismatch / complexity_mismatch / projects_config_invalid を含む）は直ちに停止し'
+done
+assert_grep "complexity-lane.md stops on body/Projects contradictions" "$LANE" \
+  '^repo_unresolved / repo_mismatch / complexity_mismatch / projects_config_invalid はレーン未決定のまま非ゼロ終了する'
 # helper を呼べない / marker を出せない経路の consumer 側既定。helper の reason 語彙では
 # 表現できないため SKILL.md 側に置く必要がある。
 # needle はレーン固有語まで書き切る — `marker を観測できない場合も \`full\` として扱い` だけだと
