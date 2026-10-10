@@ -403,6 +403,38 @@ git clone https://github.com/GoogleCloudPlatform/knowledge-catalog /tmp/okf-visu
 
 準拠 bundle では、page 本文の Markdown リンク（page 間の相互参照）が概念グラフの辺として描画されます。frontmatter の `sources` は辺ではなくノードに添付されるデータです（上記「カタログ形式は visualizer の描画に影響しません」の出典を参照）。
 
+## 昇格候補
+
+Wiki ページはプロジェクト固有の経験則を保持する。rite の挙動・スキル記述法は機械検出可否や既存ページ有無に関係なく raw の候補へ送る。新規 `promote: rite-plugin` ページは作らず、既存の `promote` / `reference` 付き発見ポインタは保持する。
+
+`wiki-promotion-candidates.sh` が知見別の保存・列挙・作業対応・完了突合を行う。正本は既存 raw 本文の `## Promotion candidates` JSON fence と `ingest_status` / `skip_reason`。既存 log の `rite-promotion` コメントに対応 Issue/PR と証拠を記録する。新しい queue・台帳・状態ファイル・設定キーは作らない。
+
+record の入力は次の形。source の行番号は frontmatter と候補節を除いた原文本文の先頭（前後の空行を除く）を 1 とする。`consumer` は現在のプラグイン責務のリポジトリ相対パス。helper が原文抜粋と id を付け、再実行でも既存候補を保持する。`pages` は domain の実書込先のみで、候補だけなら空。domain だけなら candidates は空、知見なしは skip_reason を指定する。
+
+```json
+{
+  "candidates": [
+    {
+      "summary": "知見の要約",
+      "source": {"start_line": 1, "end_line": 3},
+      "condition": "適用条件と反例",
+      "consumer": "plugins/rite/hooks/scripts/example.sh"
+    }
+  ],
+  "pages": ["pages/patterns/domain-example.md"]
+}
+```
+
+record は raw の候補と log を保存・読み戻し、まだ `ingested: false` に保つ。domain のページ・sources・index・raw パスを含む log を保存後に finish を呼ぶ。保存失敗は抽出完了にせず停止し、raw・候補・既存 ingest lock/pending を保持する。混在 raw は rite 部分のみ候補化し、domain の新規/更新を維持する。候補のみは ingest の変更ページ一覧へ入れない。
+
+消化は保守リポジトリで `/rite:batch-run --promotions`（マージまで明示する場合は `--promotions --merge`）。AI が全 raw の候補を列挙・同責務へ集約し、issue-create の重複検出・作成ゲート・Projects を経て既存 open → iterate を駆動する。通常の run-queue を使い、別の未完了キューを上書きしない。旧 `detector-candidate:` も `ingested: true` も対象。旧候補は原文から条件/消費先を具体化して link する。候補の選択・起票判断を毎回人間へ戻さず、AI が解決できない相反する仕様だけ確認する。
+
+link の入力は work 配列。各要素は `candidate`（helper の id）、`raw`、`issue_url`、`condition`、`consumer` を持つ。実装結果の突合時は `pr_url`、`caller`、`test`、`revision` を加える。caller/test はリポジトリ相対パス、test は同じ consumer と caller の実利用を検証する `*.test.sh`。revision は対象 PR の merge commit。Issue/PR 番号の散文引用はせず、対応はリンク先として記録する。
+
+完了は helper/gate の実 caller 呼出し、原則/reference の明示読取、対応試験の成功、同じ Issue を閉じる PR の merge 確認がすべて揃う場合のみ。reconcile は GitHub の merge commit に固定した一時 checkout で試験を再実行し、別 PR/古い revision/無関係な caller の証拠は通さない。log が complete でも再実行時に再検証する。候補保存・起票・draft・未利用 reference・検証失敗・証拠取得失敗は理由付き未解決として保持し、raw の候補理由と出典は完了後も消さない。
+
+配布先の record/finish/list は当該プロジェクト内の保存/読取だけで、外部送信とインストール済みプラグイン編集をしない。link/reconcile は実 source checkout と origin identity を照合した保守側でだけ使う。外部共有は利用者が明示的に依頼した場合に限り、環境固有情報を除いて配布境界を満たす候補を保守側へ渡す。両 Wiki ブランチ戦略の既存 commit/lint/push を維持する。
+
 ## Wiki 有効判定パターン
 
 Wiki 操作の前に必ず有効判定を行います。**Wiki は opt-out**: `wiki:` セクション自体や `enabled` キーが未指定の場合は default-on (有効) として扱います。明示的に `false|no|0` が指定された場合のみ無効化されます。

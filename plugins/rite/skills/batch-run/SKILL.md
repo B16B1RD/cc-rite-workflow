@@ -6,7 +6,7 @@ description: |
   完了時に /rite:issue-audit を 1 回実行し、完了報告に監査レポートへの参照を載せる。
   ユーザーが明示的に /rite:batch-run で起動する meta-orchestrator。auto-activate しない。
   起動: /rite:batch-run [--merge] <issue_number>...
-argument-hint: "[--merge] <issue_number>..."
+argument-hint: "[--merge] <issue_number>... | --promotions [--merge]"
 ---
 
 # /rite:batch-run
@@ -42,6 +42,7 @@ rationale: references/rationale.md#session-scoped-queue
 | Argument | Description |
 |----------|-------------|
 | `--merge` | （任意フラグ）指定すると open→iterate に加え ready→merge→cleanup まで完走する。省略時は各 Issue を draft PR で止める。Issue 番号との順序は問わない（例: `--merge 1527 1528` / `1527 --merge 1528`） |
+| `--promotions` | 保守リポジトリの raw 昇格候補を AI が列挙・集約し、既存 Issue または issue-create を経て通常の open → iterate に接続する。Issue 番号との併用不可。新しい候補 queue は作らない |
 | `<issue_number>...` | 処理対象の Issue 番号（1 個以上、空白区切り）。省略時は `.rite/state/run-queue-{session_id}.json` の未処理分（cursor 以降）をモードごと再開 |
 
 ## Placeholder Legend
@@ -81,6 +82,37 @@ bash {plugin_root}/hooks/scripts/loop-entry-resume.sh || exit 1
 rationale: ../../references/stop-loop-continuation-contract.md#loop-skill-reentry
 
 ---
+
+## 昇格候補の消化（`--promotions`）
+
+Issue 番号を指定する通常入口と分け、保守リポジトリで明示された `--promotions` の場合だけステップ 0 の前に実行する。Issue 番号との併用はエラー。配布先では候補を保存・報告するだけで、外部送信や配布物編集をしない。source helper と保持した owner/repo の照合が失敗したら停止する。`{wiki_root_abs}` は既存 Wiki のブランチ戦略から解決する（separate_branch は登録済み Wiki worktree、same_branch は実 checkout の .rite/wiki）。
+
+1. **列挙・突合**: 次を実行し、JSON 全件を読む。既存の `ingested: true` や過去の complete 記録で除外しない。helper は現在の merge/caller/test 証拠を再照合し、不足は raw パスと理由付きで未解決とする。raw/log の取得・保存失敗は停止する。
+
+   ```bash
+   bash {plugin_root}/hooks/scripts/wiki-promotion-candidates.sh reconcile --wiki-root "{wiki_root_abs}" --cwd "{execution_cwd}" --repo {owner_repo}
+   ```
+
+2. **分類・集約**: AI が原文範囲と反例を読み、条件・消費先で同じ責務へまとめる。旧 `detector-candidate:` の空の条件/消費先は原文と現在のコードから具体化する。独自の条件と出典を削らない。complete は実装対象から外し、未解決は既存 log と全状態の Issue/PR を照合する。起票済み Issue が log 未記録でも、raw パスと知見の原文範囲・条件・消費先を含む本文を検索して再利用する。CLOSED だけでは完了とせず、未解決な閉じた作業は必要な差分の契約として起票する。
+3. **既存経路で起票**: 対応する OPEN Issue が無ければ、候補の各 `id/raw/source/condition/consumer` と要約を入力にして次を invoke する。caller context は `promotion_caller=batch-run`。候補の選択・分類・起票判断を毎回人間に戻さず、相反する仕様だけ確認する。
+
+   ```text
+   skill: rite:issue-create
+   args: "{promotion_contract}"
+   ```
+
+   `[create:returned-to-caller:N]` を回収し、Issue の存在と本文の出典、Projects 登録の実結果を照合する。未登録・起票失敗・sentinel 不在なら作成済み Issue の有無を調べ、raw を保持して停止する。helper の直接起票で代用しない。
+4. **対応保存**: [候補データ契約](../../references/wiki-patterns.md#昇格候補)の work 配列を `{promotion_work_file}` へ Write し、次で既存 log に保存する。候補理由は raw に残す。記録が失敗したら後続を起動せず、次回の手順 2 で GitHub を再照合する。
+
+   ```bash
+   bash {plugin_root}/hooks/scripts/wiki-promotion-candidates.sh link --wiki-root "{wiki_root_abs}" --cwd "{execution_cwd}" --repo {owner_repo} --input "{promotion_work_file}"
+   ```
+
+5. **既存ループへ接続**: 対応 OPEN Issue の番号を重複排除して `{issue_numbers}` に置換し、通常のステップ 0 → open → iterate を続行する。`--merge` を明示したときのみ既存 merge 経路へ進む。他の未完了キューを上書きせず、先にそのキューを再開する。同じ Issue 群なら既存 cursor を維持する。対象 0 件なら候補の complete/未解決と理由を報告し、キューを新設しない。
+
+**結果の突合と再開**: 消化対象かは既存 log の対応 Issue で確認する（新しい状態フィールドを作らない）。通常起動・recover のいずれも、ステップ 6 の cursor 前進前、CLOSED の skip 前、全完了通知前に同じ reconcile を呼ぶ。merge が見つかる場合は、その merge commit の consumer/caller/test パスと `revision` を work に追記して link で保存してから照合する。helper は同じ候補・対応 Issue/PR・条件・消費先に属する、マージ済み revision の caller 利用と検証成功を要求する。実体が reference/原則なら caller の明示読取と対応試験を確認する。draft、未利用、検証失敗、取得失敗は未解決のまま。失敗理由は log と完了報告に残し、cursor の作業完了を候補の昇格完了と混同しない。API 作成/マージを試験で mock にしたことと実確認を区別する。
+
+候補の記録・domain ページの変更・log 更新は既存 ingest lock、番号参照検査、commit/lint/push を両ブランチ戦略で通す。lock/pending を再初期化しない。未 commit の記録がある再開は、既存保存回収手順で確認してから進む。
 
 ## ステップ 0: キュー初期化 / 再開判定
 
@@ -413,6 +445,8 @@ rationale: references/rationale.md#merge-conflict-route
 
 ## ステップ 6: cleanup（`--merge` 時のみ）→ cursor を進める
 
+昇格候補に対応する Issue は、上の「結果の突合と再開」を先に実行する。draft の作業完了だけでは候補を完了にしない。
+
 **`{run_mode}=merge` のときのみ**、下記で `/rite:cleanup` を invoke する。**デフォルト（draft 止まり）モードはステップ 3 から直接このステップに遷移し、cleanup invoke をスキップして下段の cursor 前進 bash のみ実行する**（draft PR はレビュー待ちのため close せず残す）。
 
 ```text
@@ -471,6 +505,8 @@ rationale: references/rationale.md#cursor-not-success
 ---
 
 ## ステップ 7: 全 Issue 完了通知
+
+候補消化では全候補を再突合し、complete と未解決の raw パス・理由を通知へ含める。Issue の処理完了件数を昇格完了件数として使わない。
 
 全 Issue を処理し終えたら、残存する終了 handoff を消費してから run-queue-{session_id}.json を削除して完了を報告する:
 

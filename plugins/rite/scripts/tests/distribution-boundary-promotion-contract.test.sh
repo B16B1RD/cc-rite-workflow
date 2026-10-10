@@ -189,7 +189,7 @@ if [ "$near_prefix_rc" -eq 0 ] || ! grep -Fq 'near-prefix.md:1' <<<"$near_prefix
   exit 1
 fi
 
-# Pin both routing surfaces so the second promotion axis cannot silently drift.
+# Environment independence applies to candidate consumption as well as domain routing.
 grep -Fq '環境非依存' "$ROOT/CLAUDE.md" || {
   printf 'FAIL: CLAUDE.md lacks the environment-independence promotion axis\n' >&2
   exit 1
@@ -198,8 +198,12 @@ grep -Fq '環境非依存' "$PLUGIN_ROOT/skills/wiki-ingest/SKILL.md" || {
   printf 'FAIL: wiki-ingest routing lacks the environment-independence promotion axis\n' >&2
   exit 1
 }
-grep -Fq 'rite 挙動・スキル記述法かつ環境非依存（または一般化済み）' "$PLUGIN_ROOT/skills/wiki-ingest/SKILL.md" || {
-  printf 'FAIL: wiki-ingest promote field rule does not preserve the two-axis predicate\n' >&2
+grep -Fq '新規 domain ページには付けない' "$PLUGIN_ROOT/skills/wiki-ingest/SKILL.md" || {
+  printf 'FAIL: wiki-ingest must not create new promotion-marked pages\n' >&2
+  exit 1
+}
+grep -Fq '既存の昇格済みポインタ' "$PLUGIN_ROOT/skills/wiki-ingest/SKILL.md" || {
+  printf 'FAIL: existing discovery pointers must be retained\n' >&2
   exit 1
 }
 

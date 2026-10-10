@@ -1,4 +1,5 @@
 ---
+# Domain knowledge only; rite workflow candidates stay in raw.
 type: "{concept_type}"
 title: "{title}"
 domain: "{domain}"

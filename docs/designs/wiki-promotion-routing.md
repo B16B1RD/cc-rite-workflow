@@ -4,7 +4,7 @@
 
 rite 自体の挙動・スキル記述法に関する知見は、Wiki ページの新規作成・更新から外し、永続的な昇格候補として出力する。候補の消化には既存の Issue 作成・実装・レビュー経路を使う。Wiki 全体を定期的に移動する仕組みは追加しない。既存分は一括で一覧化した後、同じ責務を持つ機構ごとに分割して棚卸しする。
 
-この文書は設計の決定であり、現行の取り込み動作を変更しない。経路の実装、既存ページの昇格・削除、設定の追加は後続作業で扱う。
+(a)(b) の実行手順は同梱 wiki-ingest と batch-run の候補消化経路に反映する。既存ページの棚卸し・昇格・削除 (c) は別作業で扱う。Wiki ブランチ実体 SCHEMA.md の同期は、この変更のレビュー・マージ後にテンプレートを反映する作業とする。
 
 判断の規範は [CLAUDE.md のプロジェクト原則](../../CLAUDE.md) と [知見のルーティング](../../plugins/rite/skills/rite-workflow/references/coding-principles.md#knowledge_routing-route-knowledge-to-its-durable-medium) である。強制できる知見は helper・gate・テストに、判断規則は実行時に参照される原則・reference に置く。既存の消費先がある場所を更新し、全文を別ディレクトリへコピーしただけでは完了としない。新しい scheduler・queue・将来用の設定キーは追加せず、人間の役割を要件・仕様の提示と完成品の動作確認に保つ。
 
@@ -63,11 +63,11 @@ PY
 
 取得・解析・照合が失敗したら、その対象と理由を記録して停止する。読めなかったページを件数ゼロや対象外として扱わない。
 
-## 現行経路と再利用できる部分
+## 実行経路
 
-[wiki-ingest](../../plugins/rite/skills/wiki-ingest/SKILL.md) の「LLM による読解と統合判定」は、rite 知見を昇格分類し、環境非依存なら印を付ける。機械検出可能なものは検出器候補を優先するが、同テーマのページがあれば既存ページを更新する。ページがない候補は `ingest_status: skipped`・`skip_reason: detector-candidate: ...` を raw に残し、log と完了報告に列挙する。したがって、分類節の「ページを作らない」だけでは Wiki への滞留を止められない。
+[wiki-ingest](../../plugins/rite/skills/wiki-ingest/SKILL.md) は知見ごとに rite 候補と domain Wiki へ分け、既存 raw・skip 理由・log を使う。rite 知見は既存ページがあっても更新しない。候補 helper の record と finish が保存と読戻しを担う。
 
-raw・skip 理由・log・候補の完了報告は既にあるため、候補の保管基盤を新設する必要はない。一方、[現行の設計理由](../../plugins/rite/skills/wiki-ingest/references/rationale.md#detector-candidate) は候補を人間が起票を判断する材料としている。候補の起票・消化・完了との突合は既存の列挙だけでは成立しない。`ingested: true` の raw を通常の未取り込み検索だけで探すと候補を取りこぼす点も、後続実装で閉じる必要がある。
+[batch-run](../../plugins/rite/skills/batch-run/SKILL.md) の `--promotions` が抽出済み raw と旧 detector-candidate 理由を含めて列挙・集約し、起票・実装・レビューへ接続する。完了突合は同じマージ済み revision の caller 利用と対応試験成功を要求する。データ契約は [wiki-patterns](../../plugins/rite/references/wiki-patterns.md#昇格候補)。
 
 ## (a) 新規知見の出力先
 
@@ -82,7 +82,7 @@ raw・skip 理由・log・候補の完了報告は既にあるため、候補の
 
 候補の正本は raw に残す。既存の `ingest_status`・`skip_reason` の範囲で「Wiki 化をせず、昇格候補として保持した」ことと要約を表現し、既存の log・完了報告には raw へのパスを出す。新しい queue・状態ファイルは設けない。`ingested: true` は抽出完了であり、昇格完了ではない。混在した raw では各知見の行き先を個別に記録し、raw 全体の skip として domain 知見まで捨てない。
 
-候補には、再分類に必要な要約・原文の範囲・適用条件・現行の消費先候補を残す。出力の成功を確認する前に raw を処理済みにしない。保存失敗なら raw を保持して理由を表示し、同じ入力から再実行する。現行の検出器候補に限った `skip_reason` と完了報告を、この意味へ広げる変更はまだ実装されていない。
+候補には、再分類に必要な要約・原文の範囲・適用条件・現行の消費先候補を残す。出力の成功を確認する前に raw を処理済みにしない。保存失敗なら raw を保持して理由を表示し、同じ入力から再実行する。`promotion-candidate:` 理由と知見別の raw 本文記録を使い、旧 `detector-candidate:` 理由も列挙する。
 
 ## (b) 候補を消化する継続経路
 
@@ -94,9 +94,9 @@ raw・skip 理由・log・候補の完了報告は既にあるため、候補の
 | 候補を表示し、人間が毎回採否を判断する | 新しい配線が少ない | 人間の途中判断を定常化し、消化を保証しないため不採用 |
 | AI が既存の Issue 作成・実装経路に接続する | 既存の重複検出・検証・再開を使える | 接続と完了突合の実装が必要だが、採用 |
 
-保守リポジトリで、昇格の消化を目的とする既存ワークフローの実行を入口にする。AI が raw の候補理由と log から処理済み raw も列挙し、未解決の候補を照合する。同じ責務の候補をまとめ、[issue-create](../../plugins/rite/skills/issue-create/SKILL.md) の重複検出・Projects 連携を使って既存の作業に結び付けるか、実装する契約を起こす。実装は [open](../../plugins/rite/skills/open/SKILL.md) と [iterate](../../plugins/rite/skills/iterate/SKILL.md) で進める。候補の検出・分類・起票を人間へ戻さず、要件や相反する仕様を AI だけで決められない場合に限って確認する。
+保守リポジトリで `/rite:batch-run --promotions`（マージまで明示する場合は `--promotions --merge`）を入口にする。AI が raw の候補理由と log から処理済み raw も列挙し、未解決の候補を照合する。同じ責務の候補をまとめ、[issue-create](../../plugins/rite/skills/issue-create/SKILL.md) の重複検出・Projects 連携を使って既存の作業に結び付けるか、実装する契約を起こす。実装は [open](../../plugins/rite/skills/open/SKILL.md) と [iterate](../../plugins/rite/skills/iterate/SKILL.md) で進める。候補の検出・分類・起票を人間へ戻さず、要件や相反する仕様を AI だけで決められない場合に限って確認する。
 
-入口の起動は要件の提示に相当する。時刻による自動起動は採らないが、起動後の消化は人間が各候補を選ぶことに依存させない。候補の保存と消化の接続は後続実装の責務であり、現行の完了報告を読むだけで自動化が済んだとは扱わない。
+入口の起動は要件の提示に相当する。時刻による自動起動は採らないが、起動後の消化は人間が各候補を選ぶことに依存させない。既存 Issue の重複検出と作成ゲート、Projects、open → iterate を通す。候補の完了報告を読むだけで自動化が済んだとは扱わない。
 
 完了は、対象の helper・gate・原則・reference が実際の caller から使われ、対応する検証が通り、保守側の変更がマージされたことで判定する。候補を記録しただけ、起票しただけ、draft PR を作っただけでは完了にしない。raw の候補理由は出典として残し、既存 log に作業への対応と検証先を記録する。再実行時は raw のパスと知見の原文範囲、適用条件、消費先で照合し、既存 Issue とマージ済み変更を調べてから起票する。完了突合ができなければ未解決として保持する。
 

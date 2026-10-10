@@ -38,6 +38,13 @@ argument-hint: "<title or description>"
 
 ---
 
+## 候補消化 caller からの実行
+
+明示された `batch-run --promotions` が `promotion_caller=batch-run` と候補の id/raw/source/condition/consumer を渡した nested 呼出しだけに適用する。候補ごとの出典と条件を本文へ保持し、通常の Step 2 重複検出、規模判定、Contract 生成、本文ファクトチェック、作成ゲート、Projects 登録をすべて実行する。
+- Step 2.3 の既存 Issue 使用/拡張/関連なしと Step 3.2 の分解を AI が内容で判断する。既存 Issue 使用は番号と URL を caller へ返す。新規作成時は duplicate_check を記録する。
+- Step 4.1（分解は Step 5.2）の項目は raw とコードから確定し、自動承認として confirm を記録する。要件の矛盾だけ質問し、起票の品質判断を毎回人間に戻さない。caller 以外の通常確認は維持する。
+- 作成後は sentinel と実 Issue/Projects 結果を caller へ返す。起票後に中断した場合、次回は raw パス・原文範囲・条件・消費先で既存 Issue を探してから作成する。候補の完了扱いや削除はしない。
+
 ## ステップ 1: 入力解析と前提取得
 
 ### 1.1 リポジトリと Project 設定取得
@@ -206,7 +213,7 @@ rationale: references/rationale.md#ask-only-user-unique
 
 ### 4.1 Issue 情報の最終確認
 
-AskUserQuestion で Issue の以下を確認/補完する:
+通常起動は AskUserQuestion で以下を確認/補完する。候補消化 caller は上記の自動承認規約を使う:
 
 - title（slug ベース）
 - type（feat / fix / docs / refactor / chore — これは **Commit Type**。Issue body 構造で使う Contract Type との対応は [`default.md` Type Definitions](../../templates/issue/default.md#type-definitions) の crosswalk が SoT）

@@ -54,16 +54,11 @@ lock を 2h 後に回収できる性質は保つ。`concurrent_ingest` 時に新
 
 ## knowledge-routing
 
-rite 挙動・スキル記述法の知見を Wiki に留置したままだと、マーケットプレイス配布先では不活性に
-なる（CLAUDE.md「知見のルーティング」）。環境非依存なら `promote: rite-plugin`、環境固有なら
-一般化してから昇格するか、一般化できなければ domain 知見として Wiki に残す。機械検出可能
-（2.6）と両方に該当する場合は 2.6 が優先し、ページを作らない — `promote` はページ作成時のみ。
+rite 自体の知見は実 caller が使う機構・原則へ取り込む。Wiki に新規・既存更新で増やさず、raw に候補と出典を保持する。一般化できないプロジェクト固有部分は domain Wiki に残す。既存の昇格済みページの発見ポインタは維持する。
 
 ## detector-candidate
 
-2.6 はフラグ付けのみでアクション決定はしない。正例は trap 順序の静的検査・mktemp 無音化の
-lint 化、負例はブランチ戦略の運用判断・ドメイン固有の文脈知識。ステップ 9 の検出器化候補列挙は
-人間が Issue 化を判断する材料で、`promote: rite-plugin` タグと同型の役割。
+機械検出可能なものに候補を限定しない。helper/gate とスキルの判断規則・reference はともに対象で、AI が条件・消費先・出典を具体化する。旧 detector-candidate 理由も抽出状態で除外せず再列挙する。保守側の明示起動は既存 issue-create → open → iterate に接続し、caller 利用・検証成功・マージの証拠がない候補を未解決として保持する。
 
 ## summary-provenance
 

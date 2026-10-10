@@ -10,6 +10,8 @@ argument-hint: "<pr_number>"
 
 # /rite:iterate
 
+候補消化の Issue では、原文範囲・条件・消費先と実 caller・対応試験の利用を受入条件で照合する。レビュー成功は昇格完了ではなく、batch-run がマージ済み revision の caller と検証結果を再突合する。候補の出典を消さない。
+
 > 実行入口と工程境界は [Host Runtime Contract](../../references/host-runtime-contract.md#入口と工程境界)、native Skill / Task がない場合の実行は [Host workflow operations](../../references/host-workflow-operations.md) に従う。nested 呼出しは caller の runtime 選択を引き継ぐ。
 
 > セッション worktree 入場後にシェルブロックがホストの隔離ガードに拒否されたら、[共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) の「入場後のガード拒否の退路」に従う。
