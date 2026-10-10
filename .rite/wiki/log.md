@@ -588,6 +588,14 @@
 * **lint:warning** — contradictions=0, stale=74, orphans=0, missing_concept=1, unregistered_raw=768, broken_refs=0
   * auto comparison: WIKI_CONTRADICTION_CHECK=complete; changed=0; screened=0; candidates=0; excluded=0; compared=0; 対象なし（ページ変更なし）。全体の索引・source 登録・リンク検査は実行済み。
   * missing_concept: raw/fixes/20261009T162241Z-pr-3728.md — 処理済み raw に対応する sources 登録とスキップ記録がない。
+* **Skip**: [20261010T113001Z-pr-3754.md](raw/fixes/20261010T113001Z-pr-3754.md) — Issue 作成の失敗伝播はプラグインの契約テストに保存済みで、追加するドメイン経験則はない。
+* **Skip**: [20261010T115345Z-pr-3755-fix.md](raw/fixes/20261010T115345Z-pr-3755-fix.md) — 検査範囲の説明と実装を一致させた修正記録で、追加するドメイン経験則はない。
+* **Skip**: [20261010T105948Z-pr-3753.md](raw/reviews/20261010T105948Z-pr-3753.md) — 空一覧の終了コード契約は回帰テストに保存済みで、レビューは新規指摘なし。
+* **Skip**: [20261010T111717Z-pr-3756.md](raw/reviews/20261010T111717Z-pr-3756.md) — 空配列と破損の区別はプラグインの回帰テストに保存済みで、レビューは新規指摘なし。
+* **Skip**: [20261010T112313Z-pr-3754.md](raw/reviews/20261010T112313Z-pr-3754.md) — 停止分岐の変異検出不足は同じ変更の契約テストで修正済みで、追加するドメイン経験則はない。
+* **Skip**: [20261010T114351Z-pr-3754.md](raw/reviews/20261010T114351Z-pr-3754.md) — 修正後の契約テストと受入条件の確認結果のみで、新しいドメイン経験則はない。
+* **Skip**: [20261010T115345Z-pr-3755-review-final.md](raw/reviews/20261010T115345Z-pr-3755-review-final.md) — 説明修正後のレビューと検証結果のみで、新しいドメイン経験則はない。
+* **Skip**: [20261010T115345Z-pr-3755-review-initial.md](raw/reviews/20261010T115345Z-pr-3755-review-initial.md) — 配布検査の範囲に関する説明の不一致は修正済みで、追加するドメイン経験則はない。
 
 ## 2026-10-07
 
