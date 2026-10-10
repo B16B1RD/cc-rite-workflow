@@ -713,6 +713,11 @@ for _pj_num in null '' '# Project 番号'; do
   [ "$LANE_RC" -eq 0 ] && pass "TC-6.13b: project_number 未設定 ($_pj_num) で止めない" || fail "TC-6.13b: rc=$LANE_RC"
   run_pj "$NO_DECL"
   assert_contains "TC-6.13c: project_number 未設定 ($_pj_num) は未参照と案内する" "$LANE_STDERR" "github.projects.project_number が未設定のため Projects は参照していません"
+  # 崩れた宣言があっても、未設定を連携無効や「値を使っていない」と言い換えない。
+  run_pj '冒頭の散文行
+**complexity**: M'
+  assert_contains "TC-6.13d: 未設定 ($_pj_num) + 崩れた宣言も未設定と案内する" "$LANE_STDERR" "github.projects.project_number が未設定のため Projects は参照していません"
+  assert_not_contains "TC-6.13e: 未設定 ($_pj_num) + 崩れた宣言を連携無効と言わない" "$LANE_STDERR" "連携は無効"
 done
 pj_config true '"11"'
 pj_items "$(pj_item 11 Complexity=S)"
