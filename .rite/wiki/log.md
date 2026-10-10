@@ -564,6 +564,27 @@
   * 比較: [exclusion-test-requires-both-sides-of-boundary](pages/patterns/exclusion-test-requires-both-sides-of-boundary.md) ↔ [value-truncation-allows-listed-delimiters-only](pages/patterns/value-truncation-allows-listed-delimiters-only.md) — 矛盾なし。本文比較の結果、主題・結論が異なるか同じ方向で、成立条件の違う見かけの対立を含め矛盾なし
   * 比較: [exclusion-test-requires-both-sides-of-boundary](pages/patterns/exclusion-test-requires-both-sides-of-boundary.md) ↔ [detector-widening-pins-both-bounds](pages/patterns/detector-widening-pins-both-bounds.md) — 矛盾なし。本文比較の結果、主題・結論が異なるか同じ方向で、成立条件の違う見かけの対立を含め矛盾なし
   * 比較: [exclusion-test-requires-both-sides-of-boundary](pages/patterns/exclusion-test-requires-both-sides-of-boundary.md) ↔ [stateful-scanner-exclusion-before-termination](pages/patterns/stateful-scanner-exclusion-before-termination.md) — 矛盾なし。本文比較の結果、主題・結論が異なるか同じ方向で、成立条件の違う見かけの対立を含め矛盾なし
+* **Skip**: [20261010T065622Z-pr-3751.md](raw/fixes/20261010T065622Z-pr-3751.md) — rite の Complexity 判定・原因別案内・レビュー収束の知見は、プロジェクト規約に従い plugin の実装・テスト・手順書で扱うため Wiki ページ化しない。
+* **Skip**: [20261010T070520Z-pr-3752.md](raw/fixes/20261010T070520Z-pr-3752.md) — rite の Wiki ログ読取・停止条件・検証手順の知見は、プロジェクト規約に従い plugin の実装・テスト・手順書で扱うため Wiki ページ化しない。
+* **Skip**: [20261010T072349Z-pr-3751.md](raw/fixes/20261010T072349Z-pr-3751.md) — rite の Complexity 判定・原因別案内・レビュー収束の知見は、プロジェクト規約に従い plugin の実装・テスト・手順書で扱うため Wiki ページ化しない。
+* **Skip**: [20261010T074652Z-pr-3752.md](raw/fixes/20261010T074652Z-pr-3752.md) — rite の Wiki ログ読取・停止条件・検証手順の知見は、プロジェクト規約に従い plugin の実装・テスト・手順書で扱うため Wiki ページ化しない。
+* **Skip**: [20261010T075548Z-pr-3751.md](raw/fixes/20261010T075548Z-pr-3751.md) — rite の Complexity 判定・原因別案内・レビュー収束の知見は、プロジェクト規約に従い plugin の実装・テスト・手順書で扱うため Wiki ページ化しない。
+* **Skip**: [20261010T082012Z-pr-3751.md](raw/fixes/20261010T082012Z-pr-3751.md) — rite の Complexity 判定・原因別案内・レビュー収束の知見は、プロジェクト規約に従い plugin の実装・テスト・手順書で扱うため Wiki ページ化しない。
+* **Skip**: [20261010T082443Z-pr-3752.md](raw/fixes/20261010T082443Z-pr-3752.md) — rite の Wiki ログ読取・停止条件・検証手順の知見は、プロジェクト規約に従い plugin の実装・テスト・手順書で扱うため Wiki ページ化しない。
+* **Skip**: [20261010T090152Z-pr-3752.md](raw/fixes/20261010T090152Z-pr-3752.md) — rite の Wiki ログ読取・停止条件・検証手順の知見は、プロジェクト規約に従い plugin の実装・テスト・手順書で扱うため Wiki ページ化しない。
+* **Skip**: [20261010T092736Z-pr-3752.md](raw/fixes/20261010T092736Z-pr-3752.md) — rite の Wiki ログ読取・停止条件・検証手順の知見は、プロジェクト規約に従い plugin の実装・テスト・手順書で扱うため Wiki ページ化しない。
+* **Skip**: [20261010T062351Z-pr-3750.md](raw/reviews/20261010T062351Z-pr-3750.md) — rite の base 取り込みと設定照合の知見は、プロジェクト規約に従い plugin の helper・テスト・手順書で扱うため Wiki ページ化しない。
+* **Skip**: [20261010T064816Z-pr-3751.md](raw/reviews/20261010T064816Z-pr-3751.md) — rite の Complexity 判定・原因別案内・レビュー収束の知見は、プロジェクト規約に従い plugin の実装・テスト・手順書で扱うため Wiki ページ化しない。
+* **Skip**: [20261010T065434Z-pr-3752.md](raw/reviews/20261010T065434Z-pr-3752.md) — rite の Wiki ログ読取・停止条件・検証手順の知見は、プロジェクト規約に従い plugin の実装・テスト・手順書で扱うため Wiki ページ化しない。
+* **Skip**: [20261010T071248Z-pr-3751.md](raw/reviews/20261010T071248Z-pr-3751.md) — rite の Complexity 判定・原因別案内・レビュー収束の知見は、プロジェクト規約に従い plugin の実装・テスト・手順書で扱うため Wiki ページ化しない。
+* **Skip**: [20261010T073318Z-pr-3752.md](raw/reviews/20261010T073318Z-pr-3752.md) — rite の Wiki ログ読取・停止条件・検証手順の知見は、プロジェクト規約に従い plugin の実装・テスト・手順書で扱うため Wiki ページ化しない。
+* **Skip**: [20261010T074203Z-pr-3751.md](raw/reviews/20261010T074203Z-pr-3751.md) — rite の Complexity 判定・原因別案内・レビュー収束の知見は、プロジェクト規約に従い plugin の実装・テスト・手順書で扱うため Wiki ページ化しない。
+* **Skip**: [20261010T081015Z-pr-3751.md](raw/reviews/20261010T081015Z-pr-3751.md) — rite の Complexity 判定・原因別案内・レビュー収束の知見は、プロジェクト規約に従い plugin の実装・テスト・手順書で扱うため Wiki ページ化しない。
+* **Skip**: [20261010T081108Z-pr-3752.md](raw/reviews/20261010T081108Z-pr-3752.md) — rite の Wiki ログ読取・停止条件・検証手順の知見は、プロジェクト規約に従い plugin の実装・テスト・手順書で扱うため Wiki ページ化しない。
+* **Skip**: [20261010T083327Z-pr-3751.md](raw/reviews/20261010T083327Z-pr-3751.md) — rite の Complexity 判定・原因別案内・レビュー収束の知見は、プロジェクト規約に従い plugin の実装・テスト・手順書で扱うため Wiki ページ化しない。
+* **Skip**: [20261010T084034Z-pr-3752.md](raw/reviews/20261010T084034Z-pr-3752.md) — rite の Wiki ログ読取・停止条件・検証手順の知見は、プロジェクト規約に従い plugin の実装・テスト・手順書で扱うため Wiki ページ化しない。
+* **Skip**: [20261010T091826Z-pr-3752.md](raw/reviews/20261010T091826Z-pr-3752.md) — rite の Wiki ログ読取・停止条件・検証手順の知見は、プロジェクト規約に従い plugin の実装・テスト・手順書で扱うため Wiki ページ化しない。
+* **Skip**: [20261010T093703Z-pr-3752.md](raw/reviews/20261010T093703Z-pr-3752.md) — rite の Wiki ログ読取・停止条件・検証手順の知見は、プロジェクト規約に従い plugin の実装・テスト・手順書で扱うため Wiki ページ化しない。
 
 ## 2026-10-07
 
