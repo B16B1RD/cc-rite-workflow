@@ -248,6 +248,27 @@ else:
         self.assertNotIn("RUN_QUEUE=initialized", failed.stdout)
         self.assertTrue(self.input.exists())
 
+    def test_resume_queue_write_failures_stop_without_advancing_or_replacing_saved_work(self):
+        work = self.write_work()
+        self.assertEqual(self.invoke(2).returncode, 0)
+        self.assertEqual(self.run_shell(self.queue_script("0 1")).returncode, 0)
+        queue = self.cwd / ".rite/state/run-queue-00000000-0000-0000-0000-000000000007.json"
+        stored = json.loads(queue.read_text())
+        stored.update(cursor=1, active=False)
+        queue.write_text(json.dumps(stored))
+        before_queue = queue.read_bytes()
+        before_work = self.input.read_bytes()
+        queue.with_suffix(".json.tmp").mkdir()
+        for arguments in ("0 1", ""):
+            with self.subTest(arguments=arguments):
+                failed = self.run_shell(self.queue_script(arguments))
+                self.assertEqual(failed.returncode, 1, failed.stderr)
+                self.assertNotIn("RUN_QUEUE=resume", failed.stdout)
+                self.assertEqual(queue.read_bytes(), before_queue)
+                self.assertEqual(self.input.read_bytes(), before_work)
+                row = json.loads(self.invoke(0).stdout)[0]
+                self.assertEqual(row["work"]["issue_url"], work["issue_url"])
+
     def test_skill_handoffs_use_issue_create_gate_projects_open_iterate_and_recover(self):
         entry = batch.split("## 昇格候補の消化", 1)[1].split("## ステップ 0:", 1)[0]
         self.assertIn("skill: rite:issue-create", entry)
