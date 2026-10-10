@@ -318,7 +318,8 @@ test "$(bash -c "$command")" = called
             'printf "%s\\n" ' + consumer + ' | grep ' + consumer,
             'grep -q ' + consumer + ' unrelated.txt',
             "sed -n '1q' unrelated.txt " + consumer,
-            "cat --help " + consumer,
+            # GNU cat prints help; BSD cat rejects --help. Neither reads the file.
+            "cat --help " + consumer + " || :",
         ]
         for command in commands:
             with self.subTest(command=command):

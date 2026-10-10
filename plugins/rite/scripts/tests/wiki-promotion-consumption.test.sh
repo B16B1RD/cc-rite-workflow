@@ -26,7 +26,8 @@ class Caller(unittest.TestCase):
         (self.wiki / "raw/reviews").mkdir(parents=True)
         scripts = self.cwd / "plugins/rite/hooks/scripts"
         scripts.mkdir(parents=True)
-        for name in ("wiki-promotion-candidates.sh", "wiki-promotion-candidates.py"):
+        for name in ("wiki-promotion-candidates.sh", "wiki-promotion-candidates.py", "lib/git-remote.sh"):
+            (scripts / name).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(plugin / "hooks/scripts" / name, scripts / name)
         subprocess.run(["git", "init", "-q", str(self.cwd)], check=True)
         subprocess.run(["git", "remote", "add", "origin", "https://github.com/example/project.git"],
@@ -71,16 +72,20 @@ class Caller(unittest.TestCase):
         self.assertIn("detector-candidate:", (self.wiki / self.raw).read_text())
 
     def test_distribution_source_and_repository_mismatch_stop_before_external_calls(self):
-        installed = Path(self.tmp.name) / "installed/rite/hooks/scripts"
+        installed = Path(self.tmp.name) / "installed/plugins/rite/hooks/scripts"
         installed.mkdir(parents=True)
-        shutil.copy(plugin / "hooks/scripts/wiki-promotion-candidates.py", installed)
+        for name in ("wiki-promotion-candidates.sh", "wiki-promotion-candidates.py"):
+            shutil.copy(plugin / "hooks/scripts" / name, installed / name)
+        subprocess.run(["git", "init", "-q", str(installed.parents[3])], check=True)
         self.replacements["{plugin_root}"] = str(installed.parents[1])
         rejected = self.invoke(0)
-        self.assertNotEqual(rejected.returncode, 0)
+        self.assertEqual(rejected.returncode, 1, rejected.stderr)
+        self.assertIn("consumption requires the repository's tracked plugin source", rejected.stderr)
         self.replacements["{plugin_root}"] = str(self.cwd / "plugins/rite")
         self.replacements["{owner_repo}"] = "another/project"
         rejected = self.invoke(0)
-        self.assertNotEqual(rejected.returncode, 0)
+        self.assertEqual(rejected.returncode, 1, rejected.stderr)
+        self.assertIn("repository identity mismatch", rejected.stderr)
         self.assertFalse((self.wiki / "log.md").exists())
 
     def test_failed_link_preserves_raw_and_existing_issue_evidence(self):
