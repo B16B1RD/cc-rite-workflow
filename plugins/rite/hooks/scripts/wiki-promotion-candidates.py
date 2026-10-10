@@ -257,7 +257,6 @@ def proof(cwd, repo, item):
     revision = pr["mergeCommit"]["oid"]
     if work["revision"] != revision:
         raise ValueError("verification revision is not the merged revision")
-    issue = int(work["issue_url"].rsplit("/", 1)[1])
     if work["issue_url"] not in [x.get("url") for x in pr["closingIssuesReferences"]]:
         raise ValueError("PR does not close the linked Issue")
     if item.get("consumer") and item["consumer"] != work["consumer"]:
