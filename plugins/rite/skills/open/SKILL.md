@@ -634,6 +634,9 @@ args: "{issue_number}"
 
 Step 4 の autonomous lint が emit した sentinel を会話 context から読む。**`[lint:success]` / `[lint:skipped]` では `rite:lint` を再 invoke しない**（二重実行防止）。`[lint:error]` と sentinel 不在は下表:
 
+実装 sub-skill の return 後も open が制御を持つ。success / skipped の消費後は**同じターンでステップ 6 の push と PR 作成を実行**し、継続案内だけでターンを閉じない。skipped の未実行理由は `rite:pr-create` に渡し、PR 本文の `Known Issues` に残す。success に置換しない。
+rationale: [stop-loop-continuation-contract.md#open-lint-handoff](../../references/stop-loop-continuation-contract.md#open-lint-handoff)
+
 | Sentinel | 次のアクション |
 |---------|--------------|
 | `[lint:success]` | ステップ 6 へ進む |
@@ -678,6 +681,8 @@ skill: rite:pr-create
 rationale: references/rationale.md#missing-sentinel-recovery
 
 ### 6.3 flow-state 更新
+
+PR 番号を取得したらこの set を完了通知より前に必ず実行する。`--handoff` を付けないことで lint が保存した open 継続 handoff を消す。正常完了後はレビューへ自動続行しない。
 
 ```bash
 bash {plugin_root}/hooks/flow-state.sh set \

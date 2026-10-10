@@ -14,8 +14,8 @@ E2E の "Skip entirely" は人間向けサマリー表示だけを省く。lint 
 
 ## no-direct-pr-create
 
-本スキルが `rite:pr-create` を直接呼ぶと、caller のチェックリスト確認（open ステップ 4.4 /
-sentinel 消費 5.1）を迂回し、未完了タスクのまま PR が作られる。sentinel を出して caller に
+本スキルが `rite:pr-create` を直接呼ぶと、caller の実装完了確認と open ステップ 5 の
+sentinel 消費を迂回し、未完了タスクのまま PR が作られる。sentinel を出して caller に
 返すのが唯一の継続契約。
 
 ## no-silent-head-fallback

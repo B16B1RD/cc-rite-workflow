@@ -34,6 +34,12 @@
 - **resume との二層構造**: flow-state の `next_action` は Ctrl+C 中断後の `/rite:recover` 用の secondary な網。Stop hook は自動継続・完了通知強制の primary 層。batch 稼働中の compact 復帰は SessionStart(`source=compact`) が run-queue frame を出し、`/rite:recover` へ誘導しない。
 - **サーキットブレーカー発火後の batch**: fire 分岐が handoff を消したあと Stop すると handoff 軸は停止許可になる。watchdog は `stop_reason` が `circuit-breaker:*` または `stagnation:*`（停滞診断の停止）なら `/rite:iterate` 再注入ではなく batch-run ステップ 8（`breaker_failed=true` で failed 記録 + 停止、cursor は保持）へ誘導する。
 
+## open-lint-handoff
+
+open → issue-implement → lint の戻りも open の処理途中である。lint は未検出時の早期 return を含め、結果表示前に state と履歴を保存する。実際の呼出しチェーンが open のときだけ `OPEN:skipped:{issue}` / `OPEN:success:{issue}` を既存 handoff に設定し、caller は sentinel と理由を消費して同じターンに PR 作成へ進む。state や過去の会話があるだけの standalone lint、他の caller、中断・エラーには open handoff を設定しない。lint 自身から PR を作成しない。
+
+Stop hook はこの handoff を一度だけ消費し、同じ Issue の active な `phase=lint`、PR 未作成、停止理由なしの状態を Step 5 → 6 へ差し戻す。skipped を success に変えず、lint 再実行・再質問・重複 PR 作成を求めない。PR 作成後は open ステップ 6.3 の通常 set（handoff なし）が消し、完了通知後の停止を許可する。中断・エラーの結果保存も通常 set で残存 handoff を消す。ユーザーによる pause と既存 batch watchdog の契約は維持する。
+
 ## wikichain-handoff
 
 cleanup → wiki-ingest → wiki-lint の 2 段ネスト skill return 直後に LLM が turn を閉じる implicit stop が累積再発している。iterate ループの Stop-hook 継続保証と同型の one-shot handoff (`WIKICHAIN:cleanup:{pr}`) を移植し、チェーン途中で turn が閉じた場合は Stop hook が `WIKICHAIN:*` を consume して停止を差し戻し、残り step (ingest 残処理 → cleanup ステップ 10-12) の継続を強制する。自動矛盾検査を完了できない場合は例外として cleanup ステップ 9 で停止する。保存した変更一覧を保持し、ingest lock を解放した後、既存 `flow-state.sh consume-handoff` で WIKICHAIN を解除する。通常の ingest 失敗へ変換してステップ 10-12 や完了通知に進めない。再開は pending raw が 0 件でも保存一覧を比較する。通常の handoff 設定 site と terminal set は変えず、失敗時の consume だけを追加する。解除しないまま停止すると Stop hook が既存の継続指示を再注入するため、比較不能の停止は必ず解除後に行う。チェーンがステップ 12 まで完走した場合はステップ 12 末尾の `flow-state.sh set` (`--handoff` なし) が handoff を default-clear するため block は発生しない。consume は one-shot のため **handoff 軸では** 無限 block しない。batch 稼働中にチェーン途中で再停止した場合は watchdog が phase=cleanup かつ flow-state `active=true` なら cleanup 残りステップへ誘導し、cursor 前進へ飛ばない。

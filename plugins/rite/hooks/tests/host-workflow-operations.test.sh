@@ -729,6 +729,154 @@ class WorkflowContracts(unittest.TestCase):
         self.assertIn("CREATE_CALLED", result.stdout)
         self.assertIn("READABILITY_VERSION=ok", result.stdout)
 
+    def lint_result_state(self, caller, result):
+        lint = (plugin / "skills/lint/SKILL.md").read_text(encoding="utf-8")
+        blocks = [b for b in re.findall(r"(?ms)^```bash\n(.*?)^```", lint)
+                  if b.startswith("# lint-result-state\n")]
+        self.assertEqual(len(blocks), 1)
+        table = lint.split("| Caller | Result | `{lint_handoff}` |", 1)[1].split("\n\n", 1)[0]
+        matches = []
+        for row in table.splitlines():
+            cells = [cell.strip() for cell in row.strip("|").split("|")]
+            if len(cells) == 3 and "`" + caller + "`" in cells[0]:
+                if "[lint:" + result + "]" in cells[1] or cells[1] == "全結果":
+                    matches.append(cells[2])
+        self.assertEqual(len(matches), 1, "expected one handoff row for " + caller + "/" + result)
+        value = matches[0]
+        self.assertTrue(value == "空" or re.fullmatch(r"`[^`]+`", value), "invalid handoff cell: " + value)
+        handoff = "" if value == "空" else value.strip("`").replace("{issue_number}", "2624")
+        code = blocks[0]
+        for key, value in {"plugin_root": str(distribution), "lint_caller": caller,
+                           "phase_value": "lint", "next_action_value": "return " + result,
+                           "lint_handoff": handoff}.items():
+            code = code.replace("{" + key + "}", value)
+        self.run_command(["bash", "-c", code])
+        return json.loads(self.flow_file.read_text())
+
+    def open_lint_state(self):
+        self.run_command(["bash", str(distribution / "hooks/flow-state.sh"), "set", "--phase", "lint",
+                          "--issue", "2624", "--branch", "feature", "--pr", "0", "--next", "run lint"])
+
+    def lint_stop(self):
+        payload = json.dumps({"cwd": str(self.fixture), "session_id": self.current_id,
+                              "stop_hook_active": False, "last_assistant_message": "[lint:skipped]"})
+        result = subprocess.run(["bash", str(distribution / "hooks/stop-loop-continuation.sh")],
+                                input=payload, cwd=self.fixture, env=self.env, capture_output=True,
+                                text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout) if result.stdout else None
+
+    def test_open_lint_return_blocks_early_stop_and_clears_after_real_pr_block(self):
+        # Execute distributed state/Stop helpers and the actual PR creation block.
+        # gh is a fixture: this is not a native Claude conversation or user choice.
+        self.open_lint_state()
+        state = self.lint_result_state("open", "skipped")
+        self.assertEqual(state["handoff"], "OPEN:skipped:2624")
+        bounce = self.lint_stop()
+        self.assertEqual(bounce["decision"], "block")
+        self.assertIn("[lint:skipped]", bounce["reason"])
+        self.assertIn("ステップ 6", bounce["reason"])
+        self.assertNotIn("[lint:success]", bounce["reason"])
+        self.assertIsNone(self.lint_stop(), "consumed handoff must not loop")
+        # Normal continuation may reach PR creation without an intervening Stop.
+        self.lint_result_state("open", "skipped")
+        pr = (plugin / "skills/pr-create/SKILL.md").read_text(encoding="utf-8")
+        code = next(b for b in re.findall(r"(?ms)^```bash\n(.*?)^```", pr)
+                    if b.startswith('pr_workdir="{PR_CREATE_WORKDIR}"'))
+        scratch = self.fixture / "pr-create"
+        scratch.mkdir()
+        title, body, record = [scratch / n for n in ["pr_title.txt", "pr_body.md", "readability-record.json"]]
+        title.write_text("lint スキップ後の継続\n", encoding="utf-8")
+        lint = (plugin / "skills/lint/SKILL.md").read_text(encoding="utf-8")
+        reason = re.search(r"(?m)^理由: (.+)$", lint).group(1)
+        body.write_text("スキップ後も PR を作成する。\n<details>\n## Known Issues\n- lint 未実行（" +
+                        reason + "）\n</details>\n", encoding="utf-8")
+        (scratch / "attachments.json").write_text("[]", encoding="utf-8")
+        guard = self.readability_guard()
+        shutil.copy(guard, scratch / "readability_guard.py")
+        self.record_readability(guard, title, body, record)
+        self.env["CREATE_LOG"] = str(self.fixture / "create.log")
+        self.env["CREATED_BODY"] = str(self.fixture / "created-body.md")
+        (self.bin / "gh").write_text('#!/bin/bash\nset -eu\n'
+                                     '[ "$1 $2" = "pr create" ]\n'
+                                     'printf "%s\\n" "$*" >> "$CREATE_LOG"\n'
+                                     'while [ "$#" -gt 0 ]; do\n'
+                                     '  if [ "$1" = "--body-file" ]; then cp "$2" "$CREATED_BODY"; fi\n'
+                                     '  shift\ndone\n'
+                                     'printf "https://github.com/fixture/repo/pull/3000\\n"\n', encoding="utf-8")
+        for key, value in {"PR_CREATE_WORKDIR": str(scratch), "owner_repo": "fixture/repo",
+                           "base_branch": "develop", "branch_name": "feature"}.items():
+            code = code.replace("{" + key + "}", value)
+        output = self.run_command(["bash", "-c", code])
+        self.assertIn("/pull/3000", output)
+        self.assertIn("--draft", pathlib.Path(self.env["CREATE_LOG"]).read_text())
+        self.assertIn(reason, pathlib.Path(self.env["CREATED_BODY"]).read_text())
+        open_skill = (plugin / "skills/open/SKILL.md").read_text(encoding="utf-8")
+        finish = open_skill.split("### 6.3 flow-state 更新", 1)[1]
+        code = re.findall(r"(?ms)^```bash\n(.*?)^```", finish)[0]
+        for key, value in {"plugin_root": str(distribution), "issue_number": "2624",
+                           "branch_name": "feature", "pr_number": "3000"}.items():
+            code = code.replace("{" + key + "}", value)
+        self.run_command(["bash", "-c", code])
+        state = json.loads(self.flow_file.read_text())
+        self.assertEqual((state["phase"], state["pr_number"]), ("pr", 3000))
+        self.assertNotIn("handoff", state)
+        self.assertIsNone(self.lint_stop())
+        self.assertEqual(len(pathlib.Path(self.env["CREATE_LOG"]).read_text().splitlines()), 1)
+
+    def test_standalone_lint_skip_leaves_existing_open_state_untouched(self):
+        self.open_lint_state()
+        original = self.flow_file.read_bytes()
+        state = self.lint_result_state("standalone", "skipped")
+        self.assertEqual(self.flow_file.read_bytes(), original)
+        self.assertNotIn("handoff", state)
+        self.assertIsNone(self.lint_stop())
+        self.assertFalse((self.fixture / "gh.log").exists())
+
+    def test_lint_abort_and_error_clear_pending_open_continuation(self):
+        for result in ["aborted", "error"]:
+            self.open_lint_state()
+            self.lint_result_state("open", "skipped")
+            state = self.lint_result_state("open", result)
+            self.assertNotIn("handoff", state)
+            self.assertIsNone(self.lint_stop())
+            self.assertEqual(state["pr_number"], 0)
+        # Retry error remains stopped; only a successful retry arms continuation.
+        self.lint_result_state("open", "error")
+        self.assertIsNone(self.lint_stop())
+        self.lint_result_state("open", "success")
+        self.assertIn("[lint:success]", self.lint_stop()["reason"])
+        self.assertFalse((self.fixture / "gh.log").exists())
+
+    def test_other_lint_caller_and_batch_skip_keep_their_return_boundaries(self):
+        self.open_lint_state()
+        state = self.lint_result_state("other", "skipped")
+        self.assertNotIn("handoff", state)
+        self.assertIsNone(self.lint_stop())
+        self.queue.write_text('{"issues":[2624],"cursor":0,"mode":"default","active":true}\n')
+        original = self.queue.read_bytes()
+        self.lint_result_state("open", "skipped")
+        self.assertEqual(self.lint_stop()["decision"], "block")
+        self.assertEqual(self.queue.read_bytes(), original)
+        self.assert_foreign_unchanged()
+
+    def test_lint_early_return_and_nested_caller_contracts_are_connected(self):
+        lint = (plugin / "skills/lint/SKILL.md").read_text(encoding="utf-8")
+        early = lint.split("### 1.3 When Command Cannot Be Detected", 1)[1].split("## Phase 2:", 1)[0]
+        self.assertIn("結果表示前に Phase 4.0、4.4", early)
+        self.assertIn("Phase 4.0 を aborted で実行", early)
+        self.assertIn("sub-skill の return でありターン終了ではない", early)
+        self.assertIn("保存 state・ブランチ・過去の open の会話だけで caller を推定しない", lint)
+        implement = (plugin / "skills/issue-implement/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("**4c**: lint の return 後", implement)
+        self.assertIn("継続 handoff を別の `flow-state.sh set` で消さず", implement)
+        open_skill = (plugin / "skills/open/SKILL.md").read_text(encoding="utf-8")
+        consume = open_skill.split("## ステップ 5:", 1)[1].split("## ステップ 6:", 1)[0]
+        self.assertIn("**同じターンでステップ 6 の push と PR 作成を実行**", consume)
+        self.assertIn("再失敗なら停止", consume)
+        self.assertIn("**1 回だけ**", consume)
+        self.assertIn("Known Issues", consume)
+
     def test_distribution_documentation_and_ci_inputs_stay_connected(self):
         for filename in ["README.md", "README.ja.md"]:
             body = (root / filename).read_text(encoding="utf-8")
