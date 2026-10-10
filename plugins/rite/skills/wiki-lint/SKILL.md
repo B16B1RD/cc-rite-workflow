@@ -297,10 +297,14 @@ esac
 
 # stdout 構造: pages_list 行 → "---" separator → raw_list 行 の 3 部構成
 # 空文字列ガード: 旧 `printf '%s\n' ""` は blank line 1 行を emit するため、ステップ 6.2 が
-# 「pages_list=1 件 (空文字列)」と誤解釈する余地があった。`[ -n ... ] && printf` で空時は何も emit しない。
-[ -n "$pages_list" ] && printf '%s\n' "$pages_list"
+# 「pages_list=1 件 (空文字列)」と誤解釈する余地があった。if 文で空時は何も emit せず正常終了する。
+if [ -n "$pages_list" ]; then
+  printf '%s\n' "$pages_list"
+fi
 echo "---"
-[ -n "$raw_list" ] && printf '%s\n' "$raw_list"
+if [ -n "$raw_list" ]; then
+  printf '%s\n' "$raw_list"
+fi
 ```
 
 LLM は stdout から `pages_list` と `raw_list` を会話コンテキストに保持する。`--auto` は Step 3 の比較集合を収集結果とは独立に検証する。収集エラーや空集合へ縮退した結果を、明示的な変更なしと同一視してはならない。両方空でも自動モードは先に Step 3 の入力・比較を検証する。手動で両方空なら **ステップ 3-7 (7.5 を除く) を skip し、ステップ 7.5 → ステップ 9 に進む**。ステップ 7.5 だけは skip しない — `index.md` / `log.md` が単独で走査対象になりうる。
