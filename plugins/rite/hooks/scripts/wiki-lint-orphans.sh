@@ -28,7 +28,14 @@
 #   {page}                                 # 0..N lines (`.rite/wiki/pages/...` 形式)
 #   ---orphans_end---
 #   orphan_check_ok={true|index_unreadable|index_empty}
+#   n_index_defects={n}
+#   ---index_defects_begin---
+#   outside_section: {page}                # `## ページ一覧` 節の外にある登録行
+#   duplicate: {page} ({k} 行)             # 同じページを指す登録行が 2 行以上 (節の内外を問わない)
+#   ---index_defects_end---
+#   n_orphan_category={n_orphans + n_index_defects}   # lint の `orphans` 件数として転記する合算値
 #   [CONTEXT] WIKI_LINT_ORPHANS={n}
+#   [CONTEXT] WIKI_LINT_INDEX_DEFECTS={n}
 #
 # orphan_check_ok enum:
 #   true              通常実行 (n_orphans は信頼可能)
@@ -137,7 +144,12 @@ _emit_skipped() {
   echo "---orphans_begin---"
   echo "---orphans_end---"
   echo "orphan_check_ok=$reason"
+  echo "n_index_defects=0"
+  echo "---index_defects_begin---"
+  echo "---index_defects_end---"
+  echo "n_orphan_category=0"
   echo "[CONTEXT] WIKI_LINT_ORPHANS=0"
+  echo "[CONTEXT] WIKI_LINT_INDEX_DEFECTS=0"
 }
 
 # ---- index.md 読出 (旧 lint.md の index.md 事前読出ステップを内包) ------------
@@ -215,9 +227,46 @@ while IFS= read -r page_path; do
   fi
 done <<< "$pages_list"
 
+# ---- 登録行の重複・節外検出 ---------------------------------------------------
+# 登録行 = 行内の最初の `](pages/...)` リンクを持つ行 (サマリー内の相互リンクで重複を
+# 誤検出しない。wiki-index-update.sh の first_link_key と同じ規則)。節の範囲は
+# wiki-index-update.sh の is_heading / is_list_head と同じ式で判定する (`###` は見出しでない)。
+# `## ページ一覧` 見出しが無い index (見出し導入前の箇条書き bundle) は節外判定の対象外とし、
+# 重複だけを検査する。index.md は読むだけで書き換えない。
+index_defect_lines=$(printf '%s\n' "$index_content" | LC_ALL=C awk '
+  function is_heading(s)   { return s ~ /^##[^#]/ || s ~ /^##$/ }
+  function is_list_head(s) { return s ~ /^##[ \t]*ページ一覧[ \t]*$/ }
+  {
+    if (is_heading($0)) in_list = is_list_head($0) ? 1 : 0
+    if (is_list_head($0)) has_list_head = 1
+    if (match($0, /\]\(\.{0,2}\/?pages\/[^)]+\)/)) {
+      key = substr($0, RSTART + 2, RLENGTH - 3)
+      sub(/^\.{0,2}\/?/, "", key)
+      n++; keys[n] = key; inl[n] = in_list ? 1 : 0
+      if (!(key in cnt)) order[++m] = key
+      cnt[key]++
+    }
+  }
+  END {
+    if (has_list_head) for (i = 1; i <= n; i++) if (!inl[i]) print "outside_section: " keys[i]
+    for (j = 1; j <= m; j++) if (cnt[order[j]] >= 2) print "duplicate: " order[j] " (" cnt[order[j]] " 行)"
+  }
+') || {
+  echo "ERROR: index.md の登録行の重複・節外検査 (awk) に失敗しました" >&2
+  exit 1
+}
+n_index_defects=0
+[ -n "$index_defect_lines" ] && n_index_defects=$(printf '%s\n' "$index_defect_lines" | wc -l | tr -d '[:space:]')
+
 echo "n_orphans=$n_orphans"
 echo "---orphans_begin---"
 [ -n "$orphan_lines" ] && printf '%s' "$orphan_lines"
 echo "---orphans_end---"
 echo "orphan_check_ok=true"
+echo "n_index_defects=$n_index_defects"
+echo "---index_defects_begin---"
+[ -n "$index_defect_lines" ] && printf '%s\n' "$index_defect_lines"
+echo "---index_defects_end---"
+echo "n_orphan_category=$((n_orphans + n_index_defects))"
 echo "[CONTEXT] WIKI_LINT_ORPHANS=$n_orphans"
+echo "[CONTEXT] WIKI_LINT_INDEX_DEFECTS=$n_index_defects"
