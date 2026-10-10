@@ -26,6 +26,8 @@ The fix content includes: findings addressed, fix strategies used, and patterns 
 bash {plugin_root}/scripts/fix-step.sh wiki-trigger --pr {pr_number} --content-file '{wiki_content_file}' --title-file '{wiki_title_file}'
 ```
 
+helper は取り込み後に `{wiki_content_file}` を削除するため、本文は cycle ごとに書く（書き忘れは入力不在として警告され、Wiki 記録を skip する）。
+
 **Non-blocking**。非ゼロなら 4.6.W.2 を skip。`content_write_failed` も Step 2 stdout から再注入して Step 3 で使う (Bash 呼び出し間でシェル状態は消える)。
 
 **Step 3 — Failure surfacing**: 2 つの失敗経路を区別して surface する。

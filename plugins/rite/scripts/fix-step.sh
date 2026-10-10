@@ -2101,6 +2101,8 @@ else
     echo "[CONTEXT] WIKI_TRIGGER_STDERR=${_wiki_err_snippet}" >&2
   fi
 fi
+# 本文は PR ごとの固定パスのため、残すと次の cycle で書き忘れても空でない検査を通り、前の本文が重複 raw になる
+rm -f -- "$content_file" || echo "WARNING: fix ステップ 4.6.W: 本文ファイルを削除できません ($content_file)。次の cycle で前の本文が再び取り込まれる恐れがあります。" >&2
 echo "content_write_failed=$content_write_failed"
 }
 

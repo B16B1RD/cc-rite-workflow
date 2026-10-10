@@ -402,7 +402,34 @@ if [ -n "$MUT_DIR" ]; then
   esac
   assert "wiki-trigger hands the caller's content file to the trigger" "$MUT_DIR/rite-wiki-body.md" \
     "$(grep -A1 -xF -- '--content-file' "$MUT_DIR/trigger-args" | tail -n 1)"
+  # 取り込み後は本文ファイルが残らない。次の cycle で書き忘れても前の本文は取り込まれず、入力不在になる
+  if [ -e "$MUT_DIR/rite-wiki-body.md" ]; then
+    fail "wiki-trigger removes the content file after the trigger runs"
+  else
+    pass "wiki-trigger removes the content file after the trigger runs"
+  fi
   rm -f "$MUT_DIR/trigger-args"
+  wiki_out=$(bash "$FIXTURE/scripts/fix-step.sh" wiki-trigger --pr 7 \
+    --content-file "$MUT_DIR/rite-wiki-body.md" --title-file "$MUT_DIR/wiki-title.txt" 2>&1)
+  case "$wiki_out" in
+    *"reason=input_file_missing"*"content_write_failed=1"*) pass "a cycle that skipped the content write stops with input_file_missing" ;;
+    *) fail "a cycle that skipped the content write stops with input_file_missing (output: $wiki_out)" ;;
+  esac
+  if [ -e "$MUT_DIR/trigger-args" ]; then
+    fail "a cycle that skipped the content write does not run the trigger"
+  else
+    pass "a cycle that skipped the content write does not run the trigger"
+  fi
+  # 取り込み処理が失敗しても本文ファイルは消える
+  printf '%s\n' '#!/bin/bash' 'exit 1' > "$FIXTURE/hooks/wiki-ingest-trigger.sh"
+  printf '%s\n' 'body' > "$MUT_DIR/rite-wiki-body.md"
+  bash "$FIXTURE/scripts/fix-step.sh" wiki-trigger --pr 7 \
+    --content-file "$MUT_DIR/rite-wiki-body.md" --title-file "$MUT_DIR/wiki-title.txt" >/dev/null 2>&1
+  if [ -e "$MUT_DIR/rite-wiki-body.md" ]; then
+    fail "wiki-trigger removes the content file when the trigger fails"
+  else
+    pass "wiki-trigger removes the content file when the trigger fails"
+  fi
   wiki_out=$(bash "$FIXTURE/scripts/fix-step.sh" wiki-trigger --pr 7 \
     --content-file "$MUT_DIR/absent.md" --title-file "$MUT_DIR/wiki-title.txt" 2>&1)
   case "$wiki_out" in
