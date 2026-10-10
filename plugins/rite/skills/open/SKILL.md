@@ -485,6 +485,8 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 ## ステップ 3: 実装計画
 
+候補消化 caller から渡された Issue は、本文の raw パス・原文範囲・条件・消費先を計画と作業メモリに維持し、実 caller と対応試験を変更対象へ含める。候補の対応や完了証拠は batch-run が既存 Wiki log に保存する。open の draft PR 作成だけでは昇格完了にしない。
+
 ### 3.1 Issue 内容分析
 
 Issue body から「What / Why / Where / Acceptance Criteria」を抽出。

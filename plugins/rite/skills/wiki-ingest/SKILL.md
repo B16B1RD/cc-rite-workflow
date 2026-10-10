@@ -402,21 +402,21 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 
 1. **読解**: Raw Source 本文から抽出可能な経験則を特定
 2. **ドメイン判定**: `patterns` / `heuristics` / `anti-patterns` に分類
-2.5. **昇格分類**: 本経験則が rite workflow 自体の挙動・スキル記述法に関するものなら、[配布境界](../../references/distribution-boundary.md)に従って環境非依存性も判定する。環境非依存なら frontmatter に `promote: rite-plugin` を付け、環境固有なら一般化してから昇格するか、一般化できない domain 知見として Wiki に残す。**機械検出可能（2.6）と両方に該当する場合は 2.6 が優先**し、ページを作らない（`promote` はページ作成時のみ）
+2.5. **責務の分類**: 知見ごとに rite workflow 自体の挙動・スキル記述法か domain 固有かを判定する。rite 知見は機械検出可能性と既存ページの有無に関係なく raw の昇格候補へ送る。環境非依存性も確認し、環境固有の部分は一般化できるなら条件を残す。一般化できないプロジェクト固有知見は domain Wiki に残す。[配布境界](../../references/distribution-boundary.md)を守り、配布済みプラグインを編集・自動送信しない。
    rationale: references/rationale.md#knowledge-routing
-2.6. **検出器化候補の分類**: grep / lint / lib 関数で機械的に強制できるかフラグ付けするのみ（アクション決定はしない）。できるなら `detector_candidate=true`、できないなら `false`
+2.6. **候補の具体化**: rite 知見ごとに要約・raw 原文本文の行範囲・適用条件・消費先候補を記録する。grep/lint で強制できるものは helper/gate、判断規則は実 caller が読む原則/reference を消費先にする。候補の正本は raw で、`ingested: true` は抽出完了のみを意味する。
    rationale: references/rationale.md#detector-candidate
 3. **既存ページ照合**: `index.md` に同テーマの既存ページが存在するかを意味的に判定 (厳密一致ではなく、一行サマリーとタイトルから判断)
-4. **アクション決定**: 下表に**上から first-match**で 新規 / 更新 / スキップ を決定（2.6 のフラグとステップ 3 の照合結果を入力とする）
+4. **アクション決定**: 知見ごとに下表の**上から first-match**で 候補 / 新規 / 更新 / スキップ を決定する。混在 raw は rite 部分だけ候補化し、domain 部分の新規・更新を続ける
 5. **関連ページ特定**: ステップ 5.3 の `{related_page_title}` / `{related_page_path}` の値を決定 (詳細はステップ 4.3)
 
 | 判定（上から first-match） | アクション |
 |------|----------|
-| `detector_candidate=true` かつ同テーマの既存ページあり | 新規ページを作らず既存ページを更新。ステップ 9 の検出器化候補に 1 行列挙する（人間が Issue 化を判断する材料。`promote: rite-plugin` タグと同様の役割） |
-| `detector_candidate=true` かつ同テーマの既存ページなし | ページ化せずスキップ（`skip_reason: "detector-candidate: {one-line-summary}"`）。ステップ 9 の検出器化候補に 1 行列挙する |
+| rite の責務に属する知見 | raw の昇格候補へ保存し、Wiki ページは新規作成も既存更新もしない。log とステップ 9 に raw パスを列挙する |
+| 経験則が抽出できない（一時的な情報のみ） | スキップ（理由を raw と log に保存） |
 | 同テーマの既存ページなし | 新規ページ作成 |
 | 同テーマの既存ページあり | 既存ページ更新（追記 or 統合） |
-| 経験則が抽出できない（一時的な情報のみ） | スキップ（理由を log に記録） |
+
 
 ### 4.1 タイトル/ドメイン/サマリーの生成
 
@@ -429,7 +429,7 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 | `summary` | 1-2 文の Why 要約（page frontmatter `description` と index.md のサマリー列へ同一文言を掲載する）。Issue / PR 番号は出典の識別子であって概念の理由を説明しないため、`Issue #NNN` / `PR #NNN` / `refs #NNN` 等の番号参照を書かず、番号が担っていた観測事実・条件・因果を自己完結した散文で記述する。provenance は `sources` に分離して保持する |
 | `details` | 背景・具体例・根拠を含む詳細。経験則は自分の言葉で言い換え、Raw Source の文を逐語で使うときは引用符で示す |
 | `confidence` | `high` / `medium` / `low`（根拠の強さ） |
-| `promote` | ステップ 4 の昇格分類で rite 挙動・スキル記述法かつ環境非依存（または一般化済み）と判定した場合のみ `rite-plugin`。それ以外はフィールド自体を付けない |
+| `promote` | 新規 domain ページには付けない。既存の昇格済みポインタの `promote` / `reference` は保持する |
 
 正しい応答の例:
 
@@ -491,7 +491,7 @@ rationale: references/rationale.md#related-page-literal
 
 ## ステップ 5: ページの書き込み
 
-ステップ 4 で決定したアクション (新規 / 更新) を、ブランチ戦略に応じて適用する。各ページの Write/Edit 前に 2.1.c の変更一覧へ書き込み先を保存し、保存検証後だけ書く。失敗したら比較不能として停止する。
+ステップ 4 で決定した知見別アクションを、ブランチ戦略に応じて適用する。候補は変更ページ一覧へ入れず、混在 raw の domain ページのみ登録する。各ページの Write/Edit 前に 2.1.c の変更一覧へ書き込み先を保存し、保存検証後だけ書く。失敗したら比較不能として停止する。
 
 ### 5.0 LLM が実行すべき具体的手順 (worktree ベース)
 
@@ -500,9 +500,12 @@ rationale: references/rationale.md#related-page-literal
 `separate_branch` では `{wiki_worktree_abs}/`（ステップ 1.3 の絶対パス）、`same_branch` では dev ツリーに直接 Write/Edit する。順に実施する:
 
 1. **Raw Source 本文の確保**: ステップ 2.3 末尾で取得した本文を作業メモリに展開
-2. **Raw Source の `ingested: true` 化** (全戦略共通 — create / update / skip いずれでも実施):
-   - **separate_branch**: Edit ツールで `{wiki_worktree_abs}/.rite/wiki/raw/{type}/{filename}` の frontmatter `ingested: false` を `ingested: true` に書き換える
-   - **same_branch**: Edit ツールで `.rite/wiki/raw/{type}/{filename}` を書き換える
+2. **候補と行き先の保存**: [候補データ契約](../../references/wiki-patterns.md#昇格候補)に従い、raw ごとの `{routing_input_file}` を作業ツリー外へ Write する。`pages` は domain の実書込先のみ、`candidates` は rite 知見のみ。候補のみなら pages は空、domain のみなら candidates は空にする。経験則なしは `skip_reason` を指定する。`{wiki_root_abs}` は separate_branch では Wiki worktree 内の .rite/wiki、same_branch では dev ツリー内の .rite/wiki。
+   次の helper が raw と候補 log を保存・読み戻す。非ゼロなら対象と理由を表示して停止し、raw を抽出済みにしない。既存 ingest lock と pending 一覧を保持する。
+
+   ```bash
+   bash {plugin_root}/hooks/scripts/wiki-promotion-candidates.sh record --wiki-root "{wiki_root_abs}" --raw "raw/{type}/{filename}" --input "{routing_input_file}"
+   ```
 3. **新規 Wiki ページの作成** (ステップ 4 で新規決定): `{plugin_root}/templates/wiki/page-template.md` を Read で読み、ステップ 5.3 のプレースホルダーを置換した内容を Write:
    - **separate_branch**: `{wiki_worktree_abs}/.rite/wiki/pages/{domain}/{slug}.md`
    - **same_branch**: `.rite/wiki/pages/{domain}/{slug}.md`
@@ -511,16 +514,21 @@ rationale: references/rationale.md#related-page-literal
 
    > **複数 Raw Source からの作成**: page-template.md の `sources:` は単一スロット（`{source_type}`/`{source_ref}` 各 1 個）のみ。複数 Raw Source を 1 ページに統合する場合は、Write 後に Edit で `- type: "{type}"` / `  resource: "raw/{type}/{filename}"` を追加する。**すべての `resource` はファイルパス形式 (`raw/{type}/{filename}`)** であり、raw の `source_ref`（PR 識別子）ではない。新規ページは `generated: { by: "rite-wiki-ingest/<model-id>", at }` を書き、`verified` / `status` は書かない。
 4. **既存 Wiki ページの更新** (ステップ 4 で更新決定): 対象ページを Read で読み、Edit で `## 詳細` 追記・`generated` 更新・（補強のみなら）`verified` 追記・`sources` 配列追記。`n_pages_updated` を +1 する。**`sources` に追記する各 `resource` は必ず Raw Source のファイルパス形式 `raw/{type}/{filename}`**（PR 識別子形式 `pr-NNNN` 禁止。ステップ 4.2 / 5.3 と同一契約）
-5. **スキップ決定の処理** (ステップ 4 で skip 決定): step 2 と同じ手順で `ingested: true` 化し、**さらに当該 raw frontmatter に `ingest_status: skipped` と `skip_reason: "{理由}"` を Edit で追記する**（skip 状態の SoT は raw frontmatter）。**検出器化候補**（ステップ 4 表の `detector_candidate=true` かつ既存ページなし）は `skip_reason: "detector-candidate: {one-line-summary}"` を使い、同じ要約をステップ 9 の `{detector_candidate_lines}` に列挙する。ステップ 7 の log.md に人間向け Skip エントリ (OKF bullet) を追記する。`n_skipped` を +1 する
+5. **候補 / スキップの処理**: 候補の要約・条件・消費先・出典は手順 2 の保存結果で保持する。domain がない raw は `n_skipped` を +1。混在 raw 全体を skip にしない。候補は `{detector_candidate_lines}` に知見ごとに列挙する
 6. **index.md の更新**: **手順 3 / 4 を実施した Raw Source についてのみ**、ステップ 6 に従い `wiki-index-update.sh` を bash で呼ぶ（LLM は Edit しない）。**skip 決定（手順 5）では実行しない**
    rationale: references/rationale.md#skip-no-index-update
-7. **log.md への追記**: ステップ 7 の指示に従い Edit で append-only 追加する
+7. **log.md への追記**: ステップ 7 の domain Create/Update/Skip bullet を追加し、読み戻して raw と実書込先の対応を確認する。domain 保存失敗は候補保存済みでも停止する。
+8. **抽出完了の確定**: 全保存後に次を呼ぶ。helper は候補 log、domain ページの raw 出典、index と log を読み戻してから raw を `ingested: true` にする。非ゼロなら抽出完了として報告・commit せず、未確定の raw・候補・pending 一覧を保持する。
+
+   ```bash
+   bash {plugin_root}/hooks/scripts/wiki-promotion-candidates.sh finish --wiki-root "{wiki_root_abs}" --raw "raw/{type}/{filename}"
+   ```
 
 ### 5.0.r 未確定書き込みの回収
 
 保存一覧を使った再開では、ステップ 8 へ直行しない。既存 ingest lock を保持したまま、Wiki のローカル commit と未 commit 差分を読み、`ingested: true` 化した未 commit raw の全文、保存一覧のページ本文、index と log を照合する。raw の変更だけでページが未作成の場合も対象に含める。
 
-未 commit raw ごとに、ステップ 3/4 の統合判断とステップ 5.0 手順 1-7 を照合し、未実施の書き込みを完了する。既に書いた本文・sources・index・log は読み直して内容を確認し、同じ追記や記録を重複させない。書き込み先は引き続き 2.1.c で保存してから書く。skip は raw の skip 状態と log を確認する。raw と成果物の対応や統合の完了を確定できなければ、比較不能として停止し一覧を残す。
+未 commit raw ごとに、ステップ 3/4 の知見別判断とステップ 5.0 手順 1-8 を照合し、未実施の書き込みを完了する。既に書いた本文・sources・index・log は読み直して内容を確認し、同じ追記や記録を重複させない。書き込み先は引き続き 2.1.c で保存してから書く。候補は raw の候補記録と log を確認し、未確定の保存は finish 前に完了させる。skip は raw の skip 状態と log を確認する。raw と成果物の対応や統合の完了を確定できなければ、比較不能として停止し一覧を残す。
 
 保存一覧のページに未 commit 差分があり、対応する未 commit raw が無い場合は、ステップ 8.3.r の訂正の途中とみなす。差分（書き換えた記述・`sources` に足した後の raw・index・log）を読み直して訂正を完了させる。訂正の対象と内容を確定できなければ比較不能として停止する。
 
@@ -559,7 +567,7 @@ esac
 
 ### 5.0.n commit 前の番号参照検査 (両戦略共通)
 
-ステップ 5.0 手順 1-7（`index.md` の helper 呼び出しと `log.md` 追記を含む。実行順序の SoT はステップ 5.0 手順 6/7 であって、後方の `## ステップ 6` / `## ステップ 7` 見出しではない）を終えたら、**commit の前に**書いた分を検査する。Raw Source の本文には番号が載っており（raw は出典なので正しい）、そこから読解して書く過程で番号が Wiki 側へ転記される。ここで止めないと混入は ingest のたびに増える。
+ステップ 5.0 手順 1-8（`index.md` の helper 呼び出しと `log.md` 追記を含む。実行順序の SoT はステップ 5.0 手順 6/7 であって、後方の `## ステップ 6` / `## ステップ 7` 見出しではない）を終えたら、**commit の前に**書いた分を検査する。Raw Source の本文には番号が載っており（raw は出典なので正しい）、そこから読解して書く過程で番号が Wiki 側へ転記される。ここで止めないと混入は ingest のたびに増える。
 rationale: references/rationale.md#numref-precommit
 
 **検査対象は `.rite/wiki` 配下の未 commit 差分**。ページだけでなく `index.md` のエントリ行も `log.md` の bullet も同じ 1 回で通る（`{skip_reason}` や Update の説明文に載る番号を素通りさせないため）。**対象の列挙もラベルも LLM が選ばない** — `git diff` が未 commit の追加行を渡し、パスは git が返す実体をそのまま使う。
@@ -637,7 +645,7 @@ esac
 
 ### 5.1 separate_branch 戦略 (worktree ベース)
 
-ステップ 5.0 手順 1-7 を Write/Edit し、ステップ 5.0.n の検査を通した後、以下で worktree 内の変更を commit する。**下の bash 冒頭のゲートは canonical numref_verdict gate 節の literal 複製**で、変更時は同節の 3 箇所同時更新規約に従う。値はステップ 5.0.n の `[CONTEXT] WIKI_INGEST_NUMREF=` の最新値（`clean` / `hit`）を literal substitute する。散文で 5.0.n を名指しするだけでは、5.0.n を飛ばしても commit が成功してしまう。**push はここでは行わない**。commit は `wiki-worktree-commit.sh --commit-only` に委譲する:
+ステップ 5.0 手順 1-8 を Write/Edit し、ステップ 5.0.n の検査を通した後、以下で worktree 内の変更を commit する。**下の bash 冒頭のゲートは canonical numref_verdict gate 節の literal 複製**で、変更時は同節の 3 箇所同時更新規約に従う。値はステップ 5.0.n の `[CONTEXT] WIKI_INGEST_NUMREF=` の最新値（`clean` / `hit`）を literal substitute する。散文で 5.0.n を名指しするだけでは、5.0.n を飛ばしても commit が成功してしまう。**push はここでは行わない**。commit は `wiki-worktree-commit.sh --commit-only` に委譲する:
 rationale: references/rationale.md#push-defer-1941
 
 ```bash
@@ -762,7 +770,7 @@ fi
 
 ### 5.2 same_branch 戦略
 
-`same_branch` では Raw Source / ページ / index.md / log.md はすべて dev ブランチ上。ステップ 5.0 手順 1-7 とステップ 5.0.n の検査の後、以下で一括 commit する（ブランチ切り替え・worktree 不要）。**canonical numref_verdict gate 節の literal 複製を bash 冒頭に置く**（変更時は同節の 3 箇所同時更新規約に従う）:
+`same_branch` では Raw Source / ページ / index.md / log.md はすべて dev ブランチ上。ステップ 5.0 手順 1-8 とステップ 5.0.n の検査の後、以下で一括 commit する（ブランチ切り替え・worktree 不要）。**canonical numref_verdict gate 節の literal 複製を bash 冒頭に置く**（変更時は同節の 3 箇所同時更新規約に従う）:
 
 ```bash
 set -euo pipefail
@@ -959,15 +967,15 @@ rationale: references/rationale.md#skip-cycle-no-3a
 
 ## ステップ 7: log.md の追記
 
-`.rite/wiki/log.md` に OKF 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、**新しい順** = 先頭が最新。v0.2 §9 は v0.1 から不変）で **append-only** に変更履歴を追記する。skip 等の機械可読状態は raw frontmatter の `ingest_status`（ステップ 5）が SoT。例外は lint エントリの「未解消の矛盾」の行で、lint が書き、次回の lint とステップ 8.3.r が読む。
+`.rite/wiki/log.md` に OKF 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、**新しい順** = 先頭が最新）で **append-only** に変更履歴を追記する。skip 等の機械可読状態は raw frontmatter の `ingest_status`（ステップ 5）が SoT。例外は lint の「未解消の矛盾」と `rite-promotion` コメントの候補/作業対応で、後者は候補 helper が保存・読戻し・突合する。raw が候補の正本で、log の完了だけを根拠に候補を除外しない。
 rationale: references/rationale.md#log-human-only
 
 **追記ルール**:
 
 - 今日の日付見出し `## YYYY-MM-DD` が `# Directory Update Log` 直後（ログ先頭）に無ければ新規追加する（新しい順のため最新日付を先頭に置く）。既にあればその見出し配下の bullet 群末尾に追加する
-- 各 Raw Source 1 件につき 1 bullet を追加する:
-  - **新規**: `* **Create**: [{title}](pages/{domain}/{slug}.md) — {source_ref} を新規ページ化`（`{title}` はステップ 5.3 で定義したページタイトル、リンク先は index.md の登録行と同じ `pages/{domain}/{slug}.md`）
-  - **更新**: `* **Update**: [{title}](pages/{domain}/{slug}.md) — {source_ref} を統合`
+- domain の処理ごとに raw パスを持つ bullet を追加する（混在 raw は候補 bullet と併存）:
+  - **新規**: `* **Create**: [{title}](pages/{domain}/{slug}.md) — [取り込み元](raw/{type}/{filename}) を新規ページ化`（`{title}` はステップ 5.3 で定義したページタイトル、リンク先は index.md の登録行と同じ `pages/{domain}/{slug}.md`）
+  - **更新**: `* **Update**: [{title}](pages/{domain}/{slug}.md) — [取り込み元](raw/{type}/{filename}) を統合`
   - **スキップ**: `* **Skip**: [{filename}](raw/{type}/{filename}) — {skip_reason}`（`{filename}` は当該 Raw Source のファイル名、`{type}` は Raw Source type）
 - 既存の日付見出し・bullet（過去エントリ）は改変しない
 
@@ -1193,7 +1201,7 @@ Wiki Ingest が完了しました。
 - 未登録 raw（skip 済、warnings 不加算）: {n_unregistered_raw} 件
 - {wiki_push_line}
 
-検出器化候補:
+昇格候補:
 {detector_candidate_lines}
 
 未完了事項:
@@ -1212,7 +1220,7 @@ Wiki Ingest が完了しました。
 
 | 条件 | 展開 |
 |------|------|
-| 1 件以上 | 各候補を `- [検出器化候補] {one-line-summary}（raw/{type}/{filename}）` の 1 行で列挙（1 経験則 1 行。`skip_reason: "detector-candidate: ..."` の要約と同一文にする） |
+| 1 件以上 | 各候補を `- [昇格候補] {one-line-summary}（raw/{type}/{filename}）` の 1 行で列挙（1 知見 1 行）。配布先は保存・報告まで。保守リポジトリで明示起動する `/rite:batch-run --promotions` が消化する |
 | 0 件 | `- なし` |
 
 `{wiki_warnings_line}` の展開ルール:
@@ -1290,15 +1298,15 @@ rationale: references/rationale.md#returned-to-caller
 | `wiki-worktree-commit.sh` 未知の exit code | exit 1 で fail-fast |
 | `wiki-index-update.sh` 非ゼロ exit（exit 1 / exit 2 / 127 / signal 130・143・129 等、ステップ 6） | 当該 Raw Source の index 更新をスキップして続行（非 fatal）。分岐と対処はステップ 6 の結果 marker 表が SoT |
 | `branch_strategy` が未知の値 | ステップ 5.1 の if/elif/else 末尾 else 分岐で fail-fast (ステップ 5.2 の bash block は same_branch 単独分岐のため未知値はステップ 5.1 の else が catch する。`rite-config.yml` の `wiki.branch_strategy` を確認) |
-| LLM が経験則を抽出できない | 該当 Raw Source の raw frontmatter に `ingest_status: skipped` + `skip_reason` を追記（skip 状態の SoT）、`ingested: true` に変更、log.md に人間向け Skip bullet を追記、`n_skipped` を +1（ステップ 5 step 5 参照） |
-| 機械検出可能でページ化しない（検出器化候補） | 既存ページなし: `skip_reason: "detector-candidate: {one-line-summary}"` で skip + ステップ 9 検出器化候補に 1 行列挙。既存ページあり: 既存ページを更新しつつステップ 9 に 1 行列挙（ステップ 4 表 / ステップ 5 step 5 参照） |
+| LLM が経験則を抽出できない | 行き先入力に skip 理由を指定して record、log 保存確認後に finish を呼ぶ、`n_skipped` を +1（ステップ 5 step 5 参照） |
+| rite 知見の昇格候補 | 機械検出可否・既存ページ有無に関係なく raw に保存。Wiki の作成・更新をしない。保存失敗は raw と pending を保持して停止 |
 
 ---
 
 ## 設計原則
 
 - **単一責任**: Ingest は「Raw Source → Wiki ページ」の変換のみ。Query / Lint は別コマンド
-- **冪等性**: 同じ Raw Source を再 Ingest しても結果が同じ (`ingested: true` フラグで重複防止)
+- **冪等性**: domain 抽出の重複は `ingested: true` で防止する。昇格候補は抽出状態で除外せず、原文範囲・条件・消費先と作業証拠で再照合する
 - **append-only な log**: 変更履歴ログ (log.md) は履歴として残し、追加のみ
 - **PR diff からの分離**: `separate_branch` 戦略では Wiki 変更は `.rite/wiki-worktree/` worktree 内に閉じ、dev ブランチのツリーは一切変更されない (`.gitignore` で worktree path を除外)
 - **opt-out**: `wiki.enabled: true` がデフォルト。`wiki:` セクション未指定でも有効扱い

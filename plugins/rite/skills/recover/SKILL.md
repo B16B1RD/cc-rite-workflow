@@ -578,6 +578,8 @@ fi
 
 ### 5.5.3 継続実行（batch-run の該当ステップへの委譲、DRY）
 
+昇格候補との対応は既存 Wiki log から読み、batch-run の「結果の突合と再開」を CLOSED skip・cursor 前進・全完了通知の前に適用する。新しい候補状態や queue は作らない。取得・記録失敗は raw/log と cursor を保持し、未解決の理由を報告する。draft/Issue 完了だけで昇格完了にしない。
+
 Phase 5.4 で resume した個別スキルの終端状態を、[`skills/batch-run/SKILL.md`](../batch-run/SKILL.md) の該当ステップの分岐表に**そのまま適用**する（recover は batch-run のこの分岐ロジックを複製しない）。`{run_mode}` は 5.5.1 の `q_mode`、`{branch_name}` は `{git_branch}`（Phase 3.2）を使う。`{pr_number}` は resolved_phase が open 系（下表）のときは Phase 5.4 の `/rite:open` invoke が返す新規 PR 番号（`[pr:created:N]` sentinel）を使う。それ以外は Phase 3.3 の既存 `{pr_number}` を使う（open 系はまだ PR が無い時点の Phase 3.3 値 = 0/NONE のため使えない）。batch-run 側の分岐表・failed 記録 bash が参照する `{current_issue}` は、本 Phase では 5.5.1 の `{issue_arg}`（= Phase 1.1 で確定した対象 Issue）と同一の値を指す。
 
 `{resolved_phase}`（Phase 3.5 / 4.2 で確定した値）で分岐:
