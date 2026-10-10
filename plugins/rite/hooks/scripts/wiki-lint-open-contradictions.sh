@@ -5,16 +5,18 @@
 # of `.rite/wiki/log.md`. Consumed by /rite:wiki-lint ステップ 3.1 (自動比較の
 # 引継ぎ) and /rite:wiki-ingest ステップ 8.3.r (矛盾の解消).
 #
-# Every lint run writes each contradiction it reports as one fixed-format
-# sub-bullet under its `* **lint:...**` bullet:
+# Every lint run writes its result bullet `* **lint:{clean|warning}** — contradictions={n}, ...`
+# and each contradiction it reports as one fixed-format sub-bullet under it:
 #
 #   * 未解消の矛盾: [a](pages/{domain}/{slug}.md) ↔ [b](pages/{domain}/{slug}.md) — {subcategory}: {reason}
 #
-# so the latest lint entry is a snapshot of the open set. log.md keeps date
+# so the latest result bullet is a snapshot of the open set. log.md keeps date
 # headings newest-first and appends bullets at the end of a date section, so the
-# latest entry is the LAST lint bullet of the FIRST date section that has one.
-# Entries written before the fixed format existed carry no such lines and read
-# as zero lines; the count check below still applies to them.
+# latest entry is the LAST result bullet of the FIRST date section that has one.
+# Only that six-field result bullet is a record: other `**lint:...**` bullets
+# (scope notes, older formats without `contradictions=`) carry no open lines and
+# are skipped. Result bullets written before the fixed lines existed read as zero
+# lines; the count check below still applies to them.
 #
 # The committed log.md is the source (separate_branch: the wiki branch ref,
 # same_branch: HEAD), never the working file: an entry whose commit failed is
@@ -27,7 +29,8 @@
 #
 # stdout contract:
 #   ---open_contradictions_begin---
-#   {page_a}|{page_b}|{subcategory}   # 0..N lines, repo-root relative `.rite/wiki/pages/...`
+#   {page_a}|{page_b}|{subcategory}|{reason}   # 0..N lines, pages repo-root relative `.rite/wiki/pages/...`
+#   (reason is the last field and may itself contain `|`: split on the first three only)
 #   ---open_contradictions_end---
 #   n_open={n}
 #
@@ -116,16 +119,15 @@ if ! log_content=$(git show "${log_ref}:.rite/wiki/log.md"); then
   exit 1
 fi
 
-# Print the latest lint bullet line, then the open lines under it (marker removed
-# up to the colon, kept verbatim after it). Sub-lines are the indented lines that
-# directly follow the bullet.
+# Print the latest result bullet line, then the open lines under it. Sub-lines are
+# the indented lines that directly follow the bullet.
 entry=$(printf '%s\n' "$log_content" | awk '
   /^## [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/ {
     if (chosen) exit
     in_entry = 0
     next
   }
-  /^\* \*\*lint:/ {
+  /^\* \*\*lint:(clean|warning)\*\* — contradictions=[0-9]/ {
     chosen = 1
     in_entry = 1
     out = $0 "\n"
@@ -143,15 +145,11 @@ n_open=0
 pairs=""
 if [ -n "$entry" ]; then
   header=$(printf '%s\n' "$entry" | head -n 1)
-  n_recorded=$(printf '%s\n' "$header" | sed -n -E 's/.*contradictions=([0-9]+).*/\1/p')
-  if [ -z "$n_recorded" ]; then
-    echo "ERROR: 直近の lint エントリに contradictions= がありません: $header" >&2
-    exit 1
-  fi
+  n_recorded=$(printf '%s\n' "$header" | sed -n -E 's/^\* \*\*lint:[a-z]+\*\* — contradictions=([0-9]+).*/\1/p')
   while IFS= read -r line; do
     [ -n "$line" ] || continue
     pair=$(printf '%s\n' "$line" | sed -n -E \
-      's#^[[:space:]]+[*-] 未解消の矛盾: \[[^]]+\]\((pages/(patterns|heuristics|anti-patterns)/[^/)]+\.md)\) ↔ \[[^]]+\]\((pages/(patterns|heuristics|anti-patterns)/[^/)]+\.md)\) — (タイトル衝突|方針逆転|重複情報): .+$#.rite/wiki/\1|.rite/wiki/\3|\5#p')
+      's#^[[:space:]]+[*-] 未解消の矛盾: \[[^]]+\]\((pages/(patterns|heuristics|anti-patterns)/[^/)]+\.md)\) ↔ \[[^]]+\]\((pages/(patterns|heuristics|anti-patterns)/[^/)]+\.md)\) — (タイトル衝突|方針逆転|重複情報): (.+)$#.rite/wiki/\1|.rite/wiki/\3|\5|\6#p')
     if [ -z "$pair" ]; then
       echo "ERROR: 未解消の矛盾の行が固定書式に一致しません: $line" >&2
       exit 1

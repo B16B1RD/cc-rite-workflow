@@ -23,6 +23,9 @@
 #   TC-15 invocation errors → exit 2
 #   TC-16 round trip: the format example written by wiki-lint SKILL.md parses
 #   TC-17 static pins: wiki-lint 3.1 and wiki-ingest 8.3.r call the helper and stop on failure
+#   TC-18 round trip: a line rebuilt from the helper output reads back unchanged (reason kept)
+#   TC-19 a non-result lint bullet after the result bullet → the result bullet is read
+#   TC-20 only older-format lint bullets without contradictions= → no record, 0 open
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -121,8 +124,8 @@ $OPEN_OLD
 $OPEN_OLD")
 run_helper "$repo" --branch-strategy same_branch
 expect_block "2 open lines of the latest entry, in order" '---open_contradictions_begin---
-.rite/wiki/pages/heuristics/a.md|.rite/wiki/pages/anti-patterns/b.md|方針逆転
-.rite/wiki/pages/patterns/c.md|.rite/wiki/pages/patterns/d.md|重複情報
+.rite/wiki/pages/heuristics/a.md|.rite/wiki/pages/anti-patterns/b.md|方針逆転|a は X を勧め b は X を避ける
+.rite/wiki/pages/patterns/c.md|.rite/wiki/pages/patterns/d.md|重複情報|同じ結論を 2 ページが持つ
 ---open_contradictions_end---
 n_open=2'
 
@@ -147,7 +150,7 @@ repo=$(make_same_repo tc3 "# Directory Update Log
 $OPEN_CD")
 run_helper "$repo" --branch-strategy same_branch
 expect_block "later warning entry wins" '---open_contradictions_begin---
-.rite/wiki/pages/patterns/c.md|.rite/wiki/pages/patterns/d.md|重複情報
+.rite/wiki/pages/patterns/c.md|.rite/wiki/pages/patterns/d.md|重複情報|同じ結論を 2 ページが持つ
 ---open_contradictions_end---
 n_open=1'
 
@@ -164,7 +167,7 @@ repo=$(make_same_repo tc4 "# Directory Update Log
 $OPEN_AB")
 run_helper "$repo" --branch-strategy same_branch
 expect_block "previous section's entry is used" '---open_contradictions_begin---
-.rite/wiki/pages/heuristics/a.md|.rite/wiki/pages/anti-patterns/b.md|方針逆転
+.rite/wiki/pages/heuristics/a.md|.rite/wiki/pages/anti-patterns/b.md|方針逆転|a は X を勧め b は X を避ける
 ---open_contradictions_end---
 n_open=1'
 
@@ -253,7 +256,7 @@ git init -q -b main "$repo"
 )
 run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
 expect_block "wiki branch content is used" '---open_contradictions_begin---
-.rite/wiki/pages/patterns/c.md|.rite/wiki/pages/patterns/d.md|重複情報
+.rite/wiki/pages/patterns/c.md|.rite/wiki/pages/patterns/d.md|重複情報|同じ結論を 2 ページが持つ
 ---open_contradictions_end---
 n_open=1'
 
@@ -294,7 +297,7 @@ else
 $example")
   run_helper "$repo" --branch-strategy same_branch
   if [ "$HELPER_RC" = "0" ] && grep -q '^n_open=1$' <<<"$HELPER_STDOUT" \
-     && [ "$(sed -n '2p' <<<"$HELPER_STDOUT" | grep -cE '^\.rite/wiki/pages/[a-z-]+/[^|]+\.md\|\.rite/wiki/pages/[a-z-]+/[^|]+\.md\|(タイトル衝突|方針逆転|重複情報)$')" = "1" ]; then
+     && [ "$(sed -n '2p' <<<"$HELPER_STDOUT" | grep -cE '^\.rite/wiki/pages/[a-z-]+/[^|]+\.md\|\.rite/wiki/pages/[a-z-]+/[^|]+\.md\|(タイトル衝突|方針逆転|重複情報)\|.+$')" = "1" ]; then
     pass "SKILL example is accepted by the helper"
   else
     fail "SKILL example rejected (rc=$HELPER_RC): stdout=$HELPER_STDOUT / stderr=$HELPER_STDERR"
@@ -306,18 +309,69 @@ echo "TC-17: skill wiring"
 lint_31=$(awk '/^### 3\.1 /{f=1;print;next} f&&/^##+ /{exit} f' "$LINT_MD")
 ingest_83r=$(awk '/^### 8\.3\.r /{f=1;print;next} f&&/^##+ /{exit} f' "$INGEST_MD")
 if grep -q 'wiki-lint-open-contradictions.sh --branch-strategy "{branch_strategy}" --wiki-branch "{wiki_branch}"' <<<"$lint_31" \
-   && grep -q 'WIKI_CONTRADICTION_CHECK=failed' <<<"$lint_31"; then
-  pass "wiki-lint 3.1 calls the helper and stops with WIKI_CONTRADICTION_CHECK=failed"
+   && grep -q 'reason=open_contradictions_unreadable' <<<"$lint_31"; then
+  pass "wiki-lint 3.1 calls the helper and stops when it fails"
 else
   fail "wiki-lint 3.1 wiring is missing"
 fi
+# the stop pins use literals only the helper-failure stop carries; the section's
+# other stop sentences (comparison not finished, re-run failed) must not satisfy them
 if grep -q 'wiki-lint-open-contradictions.sh --branch-strategy "{branch_strategy}" --wiki-branch "{wiki_branch}"' <<<"$ingest_83r" \
    && grep -q '1 回だけ' <<<"$ingest_83r" \
-   && grep -q '8\.3 の停止処理' <<<"$ingest_83r"; then
-  pass "wiki-ingest 8.3.r calls the helper, re-runs lint once, and stops like 8.3"
+   && grep -q 'reason=open_contradictions_unreadable' <<<"$ingest_83r" \
+   && grep -q '`n_open=` が 8.3 の `n_contradictions` と一致しない場合' <<<"$ingest_83r"; then
+  pass "wiki-ingest 8.3.r calls the helper, re-runs lint once, and stops on helper failure or count mismatch"
 else
   fail "wiki-ingest 8.3.r wiring is missing"
 fi
+
+echo "TC-18: round trip through the helper output"
+# rebuild the 8.1 line from the helper output only and read it again: a carried
+# pair must come back with the same pages, subcategory and reason
+repo=$(make_same_repo tc18 "# Directory Update Log
+
+## 2026-10-11
+
+* **lint:warning** — contradictions=1, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0
+  * 未解消の矛盾: [a](pages/heuristics/a.md) ↔ [b](pages/anti-patterns/b.md) — 方針逆転: a は X を勧め b は | X を避ける")
+run_helper "$repo" --branch-strategy same_branch
+first="$HELPER_STDOUT"
+row=$(sed -n '2p' <<<"$first")
+IFS='|' read -r page_a page_b subcategory reason <<<"$row"
+rebuilt="  * 未解消の矛盾: [x](${page_a#.rite/wiki/}) ↔ [y](${page_b#.rite/wiki/}) — ${subcategory}: ${reason}"
+printf '%s\n' "# Directory Update Log" "" "## 2026-10-12" "" \
+  "* **lint:warning** — contradictions=1, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0" \
+  "$rebuilt" > "$repo/.rite/wiki/log.md"
+(cd "$repo" && git add .rite/wiki/log.md && git commit -qm "carried")
+run_helper "$repo" --branch-strategy same_branch
+if [ "$HELPER_RC" = "0" ] && [ "$HELPER_STDOUT" = "$first" ] && [ "$reason" = "a は X を勧め b は | X を避ける" ]; then
+  pass "carried pair keeps pages, subcategory and reason"
+else
+  fail "round trip changed the pair (rc=$HELPER_RC): first=$first / second=$HELPER_STDOUT"
+fi
+
+echo "TC-19: a non-result lint bullet after the result bullet"
+repo=$(make_same_repo tc19 "# Directory Update Log
+
+## 2026-10-11
+
+* **lint:warning** — contradictions=1, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0
+$OPEN_CD
+* **lint:scope** — 今回ページ変更なし。全ページのタイトル衝突なし")
+run_helper "$repo" --branch-strategy same_branch
+expect_block "the result bullet before it is read" '---open_contradictions_begin---
+.rite/wiki/pages/patterns/c.md|.rite/wiki/pages/patterns/d.md|重複情報|同じ結論を 2 ページが持つ
+---open_contradictions_end---
+n_open=1'
+
+echo "TC-20: only older-format lint bullets without contradictions="
+repo=$(make_same_repo tc20 "# Directory Update Log
+
+## 2026-10-11
+
+* **lint:clean**: 矛盾 0 / 孤児 0 / 欠落 0")
+run_helper "$repo" --branch-strategy same_branch
+expect_block "no record, 0 open" "$EMPTY_BLOCK"
 
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="

@@ -324,11 +324,11 @@ rationale: references/rationale.md#empty-lists-keep-7-5
    bash {plugin_root}/hooks/scripts/wiki-lint-open-contradictions.sh --branch-strategy "{branch_strategy}" --wiki-branch "{wiki_branch}"
    ```
 
-   非 0 終了は stderr の ERROR を表示し、`WIKI_CONTRADICTION_CHECK=failed; reason=open_contradictions_unreadable` で停止する（記録を読めないまま未解消 0 件として進めない）。`---open_contradictions_begin---` / `---open_contradictions_end---` 間の各組を、手順 1 と同じ状態の Wiki と 1.0 の変更一覧で次の 3 つに分ける。ページの実在確認そのものが失敗したら停止する:
+   非 0 終了は stderr の ERROR を表示し、`WIKI_CONTRADICTION_CHECK=failed; reason=open_contradictions_unreadable` で停止する（記録を読めないまま未解消 0 件として進めない）。`---open_contradictions_begin---` / `---open_contradictions_end---` 間の各行は `{page_a}|{page_b}|{分類}|{理由}` で、最初の 3 つの `|` で分け、残り全体を理由とする（理由が `|` を含んでも分割しない）。各組を、手順 1 と同じ状態の Wiki と 1.0 の変更一覧で次の 3 つに分ける。ページの実在確認そのものが失敗したら停止する:
 
    | 組の状態 | 扱い |
    |---|---|
-   | 両ページが実在し、どちらも変更一覧に無い | **引継ぎ**: 本文を比べ直さず、記録の分類・理由のまま 3.3 の矛盾として数える |
+   | 両ページが実在し、どちらも変更一覧に無い | **引継ぎ**: 本文を比べ直さず、helper の出力の分類・理由のまま 3.3 の矛盾として数える |
    | 両ページが実在し、どちらかが変更一覧にある | **再判定**: 手順 4 の本文比較に必ず含める（手順 3 で除外しない） |
    | どちらかのページが実在しない | **解消**: 矛盾として数えず、log の lint エントリに解消の理由（ページ消失）を残す |
 
@@ -370,7 +370,7 @@ rationale: references/rationale.md#two-stage-auto-comparison
 }
 ```
 
-`subcategory` は `タイトル衝突` / `方針逆転` / `重複情報` のいずれかを使用する（ステップ 9 の表示とステップ 8.1 の未解消の矛盾の行で使用）。3.1 手順 0 の引継ぎの組も同じ形で append し `n_contradictions` を +1 する（`subcategory` と `detail` は記録の値）。
+`subcategory` は `タイトル衝突` / `方針逆転` / `重複情報` のいずれかを使用する（ステップ 9 の表示とステップ 8.1 の未解消の矛盾の行で使用）。3.1 手順 0 の引継ぎの組も同じ形で append し `n_contradictions` を +1 する（`subcategory` は helper の出力の分類、`detail` は同じ行の理由）。
 
 ---
 
