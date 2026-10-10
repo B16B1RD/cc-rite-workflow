@@ -101,16 +101,28 @@ Issue 番号を指定する通常入口と分け、保守リポジトリで明�
    args: "{promotion_contract}"
    ```
 
-   `[create:returned-to-caller:N]` を回収し、Issue の存在と本文の出典、Projects 登録の実結果を照合する。未登録・起票失敗・sentinel 不在なら作成済み Issue の有無を調べ、raw を保持して停止する。helper の直接起票で代用しない。
+   候補消化 caller は分解せず単一 Issue を返す。`[create:returned-to-caller:N]` を回収し、Issue の存在と本文の出典、Projects 登録の実結果を照合する。未登録・起票失敗・sentinel 不在なら作成済み Issue の有無を調べ、raw と成功済み Issue の URL・失敗理由を保持して停止する。helper の直接起票で代用しない。
+
+   新規返却の番号、または手順 2 で再利用する OPEN Issue の番号を `{promotion_execution_issue}` に literal 置換し、次を実行する。番号不明・親 Issue・CLOSED・取得失敗は非ゼロで停止する。親番号を子番号へ暗黙置換せず、子選択を利用者へ質問しない。成功出力 `PROMOTION_EXECUTION_ISSUE=N` と入力番号が一致した対象だけ、対応保存と queue に使う。
+
+   ```bash
+   bash {plugin_root}/hooks/scripts/wiki-promotion-candidates.sh target --wiki-root "{wiki_root_abs}" --cwd "{execution_cwd}" --repo {owner_repo} --issue {promotion_execution_issue}
+   ```
 4. **対応保存**: [候補データ契約](../../references/wiki-patterns.md#昇格候補)の work 配列を `{promotion_work_file}` へ Write し、次で既存 log に保存する。候補理由は raw に残す。記録が失敗したら後続を起動せず、次回の手順 2 で GitHub を再照合する。
 
    ```bash
    bash {plugin_root}/hooks/scripts/wiki-promotion-candidates.sh link --wiki-root "{wiki_root_abs}" --cwd "{execution_cwd}" --repo {owner_repo} --input "{promotion_work_file}"
    ```
 
-5. **既存ループへ接続**: 対応 OPEN Issue の番号を重複排除した空白区切りの値を `{promotion_issue_numbers}` とする。元の引数に `--merge` があれば `{issue_numbers}` を `--merge {promotion_issue_numbers}`、無ければ `{promotion_issue_numbers}` に置換し、通常のステップ 0 → open → iterate を続行する。`--merge` の指定は置換前に保持し、通常の引数パースへ引き継ぐ。`--merge` を明示したときのみ既存 merge 経路へ進む。他の未完了キューを上書きせず、先にそのキューを再開する。同じ Issue 群なら既存 cursor を維持する。対象 0 件なら候補の complete/未解決と理由を報告し、キューを新設しない。
+5. **既存ループへ接続**: link の成功と既存 log への対応保存を再読取して確認した、検証済み OPEN Issue の番号だけを重複排除し、空白区切りの値を `{promotion_issue_numbers}` とする。link は実 Issue が単一実行対象かを再検証し、親・取得失敗は成功済み対応と失敗理由を log に残して非ゼロで停止する。元の引数に `--merge` があれば `{issue_numbers}` を `--merge {promotion_issue_numbers}`、無ければ `{promotion_issue_numbers}` に置換し、通常のステップ 0 → open → iterate を続行する。`--merge` の指定は置換前に保持し、通常の引数パースへ引き継ぐ。`--merge` を明示したときのみ既存 merge 経路へ進む。他の未完了キューを上書きせず、先にそのキューを再開する。同じ Issue 群なら既存 cursor を維持する。対象 0 件なら候補の complete/未解決と理由を報告し、キューを新設しない。
 
 **結果の突合と再開**: 消化対象かは既存 log の対応 Issue で確認する（新しい状態フィールドを作らない）。通常起動・recover のいずれも、ステップ 6 の cursor 前進前、CLOSED の skip 前、全完了通知前に同じ reconcile を呼ぶ。merge が見つかる場合は、その merge commit の consumer/caller/test パスと `revision` を work に追記して link で保存してから照合する。helper は同じ候補・対応 Issue/PR・条件・消費先に属する、マージ済み revision の caller 利用と検証成功を要求する。実体が reference/原則なら caller の明示読取と対応試験を確認する。draft、未利用、検証失敗、取得失敗は未解決のまま。失敗理由は log と完了報告に残し、cursor の作業完了を候補の昇格完了と混同しない。API 作成/マージを試験で mock にしたことと実確認を区別する。
+
+手順 5 で通常ステップ 0 を呼ぶ前に、保存済み対応を次で照合する。成功出力 `PROMOTION_ISSUE_NUMBERS=` の番号列を `{promotion_issue_numbers}` に使う。既存 queue の未完了部分だけが入力と一致した場合は、完了済み先頭の番号も出力して通常の再開判定と cursor を保つ。未保存・実体取得失敗・別の未完了 queue があれば非ゼロで停止し、対応・入力ファイル・既存 cursor を保持する。queue 保存の失敗ではステップ 0 の成功 marker を補完せず、保存ファイルを再読取できるまで open を呼ばない。
+
+```bash
+bash {plugin_root}/hooks/scripts/wiki-promotion-candidates.sh queue --wiki-root "{wiki_root_abs}" --cwd "{execution_cwd}" --repo {owner_repo} --input "{promotion_work_file}"
+```
 
 候補の記録・domain ページの変更・log 更新は既存 ingest lock、番号参照検査、commit/lint/push を両ブランチ戦略で通す。lock/pending を再初期化しない。未 commit の記録がある再開は、既存保存回収手順で確認してから進む。
 
@@ -142,12 +154,13 @@ if [ "$arg_count" -gt 0 ]; then
     cursor=$(jq -r '.cursor // 0' "$queue_file")
     now_ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     jq --arg mode "$arg_mode" --arg now "$now_ts" '.mode = $mode | .active = true | .updated_at = $now' "$queue_file" > "$queue_file.tmp" && mv "$queue_file.tmp" "$queue_file" \
-      || { rm -f "$queue_file.tmp"; echo "WARNING: run-queue の mode/active=true 書込に失敗（active 未設定なら iterate は安全側 interactive）" >&2; }
+      || { rm -f "$queue_file.tmp"; echo "ERROR: run-queue の mode/active=true 書込に失敗。cursor を保持して停止します" >&2; exit 1; }
     echo "[CONTEXT] RUN_QUEUE=resume_match; cursor=$cursor; total=$arg_count; mode=$arg_mode"
   else
     # 新規 / 既存と不一致 → 上書き（古いキューは破棄）。`active=true` で駆動中を明示
     now_ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    jq -n --argjson issues "$arg_issues_json" --arg mode "$arg_mode" --arg now "$now_ts" '{issues:$issues, cursor:0, mode:$mode, failed:[], outstanding:[], active:true, updated_at:$now}' > "$queue_file"
+    jq -n --argjson issues "$arg_issues_json" --arg mode "$arg_mode" --arg now "$now_ts" '{issues:$issues, cursor:0, mode:$mode, failed:[], outstanding:[], active:true, updated_at:$now}' > "$queue_file" \
+      || { echo "ERROR: run-queue の初期保存に失敗。保存済み対応を保持して停止します" >&2; exit 1; }
     echo "[CONTEXT] RUN_QUEUE=initialized; cursor=0; total=$arg_count; mode=$arg_mode"
   fi
 else
@@ -155,7 +168,7 @@ else
     # 引数省略の再開: run が再び iterate を駆動するため active=true を立て直す
     now_ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     jq --arg now "$now_ts" '.active = true | .updated_at = $now' "$queue_file" > "$queue_file.tmp" && mv "$queue_file.tmp" "$queue_file" \
-      || { rm -f "$queue_file.tmp"; echo "WARNING: run-queue の active=true 書込に失敗（active 未設定なら iterate は安全側 interactive）" >&2; }
+      || { rm -f "$queue_file.tmp"; echo "ERROR: run-queue の active=true 書込に失敗。cursor を保持して停止します" >&2; exit 1; }
     cursor=$(jq -r '.cursor // 0' "$queue_file"); total=$(jq -r '.issues | length' "$queue_file")
     mode=$(jq -r '.mode // "default"' "$queue_file")   # 旧形式 (mode 欠落) は default 互換
     echo "[CONTEXT] RUN_QUEUE=resume_no_args; cursor=$cursor; total=$total; mode=$mode"
@@ -343,6 +356,12 @@ echo "[CONTEXT] RUN_RESUME_STAGE=$stage; reason=${reason:-phase_$fs_phase}; issu
 ---
 
 ## ステップ 2: /rite:open を invoke
+
+候補消化対象は既存 log の対応 Issue から判定する。再開時も、保存した対応と自セッション queue の cursor が指す `{current_issue}` を照合し、次を実行してから open を呼ぶ。対象不一致・親への変更・取得失敗では cursor と保存済み対応を維持してステップ 8 へ進む。成功時は `promotion_caller=batch-run` と出典・条件・消費先を open に引き継ぎ、入力番号を子番号へ置換しない。通常の番号指定で log に対応がない Issue はこの検査を行わない。
+
+```bash
+bash {plugin_root}/hooks/scripts/wiki-promotion-candidates.sh target --wiki-root "{wiki_root_abs}" --cwd "{execution_cwd}" --repo {owner_repo} --issue {current_issue}
+```
 
 配下の lint が `commands.lint` 未設定かつ自動検出も未該当なら、[lint 1.3](../lint/SKILL.md#13-when-command-cannot-be-detected) の `[lint:skipped]` 経路を質問なしで選ぶ。未実行の理由・設定案内は省略しない。open が既存 sentinel 契約で PR 作成へ進み、設定済みコマンドの失敗はこのスキップに変換しない。
 

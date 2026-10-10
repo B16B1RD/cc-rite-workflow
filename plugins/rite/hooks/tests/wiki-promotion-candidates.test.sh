@@ -41,6 +41,10 @@ class Candidates(unittest.TestCase):
                                                pages=pages or [], **extra)))
         p.record(self.root, self.raw, self.input)
 
+    def link(self):
+        with patch.object(p, "execution_issue"):
+            p.link(self.root, self.input, self.root, "example/project")
+
     def test_rite_candidates_never_create_or_update_existing_pages(self):
         existing = self.root / "pages/patterns/rite.md"
         existing.write_text("existing rite page")
@@ -132,7 +136,7 @@ class Candidates(unittest.TestCase):
         work = dict(candidate=item["id"], raw=self.raw, issue_url="https://github.com/example/project/issues/1",
                     consumer=item["consumer"], condition=item["condition"])
         self.input.write_text(json.dumps([work]))
-        p.link(self.root, self.input)
+        self.link()
         self.assertEqual(p.listed(self.root)[0]["work"]["condition"], self.item["condition"])
 
     def test_completion_is_rechecked_and_acquisition_failure_stays_unresolved(self):
@@ -147,6 +151,19 @@ class Candidates(unittest.TestCase):
         with patch.object(p, "maintainer"), patch.object(p, "proof", return_value="a" * 40):
             p.reconcile(self.root, self.root, "example/project")
         self.assertEqual(p.listed(self.root)[0]["work"]["status"], "complete")
+
+    def test_multiple_children_cannot_replace_single_candidate_work(self):
+        self.save()
+        item = p.listed(self.root)[0]
+        work = dict(candidate=item["id"], raw=self.raw, issue_url="https://github.com/example/project/issues/1",
+                    consumer=item["consumer"], condition=item["condition"])
+        self.input.write_text(json.dumps([work]))
+        self.link()
+        before = (self.root / "log.md").read_bytes()
+        self.input.write_text(json.dumps([work, dict(work, issue_url="https://github.com/example/project/issues/2")]))
+        with self.assertRaisesRegex(ValueError, "single execution Issue"):
+            p.link(self.root, self.input, self.root, "example/project")
+        self.assertEqual((self.root / "log.md").read_bytes(), before)
 
     def test_partial_os_write_failures_keep_raw_and_log_originals(self):
         program = """
@@ -189,7 +206,7 @@ sys.exit(1)
         work = dict(candidate=item["id"], raw=self.raw, condition="trigger", consumer=self.item["consumer"],
                     issue_url="https://github.com/example/project/issues/1")
         self.input.write_text(json.dumps([work]))
-        p.link(self.root, self.input)
+        self.link()
         self.save(candidates=[], pages=["pages/patterns/domain.md"])
         row = p.listed(self.root)[0]
         self.assertEqual(row["id"], item["id"])
@@ -223,7 +240,7 @@ sys.exit(1)
         work = dict(candidate=item["id"], raw=self.raw, issue_url="https://github.com/example/project/issues/1",
                     consumer=item["consumer"], condition=item["condition"])
         self.input.write_text(json.dumps([work]))
-        p.link(self.root, self.input)
+        self.link()
         p.log_event(self.root, dict(work, status="unresolved", reason="draft"))
         self.assertEqual(p.listed(self.root)[0]["work"]["reason"], "draft")
         self.assertEqual(p.listed(self.root)[0]["work"]["issue_url"], work["issue_url"])
@@ -237,6 +254,45 @@ sys.exit(1)
             self.assertEqual(len(p.listed(self.root)), 1)
         with self.assertRaises((ValueError, OSError)):
             p.maintainer(self.root, "example/project")
+
+
+class Execution(unittest.TestCase):
+    def setUp(self):
+        self.repo = "example/project"
+        self.url = "https://github.com/example/project/issues/7"
+        self.issue = dict(number=7, url=self.url, body="Single implementation", state="OPEN", labels=[])
+        self.children = []
+
+    def command(self, args, cwd=None):
+        return json.dumps(self.children if args[1] == "api" else self.issue)
+
+    def test_single_target_returns_its_own_number_and_rejects_unknown_or_closed(self):
+        with patch.object(p, "command", self.command), contextlib.redirect_stdout(io.StringIO()) as output:
+            p.target(Path("."), self.repo, "7")
+            self.assertEqual(output.getvalue(), "PROMOTION_EXECUTION_ISSUE=7\n")
+            self.issue["state"] = "CLOSED"
+            with self.assertRaisesRegex(ValueError, "not OPEN"):
+                p.target(Path("."), self.repo, "7")
+            for number in ("", "0", "7 8", "unknown"):
+                with self.subTest(number=number), self.assertRaisesRegex(ValueError, "single execution"):
+                    p.target(Path("."), self.repo, number)
+
+    def test_each_parent_detector_stops_and_api_failure_does_not_fallback(self):
+        with patch.object(p, "command", self.command):
+            for body, labels, children in (
+                    ("- [ ] #8", [], []), ("body", [{"name": "epic"}], []),
+                    ("body", [{"name": "parent"}], []), ("body", [{"name": "umbrella"}], []),
+                    ("body", [], [{"number": 8, "state": "closed"}])):
+                self.issue.update(body=body, labels=labels)
+                self.children = children
+                with self.subTest(body=body, labels=labels, children=children), self.assertRaisesRegex(
+                        ValueError, "parent Issue"):
+                    p.execution_issue(Path("."), self.repo, self.url)
+        with patch.object(p, "command", side_effect=ValueError("API failed")):
+            with self.assertRaisesRegex(ValueError, "API failed"):
+                p.execution_issue(Path("."), self.repo, self.url)
+        with self.assertRaisesRegex(ValueError, "another repository"):
+            p.execution_issue(Path("."), self.repo, "https://github.com/unrelated/project/issues/7")
 
 
 class Evidence(unittest.TestCase):
@@ -267,6 +323,9 @@ test "$(bash -c "$command")" = called
         self.rev = self.git("rev-parse", "HEAD").strip()
         self.pr = dict(state="MERGED", isDraft=False, mergeCommit={"oid": self.rev},
                        closingIssuesReferences=[{"number": 1, "url": "https://github.com/example/project/issues/1"}])
+        self.issue = dict(number=1, url="https://github.com/example/project/issues/1",
+                          body="Single implementation", state="CLOSED", labels=[])
+        self.children = []
         self.item = dict(id="source", raw="raw/reviews/source.md", consumer=self.consumer, condition="trigger",
                          work=dict(issue_url="https://github.com/example/project/issues/1",
                                    pr_url="https://github.com/example/project/pull/2", consumer=self.consumer,
@@ -281,11 +340,28 @@ test "$(bash -c "$command")" = called
     def verify(self):
         original = p.command
         def command(args, cwd=None):
-            return json.dumps(self.pr) if args[0] == "gh" else original(args, cwd)
+            if args[0] == "gh":
+                return json.dumps(self.pr if args[1] == "pr" else
+                                  self.children if args[1] == "api" else self.issue)
+            return original(args, cwd)
         with patch.object(p, "command", command):
             return p.proof(self.cwd, self.repo, self.item)
 
     def test_only_merged_caller_and_matching_verification_complete(self):
+        self.assertEqual(self.verify(), self.rev)
+
+    def test_parent_only_or_partial_child_merge_cannot_complete_parent_work(self):
+        original = self.pr["closingIssuesReferences"]
+        for closed in ([{"url": "https://github.com/example/project/issues/10"}],
+                       [{"url": "https://github.com/example/project/issues/99"}]):
+            self.pr["closingIssuesReferences"] = closed
+            with self.subTest(closed=closed), self.assertRaisesRegex(ValueError, "does not close"):
+                self.verify()
+        self.pr["closingIssuesReferences"] = original
+        self.children = [{"number": 2}, {"number": 3}]
+        with self.assertRaisesRegex(ValueError, "parent Issue"):
+            self.verify()
+        self.children = []
         self.assertEqual(self.verify(), self.rev)
 
     def test_display_only_caller_and_presence_only_test_are_unresolved(self):

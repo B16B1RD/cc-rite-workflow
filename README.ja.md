@@ -129,7 +129,7 @@ Rite Workflow は 3 ステップでインストールします。マーケット
 | `/rite:wiki-init` | Experience Wiki のブランチとディレクトリ構成を初期化 |
 | `/rite:wiki-query` | キーワードに一致する経験則を Wiki ページから検索 |
 | `/rite:wiki-ingest` | rite 知見は raw の昇格候補へ保存し、プロジェクト固有知見を Wiki ページへ取り込み |
-| `/rite:batch-run --promotions [--merge]` | 保守 source リポジトリで raw 候補を集約し issue-create → open → iterate を実行。マージは明示時のみ |
+| `/rite:batch-run --promotions [--merge]` | 保守 source リポジトリで raw 候補を単一の実行 Issue に集約し issue-create → open → iterate を実行。マージは明示時のみ |
 | `/rite:wiki-lint` | 矛盾・陳腐化・孤児・欠落概念・壊れた相互参照を Wiki ページについて lint |
 | `/rite:recover` | 中断した作業を再開 |
 | `/rite:skill-suggest` | コンテキストを分析し適用可能なスキルを提案 |
