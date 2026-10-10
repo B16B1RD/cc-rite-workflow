@@ -1,5 +1,10 @@
 # Directory Update Log
 
+## 2026-10-11
+* **Promotion**: [候補の出典](raw/reviews/20261010T194004Z-pr-3771.md) — skipped <!-- rite-promotion: {"candidate": "", "raw": "raw/reviews/20261010T194004Z-pr-3771.md", "reason": "再レビューの完了確認のみで、新しい経験則は含まれない。", "status": "skipped"} -->
+* **Promotion**: [候補の出典](raw/reviews/20261010T192656Z-pr-3771.md) — unresolved <!-- rite-promotion: {"candidate": "9d9ee3274515ed3c0f0078d78996a5495089b0687db23ab9d12cfbbb1588408f", "raw": "raw/reviews/20261010T192656Z-pr-3771.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
+* **Promotion**: [候補の出典](raw/fixes/20261010T193115Z-pr-3771.md) — unresolved <!-- rite-promotion: {"candidate": "8d060450a96c53bdc6a34ae97b20a6098042633f9291d5a71849312f576594b4", "raw": "raw/fixes/20261010T193115Z-pr-3771.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
+
 ## 2026-10-10
 
 * **Update**: [新規 exit 1 経路 / sentinel type 追加時は同一ファイル内 canonical 一覧を同期更新し、『N site 対称化』counter 宣言を drift 検出アンカーとして活用する](pages/heuristics/canonical-list-count-claim-drift-anchor.md) — 除外規則の同期漏れのfix 結果を統合
