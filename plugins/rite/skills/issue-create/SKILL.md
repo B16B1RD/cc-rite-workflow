@@ -41,8 +41,9 @@ argument-hint: "<title or description>"
 ## 候補消化 caller からの実行
 
 明示された `batch-run --promotions` が `promotion_caller=batch-run` と候補の id/raw/source/condition/consumer を渡した nested 呼出しだけに適用する。候補ごとの出典と条件を本文へ保持し、通常の Step 2 重複検出、規模判定、Contract 生成、本文ファクトチェック、作成ゲート、Projects 登録をすべて実行する。
-- Step 2.3 の既存 Issue 使用/拡張/関連なしと Step 3.2 の分解を AI が内容で判断する。既存 Issue 使用は番号と URL を caller へ返す。新規作成時は duplicate_check を記録する。
-- Step 4.1（分解は Step 5.2）の項目は raw とコードから確定し、自動承認として confirm を記録する。要件の矛盾だけ質問し、起票の品質判断を毎回人間に戻さない。caller 以外の通常確認は維持する。
+- Step 2.3 の既存 Issue 使用/拡張/関連なしは AI が内容で判断する。既存 Issue 使用は単一の実行番号と URL を caller へ返す。親 Issue は実行対象にせず、対応を確定できなければ出典と理由を保持して停止する。新規作成時は duplicate_check を記録する。
+- Step 3.1 の規模判定は行うが、候補消化 caller は Step 3.2 で分解せず Step 4 の単一 Issue 経路へ進む。候補ごとの出典・条件・消費先を単一 Issue に保持し、返却・作業対応・queue・PR の closing Issue を同じ番号へ揃える。
+- Step 4.1 の項目は raw とコードから確定し、自動承認として confirm を記録する。要件の矛盾だけ質問し、起票の品質判断を毎回人間に戻さない。caller 以外の通常確認・分解は維持する。
 - 作成後は sentinel と実 Issue/Projects 結果を caller へ返す。起票後に中断した場合、次回は raw パス・原文範囲・条件・消費先で既存 Issue を探してから作成する。候補の完了扱いや削除はしない。
 
 ## ステップ 1: 入力解析と前提取得
@@ -137,6 +138,8 @@ bash {plugin_root}/scripts/issue-create-gate.sh record --step duplicate_check
 該当しない場合は **単一 Issue**として扱い、ステップ 4 へ。
 
 ### 3.2 分解確認
+
+候補消化 caller からの実行条件を満たす場合は、規模にかかわらず分解を選ばずステップ 4 へ進む。通常 caller のみ以下の確認を行う。
 
 該当時は AskUserQuestion で「Sub-Issue に分解する（推奨） / 単一 Issue として作成 / 中止」を選択。
 

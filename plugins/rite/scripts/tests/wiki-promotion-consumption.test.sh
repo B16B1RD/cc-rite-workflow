@@ -36,9 +36,36 @@ class Caller(unittest.TestCase):
         self.raw = "raw/reviews/example.md"
         (self.wiki / self.raw).write_text('---\ningested: true\ningest_status: skipped\nskip_reason: "detector-candidate: preserve source"\n---\n\nOriginal condition and counterexample\n')
         self.input = Path(self.tmp.name) / "work.json"
+        self.bin = Path(self.tmp.name) / "bin"
+        self.bin.mkdir()
+        self.api = Path(self.tmp.name) / "api.json"
+        self.api.write_text(json.dumps({"body": "Single implementation", "labels": [], "children": []}))
+        gh = self.bin / "gh"
+        gh.write_text("""#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+args = sys.argv[1:]
+data = json.loads(Path(os.environ["PROMOTION_TEST_API"]).read_text())
+if data.get("fail"):
+    sys.exit("injected API failure")
+if args[0] == "api":
+    print(json.dumps(data["children"]))
+else:
+    number = int(args[2])
+    print(json.dumps(dict(number=number, url=f"https://github.com/example/project/issues/{number}",
+                         body=data["body"], labels=data["labels"], state=data.get("state", "OPEN"))))
+""")
+        gh.chmod(0o700)
+        self.env = dict(os.environ, PATH=str(self.bin) + os.pathsep + os.environ["PATH"],
+                        PROMOTION_TEST_API=str(self.api))
+        for key in ("RITE_STATE_ROOT", "CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "CLAUDE_SESSION_ID",
+                    "GROK_SESSION_ID", "RITE_HOST"):
+            self.env.pop(key, None)
+        self.env.update(RITE_HOST="codex", CODEX_THREAD_ID="00000000-0000-0000-0000-000000000007")
         self.replacements = {"{plugin_root}": str(self.cwd / "plugins/rite"),
                              "{wiki_root_abs}": str(self.wiki), "{execution_cwd}": str(self.cwd),
-                             "{owner_repo}": "example/project", "{promotion_work_file}": str(self.input)}
+                             "{owner_repo}": "example/project", "{promotion_work_file}": str(self.input),
+                             "{promotion_execution_issue}": "1"}
         entry = batch.split("## 昇格候補の消化", 1)[1].split("## ステップ 0:", 1)[0]
         self.calls = re.findall(r"```bash\n(.*?)\n[ \t]*```", entry, re.S)
 
@@ -50,7 +77,7 @@ class Caller(unittest.TestCase):
         for source, value in self.replacements.items():
             command = command.replace(source, value)
         return subprocess.run(["bash", "-e", "-c", command], cwd=cwd or self.cwd,
-                              text=True, capture_output=True)
+                              env=self.env, text=True, capture_output=True)
 
     def test_actual_caller_fences_persist_work_and_resume_legacy_candidates(self):
         first = self.invoke(0)
@@ -63,7 +90,7 @@ class Caller(unittest.TestCase):
                     consumer="plugins/rite/hooks/scripts/example.sh",
                     issue_url="https://github.com/example/project/issues/1")
         self.input.write_text(json.dumps([work]))
-        self.assertEqual(self.invoke(1).returncode, 0)
+        self.assertEqual(self.invoke(2).returncode, 0)
         again = self.invoke(0)
         item = json.loads(again.stdout)[0]
         self.assertEqual(item["work"]["issue_url"], work["issue_url"])
@@ -92,7 +119,7 @@ class Caller(unittest.TestCase):
         first = json.loads(self.invoke(0).stdout)[0]
         self.input.write_text(json.dumps([dict(candidate=first["id"], raw=self.raw,
                                               consumer="consumer.sh", condition="trigger")]))
-        failed = self.invoke(1)
+        failed = self.invoke(2)
         self.assertNotEqual(failed.returncode, 0)
         self.assertIn("missing work issue_url", failed.stderr)
         self.assertIn("Original condition", (self.wiki / self.raw).read_text())
@@ -113,6 +140,114 @@ class Caller(unittest.TestCase):
                 self.assertEqual(actual_mode, mode)
                 self.assertEqual(json.loads(issues), [3, 5])
 
+    def write_work(self, number=1):
+        item = json.loads(self.invoke(0).stdout)[0]
+        work = dict(candidate=item["id"], raw=self.raw, condition="review trigger",
+                    consumer="consumer.sh", issue_url=f"https://github.com/example/project/issues/{number}")
+        self.input.write_text(json.dumps([work]))
+        return work
+
+    def queue_script(self, numbers):
+        shutil.copytree(plugin / "hooks", self.cwd / "plugins/rite/hooks", dirs_exist_ok=True)
+        section = batch.split("## ステップ 0:", 1)[1].split("## ステップ 0.5:", 1)[0]
+        command = re.findall(r"```bash\n(.*?)\n```", section, re.S)[0]
+        return command.replace("{plugin_root}", str(self.cwd / "plugins/rite")).replace(
+            "{issue_numbers}", numbers)
+
+    def run_shell(self, command):
+        return subprocess.run(["bash", "-c", command], cwd=self.cwd, env=self.env,
+                              text=True, capture_output=True)
+
+    def test_returned_single_issue_flows_through_saved_work_queue_and_actual_open_plan(self):
+        # Skill execution is a fixture; the caller helpers and open decision block execute.
+        returned = "[create:returned-to-caller:7]"
+        number = re.fullmatch(r"\[create:returned-to-caller:([1-9][0-9]*)\]", returned)[1]
+        self.replacements["{promotion_execution_issue}"] = number
+        self.assertEqual(self.invoke(1).stdout, "PROMOTION_EXECUTION_ISSUE=7\n")
+        self.write_work(int(number))
+        self.assertEqual(self.invoke(2).returncode, 0)
+        queue_command = self.queue_script("")
+        ready = self.invoke(3)
+        self.assertEqual(ready.returncode, 0, ready.stderr)
+        numbers = ready.stdout.removeprefix("PROMOTION_ISSUE_NUMBERS=").strip()
+        self.assertEqual(numbers, "7")
+        initialized = self.run_shell(queue_command.replace('arg_str=""', 'arg_str="' + numbers + '"'))
+        self.assertEqual(initialized.returncode, 0, initialized.stderr)
+        queue = self.cwd / ".rite/state/run-queue-00000000-0000-0000-0000-000000000007.json"
+        data = json.loads(queue.read_text())
+        self.assertEqual(data["issues"][data["cursor"]], 7)
+        opening = (plugin / "skills/open/SKILL.md").read_text()
+        section = opening.split("### 3.4 計画承認", 1)[1].split("### 3.5", 1)[0]
+        plan = re.findall(r"```bash\n(.*?)\n```", section, re.S)[0]
+        plan = plan.replace("{plugin_root}", str(self.cwd / "plugins/rite")).replace("{issue_number}", number)
+        handoff = batch.split("## ステップ 2:", 1)[1].split("## ステップ 3:", 1)[0]
+        guard = re.findall(r"```bash\n(.*?)\n```", handoff, re.S)[0]
+        for key, value in self.replacements.items():
+            guard = guard.replace(key, value)
+        guard = guard.replace("{current_issue}", number)
+        self.assertEqual(self.run_shell(guard).stdout, "PROMOTION_EXECUTION_ISSUE=7\n")
+        self.assertIn("OPEN_PLAN_MODE=batch; issue=7", self.run_shell(plan).stdout)
+        self.assertEqual(json.loads(self.invoke(0).stdout)[0]["work"]["issue_url"],
+                         "https://github.com/example/project/issues/7")
+        data.update(cursor=1, issues=[6, 8], active=False)
+        queue.write_text(json.dumps(data))
+        before = queue.read_bytes()
+        conflict = self.invoke(3)
+        self.assertNotEqual(conflict.returncode, 0)
+        self.assertIn("another unfinished queue", conflict.stderr)
+        self.assertEqual(queue.read_bytes(), before)
+        data.update(issues=[6, 7], cursor=1)
+        queue.write_text(json.dumps(data))
+        remaining = self.invoke(3)
+        self.assertEqual(remaining.returncode, 0, remaining.stderr)
+        self.assertEqual(remaining.stdout, "PROMOTION_ISSUE_NUMBERS=6 7\n")
+        resumed = self.run_shell(queue_command.replace('arg_str=""', 'arg_str="6 7"'))
+        self.assertEqual(resumed.returncode, 0, resumed.stderr)
+        self.assertIn("RUN_QUEUE=resume_match", resumed.stdout)
+        self.assertEqual(json.loads(queue.read_text())["cursor"], 1)
+        self.assertIn("OPEN_PLAN_MODE=batch; issue=7", self.run_shell(plan).stdout)
+
+    def test_parent_or_failed_return_stops_before_next_issue_and_preserves_existing_work(self):
+        work = self.write_work()
+        self.assertEqual(self.invoke(2).returncode, 0)
+        for response in ({"body": "- [ ] #2", "labels": [], "children": []},
+                         {"body": "body", "labels": [], "children": [{"number": 2}]},
+                         {"fail": True}):
+            self.api.write_text(json.dumps(response))
+            rejected = self.invoke(1)
+            self.assertNotEqual(rejected.returncode, 0)
+            rejected_link = self.invoke(2)
+            self.assertNotEqual(rejected_link.returncode, 0)
+            row = json.loads(self.invoke(0).stdout)[0]
+            self.assertEqual(row["status"], "unresolved")
+            self.assertEqual(row["work"]["issue_url"], work["issue_url"])
+            self.assertIn("reason", row["work"])
+            self.assertIn("counterexample", row["excerpt"])
+            self.assertFalse((self.cwd / ".rite/state").exists())
+        self.replacements["{promotion_execution_issue}"] = "unknown"
+        self.assertNotEqual(self.invoke(1).returncode, 0)
+
+    def test_unsaved_work_log_and_queue_write_failures_do_not_start_open(self):
+        self.write_work()
+        self.queue_script("")
+        unsaved = self.invoke(3)
+        self.assertNotEqual(unsaved.returncode, 0)
+        self.assertIn("not saved", unsaved.stderr)
+        (self.wiki / "log.md").unlink()
+        (self.wiki / "log.md").mkdir()
+        failed = self.invoke(2)
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertIn("Original condition", (self.wiki / self.raw).read_text())
+        (self.wiki / "log.md").rmdir()
+        self.assertEqual(self.invoke(2).returncode, 0)
+        queue = self.cwd / ".rite/state/run-queue-00000000-0000-0000-0000-000000000007.json"
+        queue.parent.mkdir(parents=True, exist_ok=True)
+        queue.mkdir()
+        failed = self.run_shell(self.queue_script("1"))
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertNotIn("RUN_QUEUE=initialized", failed.stdout)
+        self.assertTrue(self.input.exists())
+
     def test_skill_handoffs_use_issue_create_gate_projects_open_iterate_and_recover(self):
         entry = batch.split("## 昇格候補の消化", 1)[1].split("## ステップ 0:", 1)[0]
         self.assertIn("skill: rite:issue-create", entry)
@@ -125,6 +260,16 @@ class Caller(unittest.TestCase):
         create = (plugin / "skills/issue-create/SKILL.md").read_text()
         for required in ("duplicate_check", "--step confirm", "fact_check", "Projects"):
             self.assertIn(required, create)
+        policy = create.split("## 候補消化 caller", 1)[1].split("## ステップ 1:", 1)[0]
+        self.assertIn("分解せず Step 4 の単一 Issue 経路", policy)
+        selection = create.split("### 3.2 分解確認", 1)[1].split("## ステップ 4:", 1)[0]
+        self.assertLess(selection.index("通常 caller のみ"), selection.index("AskUserQuestion"))
+        self.assertIn("Sub-Issue に分解する（推奨）", selection)
+        self.assertIn("[create:returned-to-caller:{parent_issue_number}]", create)
+        opening = (plugin / "skills/open/SKILL.md").read_text().split("### 1.2 親 Issue 検出", 1)[1].split("### 1.3", 1)[0]
+        self.assertIn("子選択の質問や入力番号の置換を行わない", opening)
+        self.assertIn("通常の standalone 親入力", opening)
+        self.assertIn("この親 Issue 自体に対して作業", opening)
         recover = (plugin / "skills/recover/SKILL.md").read_text().split("### 5.5.3", 1)[1]
         self.assertIn("結果の突合と再開", recover)
         self.assertIn("cursor 前進", recover)

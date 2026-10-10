@@ -129,7 +129,7 @@ This will:
 | `/rite:wiki-init` | Initialize Experience Wiki branch and directory layout |
 | `/rite:wiki-query` | Query Wiki pages for heuristics matching keywords |
 | `/rite:wiki-ingest` | Save rite knowledge as raw promotion candidates; ingest project domain knowledge into Wiki pages |
-| `/rite:batch-run --promotions [--merge]` | In the maintenance source repository, group raw candidates and use issue-create → open → iterate; merge only when explicitly requested |
+| `/rite:batch-run --promotions [--merge]` | In the maintenance source repository, group raw candidates into single execution Issues and use issue-create → open → iterate; merge only when explicitly requested |
 | `/rite:wiki-lint` | Lint Wiki pages for contradictions, staleness, orphans, missing concepts, and broken cross-refs |
 | `/rite:recover` | Resume interrupted work |
 | `/rite:skill-suggest` | Analyze context and suggest applicable skills |

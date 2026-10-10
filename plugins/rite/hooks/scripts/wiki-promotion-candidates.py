@@ -369,9 +369,72 @@ def maintainer(cwd, repo):
             raise ValueError("repository identity mismatch")
 
 
-def link(root, input_path):
+def execution_issue(cwd, repo, issue_url):
+    match = re.fullmatch(rf"https://github\.com/{re.escape(repo)}/issues/([1-9][0-9]*)", issue_url)
+    if not match:
+        raise ValueError("execution Issue URL is invalid or belongs to another repository")
+    number = int(match[1])
+    issue = json.loads(command(["gh", "issue", "view", str(number), "--repo", repo, "--json",
+                                "number,url,body,state,labels"], cwd))
+    if issue.get("number") != number or issue.get("url") != issue_url:
+        raise ValueError("execution Issue identity mismatch")
+    if not isinstance(issue.get("body"), str) or not isinstance(issue.get("labels"), list) or (
+            issue.get("state") not in ("OPEN", "CLOSED")):
+        raise ValueError("execution Issue could not be determined")
+    children = json.loads(command(["gh", "api", f"repos/{repo}/issues/{number}/sub_issues"], cwd))
+    if not isinstance(children, list):
+        raise ValueError("execution Issue children could not be determined")
+    labels = {label["name"].lower() for label in issue["labels"]}
+    if children or labels.intersection({"epic", "parent", "umbrella"}) or re.search(
+            r"(?m)^\s*- \[ \] #[0-9]+\b", issue["body"]):
+        raise ValueError("promotion execution target is a parent Issue; retain unresolved work")
+    return issue
+
+
+def target(cwd, repo, number):
+    if not re.fullmatch(r"[1-9][0-9]*", number or ""):
+        raise ValueError("a single execution Issue number is required")
+    issue = execution_issue(cwd, repo, f"https://github.com/{repo}/issues/{number}")
+    if issue["state"] != "OPEN":
+        raise ValueError("promotion execution Issue is not OPEN")
+    print(f"PROMOTION_EXECUTION_ISSUE={issue['number']}")
+
+
+def queue(root, input_path, cwd, repo):
+    works = json.loads(Path(input_path).read_text())
+    saved = {(item["raw"], item["id"]): item["work"] for item in listed(root)}
+    numbers = []
+    for work in works:
+        prior = saved[(work["raw"], work["candidate"])]
+        if any(prior.get(key) != work.get(key) for key in ("issue_url", "consumer", "condition")):
+            raise ValueError("promotion work was not saved; do not initialize queue")
+        issue = execution_issue(cwd, repo, work["issue_url"])
+        if issue["state"] != "OPEN":
+            raise ValueError("promotion execution Issue is not OPEN")
+        if issue["number"] not in numbers:
+            numbers.append(issue["number"])
+    state_root = Path(command(["bash", str(cwd / "plugins/rite/hooks/state-path-resolve.sh")], cwd).strip())
+    state_file = Path(command(["bash", str(cwd / "plugins/rite/hooks/flow-state.sh"), "path"], cwd).strip())
+    existing = state_root / ".rite/state" / f"run-queue-{state_file.stem}.json"
+    if existing.exists():
+        data = json.loads(existing.read_text())
+        if data["cursor"] < len(data["issues"]):
+            if numbers not in (data["issues"], data["issues"][data["cursor"]:]):
+                raise ValueError("another unfinished queue exists; resume it before promotion work")
+            # Retain the completed prefix so normal queue initialization preserves its cursor.
+            numbers = data["issues"]
+    print("PROMOTION_ISSUE_NUMBERS=" + " ".join(map(str, numbers)))
+
+
+def link(root, input_path, cwd, repo):
     works = json.loads(Path(input_path).read_text())
     candidates = {(x["raw"], x["id"]): x for x in listed(root)}
+    identities = {}
+    for work in works:
+        key = (work["raw"], work["candidate"])
+        if key in identities and identities[key] != work.get("issue_url"):
+            raise ValueError("a promotion candidate must have a single execution Issue")
+        identities[key] = work.get("issue_url")
     for work in works:
         item = candidates[(work["raw"], work["candidate"])]
         for name in ("issue_url", "consumer", "condition"):
@@ -381,6 +444,11 @@ def link(root, input_path):
             raise ValueError("work consumer differs from candidate")
         if item.get("condition") and work["condition"] != item["condition"]:
             raise ValueError("work condition differs from candidate")
+        try:
+            execution_issue(cwd, repo, work["issue_url"])
+        except (ValueError, OSError, subprocess.SubprocessError) as error:
+            log_event(root, dict(work, status="unresolved", reason=str(error)))
+            raise
         log_event(root, dict(work, status="linked"))
     print("PROMOTION_LINKED=" + str(len(works)))
 
@@ -403,6 +471,7 @@ def proof(cwd, repo, item):
         raise ValueError("verification revision is not the merged revision")
     if work["issue_url"] not in [x.get("url") for x in pr["closingIssuesReferences"]]:
         raise ValueError("PR does not close the linked Issue")
+    execution_issue(cwd, repo, work["issue_url"])
     if item.get("consumer") and item["consumer"] != work["consumer"]:
         raise ValueError("candidate consumer mismatch")
     if item.get("condition") and item["condition"] != work.get("condition"):
@@ -459,19 +528,20 @@ def reconcile(root, cwd, repo):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["record", "finish", "list", "link", "reconcile"])
+    parser.add_argument("action", choices=["record", "finish", "list", "link", "target", "queue", "reconcile"])
     parser.add_argument("--wiki-root", required=True, type=Path)
     parser.add_argument("--raw")
     parser.add_argument("--input")
     parser.add_argument("--cwd", type=Path)
     parser.add_argument("--repo")
+    parser.add_argument("--issue")
     args = parser.parse_args()
     root = args.wiki_root.resolve()
     if not root.is_dir():
         raise ValueError(f"Wiki root missing: {root}")
     if args.action in ("record", "finish") and not args.raw:
         raise ValueError("--raw is required")
-    if args.action in ("record", "link") and not args.input:
+    if args.action in ("record", "link", "queue") and not args.input:
         raise ValueError("--input is required")
     if args.action == "record":
         record(root, args.raw, args.input)
@@ -483,7 +553,17 @@ def main():
         if not args.cwd or not args.repo:
             raise ValueError("--cwd and --repo are required for consumption")
         maintainer(args.cwd.resolve(), args.repo)
-        link(root, args.input)
+        link(root, args.input, args.cwd.resolve(), args.repo)
+    elif args.action == "target":
+        if not args.cwd or not args.repo:
+            raise ValueError("--cwd and --repo are required for consumption")
+        maintainer(args.cwd.resolve(), args.repo)
+        target(args.cwd.resolve(), args.repo, args.issue)
+    elif args.action == "queue":
+        if not args.cwd or not args.repo:
+            raise ValueError("--cwd and --repo are required for consumption")
+        maintainer(args.cwd.resolve(), args.repo)
+        queue(root, args.input, args.cwd.resolve(), args.repo)
     else:
         if not args.cwd or not args.repo:
             raise ValueError("--cwd and --repo are required for consumption")

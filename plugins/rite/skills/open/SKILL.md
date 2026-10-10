@@ -118,6 +118,8 @@ State が `closed` の場合は AskUserQuestion で「再オープンして作�
 
 ### 1.2 親 Issue 検出
 
+候補消化 caller（`promotion_caller=batch-run`、または既存 log に対応する再開）では、caller が検証した単一 Issue と自セッション queue の cursor の番号を維持する。親検出・番号不一致・実体取得失敗なら、対応と未完了状態を保持して caller へ失敗を返す。子選択の質問や入力番号の置換を行わない。Resume Dispatch でステップ 1 を省く場合も、caller が同じ実体検証を完了していることを確認してから継続する。通常の standalone 親入力には以下の確認を維持する。
+
 以下のいずれかに該当すれば親 Issue として扱う:
 
 1. `trackedIssues.nodes` が空でない（GraphQL）
