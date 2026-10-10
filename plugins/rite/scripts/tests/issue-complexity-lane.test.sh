@@ -649,6 +649,35 @@ assert_not_contains "TC-6.10i: Projects の候補名を探した場所として�
 PJ_FAIL=1 run_pj '冒頭の散文行
 **complexity**: M'
 assert_contains "TC-6.10j: 崩れた宣言 + 取得失敗も complexity_absent" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
+pj_items "$(pj_item 11 Complexity=ZZZ_PJ)"
+run_pj '冒頭の散文行
+**complexity**: M'
+assert_contains "TC-6.10k: 崩れた宣言 + Projects 不正値も complexity_absent" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
+# 連携無効では、崩れた宣言があっても Projects を参照したとは言わない。
+pj_config false 11
+pj_items "$(pj_item 11 Complexity=S)"
+run_pj '冒頭の散文行
+**complexity**: M'
+assert_contains "TC-6.10l: 崩れた宣言 + 連携無効は未参照と示す" "$LANE_STDERR" "Projects 連携は無効のため Projects は参照していません"
+assert_not_contains "TC-6.10m: 崩れた宣言 + 連携無効で Projects の値を使っていないと言わない" "$LANE_STDERR" "使っていません"
+# rite-config.yml を読めない (ディレクトリになっている) ときは Projects を確かめられない。
+rm -f "$PJ_REPO/rite-config.yml"
+mkdir "$PJ_REPO/rite-config.yml"
+run_pj "$NO_DECL"
+assert_contains "TC-6.10n: 設定を読めなければ projects_fetch_failed" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=projects_fetch_failed"
+assert_contains "TC-6.10o: 設定を読めないことを WARNING で示す" "$LANE_STDERR" "rite-config.yml を読めないため Projects の Complexity を確認できません"
+run_pj '冒頭の散文行
+**complexity**: M'
+assert_contains "TC-6.10p: 崩れた宣言 + 設定を読めないは complexity_absent" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
+assert_contains "TC-6.10q: 設定を読めないときは Projects を参照していないと示す" "$LANE_STDERR" "rite-config.yml を読めないため Projects は参照していません"
+assert_not_contains "TC-6.10r: 設定を読めないときに Project 番号の無い案内を出さない" "$LANE_STDERR" "Projects # の"
+rmdir "$PJ_REPO/rite-config.yml"
+pj_config true 11
+# 応答に Issue が無いのは取得できなかった扱いで、Project 未登録 (値なし) とは区別する。
+printf '%s' '{"data":{"repository":{"issue":null}}}' > "$TEST_DIR/pj.json"
+run_pj "$NO_DECL"
+assert_contains "TC-6.10s: 応答に Issue が無ければ projects_fetch_failed" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=projects_fetch_failed"
+assert_not_contains "TC-6.10t: 応答に Issue が無いことを Project 未登録と言わない" "$LANE_STDERR" "Issue は Project に未登録"
 pj_items "$(pj_item 11 Complexity=S)"
 run_pj '## 複雑度
 

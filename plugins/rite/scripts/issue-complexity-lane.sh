@@ -464,14 +464,17 @@ if [ -z "$_complexity" ]; then
   esac
   # 探した場所は実際に参照したものだけを示す。連携が無効なのに「Projects を探した」と言うと、
   # 利用者は Projects 側の値を直しに行って空振りする。
-  if [ -n "$_decl_line" ] && [ "$_pj_state" != "disabled" ]; then
-    # 崩れた宣言があるときは Projects の値を見つけても使っていない。「探して見つからなかった」と
-    # 書くと、利用者は値の入った Projects 側を直しに行って空振りする。値は外部入力なので載せない。
-    _pj_where="Projects #${_pj_number} の Complexity フィールドは、本文 ${_decl_line} 行目の宣言を読めないため使っていません (本文の宣言を直してください)"
-  elif [ "$_pj_unset" -eq 1 ]; then
+  if [ "$_pj_unset" -eq 1 ]; then
     _pj_where="github.projects.project_number が未設定のため Projects は参照していません"
   elif [ "$_pj_state" = "disabled" ]; then
     _pj_where="Projects 連携は無効のため Projects は参照していません"
+  elif [ -z "$_pj_number" ]; then
+    # Project 番号が空のまま照会へ進む経路は無いので、ここは rite-config.yml を読めなかった場合。
+    _pj_where="rite-config.yml を読めないため Projects は参照していません"
+  elif [ -n "$_decl_line" ]; then
+    # 崩れた宣言があるときは Projects の値を見つけても使っていない。「探して見つからなかった」と
+    # 書くと、利用者は値の入った Projects 側を直しに行って空振りする。値は外部入力なので載せない。
+    _pj_where="Projects #${_pj_number} の Complexity フィールドは、本文 ${_decl_line} 行目の宣言を読めないため使っていません (本文の宣言を直してください)"
   else
     _pj_where="Projects #${_pj_number} の Complexity フィールド (候補名: $(printf '%s' "$_pj_candidates" | tr '\n' ',' | sed 's/,/, /g' | neutralize_ctrl --keep-newline))"
     [ "$_pj_not_on_board" -eq 1 ] && _pj_where="${_pj_where} — Issue は Project に未登録"
