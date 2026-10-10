@@ -236,16 +236,17 @@ fi
 | `n_warnings` | 0 | ステップ 8.5 で Lint の検出件数合計（`n_stale` / `n_unregistered_raw` を除く 4 カテゴリ）を加算。Lint 実行異常は件数への fallback ではなく停止する |
 | `n_lint_anomaly` | 0 | 正常経路では 0。Lint 実行異常は完了レポートへ進まず停止 |
 | `n_dedup_removed` | 0 | ステップ 6 の各 helper 呼び出しが出力する `dedup_removed=` の値を加算 |
-| `n_contradictions` / `n_stale` / `n_orphans` / `n_missing_concept` / `n_unregistered_raw` / `n_broken_refs` | 0 | ステップ 8.3 step 2 (6 フィールド regex match) で Lint stdout から抽出 |
+| `n_contradictions` / `n_stale` / `n_orphans` / `n_missing_concept` / `n_unregistered_raw` / `n_broken_refs` | 0 | ステップ 8.3 step 2 (6 フィールド regex match) で Lint stdout から抽出（8.3.r で lint を再実行したときは再実行の値で置き換える） |
+| `n_contradictions_resolved` | 0 | ステップ 8.3.r で訂正した組の数 |
 
-`n_stale` と `n_unregistered_raw` と `n_dedup_removed` は informational で `n_warnings` には加算しない。`auto_lint=false` で 8.2-8.5 が skip されても、本ステップの 0 初期化でステップ 9 の placeholder 残留は起きない。
+`n_stale` と `n_unregistered_raw` と `n_dedup_removed` と `n_contradictions_resolved` は informational で `n_warnings` には加算しない。`auto_lint=false` で 8.2-8.5 が skip されても、本ステップの 0 初期化でステップ 9 の placeholder 残留は起きない。
 rationale: references/rationale.md#informational-counters
 
 ### 2.1.c 変更一覧の保持
 
 ステップ 1.4 の ingest lock を保持したまま、`state-path-resolve.sh` が返す共有 root の `.rite/state/wiki-lint-pending.json` を `changed_pages_file` とする。内容は repo-root 相対のページパスを持つ JSON 配列。新規取り込みは最初の Raw Source / ページ変更**より前**に `[]` を Write して読み直す。既存ファイルがある場合は中断した比較対象として読み、破棄・空への再初期化をしない。読取/JSON 解析/保存失敗は比較不能として停止する。
 
-ページの Write/Edit に進む前に、その書き込み先パスを重複除去して一覧へ保存・読み直し、保存できたことを確認してから書く（書き込み途中の中断でも検査対象を失わない）。ページ書き込みが失敗した場合は取り込みを止め、準備済み対象を保持する。ステップ 8.2 に進む前には、全対象の書き込み成功・実在を確認する。新規/更新/複数 raw の統合だけを含め、skip した raw、index.md、log.md は含めない。変更リストはステップ 4 の推測カウンタや `ingested: false` の再列挙で作り直さない。
+ページの Write/Edit に進む前に、その書き込み先パスを重複除去して一覧へ保存・読み直し、保存できたことを確認してから書く（書き込み途中の中断でも検査対象を失わない）。ページ書き込みが失敗した場合は取り込みを止め、準備済み対象を保持する。ステップ 8.2 に進む前には、全対象の書き込み成功・実在を確認する。新規/更新/複数 raw の統合（ステップ 8.3.r の訂正では訂正するページ）だけを含め、skip した raw、index.md、log.md は含めない。変更リストはステップ 4 の推測カウンタや `ingested: false` の再列挙で作り直さない。
 
 再開はこの一覧を引き継ぎ、まだ書き込みが済んでいない対象があれば既存作業メモリと raw 本文から書き込みを完了させる。既に `ingested: true` の raw によるページも比較し終えるまで対象に残す。複数セッション間も ingest lock の下で扱い、一覧があるのに raw 0 件として早期終了しない。`auto_lint=false` の明示設定ではこの一覧を自動検査成功として消さず、再度有効化したときに検査する。
 rationale: references/rationale.md#pending-comparison
@@ -445,7 +446,7 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 - **混在**: 同一サイクルに補強 raw と改訂 raw の両方がある場合は `generated` のみ更新し、`verified` へ追記しない
 - **`sources` 配列追記**: 新しい Raw Source への参照を必ず追加する。追加する各エントリは `- type: "{type}"` / `  resource: "raw/{type}/{filename}"` の形式とし、**`resource` は必ず Raw Source のファイルパス形式 (`raw/{type}/{filename}`、wiki-root 起点)** にする。raw frontmatter の `source_ref` フィールド値（PR 識別子形式、例: `pr-1143`）を `resource` に転記してはならない
 - **`generated` 更新**: 現在の ISO 8601 タイムスタンプを `generated.at` に書く。`<model-id>` はセッションが報告する実行モデル ID。特定できない場合は該当 write を失敗させる（既定値を握り込まない）
-- **`verified` / `status` / `stale_after`**: 実イベント時のみ。空の `verified: []` は書かない。`status` はページ全文が撤回されたときだけ `deprecated`（現行 ingest の新規/追記/統合では書かない）。`stale_after` は本文に絶対日付拘束がある経験則にのみ `YYYY-MM-DD` で書く。`human:` prefix は書かない
+- **`verified` / `status` / `stale_after`**: 実イベント時のみ。空の `verified: []` は書かない。`status` はページ全文が撤回されたときだけ `deprecated`（ステップ 8.3.r でページの結論全体が後の raw に否定されたときだけ書き、新規/追記/統合では書かない）。`stale_after` は本文に絶対日付拘束がある経験則にのみ `YYYY-MM-DD` で書く。`human:` prefix は書かない
 - **`description` の新設・更新**: 本サイクルで概要が変わった場合は frontmatter `description` を更新する（未設定なら新設してよい）。値は上表の番号なし Why 要約をそのまま使い、独自の短縮・言い換えをしない。ステップ 6 の helper はこの値を index サマリー列へ渡す
 rationale: references/rationale.md#source-ref-path-form
 rationale: references/rationale.md#summary-provenance
@@ -520,6 +521,8 @@ rationale: references/rationale.md#related-page-literal
 保存一覧を使った再開では、ステップ 8 へ直行しない。既存 ingest lock を保持したまま、Wiki のローカル commit と未 commit 差分を読み、`ingested: true` 化した未 commit raw の全文、保存一覧のページ本文、index と log を照合する。raw の変更だけでページが未作成の場合も対象に含める。
 
 未 commit raw ごとに、ステップ 3/4 の統合判断とステップ 5.0 手順 1-7 を照合し、未実施の書き込みを完了する。既に書いた本文・sources・index・log は読み直して内容を確認し、同じ追記や記録を重複させない。書き込み先は引き続き 2.1.c で保存してから書く。skip は raw の skip 状態と log を確認する。raw と成果物の対応や統合の完了を確定できなければ、比較不能として停止し一覧を残す。
+
+保存一覧のページに未 commit 差分があり、対応する未 commit raw が無い場合は、ステップ 8.3.r の訂正の途中とみなす。差分（書き換えた記述・`sources` に足した後の raw・index・log）を読み直して訂正を完了させる。訂正の対象と内容を確定できなければ比較不能として停止する。
 
 回収後は通常と同じステップ 5.0.n → 5.1 / 5.2 を実行し、追加・更新した本文・index・log と raw を commit する。既に commit 済みなら変更なしを確認する。その後だけステップ 8 へ進む。保存一覧にあるページの今回の本文がローカル commit に含まれることを読み戻して確認し、未 commit のまま古い本文を比較しない。
 
@@ -956,7 +959,7 @@ rationale: references/rationale.md#skip-cycle-no-3a
 
 ## ステップ 7: log.md の追記
 
-`.rite/wiki/log.md` に OKF 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、**新しい順** = 先頭が最新。v0.2 §9 は v0.1 から不変）で **append-only** に変更履歴を追記する。skip 等の機械可読状態は raw frontmatter の `ingest_status`（ステップ 5）が SoT。
+`.rite/wiki/log.md` に OKF 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、**新しい順** = 先頭が最新。v0.2 §9 は v0.1 から不変）で **append-only** に変更履歴を追記する。skip 等の機械可読状態は raw frontmatter の `ingest_status`（ステップ 5）が SoT。例外は lint エントリの「未解消の矛盾」の行で、lint が書き、次回の lint とステップ 8.3.r が読む。
 rationale: references/rationale.md#log-human-only
 
 **追記ルール**:
@@ -1003,7 +1006,7 @@ LLM は `skill: "rite:wiki-lint", args: "--auto --changed-pages-file {changed_pa
 - 正常な比較完了時のみ exit 0。比較不能は `WIKI_CONTRADICTION_CHECK=failed; reason=...` と `ERROR:` を返し、正常 return sentinel は出さない。`changed_pages_file` は 2.1.c の絶対パスを渡す。全対象の書き込み成功を確認できない、または一覧を渡せない場合は呼出しを成功扱いにせず停止する。
 rationale: references/rationale.md#lint-parser-first-line
 
-呼び出し時の CWD は常に dev ブランチ。wiki-lint のステップ 8.2 が log.md の書き込み先を決め（`separate_branch` では worktree 内）、wiki-lint のステップ 8.3 が追記して `wiki-lint-log-commit.sh` で commit する（`--auto` かつ `separate_branch` では commit のみで、push は本スキルのステップ 8.6 が行う）。Skill return 後、本スキルの 8.3 → 8.4 → 8.5 → 8.6 → ステップ 9 の順。
+呼び出し時の CWD は常に dev ブランチ。wiki-lint のステップ 8.2 が log.md の書き込み先を決め（`separate_branch` では worktree 内）、wiki-lint のステップ 8.3 が追記して `wiki-lint-log-commit.sh` で commit する（`--auto` かつ `separate_branch` では commit のみで、push は本スキルのステップ 8.6 が行う）。Skill return 後、本スキルの 8.3 → 8.3.r → 8.4 → 8.5 → 8.6 → ステップ 9 の順。
 
 ### 8.3 Lint 実行結果の取得とパース
 
@@ -1023,8 +1026,36 @@ LLM は Skill 応答テキスト (= `lint.md` ステップ 9.2 の最終 stdout)
    | `n_unregistered_raw` | group 5 |
    | `n_broken_refs` | group 6 |
 
-正常時は 2 で得た既存 6 フィールドを使い、ステップ 8.4 へ進む。比較対象/候補/除外/本文比較数は lint の log.md エントリを完了レポートへ転記する。検出された矛盾の WARNING と、検査を完了できなかったエラーを区別する。
+正常時は 2 で得た既存 6 フィールドを使い、ステップ 8.3.r へ進む。比較対象/候補/除外/本文比較数は lint の log.md エントリを完了レポートへ転記する（8.3.r で lint を再実行したときは両方のエントリの件数を載せる）。検出された矛盾の WARNING と、検査を完了できなかったエラーを区別する。
 rationale: references/rationale.md#lint-parser-first-line
+
+### 8.3.r 矛盾の解消
+
+8.3 の `n_contradictions` が 0 なら本節を飛ばして 8.4 へ進む。1 以上なら、lint が commit した直近エントリの未解消の矛盾を読む:
+
+```bash
+bash {plugin_root}/hooks/scripts/wiki-lint-open-contradictions.sh --branch-strategy "{branch_strategy}" --wiki-branch "{wiki_branch}"
+```
+
+非 0 終了、または `n_open=` が 8.3 の `n_contradictions` と一致しない場合は、8.3 の停止処理（原因表示・lock 解放・`[CONTEXT] WIKI_CONTRADICTION_CHECK=failed; reason=open_contradictions_unreadable`・継続 handoff の解除）で止まる。
+
+marker block の各組を上から first-match で判定する:
+
+| 判定 | 扱い |
+|---|---|
+| 各ページで矛盾する記述の出典 raw を `sources[].resource` から特定でき、2 つの raw の frontmatter `source_ref` が同じで `captured_at` が異なり、後の raw が先の raw の教訓を誤りと述べている | **解消**: 先の raw を出典とするページ（先のページ）を訂正する |
+| 上記以外（PR が違う / 出典 raw を特定できない / 先後が決まらない / 否定と断定できない） | **未解消**: ページを変えない。記録は lint のエントリに残り、次回以降も報告される |
+
+訂正の手順:
+
+1. 最初の訂正の前に、2.1.c の変更一覧を訂正するページだけの配列に置き換えて保存・読み直す（8.2 の比較は完了済み）。以降の書き込みも 2.1.c の保存してから書く規則に従う
+2. 先のページを 4.2 の「統合」として直す: 先の教訓の記述を後の raw の結論に合わせて書き換え、`generated` を更新し、`sources` に後の raw を追記する。ページの結論全体が否定されたときは frontmatter に `status: deprecated` を付け、概要と `description` を、後の検証で撤回されたことと後の教訓のページへのリンクに書き換える
+3. ステップ 5.0 手順 6（index）と手順 7（log の `Update` bullet。説明は「同じ PR の後の検証で訂正」）を行う
+4. 全組を直したら 5.0.n → 5.1 / 5.2 で 1 回 commit する。メッセージは commit 規約の適用後の全文で、未指定時の既定は `docs(wiki): correct pages superseded by a later raw of the same PR`
+5. 訂正した組の数を `n_contradictions_resolved` に入れる
+
+1 組以上訂正したら、8.2 と同じ呼出しで `/rite:wiki-lint --auto --changed-pages-file {changed_pages_file}` を **1 回だけ** 再実行する。`separate_branch` では訂正を commit した後のローカル Wiki commit を lint が読む ref にする。応答は 8.3 と同じ手順で検査・パースし、その 6 フィールドで 8.3 の値を置き換える（以降の `n_contradictions` は未解消の件数）。再実行の失敗は 8.3 の停止処理で止まる。再実行の結果に矛盾が残っても本節を繰り返さない。訂正が 0 組なら再実行しない。
+rationale: references/rationale.md#contradiction-resolution
 
 ### 8.4 Ingest 完了レポートへの統合
 
@@ -1049,7 +1080,7 @@ n_warnings += n_contradictions + n_orphans + n_missing_concept + n_broken_refs
 **`n_stale` と `n_unregistered_raw` は加算しない**。informational 指標として `n_warnings` には算入せず、完了レポートに件数のみ表示する — `n_stale` は `Lint 結果:` 行（ステップ 8.4 で定義）に、`n_unregistered_raw` は同行と未登録 raw 専用行に現れる。どちらも `{wiki_warnings_line}` の内訳には含めない。
 rationale: references/rationale.md#n-unregistered-not-warning
 
-**詳細な修正対応**: 検出結果の詳細確認は、Ingest 完了後に `/rite:wiki-lint`（`--auto` なし）で再実行して取得する。
+**詳細な修正対応**: 検出結果の詳細確認は、Ingest 完了後に `/rite:wiki-lint`（`--auto` なし）で再実行して取得する。8.3.r で解消できなかった矛盾は log.md に未解消として残り、解消されるまで以降の lint が報告し続ける。
 
 ### 8.6 Wiki push の集約（wiki push batch/defer）
 
@@ -1100,7 +1131,7 @@ fi
 
 ### 9.0.c 比較対象の解放
 
-自動 Lint の正常 return と比較完了の記録を確認し、ステップ 8.6 が終了した場合だけ、lock を保持したまま `changed_pages_file` を削除する。削除失敗は比較対象を保持して停止し、完了 signal は出さない。`auto_lint=false` では削除しない。検査未完了の保存一覧を「raw 処理済み」の理由で消してはならない。
+自動 Lint の正常 return と比較完了の記録（8.3.r で再実行したときは再実行の return と記録）を確認し、ステップ 8.6 が終了した場合だけ、lock を保持したまま `changed_pages_file` を削除する。削除失敗は比較対象を保持して停止し、完了 signal は出さない。`auto_lint=false` では削除しない。検査未完了の保存一覧を「raw 処理済み」の理由で消してはならない。
 
 ### 9.0 Ingest セッション lock の解放
 
@@ -1158,6 +1189,7 @@ Wiki Ingest が完了しました。
 - 更新したページ: {n_pages_updated} 件
 - スキップした Raw Source: {n_skipped} 件
 - {wiki_warnings_line}
+- {contradiction_resolution_line}
 - 未登録 raw（skip 済、warnings 不加算）: {n_unregistered_raw} 件
 - {wiki_push_line}
 
@@ -1191,6 +1223,13 @@ Wiki Ingest が完了しました。
 | `false` (skip 経路) | `Wiki 品質警告: スキップ (auto_lint disabled)` (内訳は表示しない) |
 
 「未登録 raw」行は `auto_lint=false` の場合も `0` 件として展開する (ステップ 2.1 で 0 初期化済みの値)。
+
+`{contradiction_resolution_line}` の展開ルール:
+
+| `auto_lint` | 展開 |
+|-------------|------|
+| `true` | `矛盾の解消: 解消 {n_contradictions_resolved} 件 / 未解消 {n_contradictions} 件（未解消は log.md に記録され、以降の lint が報告し続ける）` |
+| `false` | `矛盾の解消: スキップ (auto_lint disabled)` |
 
 **等式**: `n_warnings = n_contradictions + n_orphans + n_missing_concept + n_broken_refs + n_lint_anomaly`。正常時は `n_lint_anomaly=0`。比較不能時は 0 fallback や完了レポートへ進まず停止する。
 
@@ -1236,7 +1275,7 @@ rationale: references/rationale.md#returned-to-caller
 
 | エラー | 対処 |
 |--------|------|
-| 自動矛盾検査の入力/一覧保存/書き込み/選定/比較失敗、応答不明 | lock を解放し、保存一覧と local commit を保持して停止。`WIKI_CONTRADICTION_CHECK=failed` を caller へ渡す。正常完了 signal を出さない |
+| 自動矛盾検査の入力/一覧保存/書き込み/選定/比較失敗、応答不明、8.3.r の未解消の読出失敗・訂正の書き込み失敗・lint 再実行の失敗 | lock を解放し、保存一覧と local commit を保持して停止。`WIKI_CONTRADICTION_CHECK=failed` を caller へ渡す。正常完了 signal を出さない |
 | `wiki.enabled: false` | 早期 return（ステップ 1.1。版数検査・migration とも不発動） |
 | `wiki-okf-migrate.sh` 非ゼロ（ステップ 1.5） | exit 1 で fail-loud。`okf_version` は bump されない。原因除去後に再実行 |
 | `lib/wiki-config.sh` 読込失敗 (helper 不在 / 解決失敗) | exit 1 で fail-fast（`[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1`。設定を判定できないまま無効扱いへ倒さない。plugin のインストール状態を確認するか `/rite:setup` を再実行、ステップ 1.1） |

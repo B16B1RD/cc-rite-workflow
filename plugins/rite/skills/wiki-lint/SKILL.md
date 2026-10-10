@@ -37,7 +37,7 @@ rationale: references/rationale.md#helper-delegation
 | **未登録 raw (unregistered_raw)** | `ingested: true` で `sources.ref` 未登録だが、raw frontmatter に `ingest_status: skipped` 記録がある raw。意図的に経験則化しなかった件数の informational 指標 | **No** (`n_warnings` 不加算) |
 | **番号参照 (descriptive_number_ref)** | ページ本文・`## ソース` 節の bullet・`index.md` のエントリサマリー・`log.md` に残った Issue/PR 番号参照。検出文法は `number-reference-check.sh` に委譲する（3-4 桁の番号トークン。キーワードの有無を問わない）。Wiki は番号の受け皿ではなく Why 散文の場のため surface する。frontmatter の `sources:` ブロック・コードフェンス / スパン・TODO/FIXME は除外。`raw/**` / `SCHEMA.md` は走査しない（意図的除外） | **No** (`n_warnings` 不加算、ステップ 7.5) |
 
-**設計契約**: lint は **読み取り専用** (`log.md` への追記を除く)。**原則 exit 0**で終了し、検出件数・事前チェック失敗 (下記 (c) を除く)・ブランチ読取失敗は非ブロッキングとして扱う。例外は (a) `branch_strategy` 未知値検出 (ステップ 2.2 / 4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.2 / 8.3 で同型 fail-fast。うち 4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.3 は helper 内で実行)、(b) `{mode}` / `{pages_list}` / `{log_entry}` / counter 等の Claude placeholder 残留検知 (各 site で同型 fail-fast)、(c) `lib/wiki-config.sh` の source 失敗 (ステップ 1.1)、(d) `--auto` の変更一覧・索引・候補本文・比較の取得/完了失敗（ステップ 1.0 / 3）、(e) `index.md` の登録行検査 (awk) の失敗（HTML コメントが閉じられない場合を含む。ステップ 5 helper 内）。
+**設計契約**: lint は **読み取り専用** (`log.md` への追記を除く)。**原則 exit 0**で終了し、検出件数・事前チェック失敗 (下記 (c) を除く)・ブランチ読取失敗は非ブロッキングとして扱う。例外は (a) `branch_strategy` 未知値検出 (ステップ 2.2 / 3 / 4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.2 / 8.3 で同型 fail-fast。うち 3 / 4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.3 は helper 内で実行)、(b) `{mode}` / `{pages_list}` / `{log_entry}` / counter 等の Claude placeholder 残留検知 (各 site で同型 fail-fast)、(c) `lib/wiki-config.sh` の source 失敗 (ステップ 1.1)、(d) `--auto` の変更一覧・記録済みの未解消の矛盾・索引・候補本文・比較の取得/完了失敗（ステップ 1.0 / 3）、(e) `index.md` の登録行検査 (awk) の失敗（HTML コメントが閉じられない場合を含む。ステップ 5 helper 内）。
 rationale: references/rationale.md#fail-loud-contract
 
 矛盾検出 (ステップ 3) と欠落概念検出 (ステップ 6) は LLM のセマンティック読解に依存する。`{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md) で解決する。共通パターンは [Wiki Patterns](../../references/wiki-patterns.md) を参照。
@@ -141,7 +141,7 @@ rationale: references/rationale.md#wiki-config-opt-out
 **Wiki が無効の場合**: 早期 return (`--auto` モードでは ステップ 9.2 の 3 行出力契約を必ず守る):
 
 ```bash
-# Claude placeholder {mode} 残留 fail-fast gate (glob pattern 版、同型 gate: ステップ 1.1 / 1.3 / 8.1 + helper 内 (4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.3))
+# Claude placeholder {mode} 残留 fail-fast gate (glob pattern 版、同型 gate: ステップ 1.1 / 1.3 / 8.1 + helper 内 (3 / 4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.3))
 mode="{mode}"
 case "$mode" in
   "{"*"}")
@@ -318,7 +318,23 @@ rationale: references/rationale.md#empty-lists-keep-7-5
 
 自動は以下の二段階を実施する。陳腐化・孤児・欠落概念・リンク・番号参照の `pages_list` / `raw_list` は全体のまま保持し、変更対象や候補の集合に置き換えない。
 
-1. **変更本文**: 1.0 の配列にある各パスが現在の Wiki に実在することを確認し、同じ取り込みの書き込み後の全文と frontmatter `domain` を読む。`separate_branch` は取り込みのローカル Wiki commit を固定した ref（`origin/wiki` は未 push の変更を含まないので使わない）を `git show` で読む。`same_branch` は書き込み済みの実ファイルを読む。以降の index と候補も同じ状態を使う。空 `[]` は `changed=0; screened=0; candidates=0; excluded=0; compared=0`、理由「対象なし」を記録し、他の検査へ進む。欠落・不存在・本文/domain 読取不能は停止。
+0. **記録済みの未解消**: 変更本文を読む前に、commit 済み log.md の直近の lint エントリが記録した未解消の矛盾を読む:
+
+   ```bash
+   bash {plugin_root}/hooks/scripts/wiki-lint-open-contradictions.sh --branch-strategy "{branch_strategy}" --wiki-branch "{wiki_branch}"
+   ```
+
+   非 0 終了は stderr の ERROR を表示し、`WIKI_CONTRADICTION_CHECK=failed; reason=open_contradictions_unreadable` で停止する（記録を読めないまま未解消 0 件として進めない）。`---open_contradictions_begin---` / `---open_contradictions_end---` 間の各行は `{page_a}|{page_b}|{分類}|{理由}` で、最初の 3 つの `|` で分け、残り全体を理由とする（理由が `|` を含んでも分割しない）。各組を、手順 1 と同じ状態の Wiki と 1.0 の変更一覧で次の 3 つに分ける。ページの実在確認そのものが失敗したら停止する:
+
+   | 組の状態 | 扱い |
+   |---|---|
+   | 両ページが実在し、どちらも変更一覧に無い | **引継ぎ**: 本文を比べ直さず、helper の出力の分類・理由のまま 3.3 の矛盾として数える |
+   | 両ページが実在し、どちらかが変更一覧にある | **再判定**: 手順 4 の本文比較に必ず含める（手順 3 で除外しない） |
+   | どちらかのページが実在しない | **解消**: 矛盾として数えず、log の lint エントリに解消の理由（ページ消失）を残す |
+
+   rationale: references/rationale.md#open-contradictions-carry
+
+1. **変更本文**: 1.0 の配列にある各パスが現在の Wiki に実在することを確認し、同じ取り込みの書き込み後の全文と frontmatter `domain` を読む。`separate_branch` は取り込みのローカル Wiki commit を固定した ref（`origin/wiki` は未 push の変更を含まないので使わない）を `git show` で読む。`same_branch` は書き込み済みの実ファイルを読む。以降の index と候補も同じ状態を使う。空 `[]` は手順 2-4 を行わず `changed=0; screened=0; candidates=0; excluded=0; compared=0`、理由「対象なし」を記録し、他の検査へ進む。手順 0 の引継ぎは空 `[]` でも 3.3 の矛盾として数える。欠落・不存在・本文/domain 読取不能は停止。
 2. **要約照合**: 同じ状態の `index.md` の全登録行を読み、変更ページの分類に関わらず、**全分類の全ページの一行要約**を、それぞれ変更本文の論点・条件・結論と照合する。表形式と登録済みの箇条書き形式を扱う。ページパスで重複を除き、複数の要約がある場合はすべて考慮する。ページ一覧と index の登録先を照合して、どの分類のページも一覧から脱落していないか確認する。分類は frontmatter `domain` を基準にし、候補選定前の分類確認は frontmatter のみでよい。保存先カテゴリだけで domain を代用しない。index の分類との不一致・未登録ページ・要約欠落/読取失敗は停止し、未検査を 0 件として通さない。
 3. **候補選定**: 同じ論点・対象・条件に関わる要約は候補へ残す。表現の違い、否定・逆転、タイトル/tag の不一致だけでは除外しない。曖昧な要約や論点の重なりを否定できない要約も候補とする。除くのは、本文の論点と異なることを要約から判断できる組み合わせだけ。件数上限・top-K・固定類似度閾値で候補を打ち切らない。複数の変更ページは各ページについて選定し、変更ページ同士の組も漏らさず扱う。自己比較は除外し、同じ組は一度だけ判定する。
 4. **候補本文**: 選定した全候補の概要・詳細を含む全文を読み、変更本文との候補全ペアを 3.2 に従って判定する。要約照合だけを本文比較済みと報告しない。候補ゼロでも、全要約を照合して論点が異なると確認した場合に限り正常終了できる。
@@ -338,7 +354,7 @@ rationale: references/rationale.md#two-stage-auto-comparison
 
 `confidence` が両方 `low` でも優先度を下げるだけで対象から除かない。方針逆転には必ず両ページの詳細の該当箇所を引用し、成立条件の違いによる見かけの対立を区別する。
 
-自動では、重複除去した pair の数として `screened`（要約照合対象）/ `candidates`（本文比較対象）/ `excluded`（論点が異なるため省いた組）/ `compared`（本文比較完了）を記録する。変更同士の組は本文を確認して候補へ加える。`screened = candidates + excluded` と `compared = candidates` を実際の対象・判定記録と照合する。未処理の組が残れば停止する。完了した場合だけ `WIKI_CONTRADICTION_CHECK=complete`、候補/除外/比較件数と実行時間・読取量を log.md の lint エントリへ残す（明示空の「対象なし」も含む）。既存の 6 フィールド `Lint:` と 3 行の正常 return 形式は変えない。
+自動では、重複除去した pair の数として `screened`（要約照合対象）/ `candidates`（本文比較対象）/ `excluded`（論点が異なるため省いた組）/ `compared`（本文比較完了）を記録する。変更同士の組は本文を確認して候補へ加える。3.1 手順 0 の再判定の組は `candidates` / `compared` に含め、引継ぎの組は `carried`、解消の組は `resolved` として別に記録する。`screened = candidates + excluded` と `compared = candidates` を実際の対象・判定記録と照合する。未処理の組が残れば停止する。完了した場合だけ `WIKI_CONTRADICTION_CHECK=complete`、候補/除外/比較件数と実行時間・読取量を log.md の lint エントリへ残す（明示空の「対象なし」も含む）。既存の 6 フィールド `Lint:` と 3 行の正常 return 形式は変えない。
 
 ### 3.3 検出結果の記録
 
@@ -354,7 +370,7 @@ rationale: references/rationale.md#two-stage-auto-comparison
 }
 ```
 
-`subcategory` は `タイトル衝突` / `方針逆転` / `重複情報` のいずれかを使用する（ステップ 9 の表示で使用）。
+`subcategory` は `タイトル衝突` / `方針逆転` / `重複情報` のいずれかを使用する（ステップ 9 の表示とステップ 8.1 の未解消の矛盾の行で使用）。3.1 手順 0 の引継ぎの組も同じ形で append し `n_contradictions` を +1 する（`subcategory` は helper の出力の分類、`detail` は同じ行の理由）。
 
 ---
 
@@ -749,6 +765,17 @@ rationale: references/rationale.md#okf-log-append
 
 `{lint_action}` は `lint:clean` / `lint:warning`（下記判定基準・ステップ 8.1 bash の `[CONTEXT] lint_action=` emit 参照）。既存の日付見出し・bullet は改変しない（append-only）。
 
+**未解消の矛盾の行**（自動・手動とも）: `n_contradictions` に数えた矛盾（3.1 手順 0 の引継ぎを含む）を、1 組 1 行で lint bullet の直下に書く。0 件なら書かない。この行の集合が次回の lint と `/rite:wiki-ingest` の読む未解消の記録になる:
+
+```
+  * 未解消の矛盾: [error-handling](pages/patterns/error-handling.md) ↔ [error-silent](pages/anti-patterns/error-silent.md) — 方針逆転: error-handling は try-catch ラップを勧め、error-silent は同じ形を避けるべきとする
+```
+
+- 書式は `  * 未解消の矛盾: [{slug_a}](pages/{domain}/{slug}.md) ↔ [{slug_b}](pages/{domain}/{slug}.md) — {subcategory}: {理由}`。`{subcategory}` は 3.3 の 3 値、理由は改行を含まない 1 文
+- 行数は bullet の `contradictions=` と一致させる。次回の読出 helper が照合し、一致しなければ止まる
+- PR 番号や raw の `source_ref` の値を書かない（8.3 の番号参照検査が拒否する）
+rationale: references/rationale.md#open-contradictions-carry
+
 自動では同じ bullet に 3.2 の完了状態・件数・時間・読取量を含め、下位 bullet に pair ごとの選定/除外理由と比較結果を保存する。候補ゼロ・明示空でも記録する。8.3 の `log_entry` はこの情報を含む全文を生成し、記録・commit に失敗したら `WIKI_CONTRADICTION_CHECK=failed` と `ERROR:` で停止して正常 return を出さない。
 
 **`lint:clean` / `lint:warning` の判定基準** (`n_stale` / `n_unregistered_raw` は informational で判定に含めない):
@@ -772,7 +799,7 @@ n_broken_refs={n_broken_refs}
 # 参考: n_stale={n_stale} — informational のため判定式から意図的に除外
 # 参考: n_unregistered_raw={n_unregistered_raw} — informational のため判定式から意図的に除外
 
-# Placeholder residue fail-fast gate (同型 gate: ステップ 1.1 / 1.3 / 8.1 + helper 内 (4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.3)): LLM が literal substitute を忘れると
+# Placeholder residue fail-fast gate (同型 gate: ステップ 1.1 / 1.3 / 8.1 + helper 内 (3 / 4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.3)): LLM が literal substitute を忘れると
 # `[ "{n_contradictions}" -gt 0 ]` が rc=2 を返し、set -o pipefail のみでは検知できず else 分岐に
 # 流れて `lint_action="lint:clean"` が silent emit される fail-silent regression を防ぐ。
 for _n_var in n_contradictions n_orphans n_missing_concept n_broken_refs; do
@@ -831,7 +858,7 @@ echo "wiki_lint_msg_file=${TMPDIR:-/tmp}/rite-wiki-lint-msg-$(date +%s)-${RANDOM
 |-------------|--------|------|
 | `{log_path}` | ステップ 8.2 bash block の `echo "log_path=$log_path"` | LLM は会話コンテキストから `log_path=` 行を grep し literal substitute |
 | `{wiki_lint_msg_file}` | ステップ 8.2 bash block の `echo "wiki_lint_msg_file=..."` | LLM は `wiki_lint_msg_file=` 行の絶対パスを literal substitute する（Write はシェル変数を展開できない） |
-| `{log_entry}` | **LLM が ステップ 8.1 の OKF bullet 形式から組み立てる** | LLM は ステップ 1.4 / 3-7 で蓄積された Lint カウンタ値を 6 フィールド形式 (`contradictions={n}, stale={n}, ...`) に埋め込み、`* **{lint_action}** — {6 フィールド}` の OKF bullet を生成する。**`{lint_action}` は LLM 独自判定ではなく、ステップ 8.1 bash block が emit する `[CONTEXT] lint_action=...` 行を first-match で抽出し、`=` 右辺の enum 値 (`lint:clean` / `lint:warning`) を literal 代入する**。追記時は今日の日付見出し `## YYYY-MM-DD` がログ先頭に無ければ追加し（新しい順）、その配下に bullet を append する |
+| `{log_entry}` | **LLM が ステップ 8.1 の OKF bullet 形式から組み立てる** | LLM は ステップ 1.4 / 3-7 で蓄積された Lint カウンタ値を 6 フィールド形式 (`contradictions={n}, stale={n}, ...`) に埋め込み、`* **{lint_action}** — {6 フィールド}` の OKF bullet を生成し、直下に 8.1 の未解消の矛盾の行を続ける。**`{lint_action}` は LLM 独自判定ではなく、ステップ 8.1 bash block が emit する `[CONTEXT] lint_action=...` 行を first-match で抽出し、`=` 右辺の enum 値 (`lint:clean` / `lint:warning`) を literal 代入する**。追記時は今日の日付見出し `## YYYY-MM-DD` がログ先頭に無ければ追加し（新しい順）、その配下に bullet を append する |
 
 **書き込み手順**:
 
@@ -878,7 +905,7 @@ Wiki Lint が完了しました。
 {issues_list_formatted}
 
 次のステップ:
-- 矛盾は手動で該当ページを統合してください
+- 矛盾は log.md に未解消として記録され、解消されるまで以降の lint が報告し続けます。同じ PR の後の raw が先の教訓を否定した矛盾は /rite:wiki-ingest が先のページを訂正して解消します。それ以外は該当ページを統合したうえで /rite:wiki-lint を再実行すると、全ページの比較で記録から外れます
 - 陳腐化ページは informational です。内容が古いと判断した場合のみ /rite:wiki-ingest で新しい Raw Source を統合してください（`generated.at` は最終内容変更時刻であり、内容を変えずに日付だけ進めてはなりません）
 - 孤児ページは index.md に追加するか、不要なら削除してください
 - index 登録不整合は `index.md` を直接編集して、節外の登録行を `## ページ一覧` 節へ移すか削除し、重複行を 1 行にしてください（lint は修正しません）
@@ -988,11 +1015,11 @@ rationale: references/rationale.md#returned-to-caller
 
 - **原則 exit 0**: 検出件数・事前チェック失敗 (下記 helper 解決失敗を除く)・ブランチ読取失敗のいずれも非ブロッキング
 - **例外 (`exit 1` fail-fast)**:
-  - 自動矛盾検査の入力欠落・不正、索引/本文/domain の読取失敗、選定または候補比較の未完了（1.0 / 3）。正常 sentinel や clean log は出さない。
+  - 自動矛盾検査の入力欠落・不正、記録済みの未解消の矛盾の読出失敗、索引/本文/domain の読取失敗、選定または候補比較の未完了（1.0 / 3）。正常 sentinel や clean log は出さない。
   - `lib/wiki-config.sh` の source 失敗 (ステップ 1.1、`WIKI_CONFIG_HELPER_UNAVAILABLE`)
-  - `branch_strategy` 未知値 (ステップ 2.2 / 8.2 + helper 内 (4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.3) で同型)
+  - `branch_strategy` 未知値 (ステップ 2.2 / 8.2 + helper 内 (3 / 4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.3) で同型)
   - `{mode}` placeholder 残留 (ステップ 1.1 / 1.3 + ステップ 8.3 helper 内)
-  - helper 委譲ステップ (4 / 5 / 6.0 / 6.2 / 7 / 7.5) の placeholder 残留 (`{branch_strategy}` / `{wiki_branch}` / `{stale_days}` / `{pages_list}` + 6.2 / 7.5 の partial pollution gate。各 helper 内で検知)
+  - helper 委譲ステップ (3 / 4 / 5 / 6.0 / 6.2 / 7 / 7.5) の placeholder 残留 (`{branch_strategy}` / `{wiki_branch}` / `{stale_days}` / `{pages_list}` + 6.2 / 7.5 の partial pollution gate。各 helper 内で検知)
   - ステップ 8.1 の counter placeholder (`n_*` 4 種) 残留 / 非整数検知
   - ステップ 8.3 helper の fail-fast (`{branch_strategy}` / `{mode}` / `{wiki_lint_msg_file}` の残留、メッセージファイルの不在・空、未置換メッセージ)
   - GNU realpath (-m -s) 不在 (ステップ 7 helper 内)
@@ -1006,19 +1033,19 @@ rationale: references/rationale.md#fail-loud-contract
 
 | エラー | 対処 | ステップ |
 |--------|------|---------|
-| 自動矛盾検査の一覧欠落・不正 / 要約または本文の取得失敗 / 比較未完了 | 理由と未処理対象を出し `WIKI_CONTRADICTION_CHECK=failed` で停止。正常 return/未実施のみの完了は禁止 | ステップ 1.0 / 3 |
+| 自動矛盾検査の一覧欠落・不正 / 記録済みの未解消の矛盾の読出失敗（log.md 読取不能・行の書式不正・`contradictions=` と行数の不一致・直近の結果行に取り込まれない未解消の行） / 要約または本文の取得失敗 / 比較未完了 | 理由と未処理対象を出し `WIKI_CONTRADICTION_CHECK=failed` で停止。正常 return/未実施のみの完了は禁止 | ステップ 1.0 / 3 |
 | `index.md` の登録行検査 (awk) の失敗 (HTML コメントが閉じられない場合を含む) | **exit 1 で fail-fast** (stderr の ERROR を表示して lint を停止し、`Lint:` 行も正常 return も出さない。silent に件数 0 へ倒さない) | ステップ 5 (helper 内) |
 | `wiki.enabled: false` | 早期 return (`--auto` モード時は ステップ 9.2 の 3 行出力後 exit 0、それ以外は警告のみ exit 0) | ステップ 1.1 |
 | `lib/wiki-config.sh` 読込失敗 (helper 不在 / 解決失敗) | **exit 1 で fail-fast** (`[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1`。設定不明のまま「Wiki 無効」へ倒す silent default の防止。plugin インストール状態を確認するか `/rite:setup` を再実行) | ステップ 1.1 |
 | GNU date 非互換環境 | 陳腐化検出 skip（exit 0 + WARNING + `stale_check_ok=skipped_no_gnu_date`） | ステップ 4 (helper 内) |
 | Wiki 未初期化 | `/rite:wiki-init` を案内 (`--auto` モード時は ステップ 9.2 の 3 行出力後 exit 0) | ステップ 1.3 |
 | `{mode}` placeholder 残留 (各 site で同型) | **exit 1 で fail-fast** | ステップ 1.1 / 1.3 / 8.3 (helper 内) |
-| helper 委譲ステップの placeholder 残留 (`{branch_strategy}` / `{wiki_branch}` / `{stale_days}` / `{pages_list}` + 6.2 / 7.5 の partial pollution) | **exit 1 で fail-fast** (silent 誤分類防止、各 helper 内で検知) | ステップ 4 / 5 / 6.0 / 6.2 / 7 / 7.5 |
+| helper 委譲ステップの placeholder 残留 (`{branch_strategy}` / `{wiki_branch}` / `{stale_days}` / `{pages_list}` + 6.2 / 7.5 の partial pollution) | **exit 1 で fail-fast** (silent 誤分類防止、各 helper 内で検知) | ステップ 3 / 4 / 5 / 6.0 / 6.2 / 7 / 7.5 |
 | ステップ 8.1 の counter placeholder (`n_*` 4 種) 残留 / 非整数 | **exit 1 で fail-fast** (silent `lint:clean` 誤 emit 防止) | ステップ 8.1 |
 | ステップ 8.3 helper の placeholder 残留 (`{branch_strategy}` / `{mode}` / `{wiki_lint_msg_file}`) / メッセージファイルの不在・空 / 未置換メッセージ | **exit 1 で fail-fast** (literal 残留 commit landed 防止) | ステップ 8.3 (helper 内) |
 | ステップ 8.3 helper (`wiki-lint-log-commit.sh`) 不在 | bash が非 0 で止まる (WARNING で skip しない) | ステップ 8.3 |
 | `git ls-tree` 失敗 | WARNING + `pages_list=""`/`raw_list=""` で継続（exit 0） | ステップ 2.2 |
-| `branch_strategy` 未知値 (各 site で同型) | **exit 1 で fail-fast** | ステップ 2.2 / 8.2 + helper 内 (4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.3) |
+| `branch_strategy` 未知値 (各 site で同型) | **exit 1 で fail-fast** | ステップ 2.2 / 8.2 + helper 内 (3 / 4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.3) |
 | `index.md` 読出失敗 | WARNING + 孤児検出 skip（exit 0 + `orphan_check_ok=index_unreadable`） | ステップ 5 (helper 内) |
 | raw 走査対象の正当な不在 (same_branch: `.rite/wiki/raw/` 不在 / separate_branch: wiki branch ref 不在) | WARNING 抑制 + `skipped_refs=""` + `log_read_ok=absent`（exit 0） | ステップ 6.0 |
 | raw frontmatter 読出失敗 (真の IO error) | WARNING + `skipped_refs=""` + `log_read_ok=io_error` + ステップ 9.1 で false positive note 表示（exit 0） | ステップ 6.0 |

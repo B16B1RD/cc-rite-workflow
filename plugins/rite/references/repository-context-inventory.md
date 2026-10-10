@@ -413,6 +413,8 @@ Complexity の三つの consumer は固定 cwd だけでは repo 引数を持た
 | `hooks/scripts/wiki-lint-descriptive-refs.sh` (1) | `--repo-root DIR             Repository root (default: git rev-parse --show-toplevel)` | W | 呼出し対象外 | 診断・usage・参照文字列で実操作しない |
 | `hooks/scripts/wiki-lint-descriptive-refs.sh` (2) | `REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null ¦¦ pwd)"` | W | 壊れない（固定cwd）、除外 | 対象worktreeで同じHEAD/登録情報を読む。非固定単体foreignでは別Git情報を読み壊れる |
 | `hooks/scripts/wiki-lint-descriptive-refs.sh` (3) | `if git rev-parse --verify -q "${wiki_branch}^{commit}" >/dev/null 2>&1; then` | W | 壊れない（固定cwd）、除外 | 対象worktreeで同じHEAD/登録情報を読む。非固定単体foreignでは別Git情報を読み壊れる |
+| `hooks/scripts/wiki-lint-open-contradictions.sh` (1) | `--repo-root DIR             Repository root (default: git rev-parse --show-toplevel)` | W | 呼出し対象外 | 診断・usage・参照文字列で実操作しない |
+| `hooks/scripts/wiki-lint-open-contradictions.sh` (2) | `REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null ¦¦ pwd)"` | W | 壊れない（固定cwd）、除外 | 対象worktreeで同じHEAD/登録情報を読む。非固定単体foreignでは別Git情報を読み壊れる |
 | `hooks/scripts/wiki-lint-orphans.sh` (1) | `--repo-root DIR             Repository root (default: git rev-parse --show-toplevel)` | W | 呼出し対象外 | 診断・usage・参照文字列で実操作しない |
 | `hooks/scripts/wiki-lint-orphans.sh` (2) | `REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null ¦¦ pwd)"` | W | 壊れない（固定cwd）、除外 | 対象worktreeで同じHEAD/登録情報を読む。非固定単体foreignでは別Git情報を読み壊れる |
 | `hooks/scripts/wiki-lint-skipped-refs.sh` (1) | `--repo-root DIR             Repository root (default: git rev-parse --show-toplevel)` | W | 呼出し対象外 | 診断・usage・参照文字列で実操作しない |
