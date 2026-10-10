@@ -34,9 +34,23 @@ sources:
     resource: "raw/reviews/20261005T012658Z-pr-3681.md"
   - type: "reviews"
     resource: "raw/reviews/20261009T143006Z-pr-3725.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261009T233431Z-pr-3735.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261009T234815Z-pr-3735.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261009T235534Z-pr-3735.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261010T000858Z-pr-3735.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261010T003759Z-pr-3735.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261010T004622Z-pr-3735.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261010T005053Z-pr-3735.md"
 tags: ["verification-protocol", "prose-implementation-sync", "regex", "behavioral-test", "attribution"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-10T01:04:42Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:27:52Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:39:40Z" }
@@ -44,6 +58,7 @@ verified:
   - { by: "rite-wiki-ingest/grok-4.7", at: "2026-09-30T17:01:22Z" }
   - { by: "rite-wiki-ingest/gpt-6", at: "2026-10-05T01:39:35Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-09T19:10:23Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-10T01:04:42Z" }
 ---
 
 # 散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする
@@ -115,6 +130,16 @@ canonical: helper を散文参照するときは「regex 実体ファイル (`.p
 
 Decision Log の採番式のコメントが「別ファイルの行の正規表現と同形」と書いていたが、同形なのは行頭の接頭部（日付と決定 ID）だけで、末尾の Reason / Impact は要求していなかった。同じ変更の追加テストは引用にコロンが無く、行頭アンカーと日付部分を外す変異が生き残った。「同形」「同じ」と書くときは一致する範囲を限定して書き、その範囲をテストの変異で確かめる。
 
+### 理由として挙げる制御と、PR 本文の主張も同じ裏取りの対象にする
+
+設計理由の文書に「シェル変数の形にすると、実行前の guard が argv を静的に確かめられなくなる」と、セキュリティ制御を理由に書いた例がある。guard の実装は `--` で始まるトークンを読み飛ばしており、変数形と literal 形で判定は変わらなかった。理由として挙げる制御は、その制御の実装を読み、両方の形を guard にかけて確かめてから書く。裏づけの無い理由は補強せず削除で直す。
+
+理由の段落を削除するときは、その段落を理由として参照していた側（手順書の括弧書きの禁止と rationale ポインタ）も同じ変更で見直す。理由だけを消すと、参照側に根拠を辿れない制約が残り、次のレビューで指摘される。理由を書き足すより、根拠を失った制約を削って周囲の記法に揃える方が差分が小さい。
+
+PR 本文の主張も同じである。採否ゲートの出口のように実装が条件で分岐する挙動を本文で要約するときは、判定関数を実際の入力で呼んで、要約が全分岐で成り立つかを確かめる（一部の分岐にしか当てはまらない言い切りは、別の分岐の読み手を誤らせる）。本文に書いたテスト件数などの数値は、修正でテストを足すたびに実測へ合わせる。本文の修正はコミットを伴わないので、差分の検査ではなく再レビューで照合させる。
+
+本文と図の両方に同じ主張があるときは、本文だけを直すと両者が食い違う。図の該当ラベル、図の代替テキスト、本文を同じ変更で直す。
+
 ## 関連ページ
 
 - [Documentation review は対応する実装側 (commands/scripts/templates) の grep verify を必須 step とする](./docs-review-implementation-grep-verification.md)
@@ -139,3 +164,10 @@ Decision Log の採番式のコメントが「別ファイルの行の正規表�
 - [保存成果物と独立した挙動検証の記録](../../raw/reviews/20261005T011354Z-pr-3681.md)
 - [保存成果物と独立した挙動検証の記録](../../raw/reviews/20261005T012658Z-pr-3681.md)
 - [レビュー結果（「同形」と書くコメントの範囲）](../../raw/reviews/20261009T143006Z-pr-3725.md)
+- [PR 本文の説明が判定の分岐より狭かったレビュー結果](../../raw/reviews/20261009T233431Z-pr-3735.md)
+- [PR 本文のテスト件数が古くなったレビュー結果](../../raw/reviews/20261009T234815Z-pr-3735.md)
+- [PR 本文の件数を直した fix 結果](../../raw/fixes/20261009T235534Z-pr-3735.md)
+- [実装に無い制御を理由に挙げたレビュー結果](../../raw/reviews/20261010T000858Z-pr-3735.md)
+- [理由の削除で参照側の根拠が消えたレビュー結果](../../raw/reviews/20261010T003759Z-pr-3735.md)
+- [根拠を失った括弧書きを削った fix 結果](../../raw/fixes/20261010T004622Z-pr-3735.md)
+- [括弧書きの削除を確かめたレビュー結果](../../raw/reviews/20261010T005053Z-pr-3735.md)

@@ -236,6 +236,15 @@
   * 比較: [failure-enumeration-predicate-diverges-from-failing-expression](pages/anti-patterns/failure-enumeration-predicate-diverges-from-failing-expression.md) ↔ [merging-new-rows-into-existing-match-keys](pages/anti-patterns/merging-new-rows-into-existing-match-keys.md) — 矛盾なし。照合キーへの合流でキーが一意でない行が落ちる問題。変更ページの照合キー式の失敗列挙とは主題が異なり矛盾しない
   * 比較: [failure-enumeration-predicate-diverges-from-failing-expression](pages/anti-patterns/failure-enumeration-predicate-diverges-from-failing-expression.md) ↔ [partial-parser-reuse-drops-conservative-judgment](pages/anti-patterns/partial-parser-reuse-drops-conservative-judgment.md) — 矛盾なし。既存パーサの一部だけ再利用すると判定が抜ける問題。判定全体を再利用する方針は変更ページの判定式共有と整合
   * 比較: [failure-enumeration-predicate-diverges-from-failing-expression](pages/anti-patterns/failure-enumeration-predicate-diverges-from-failing-expression.md) ↔ [first-match-stage-ordering-rejects-union-supported-claims](pages/anti-patterns/first-match-stage-ordering-rejects-union-supported-claims.md) — 矛盾なし。判定規則の段の順序づけで集合の決め方が変わる問題。判定集合を変えずに一致させる点・変異で否定側を固定する点で変更ページと整合
+* **Create**: [fail-loud の診断文は、検出した原因の種別ごとに直し方を変えて書く](pages/patterns/fail-loud-diagnostics-per-cause-kind.md) — raw/fixes/20261009T234120Z-pr-3735.md を新規ページ化（設定 helper の診断文を種別ごとに分けた fix 結果）
+* **Update**: [fail-loud の診断文は、検出した原因の種別ごとに直し方を変えて書く](pages/patterns/fail-loud-diagnostics-per-cause-kind.md) — raw/reviews/20261009T233431Z-pr-3735.md を統合（診断文の自己矛盾と文書同期の取りこぼしのレビュー結果）
+* **Update**: [fail-loud の診断文は、検出した原因の種別ごとに直し方を変えて書く](pages/patterns/fail-loud-diagnostics-per-cause-kind.md) — raw/reviews/20261009T234815Z-pr-3735.md を統合（変異テストで分岐の検出を確かめたレビュー結果）
+* **Update**: [散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする](pages/heuristics/prose-cited-implementation-behavioral-verification.md) — raw/fixes/20261009T235534Z-pr-3735.md を統合（PR 本文の件数を実測に合わせた fix 結果）
+* **Create**: [否定文でもツール名を書くと、語の出現数で数える棚卸しテストに 1 件と数えられる](pages/anti-patterns/negated-tool-name-counted-by-inventory-test.md) — raw/reviews/20261010T000858Z-pr-3735.md を新規ページ化（否定文のツール名が棚卸しテストを落としたレビュー結果）
+* **Create**: [ローカル検証では CI が回すすべてのテストスイートを回す](pages/heuristics/local-verification-runs-every-ci-suite.md) — raw/fixes/20261010T001835Z-pr-3735.md を新規ページ化（CI と同じスイートを全体検証に加えた fix 結果）
+* **Create**: [固定だった挙動を設定化したら、仕様書と README の固定記述を 1 回の grep で全数洗い出す](pages/patterns/configurable-behavior-sweeps-fixed-docs-at-once.md) — raw/reviews/20261010T003759Z-pr-3735.md を新規ページ化（仕様書と README の固定記述を直したレビュー結果）
+* **Update**: [散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする](pages/heuristics/prose-cited-implementation-behavioral-verification.md) — raw/fixes/20261010T004622Z-pr-3735.md を統合（根拠を失った括弧書きを削った fix 結果）
+* **Update**: [散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする](pages/heuristics/prose-cited-implementation-behavioral-verification.md) — raw/reviews/20261010T005053Z-pr-3735.md を統合（括弧書きの削除を確かめたレビュー結果）
 
 ## 2026-10-07
 
