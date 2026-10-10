@@ -128,7 +128,8 @@ Rite Workflow は 3 ステップでインストールします。マーケット
 | `/rite:template-reset` | テンプレートを再生成 |
 | `/rite:wiki-init` | Experience Wiki のブランチとディレクトリ構成を初期化 |
 | `/rite:wiki-query` | キーワードに一致する経験則を Wiki ページから検索 |
-| `/rite:wiki-ingest` | Raw Source（レビュー・修正・Issue）を Wiki ページへ取り込み |
+| `/rite:wiki-ingest` | rite 知見は raw の昇格候補へ保存し、プロジェクト固有知見を Wiki ページへ取り込み |
+| `/rite:batch-run --promotions [--merge]` | 保守 source リポジトリで raw 候補を集約し issue-create → open → iterate を実行。マージは明示時のみ |
 | `/rite:wiki-lint` | 矛盾・陳腐化・孤児・欠落概念・壊れた相互参照を Wiki ページについて lint |
 | `/rite:recover` | 中断した作業を再開 |
 | `/rite:skill-suggest` | コンテキストを分析し適用可能なスキルを提案 |
@@ -140,6 +141,8 @@ Rite Workflow は 3 ステップでインストールします。マーケット
                   → /rite:iterate (mergeable になるまで review ⇄ fix ループ)
                   → /rite:ready → /rite:merge → /rite:cleanup
 ```
+
+rite 知見は混在 raw の一部も昇格候補として保持し、既存の昇格済みポインタを残します。消化では抽出済み raw と旧検出器候補も列挙します。完了は同じマージ済み revision の実 caller 利用と対応試験成功を確認した場合のみで、draft PR や証拠不足は未解決のままです。配布先ではプロジェクト内の保存・報告までとし、自動共有や配布プラグイン編集を行いません。[候補データ契約](plugins/rite/references/wiki-patterns.md#昇格候補)を参照してください。
 
 **注意:** 一気通貫のフローは単一責務の 4 コマンドに分割されています。`/rite:open <issue>` はブランチ作成・実装・品質チェック・draft PR 作成を担当します。`/rite:iterate <pr>` は mergeable になるまで review と fix をループします。`/rite:ready <pr>` は PR を Ready for review に切り替えます。`/rite:merge <pr>` は `merge.method` で設定した方式（既定は squash）でマージします。いずれかのステップが中断した場合（例: `Context limit reached`）、`/rite:recover` を実行して復旧します。rite が作るコミット（実装・修正・Wiki・squash または merge commit を含む）は、作業ツリーの `CLAUDE.md` / `AGENTS.md` の規約に従い、対象パスに近いネストが根より優先します。LLM 経路の未指定項目は Conventional Commits と `rite-config.yml` の `language` で補い、helper 自動コミットの未指定は現行固定文のままです。
 

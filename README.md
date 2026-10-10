@@ -128,7 +128,8 @@ This will:
 | `/rite:template-reset` | Regenerate templates |
 | `/rite:wiki-init` | Initialize Experience Wiki branch and directory layout |
 | `/rite:wiki-query` | Query Wiki pages for heuristics matching keywords |
-| `/rite:wiki-ingest` | Ingest raw sources (reviews, fixes, Issues) into Wiki pages |
+| `/rite:wiki-ingest` | Save rite knowledge as raw promotion candidates; ingest project domain knowledge into Wiki pages |
+| `/rite:batch-run --promotions [--merge]` | In the maintenance source repository, group raw candidates and use issue-create → open → iterate; merge only when explicitly requested |
 | `/rite:wiki-lint` | Lint Wiki pages for contradictions, staleness, orphans, missing concepts, and broken cross-refs |
 | `/rite:recover` | Resume interrupted work |
 | `/rite:skill-suggest` | Analyze context and suggest applicable skills |
@@ -140,6 +141,8 @@ This will:
                   → /rite:iterate (review ⇄ fix loop until mergeable)
                   → /rite:ready → /rite:merge → /rite:cleanup
 ```
+
+Rite knowledge stays in raw candidates, including mixed raw sources; existing promotion pointers are retained. Candidate consumption includes extracted raw and legacy detector candidates. Completion requires caller use and successful verification at the corresponding merged revision. Draft PRs and missing evidence remain unresolved. Installed projects save and report locally without automatic sharing or plugin edits. See the [candidate contract](plugins/rite/references/wiki-patterns.md#昇格候補).
 
 **Note:** The end-to-end flow is split across four single-responsibility commands. `/rite:open <issue>` handles branch creation, implementation, quality checks, and draft PR creation. `/rite:iterate <pr>` loops review and fix until mergeable. `/rite:ready <pr>` flips the PR to Ready for review. `/rite:merge <pr>` merges the PR with the method set in `merge.method` (squash by default). If any step is interrupted (e.g. `Context limit reached`), run `/rite:recover` to recover. Commits rite creates (implementation, fix, Wiki, and the squash or merge commit) follow the worktree `CLAUDE.md` / `AGENTS.md` conventions; nested files nearer the changed path take priority over the worktree root. Unspecified items on the LLM path use Conventional Commits and `rite-config.yml` `language`. Helper auto-commits keep their current fixed text when both files are absent.
 

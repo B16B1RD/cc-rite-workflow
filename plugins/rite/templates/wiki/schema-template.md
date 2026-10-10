@@ -62,6 +62,14 @@ confidence: high | medium | low
 
 > **`type` と `domain` の関係**: OKF v0.2 は `type` のみを必須とする。rite は既存の `domain` を機械可読キー（query スコアリング・lint カテゴリ集計）として温存しつつ、OKF 準拠のため `type` を同値で併記する。両者の統合（redundancy 解消）は別 Issue のスコープで、本規約では両併存を正とする。
 
+### 知見の出力先
+
+新規 Wiki ページと既存ページへの追記はプロジェクト固有の domain 知見に限る。rite workflow の挙動・スキル記述法は機械検出可否や既存ページの有無によらず raw の昇格候補へ保存し、新規 `promote: rite-plugin` ページを作らない。既存の `promote` / `reference` 付き発見ポインタは保持する。
+
+混在 raw は知見ごとに候補と domain ページへ分ける。raw 本文の `Promotion candidates` に要約・原文本文の行範囲・条件・消費先を記録し、`ingest_status` / `skip_reason` と log の作業対応を使う。候補と domain のページ・index・log の保存確認後だけ `ingested: true` にする。この値は抽出完了で、昇格完了ではない。
+
+消化は保守リポジトリで `/rite:batch-run --promotions`。AI が抽出済み raw と旧 detector-candidate 理由も列挙し、同責務へ集約して既存の起票・実装・レビューへ接続する。完了は同じマージ済み revision の試験中に caller と consumer の実行・読取および呼出し関係を観測し、対応試験成功を照合した場合のみ。コマンド文字列の表示や存在確認は利用証拠にならず、利用を観測できない場合は未解決とする。未解決理由と候補の出典は保持する。配布先は保存・報告までで、自動外部送信と配布物編集をしない。
+
 ### 蓄積トリガー
 
 | トリガー | 抽出元 | Raw Source 保存先 |
