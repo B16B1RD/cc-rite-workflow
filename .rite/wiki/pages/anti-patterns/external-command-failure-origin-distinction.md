@@ -23,9 +23,17 @@ sources:
     resource: "raw/fixes/20260730T081940Z-pr-2056.md"
   - type: "fixes"
     resource: "raw/fixes/20260929T210423Z-pr-3446.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261010T041537Z-pr-3747.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261010T040833Z-pr-3747.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261010T042231Z-pr-3747-cycle2.md"
 tags: ["gh-cli", "error-handling", "silent-failure"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T22:00:05Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-10T04:36:45Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-10T04:36:45Z" }
 ---
 
 # 外部コマンド (gh) 失敗時に not-found と一時障害を区別せず別経路へ落とすのは silent failure
@@ -67,6 +75,14 @@ generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T22:00:05Z" 
 
 ディレクトリがチェックアウトに属するかを `git rev-parse` で判定する関数が、失敗を「リポジトリではない」と同じ `None` で返していた。その結果、git が worktree を読めないとき（信頼しない所有者など）でも「チェックアウトの外」と判定されていた。拒否理由が勧める `cd <worktree>` も同じ理由で拒否され、本当の原因（git のエラー）はどこにも出なかった。失敗しうる範囲をはっきり列挙し、その中での失敗はエラーとして出す。範囲の決め方は、`.git` が上位にあるかといったファイルの有無による推測にしない。`/tmp/.git` のような無関係な残骸があると、リポジトリの外のディレクトリまで「読めないリポジトリ」と誤判定する。git 自身が返す一覧（`git worktree list`）で範囲を決める。
 
+### git の失敗を「不在」として記録しない — 失敗側と不在側を対で固定する
+
+出典の照合で git が失敗したとき、ファイルを「存在しない」と記録すると、失敗が不在の判定へ化ける。失敗は error として記録し、git が成功して対象が無いときだけ従来どおり不在を返す。契約がこう二分されるときは、失敗側と不在側の両方のテストを対で置く。観測された事例では、片方の照合（path:line）だけに不在側のテストがあり、もう片方（節）は未固定だった。分岐を error に置き換える変異で、両方のテストが効くかを確かめる。
+
+失敗の記録キーは、記録する単位（行・節・文書）と同じ粒度にする。行 ID と節だけをキーにすると、同じキーに複数の文書が当たったときに上書きされ、件数と WARNING が過少になる。キーに文書名を含める。キーの粒度を直した後も、同じ文書名が同じ行に複数回出るときの件数の食い違いは残る。error 自体は残って fail-loud は保たれるため、件数に依存する消費側ができるまで対応不要と判断された。
+
+同種の修正では、隣接する経路も洗う。git の失敗を不在へ寄せる経路は他にも残りうる（例: コミット SHA の存在確認が、git の失敗と SHA の不在を区別せずに GitHub への照会へ進む）。
+
 ## 関連ページ
 
 - [gh api graphql は HTTP 200 + .errors[] で partial failure を返す (exit code では検知できない)](./gh-api-graphql-http200-partial-errors.md)
@@ -88,3 +104,6 @@ generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T22:00:05Z" 
 - [行の分離 / 文言の狭窄 / 意味論の分離の 3 操作](../../raw/reviews/20260730T081603Z-pr-2056.md)
 - [元 catch-all 行の全要件を新行へ明示転記](../../raw/fixes/20260730T081940Z-pr-2056.md)
 - [失敗を範囲外と同じ値に丸めない](../../raw/fixes/20260929T210423Z-pr-3446.md)
+- [失敗の記録キーの粒度と失敗側・不在側の対のテストを直した fix 結果](../../raw/fixes/20261010T041537Z-pr-3747.md)
+- [git の失敗を不在として記録しない修正のレビュー結果](../../raw/reviews/20261010T040833Z-pr-3747.md)
+- [失敗側と不在側の対の固定を変異で確かめた再レビュー結果](../../raw/reviews/20261010T042231Z-pr-3747-cycle2.md)

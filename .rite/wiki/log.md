@@ -358,6 +358,24 @@
 * **Repair**: [設定化と固定記述の洗い出し](pages/patterns/configurable-behavior-sweeps-fixed-docs-at-once.md) の手順 4 と [判定表の行の追随](pages/heuristics/decision-table-row-condition-moves-negation-row-summary-and-pin.md) の書き方を修正。同じ grep で確かめられるのは旧文言が残っていないことだけで、網羅は対象の性質から導いた別の検索で確かめる形にし、[検証 grep の死角](pages/anti-patterns/sweep-verification-grep-shares-blind-spot.md) へリンク。
 * **Repair**: index.md の `## 統計` の後ろに紛れていた [並列テストの CI 計測](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) の重複行を削除。ページ一覧の行は残し、統計（685 ページ）は変わらない。編集した 8 ページの行の更新日は canonical helper で再生成。
 * **Repair**: [外部取得の分類](pages/heuristics/external-fetch-separates-absent-from-unavailable-and-marks-truncation.md) の出典から、前 cycle の raw とバイト単位で同一（captured_at のみ相違）の [raw/fixes/20261009T162241Z-pr-3728.md](raw/fixes/20261009T162241Z-pr-3728.md) を外し、同内容の [raw/fixes/20261009T155126Z-pr-3728.md](raw/fixes/20261009T155126Z-pr-3728.md) の引用に一本化。raw は不変の一次データのため削除しない。
+* **Update**: [実装が分岐しているならテストも分岐の数だけ要る — 既定構成の経路こそ抜けやすい](pages/heuristics/implementation-branch-count-equals-test-branch-count.md) — raw/fixes/20261010T033900Z-pr-3744.mdを統合
+* **Update**: [実装が分岐しているならテストも分岐の数だけ要る — 既定構成の経路こそ抜けやすい](pages/heuristics/implementation-branch-count-equals-test-branch-count.md) — raw/reviews/20261010T032940Z-pr-3744.mdを統合
+* **Update**: [実装が分岐しているならテストも分岐の数だけ要る — 既定構成の経路こそ抜けやすい](pages/heuristics/implementation-branch-count-equals-test-branch-count.md) — raw/reviews/20261010T034534Z-pr-3744-cycle2.mdを統合
+* **Update**: [実装が分岐しているならテストも分岐の数だけ要る — 既定構成の経路こそ抜けやすい](pages/heuristics/implementation-branch-count-equals-test-branch-count.md) — raw/fixes/20261010T034808Z-pr-3745.mdを統合
+* **Update**: [実装が分岐しているならテストも分岐の数だけ要る — 既定構成の経路こそ抜けやすい](pages/heuristics/implementation-branch-count-equals-test-branch-count.md) — raw/reviews/20261010T034003Z-pr-3745.mdを統合
+* **Update**: [実装が分岐しているならテストも分岐の数だけ要る — 既定構成の経路こそ抜けやすい](pages/heuristics/implementation-branch-count-equals-test-branch-count.md) — raw/reviews/20261010T035428Z-pr-3745.mdを統合
+* **Update**: [開始・終了の対で囲む除外をラッチで実装すると、未閉鎖のまま EOF に達した経路が無音で全行を落とす](pages/anti-patterns/latch-exclusion-without-eof-termination-check.md) — raw/fixes/20261010T040522Z-pr-3746.mdを統合
+* **Update**: [開始・終了の対で囲む除外をラッチで実装すると、未閉鎖のまま EOF に達した経路が無音で全行を落とす](pages/anti-patterns/latch-exclusion-without-eof-termination-check.md) — raw/reviews/20261010T040209Z-pr-3746.mdを統合
+* **Update**: [開始・終了の対で囲む除外をラッチで実装すると、未閉鎖のまま EOF に達した経路が無音で全行を落とす](pages/anti-patterns/latch-exclusion-without-eof-termination-check.md) — raw/reviews/20261010T041115Z-pr-3746.mdを統合
+* **Update**: [除外契約のテストは境界の両側に対で書く](pages/patterns/exclusion-test-requires-both-sides-of-boundary.md) — raw/fixes/20261010T035126Z-pr-3746.mdを統合
+* **Update**: [除外契約のテストは境界の両側に対で書く](pages/patterns/exclusion-test-requires-both-sides-of-boundary.md) — raw/reviews/20261010T034702Z-pr-3746.mdを統合
+* **Update**: [外部コマンド (gh) 失敗時に not-found と一時障害を区別せず別経路へ落とすのは silent failure](pages/anti-patterns/external-command-failure-origin-distinction.md) — raw/fixes/20261010T041537Z-pr-3747.mdを統合
+* **Update**: [外部コマンド (gh) 失敗時に not-found と一時障害を区別せず別経路へ落とすのは silent failure](pages/anti-patterns/external-command-failure-origin-distinction.md) — raw/reviews/20261010T040833Z-pr-3747.mdを統合
+* **Update**: [外部コマンド (gh) 失敗時に not-found と一時障害を区別せず別経路へ落とすのは silent failure](pages/anti-patterns/external-command-failure-origin-distinction.md) — raw/reviews/20261010T042231Z-pr-3747-cycle2.mdを統合
+* **Create**: [件数の意味を変える変更は、その件数を表示・列挙する消費側を同じ変更で追随させる](pages/heuristics/count-semantics-change-updates-consumers-in-same-change.md) — raw/fixes/20261010T041814Z-pr-3746.mdを新規ページ化
+* **Update**: [件数の意味を変える変更は、その件数を表示・列挙する消費側を同じ変更で追随させる](pages/heuristics/count-semantics-change-updates-consumers-in-same-change.md) — raw/reviews/20261010T042512Z-pr-3746.mdを統合
+* **Skip**: [20261010T032023Z-pr-3742.md](raw/reviews/20261010T032023Z-pr-3742.md) — 一時的な情報のみ（以前からある契約表の食い違いを推奨として報告しただけで、一般化できる経験則がない）
+* **Skip**: [20261010T032657Z-pr-3743.md](raw/reviews/20261010T032657Z-pr-3743.md) — 経験則の新規性なし（散文仕様の文面を grep で固定しても挙動は検証できない、という既存の判断の再確認のみ）
 
 ## 2026-10-07
 

@@ -27,11 +27,16 @@ sources:
     resource: "raw/reviews/20260927T091721Z-pr-3251.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T093452Z-pr-3251.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261010T035126Z-pr-3746.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261010T034702Z-pr-3746.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:40:29Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-10T04:36:45Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:40:29Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-10T04:36:45Z" }
 ---
 
 # 除外契約のテストは境界の両側に対で書く
@@ -120,6 +125,15 @@ fixture を対で置いただけでは十分でない。**実装から除外条�
 
 同じ文言の案内を 2 つの経路が出す場合も、片方だけを固定すると、もう片方が旧形式に戻る変異が生き残る。経路ごとに固定するか、文言の生成を 1 か所にまとめる。
 
+### 判定を狭めたら、狭めた境界と残した境界の両方を固定する
+
+検出ロジックが「登録行」を広く定義すると、前文コメントの記法例・コードフェンス・節外の散文リンクを誤検出し、旧形式の入力では誤検出が恒久的に続く。同じファイルを読む兄弟 helper が持つ除外規則（行頭 `<!--` のコメントブロック除外、表・箇条書きの行への限定）に揃えて定義を狭めたら、次の 2 つの境界をテストで固定する。
+
+- 狭めた側の境界: コメント内の記法例・節外の散文リンクは検出しない
+- 残した側の境界: 節外の表行は検出する
+
+走査失敗で ERROR と exit 1 に倒す fail-loud 経路は、失敗する外部コマンド（awk など）を PATH の先頭に置くテストで固定する。分岐を除去しても通るテストは契約を守らない。
+
 ## 関連ページ
 
 - [アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](../heuristics/mutation-testing-measures-assertion-strength.md)
@@ -139,3 +153,5 @@ fixture を対で置いただけでは十分でない。**実装から除外条�
 - [fix 結果](../../raw/fixes/20260917T125340Z-pr-2935.md)
 - [受理側の固定を求めたレビュー結果](../../raw/reviews/20260927T091721Z-pr-3251.md)
 - [レビュー結果（再レビュー）](../../raw/reviews/20260927T093452Z-pr-3251.md)
+- [登録行の判定を兄弟 helper の除外規則に揃えて狭めた fix 結果](../../raw/fixes/20261010T035126Z-pr-3746.md)
+- [登録行の広い判定による誤検出と fail-loud 経路の未固定を示したレビュー結果](../../raw/reviews/20261010T034702Z-pr-3746.md)

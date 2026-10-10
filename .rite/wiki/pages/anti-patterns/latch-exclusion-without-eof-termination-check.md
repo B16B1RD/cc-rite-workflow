@@ -9,9 +9,17 @@ sources:
     resource: "raw/reviews/20260731T080225Z-pr-2070.md"
   - type: "fixes"
     resource: "raw/fixes/20260731T080852Z-pr-2070.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261010T040522Z-pr-3746.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261010T040209Z-pr-3746.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261010T041115Z-pr-3746.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-10T04:36:45Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-10T04:36:45Z" }
 ---
 
 # 開始・終了の対で囲む除外をラッチで実装すると、未閉鎖のまま EOF に達した経路が無音で全行を落とす
@@ -30,6 +38,14 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 
 **適用条件**: 開始・終了トークンの対で範囲を囲む除外規則を追加・変更するとき。除外規則の追加と EOF 終端検査は必ずセットで書く。
 
+### 兄弟 helper から除外規則を移すときは、未閉鎖の検出も一緒に移す
+
+同じファイルを読む兄弟 helper の除外規則（HTML コメントブロックの除外）を新しい走査へ移すとき、除外だけを移し、未閉鎖を EOF で検出して検査失敗に倒す側を移し忘れることがある。そうすると、除外が検査の失敗を「問題なし」として通す。状態を持つ除外は、閉じなかったときに黙って以降を捨てる。
+
+除外の境界を固定するテストは、除外の外側に検出すべき行を置いて期待件数を非ゼロにする。期待 0 件のテストは、除外が閉じない変異でも通る。
+
+観測された事例では、blocking の指摘が cycle ごとに 4 → 2 → 0 件と収束した。指摘の多くは「新しく足した除外・限定が、入力の異常（未閉鎖コメント・旧形式）で黙って検出を落とす」類だった。除外を足すときに fail-loud 側と境界テストを同時に足せば、1 cycle で閉じる。
+
 ## 関連ページ
 
 - [全滅形だけを想定したガード条件は部分欠損形を必ず取り逃す](./total-failure-only-guard-misses-partial-loss.md)
@@ -39,3 +55,6 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 
 - [レビュー結果](../../raw/reviews/20260731T080225Z-pr-2070.md)
 - [fix 結果](../../raw/fixes/20260731T080852Z-pr-2070.md)
+- [未閉鎖コメントを検査失敗にした fix 結果](../../raw/fixes/20261010T040522Z-pr-3746.md)
+- [除外だけを移して未閉鎖の検出を移し忘れたことを示した再レビュー結果](../../raw/reviews/20261010T040209Z-pr-3746.md)
+- [除外を足すときの fail-loud 側と境界テストの同時追加をまとめた最終レビュー結果](../../raw/reviews/20261010T041115Z-pr-3746.md)
