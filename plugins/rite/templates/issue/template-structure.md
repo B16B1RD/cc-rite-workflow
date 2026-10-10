@@ -297,6 +297,8 @@ Select ONE matching the Issue type. The type confirmed in `create.md` ステッ�
 
 ### 5. Acceptance Criteria
 
+書式判定の正本は `scripts/acceptance-criteria-check.sh extract --body-file`。数値 AC ID 付きの定義はこの節内だけに置き、単一 Issue・各子 Issue の最終本文を作成前に同 reader で検査する。通常の散文・対応表・閉じたコードフェンス内の例示を独自規則で制限しない。
+
 ```markdown
 ## 5. Acceptance Criteria
 
@@ -384,7 +386,7 @@ Select ONE matching the Issue type. The type confirmed in `create.md` ステッ�
 ## 8. Definition of Done
 
 - [ ] All MUST requirements implemented
-- [ ] All Acceptance Criteria (AC-xx) verified
+- [ ] All acceptance criteria verified
 - [ ] All test cases (T-xx) passing
 - [ ] No regression in existing functionality
 - [ ] Target files modified, non-target files untouched
