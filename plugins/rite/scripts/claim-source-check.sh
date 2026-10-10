@@ -485,7 +485,7 @@ def cmd_facts(argv):
     for row_id, entries in sections.items():
         for entry in entries:
             if "error" in entry:
-                errors[f"section:{row_id}:{entry['section']}"] = entry["error"]
+                errors[f"section:{row_id}:{entry['section']}:{entry['doc']}"] = entry["error"]
     for key, message in errors.items():
         print(f"WARNING: claim-source facts: {key}: {message}", file=sys.stderr)
     with open(opts["out"], "w", encoding="utf-8") as fh:

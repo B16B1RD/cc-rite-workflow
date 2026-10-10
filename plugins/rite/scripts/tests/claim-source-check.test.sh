@@ -366,7 +366,7 @@ if [ "$RC" -eq 0 ] && grep -q '^\[CONTEXT\] CLAIM_SOURCE_FACTS=ok; refs=4; error
     && [ "$(jq -c '.refs["file_line:logger.js:3"] | {error, command, exists: has("exists")}' "$G")" = '{"error":"fatal: stub ls-files failure","command":"git ls-files","exists":false}' ] \
     && [ "$(jq -c '.sections["CLAIM-3"]' "$G")" = '[{"section":"§1","doc":"spec.md","error":"fatal: stub ls-files failure","command":"git ls-files"}]' ] \
     && grep -q '^WARNING: claim-source facts: file_line:logger.js:3: fatal: stub ls-files failure$' <<<"$ERR" \
-    && grep -q '^WARNING: claim-source facts: section:CLAIM-3:§1: fatal: stub ls-files failure$' <<<"$ERR"; then
+    && grep -q '^WARNING: claim-source facts: section:CLAIM-3:§1:spec.md: fatal: stub ls-files failure$' <<<"$ERR"; then
   pass "facts: git ls-files の失敗は path:line と節の error に残し、exists / doc_exists を出さない"
 else
   fail "facts: ls-files 失敗 (rc=$RC out=$OUT err=$ERR facts=$(jq -c . "$G" 2>/dev/null))"
@@ -389,6 +389,28 @@ if [ "$RC" -eq 0 ] && grep -q '^\[CONTEXT\] CLAIM_SOURCE_FACTS=ok; refs=4; error
   pass "facts: git rev-parse の失敗は作業中のディレクトリで続けず、ファイル系の出典と節を error にする"
 else
   fail "facts: rev-parse 失敗 (rc=$RC out=$OUT facts=$(jq -c . "$R" 2>/dev/null))"
+fi
+
+# 同じ節に複数の文書名がある行は、文書ごとに error の件数と WARNING を残す
+jq -n '{rows: [{id: "CLAIM-1", origin: "x.md:1", text: "see spec.md and notes.md", refs: [{kind: "section", token: "§1"}]}]}' > "$TEST_DIR/rows-multi-doc.json"
+PATH="$TEST_DIR/bin-ls-files:$PATH" run_helper csc_fixture facts --rows "$TEST_DIR/rows-multi-doc.json" --repo o/r --out "$TEST_DIR/facts-multi-doc.json"
+if [ "$RC" -eq 0 ] && grep -q '^\[CONTEXT\] CLAIM_SOURCE_FACTS=ok; refs=0; errors=2$' <<<"$OUT" \
+    && [ "$(jq -c '.sections["CLAIM-1"] | map(.doc)' "$TEST_DIR/facts-multi-doc.json")" = '["spec.md","notes.md"]' ] \
+    && grep -q '^WARNING: claim-source facts: section:CLAIM-1:§1:spec.md: ' <<<"$ERR" \
+    && grep -q '^WARNING: claim-source facts: section:CLAIM-1:§1:notes.md: ' <<<"$ERR"; then
+  pass "facts: 同じ節に複数の文書があり git が失敗すると、文書ごとの error を数えて WARNING に名指す"
+else
+  fail "facts: 複数の文書の節 (rc=$RC out=$OUT err=$ERR)"
+fi
+
+# git が成功して文書が無い節は、従来どおり doc_exists: false で error にしない
+jq -n '{rows: [{id: "CLAIM-1", origin: "x.md:1", text: "see missing.md", refs: [{kind: "section", token: "§1"}]}]}' > "$TEST_DIR/rows-missing-doc.json"
+run_helper csc_fixture facts --rows "$TEST_DIR/rows-missing-doc.json" --repo o/r --out "$TEST_DIR/facts-missing-doc.json"
+if [ "$RC" -eq 0 ] && grep -q '^\[CONTEXT\] CLAIM_SOURCE_FACTS=ok; refs=0; errors=0$' <<<"$OUT" \
+    && [ "$(jq -c '.sections["CLAIM-1"]' "$TEST_DIR/facts-missing-doc.json")" = '[{"section":"§1","doc":"missing.md","doc_exists":false}]' ]; then
+  pass "facts: git が成功して文書が無い節は doc_exists=false のまま error にしない"
+else
+  fail "facts: 文書が無い節 (rc=$RC out=$OUT facts=$(jq -c '.sections' "$TEST_DIR/facts-missing-doc.json" 2>/dev/null))"
 fi
 
 echo "=== table ==="
