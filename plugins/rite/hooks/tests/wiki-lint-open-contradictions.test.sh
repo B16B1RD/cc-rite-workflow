@@ -5,8 +5,8 @@
 # latest lint entry of the committed log.md) and for the skill wiring that calls it.
 #
 # Coverage:
-#   TC-1  same_branch: latest entry's open lines only (older section and the
-#         non-lint bullet after it are not mixed in, comparison sub-bullets ignored)
+#   TC-1  same_branch: latest entry's open lines only (older section not mixed in,
+#         comparison sub-bullets ignored)
 #   TC-2  same date, warning then clean → the later clean wins (0 open)
 #   TC-3  same date, clean then warning → the later warning wins
 #   TC-4  newest date section has no lint bullet → the previous section's entry
@@ -25,11 +25,12 @@
 #   TC-17 static pins: wiki-lint 3.1 and wiki-ingest 8.3.r call the helper and stop on failure
 #   TC-18 round trip: a line rebuilt from the helper output reads back unchanged (reason kept)
 #   TC-19 a non-result lint bullet after the result bullet → the result bullet is read
-#   TC-20 only older-format lint bullets without contradictions= → no record, 0 open
+#   TC-20 lint bullets without contradictions= are not a record → the older section's entry
 #   TC-21 an open line under a result bullet whose heading lost ` — ` → exit 1, no marker block
 #   TC-22 a broken bullet with an open line, then a result bullet in the same section → the result bullet is read
 #   TC-23 an open line under a `- **lint:` bullet → exit 1
 #   TC-24 an open line under a non-lint bullet after the result bullet → exit 1
+#   TC-25 stray open lines with `-` / `+` markers or no indent → exit 1; `+` under the result bullet is read
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -367,14 +368,30 @@ expect_block "the result bullet before it is read" '---open_contradictions_begin
 ---open_contradictions_end---
 n_open=1'
 
-echo "TC-20: only older-format lint bullets without contradictions="
+echo "TC-20: lint bullets without contradictions= are not a record"
+# Both the separator form and the older colon form lack contradictions=; taking
+# either as the record would hide the open pair of the previous section
 repo=$(make_same_repo tc20 "# Directory Update Log
+
+## 2026-10-12
+
+* **lint:warning** — 機械検査: 孤児 0 件、陳腐化 66 件
+* **lint:clean**: 矛盾 0 / 孤児 0 / 欠落 0
 
 ## 2026-10-11
 
-* **lint:clean**: 矛盾 0 / 孤児 0 / 欠落 0")
+* **lint:warning** — contradictions=1, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0
+$OPEN_CD")
 run_helper "$repo" --branch-strategy same_branch
-expect_block "no record, 0 open" "$EMPTY_BLOCK"
+expect_block "the previous section's record is read" '---open_contradictions_begin---
+.rite/wiki/pages/patterns/c.md|.rite/wiki/pages/patterns/d.md|重複情報|同じ結論を 2 ページが持つ
+---open_contradictions_end---
+n_open=1'
+if [ -z "$HELPER_STDERR" ]; then
+  pass "no stderr"
+else
+  fail "unexpected stderr: $HELPER_STDERR"
+fi
 
 echo "TC-21: an open line under a result bullet whose heading lost the separator"
 # Skipping the newest bullet would silently fall back to the older record and drop
@@ -440,6 +457,33 @@ $OPEN_CD
 $OPEN_AB")
 run_helper "$repo" --branch-strategy same_branch
 expect_stop "open line under a non-lint bullet stops" 1 '直近の lint 結果行に取り込まれない未解消の矛盾の行があります'
+
+echo "TC-25: stray open lines in every bullet marker and indent"
+tc25_n=0
+for stray in "  - ${OPEN_AB#  \* }" "  + ${OPEN_AB#  \* }" "* ${OPEN_AB#  \* }"; do
+  tc25_n=$((tc25_n + 1))
+  repo=$(make_same_repo "tc25-$tc25_n" "# Directory Update Log
+
+## 2026-10-12
+
+* **lint:warning** — contradictions=1, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0
+$OPEN_CD
+* **Update**: [y](pages/patterns/y.md) — fix 結果を統合
+$stray")
+  run_helper "$repo" --branch-strategy same_branch
+  expect_stop "stray '${stray:0:4}' stops" 1 '直近の lint 結果行に取り込まれない未解消の矛盾の行があります'
+done
+repo=$(make_same_repo tc25-plus "# Directory Update Log
+
+## 2026-10-12
+
+* **lint:warning** — contradictions=1, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0
+  + ${OPEN_CD#  \* }")
+run_helper "$repo" --branch-strategy same_branch
+expect_block "a '+' line under the result bullet is read" '---open_contradictions_begin---
+.rite/wiki/pages/patterns/c.md|.rite/wiki/pages/patterns/d.md|重複情報|同じ結論を 2 ページが持つ
+---open_contradictions_end---
+n_open=1'
 
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="

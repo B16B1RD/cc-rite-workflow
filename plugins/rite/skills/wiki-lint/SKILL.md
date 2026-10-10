@@ -1033,7 +1033,7 @@ rationale: references/rationale.md#fail-loud-contract
 
 | エラー | 対処 | ステップ |
 |--------|------|---------|
-| 自動矛盾検査の一覧欠落・不正 / 記録済みの未解消の矛盾の読出失敗（log.md 読取不能・行の書式不正・`contradictions=` と行数の不一致） / 要約または本文の取得失敗 / 比較未完了 | 理由と未処理対象を出し `WIKI_CONTRADICTION_CHECK=failed` で停止。正常 return/未実施のみの完了は禁止 | ステップ 1.0 / 3 |
+| 自動矛盾検査の一覧欠落・不正 / 記録済みの未解消の矛盾の読出失敗（log.md 読取不能・行の書式不正・`contradictions=` と行数の不一致・直近の結果行に取り込まれない未解消の行） / 要約または本文の取得失敗 / 比較未完了 | 理由と未処理対象を出し `WIKI_CONTRADICTION_CHECK=failed` で停止。正常 return/未実施のみの完了は禁止 | ステップ 1.0 / 3 |
 | `index.md` の登録行検査 (awk) の失敗 (HTML コメントが閉じられない場合を含む) | **exit 1 で fail-fast** (stderr の ERROR を表示して lint を停止し、`Lint:` 行も正常 return も出さない。silent に件数 0 へ倒さない) | ステップ 5 (helper 内) |
 | `wiki.enabled: false` | 早期 return (`--auto` モード時は ステップ 9.2 の 3 行出力後 exit 0、それ以外は警告のみ exit 0) | ステップ 1.1 |
 | `lib/wiki-config.sh` 読込失敗 (helper 不在 / 解決失敗) | **exit 1 で fail-fast** (`[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1`。設定不明のまま「Wiki 無効」へ倒す silent default の防止。plugin インストール状態を確認するか `/rite:setup` を再実行) | ステップ 1.1 |

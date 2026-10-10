@@ -14,11 +14,13 @@
 # headings newest-first and appends bullets at the end of a date section, so the
 # latest entry is the LAST result bullet of the FIRST date section that has one.
 # Only that six-field result bullet is a record: other `**lint:...**` bullets
-# (scope notes, older formats without `contradictions=`) are skipped. Open lines
-# are written only directly under a result bullet, so an open line the chosen
-# bullet does not take in (under a bullet whose heading lost its format, or under
-# a non-lint bullet) stops the read, unless a result bullet later in the same date
-# section supersedes it.
+# (scope notes, older formats without `contradictions=`) are skipped. The read
+# covers the log from the top through the end of the date section holding the
+# chosen bullet; older sections are superseded and not read. Open lines are
+# written only directly under a result bullet, so within that range an open line
+# the chosen bullet does not take in (under a bullet whose heading lost its format,
+# or under a non-lint bullet) stops the read, unless a result bullet later in the
+# same date section supersedes it.
 # Result bullets written before the fixed lines existed read as zero lines; the
 # count check below still applies to them.
 #
@@ -41,8 +43,8 @@
 # Exit codes:
 #   0  Normal (no lint entry yet also yields n_open=0)
 #   1  Fail-fast (placeholder residue / unknown branch_strategy / log.md unreadable /
-#      malformed open line / open line outside the latest result bullet /
-#      contradictions=N disagrees with the number of open lines)
+#      malformed open line / open line newer than the latest result bullet and not
+#      under it / contradictions=N disagrees with the number of open lines)
 #   2  Invocation error
 #
 # No `set -e`: every failure is checked explicitly and reported before exit.
@@ -67,7 +69,8 @@ Options:
 Exit codes:
   0  Normal
   1  Fail-fast (placeholder residue / unknown branch_strategy / log.md unreadable /
-     malformed open line / open line outside the latest result bullet / count mismatch)
+     malformed open line / open line newer than the latest result bullet and not
+     under it / count mismatch)
   2  Invocation error
 EOF
 }
@@ -140,10 +143,10 @@ if ! entry=$(printf '%s\n' "$log_content" | awk '
     next
   }
   in_entry && /^[[:space:]]/ {
-    if ($0 ~ /^[[:space:]]+[*-] 未解消の矛盾:/) out = out $0 "\n"
+    if ($0 ~ /^[[:space:]]+[*+-] 未解消の矛盾:/) out = out $0 "\n"
     next
   }
-  /^[[:space:]]*[*-] 未解消の矛盾:/ {
+  /^[[:space:]]*[*+-] 未解消の矛盾:/ {
     if (!stray_nr) {
       stray_nr = NR
       stray_line = $0
@@ -173,7 +176,7 @@ if [ -n "$entry" ]; then
   while IFS= read -r line; do
     [ -n "$line" ] || continue
     pair=$(printf '%s\n' "$line" | sed -n -E \
-      's#^[[:space:]]+[*-] 未解消の矛盾: \[[^]]+\]\((pages/(patterns|heuristics|anti-patterns)/[^/)]+\.md)\) ↔ \[[^]]+\]\((pages/(patterns|heuristics|anti-patterns)/[^/)]+\.md)\) — (タイトル衝突|方針逆転|重複情報): (.+)$#.rite/wiki/\1|.rite/wiki/\3|\5|\6#p')
+      's#^[[:space:]]+[*+-] 未解消の矛盾: \[[^]]+\]\((pages/(patterns|heuristics|anti-patterns)/[^/)]+\.md)\) ↔ \[[^]]+\]\((pages/(patterns|heuristics|anti-patterns)/[^/)]+\.md)\) — (タイトル衝突|方針逆転|重複情報): (.+)$#.rite/wiki/\1|.rite/wiki/\3|\5|\6#p')
     if [ -z "$pair" ]; then
       echo "ERROR: 未解消の矛盾の行が固定書式に一致しません: $line" >&2
       exit 1
