@@ -412,11 +412,13 @@ cmd_set() {
   [ -z "$active" ] && active=$cur_active
   local err_count=0
   [ $preserve_error -eq 1 ] && err_count=$cur_err
-  # `handoff` は review↔fix loop / cleanup wiki チェーンの one-shot マーカー。`error_count` と同様に
+  # `handoff` は open の lint 戻り / review↔fix loop / cleanup wiki チェーンの one-shot マーカー。`error_count` と同様に
   # **phase transition (= 毎 set) でデフォルトクリア** する設計のため、merge-read (cur_*) に含めず
   # `--handoff` が明示指定された時だけ書き込む。`--handoff` 省略時は key 自体を付与しない
   # (= 空) ことで、loop 外の set が自動的に handoff をクリアし、stale handoff が次サイクルに漏れない。
-  # handoff には 3 種類の値が入る:
+  # handoff には 4 種類の値が入る:
+  #   - open 戻り "OPEN:{result}:{issue}" : lint が success / skipped を返す前に渡す。
+  #     PR 作成後の open の set (--handoff なし) が default-clear する。
   #   - 継続 handoff "/rite:..." : 継続 sentinel (review:fix-needed / fix:pushed) を出す sub-skill が渡す。
   #   - 終了 handoff "FINALIZE:{result}:{pr}" : 終了 sentinel (mergeable / replied-only / cancelled) を
   #     出す sub-skill が渡す。
@@ -425,7 +427,7 @@ cmd_set() {
   #   `flow-state.sh` 自体は任意文字列を verbatim 格納するため
   #   機構変更は不要 — prefix 分岐は Stop hook (stop-loop-continuation.sh) 側の reason 生成で行う。
   # Stop hook が `consume-handoff` で読み取り + 削除し、prefix で reason を分岐して block する
-  # (block 可否は handoff 非空かどうかで決まり、prefix は再注入する reason の選択にのみ影響する)。
+  # prefix ごとの状態照合と再注入の契約は references/stop-loop-continuation-contract.md を参照する。
   #
   # `stop_reason` は `handoff` と**同じ default-clear** (merge-read に含めず、
   # `--stop-reason` 明示時だけ書く)。`cycle_count` の merge-preserve とは逆なので取り違えないこと。

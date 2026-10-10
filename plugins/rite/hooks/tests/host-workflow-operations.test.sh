@@ -734,8 +734,17 @@ class WorkflowContracts(unittest.TestCase):
         blocks = [b for b in re.findall(r"(?ms)^```bash\n(.*?)^```", lint)
                   if b.startswith("# lint-result-state\n")]
         self.assertEqual(len(blocks), 1)
-        row = re.search(r"\| `" + caller + r"` \| `\[lint:" + result + r"\]` \| `([^`]+)` \|", lint)
-        handoff = row.group(1).replace("{issue_number}", "2624") if row else ""
+        table = lint.split("| Caller | Result | `{lint_handoff}` |", 1)[1].split("\n\n", 1)[0]
+        matches = []
+        for row in table.splitlines():
+            cells = [cell.strip() for cell in row.strip("|").split("|")]
+            if len(cells) == 3 and "`" + caller + "`" in cells[0]:
+                if "[lint:" + result + "]" in cells[1] or cells[1] == "全結果":
+                    matches.append(cells[2])
+        self.assertEqual(len(matches), 1, "expected one handoff row for " + caller + "/" + result)
+        value = matches[0]
+        self.assertTrue(value == "空" or re.fullmatch(r"`[^`]+`", value), "invalid handoff cell: " + value)
+        handoff = "" if value == "空" else value.strip("`").replace("{issue_number}", "2624")
         code = blocks[0]
         for key, value in {"plugin_root": str(distribution), "lint_caller": caller,
                            "phase_value": "lint", "next_action_value": "return " + result,
