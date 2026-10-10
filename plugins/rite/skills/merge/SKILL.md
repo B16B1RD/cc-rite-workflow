@@ -1,8 +1,8 @@
 ---
 name: merge
 description: |
-  rite workflow の PR squash merge ステップ。指定 PR を `gh pr merge --squash` でマージする
-  （cleanup は走らせない → 別途 /rite:cleanup）。/rite:batch-run から programmatic に呼ばれる
+  rite workflow の PR マージステップ。指定 PR を rite-config.yml の `merge.method`（squash / merge、
+  既定 squash）で `gh pr merge` する（cleanup は走らせない → 別途 /rite:cleanup）。/rite:batch-run から programmatic に呼ばれる
   sub-step、または手動 /rite:merge <pr>。汎用の「PR をマージ」
   ヘルパーではなく、その語では auto-activate しない。
   起動: /rite:merge <pr_number>
@@ -18,9 +18,9 @@ argument-hint: "[--force-ci] <pr_number>"
 ## Contract
 
 **Input**: `[--force-ci]` + PR number (required)
-**Output**: `[merge:returned-to-caller]` / `[merge:not-ready]` / `[merge:error]`（競合による not-ready は `[CONTEXT] MERGE_NOT_READY=conflicting`、マージ失敗後も OPEN / BEHIND のときは `[CONTEXT] MERGE_ERROR=behind` を併記）
+**Output**: `[merge:returned-to-caller]` / `[merge:not-ready]` / `[merge:error]`（競合による not-ready は `[CONTEXT] MERGE_NOT_READY=conflicting`、マージ失敗後も OPEN / BEHIND のときは `[CONTEXT] MERGE_ERROR=behind`、マージ方式の設定が不正なときは `[CONTEXT] MERGE_METHOD=invalid` を併記）
 
-`gh pr merge --squash` を叩いて PR をマージするだけ。**cleanup は走らせない**。マージ後の cleanup は `/rite:cleanup` を別途実行する。
+設定したマージ方式（`merge.method`、既定 squash）で `gh pr merge` を叩いて PR をマージするだけ。**cleanup は走らせない**。マージ後の cleanup は `/rite:cleanup` を別途実行する。
 
 ## E2E Output Minimization
 
@@ -46,8 +46,9 @@ argument-hint: "[--force-ci] <pr_number>"
 | `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute |
 | `{reviewed_ac_ids}` | reviewed-head helper の `REVIEWED_AC=unverified; ac=` marker（カンマ区切り） |
 | `{human_ac_ids}` | 未検証 AC のうち人間にしか確かめられず、人間が確認できたと答えた ID（カンマ区切り。ready の unverified 手順 4） |
-| `{squash_subject_file}` | ステップ 2 直前に規約適用した squash 件名を書いた作業ツリー外ファイル |
-| `{squash_body_file}` | ステップ 2 直前に規約適用した squash 本文を書いた作業ツリー外ファイル |
+| `{merge_method}` | ステップ 2 の `[CONTEXT] MERGE_METHOD=` の値（`squash` / `merge`） |
+| `{squash_subject_file}` | ステップ 2 直前に規約適用したマージコミットの件名を書いた作業ツリー外ファイル（`merge` 方式でも同じファイル） |
+| `{squash_body_file}` | ステップ 2 直前に規約適用したマージコミットの本文を書いた作業ツリー外ファイル（`merge` 方式でも同じファイル） |
 
 ---
 
@@ -234,7 +235,13 @@ run ID を解決できない、または `gh api .../jobs` が 1 件でも失敗
 
 ## ステップ 2: マージ実行
 
-`gh pr merge` の直前に AC enforce を再実行し、そこで照合した PR head をマージ対象として固定する。`--force-ci` は CI だけの override であり、reviewed HEAD / AC gate を迂回しない。squash の件名・本文は [commit-convention.md](../../references/commit-convention.md) で生成し、本文ファイルは作業ツリー外へ置く。`--delete-branch=false` と `--match-head-commit "$verified_head"` は外さない。
+`gh pr merge` の直前に AC enforce を再実行し、そこで照合した PR head をマージ対象として固定する。`--force-ci` は CI だけの override であり、reviewed HEAD / AC gate を迂回しない。マージコミットの件名・本文は [commit-convention.md](../../references/commit-convention.md) で生成し、本文ファイルは作業ツリー外へ置く。`--delete-branch=false` と `--match-head-commit "$verified_head"` は外さない。
+
+先にマージ方式を決める。出力の `[CONTEXT] MERGE_METHOD=` の値を下のブロックの `{merge_method}` に literal substitute する。rationale: references/rationale.md#merge-method
+
+```bash
+bash "{plugin_root}/hooks/scripts/merge-method-resolve.sh" || { echo "[merge:error]"; exit 1; }
+```
 
 ```bash
 # inspect 後の差し替えを防ぐ最終 gate。unverified / unmet / missing / malformed はすべて停止する。
@@ -273,8 +280,9 @@ else
   gh_err=""
 fi
 
-# squash 件名・本文は [commit-convention.md](../../references/commit-convention.md) で生成し、
-# 作業ツリー外のファイルへ書く。未指定時の既定は PR タイトルと既存の squash 本文。
+# マージコミットの件名・本文は [commit-convention.md](../../references/commit-convention.md) で生成し、
+# 作業ツリー外のファイルへ書く。未指定時の既定は PR タイトルと、squash では既存の squash 本文、
+# merge では PR のコミット件名一覧。
 # {squash_subject_file} / {squash_body_file} は直前の Write 結果を literal substitute する。
 # 件名はファイルから読み、シェルが件名テキストを展開しないようにする。
 squash_subject=$(cat -- "{squash_subject_file}") || {
@@ -282,7 +290,7 @@ squash_subject=$(cat -- "{squash_subject_file}") || {
   echo "[merge:not-ready]"
   exit 1
 }
-if gh pr merge {pr_number} -R {owner_repo} --squash --delete-branch=false --match-head-commit "$verified_head" --subject "$squash_subject" --body-file "{squash_body_file}" 2>"${gh_err:-/dev/null}"; then
+if gh pr merge {pr_number} -R {owner_repo} --{merge_method} --delete-branch=false --match-head-commit "$verified_head" --subject "$squash_subject" --body-file "{squash_body_file}" 2>"${gh_err:-/dev/null}"; then
   echo "<!-- skill return signal: caller must continue next step -->"
   echo "<!-- [merge:returned-to-caller] -->"
   # 成功時のみ stderr の warning (deprecation / rate-limit) を surface する。
@@ -322,6 +330,7 @@ fi
 | 終了 status | アクション |
 |------------|-----------|
 | `[merge:returned-to-caller]` emit | ステップ 3 完了通知へ |
+| `[merge:error]` + `[CONTEXT] MERGE_METHOD=invalid` | 設定の誤りで、`gh pr merge` は実行していない。再試行も質問もせずに停止し、stderr の値・使える値（squash / merge）・rite-config.yml の場所を示して、`merge.method` を直してから再実行するよう案内する |
 | `[merge:error]` + `[CONTEXT] MERGE_ERROR=behind` | 停止し、上の復旧手順を案内する。手順 2 は [fix-plan の base 取り込み](../fix/references/fix-plan.md#base-取り込み) を使用する（対象 Issue・branch・worktree を照合して fix phase へ記録してから実施する）。reviewed HEAD が変わるため、再レビューと全 CI job の完了・成功確認を飛ばさない。base を取り込む前の merge 再試行・`/rite:recover` だけの再開・「再試行 / 中止」の質問へ合流しない。保護設定や ruleset は変更しない |
 | `[merge:error]` emit | bash block が stderr に gh error 詳細を出力済み。LLM は先に stderr から原因を分類する。ネットワーク・API の一時障害なら承認済みの merge を 1 回だけ再実行し、conflict・必須チェック未通過・権限不足なら原因と対処を示して停止する。どれとも判定できないときだけ、原因を question_resolution 規則 6 の 4 要素で示して AskUserQuestion で「再試行 / 中止」を提示 |
 
@@ -333,7 +342,7 @@ fi
 ## /rite:merge 完了
 
 - PR: #{pr_number}
-- マージ方式: squash
+- マージ方式: {merge_method}
 - ブランチ: {branch_name} (`/rite:merge` はローカルブランチを削除していません。リモートは `delete_branch_on_merge: true` のリポジトリでは既に削除済みの場合があります)
 
 次のステップ:
@@ -349,9 +358,9 @@ fi
 ## 設計判断
 
 - **`--delete-branch=false` 明示**: `gh` の default 挙動に任せてクライアント側から削除 API を呼ぶことを抑止し、ブランチ削除を `/rite:cleanup` の責務に寄せる。ただし**抑止できるのは gh クライアント側の削除だけ**で、リポジトリ設定 `delete_branch_on_merge: true` の環境では GitHub がマージ完了時にサーバサイドで head ブランチを削除する。このフラグはそれを止められないため、「マージ後もブランチが必ず残る」ことは保証されない。`/rite:cleanup` のリモート削除ステップは、この既削除を正常系として扱う（`skills/cleanup/SKILL.md` ステップ 5 の `git ls-remote --exit-code` ガード）
-- その他（責務は merge のみ / flow-state は触らない / squash ハードコード / stderr 分離 / CI gate は merge 直前だけ）:
+- その他（責務は merge のみ / flow-state は触らない / マージ方式は設定で選ぶ / stderr 分離 / CI gate は merge 直前だけ）:
   rationale: references/rationale.md#merge-only
-  rationale: references/rationale.md#squash-hardcoded
+  rationale: references/rationale.md#merge-method
   rationale: references/rationale.md#stderr-split
   rationale: references/rationale.md#ci-gate-at-merge
   rationale: references/rationale.md#ci-wait-bounded

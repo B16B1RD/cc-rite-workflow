@@ -89,7 +89,7 @@ Display the following diagram:
   /rite:ready <pr> (レビュー待ちに変更)
         │                              Status: In Review
         ▼
-  /rite:merge <pr> (squash マージ)
+  /rite:merge <pr> (merge.method の方式でマージ。既定 squash)
         │
         ▼
   /rite:cleanup (後片付け)
@@ -132,7 +132,7 @@ Display the following list:
 【PR 管理】
   /rite:iterate         レビュー/修正ループ（review ⇄ fix を自律実行）
   /rite:ready           Ready for review に変更
-  /rite:merge           PR を squash マージ
+  /rite:merge           PR をマージ（既定 squash）
   /rite:cleanup         マージ後クリーンアップ（ブランチ削除・Issue クローズ）
   /rite:pr-create       ドラフト PR を作成（Issue なしの単発 PR 用）
 

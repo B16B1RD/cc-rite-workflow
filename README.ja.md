@@ -117,7 +117,7 @@ Rite Workflow は 3 ステップでインストールします。マーケット
 | `/rite:issue-edit` | 既存 Issue を対話的に編集 |
 | `/rite:open` | 作業を一気通貫で開始（ブランチ → 計画 → 実装 → lint → draft PR） |
 | `/rite:iterate` | mergeable になるまで review ⇄ fix をループ |
-| `/rite:merge` | PR を squash merge |
+| `/rite:merge` | PR をマージ（`merge.method`。既定は squash、merge commit も可） |
 | `/rite:pr-create` | draft PR を作成 |
 | `/rite:ready` | Ready for review に変更 |
 | `/rite:pr-review` | マルチレビュアーレビュー |
@@ -141,7 +141,7 @@ Rite Workflow は 3 ステップでインストールします。マーケット
                   → /rite:ready → /rite:merge → /rite:cleanup
 ```
 
-**注意:** 一気通貫のフローは単一責務の 4 コマンドに分割されています。`/rite:open <issue>` はブランチ作成・実装・品質チェック・draft PR 作成を担当します。`/rite:iterate <pr>` は mergeable になるまで review と fix をループします。`/rite:ready <pr>` は PR を Ready for review に切り替えます。`/rite:merge <pr>` は squash merge を実行します。いずれかのステップが中断した場合（例: `Context limit reached`）、`/rite:recover` を実行して復旧します。rite が作るコミット（実装・修正・Wiki・squash を含む）は、作業ツリーの `CLAUDE.md` / `AGENTS.md` の規約に従い、対象パスに近いネストが根より優先します。LLM 経路の未指定項目は Conventional Commits と `rite-config.yml` の `language` で補い、helper 自動コミットの未指定は現行固定文のままです。
+**注意:** 一気通貫のフローは単一責務の 4 コマンドに分割されています。`/rite:open <issue>` はブランチ作成・実装・品質チェック・draft PR 作成を担当します。`/rite:iterate <pr>` は mergeable になるまで review と fix をループします。`/rite:ready <pr>` は PR を Ready for review に切り替えます。`/rite:merge <pr>` は `merge.method` で設定した方式（既定は squash）でマージします。いずれかのステップが中断した場合（例: `Context limit reached`）、`/rite:recover` を実行して復旧します。rite が作るコミット（実装・修正・Wiki・squash または merge commit を含む）は、作業ツリーの `CLAUDE.md` / `AGENTS.md` の規約に従い、対象パスに近いネストが根より優先します。LLM 経路の未指定項目は Conventional Commits と `rite-config.yml` の `language` で補い、helper 自動コミットの未指定は現行固定文のままです。
 
 ステータス遷移:
 ```

@@ -396,6 +396,7 @@ args: "{pr_number}"
 | `[merge:returned-to-caller]` | ステップ 6 へ |
 | `[merge:not-ready]` + `[CONTEXT] MERGE_NOT_READY=conflicting` | base と競合。停止せず下記「競合の解消」を行い、ステップ 3 へ戻る |
 | `[merge:error]` + `[CONTEXT] MERGE_ERROR=behind` | **失敗** → ステップ 8（段階=merge）。BEHIND の解消手順を復旧欄に載せる |
+| `[merge:error]` + `[CONTEXT] MERGE_METHOD=invalid` | **失敗** → ステップ 8（段階=merge）。復旧欄の先頭に「rite-config.yml の `merge.method` を squash / merge のどちらかに直してから再開する」を載せる（マージは実行されていない） |
 | `MERGE_NOT_READY=conflicting` を伴わない `[merge:not-ready]` / `[merge:error]` / sentinel 不在 | **失敗** → ステップ 8（段階=merge） |
 
 **競合の解消**（上表の競合行のときだけ）:

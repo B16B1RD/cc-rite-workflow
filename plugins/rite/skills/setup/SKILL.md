@@ -692,13 +692,14 @@ Compare current config against the template and classify each key:
 **Unknown key 判定の scope**: Step 4 の "Unknown key" 判定は **template の `# --- Advanced (below this line) ---` 境界より上の active section のみ**を参照する。
 rationale: references/rationale.md#unknown-key-scope
 
-**Active top-level sections covered on --upgrade** (drift anchor): `schema_version`, `github`, `iteration`, `branch`, `commands`, `verification`, `issue`, `review`, `language`, `wiki`, `multi_session`, `tdd`, `safety`. Step 4/6 が扱う。**When a new active top-level section is added to the template, add it to this list too** — otherwise the drift test fails and `--upgrade` would silently miss it.
+**Active top-level sections covered on --upgrade** (drift anchor): `schema_version`, `github`, `iteration`, `branch`, `merge`, `commands`, `verification`, `issue`, `review`, `language`, `wiki`, `multi_session`, `tdd`, `safety`. Step 4/6 が扱う。**When a new active top-level section is added to the template, add it to this list too** — otherwise the drift test fails and `--upgrade` would silently miss it.
 
 **Active sub-keys covered on --upgrade** (drift anchor。スカラー `schema_version` / `language` は省略):
 
 - `github`: `projects`
 - `iteration`: `enabled`, `field_name`, `auto_assign`, `show_in_list`
 - `branch`: `base`, `pattern`
+- `merge`: `method`
 - `commands`: `build`, `test`, `lint`
 - `verification`: `run_tests_before_pr`, `acceptance_criteria_check`
 - `issue`: `auto_decompose_threshold`

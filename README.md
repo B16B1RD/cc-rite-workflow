@@ -117,7 +117,7 @@ This will:
 | `/rite:issue-edit` | Edit existing Issue interactively |
 | `/rite:open` | Start work end-to-end (branch → plan → implement → lint → draft PR) |
 | `/rite:iterate` | Loop review ⇄ fix until mergeable |
-| `/rite:merge` | Squash-merge the PR |
+| `/rite:merge` | Merge the PR (`merge.method`: squash by default, or merge commit) |
 | `/rite:pr-create` | Create draft PR |
 | `/rite:ready` | Mark as Ready for review |
 | `/rite:pr-review` | Multi-reviewer review |
@@ -141,7 +141,7 @@ This will:
                   → /rite:ready → /rite:merge → /rite:cleanup
 ```
 
-**Note:** The end-to-end flow is split across four single-responsibility commands. `/rite:open <issue>` handles branch creation, implementation, quality checks, and draft PR creation. `/rite:iterate <pr>` loops review and fix until mergeable. `/rite:ready <pr>` flips the PR to Ready for review. `/rite:merge <pr>` performs the squash-merge. If any step is interrupted (e.g. `Context limit reached`), run `/rite:recover` to recover. Commits rite creates (implementation, fix, Wiki, and squash) follow the worktree `CLAUDE.md` / `AGENTS.md` conventions; nested files nearer the changed path take priority over the worktree root. Unspecified items on the LLM path use Conventional Commits and `rite-config.yml` `language`. Helper auto-commits keep their current fixed text when both files are absent.
+**Note:** The end-to-end flow is split across four single-responsibility commands. `/rite:open <issue>` handles branch creation, implementation, quality checks, and draft PR creation. `/rite:iterate <pr>` loops review and fix until mergeable. `/rite:ready <pr>` flips the PR to Ready for review. `/rite:merge <pr>` merges the PR with the method set in `merge.method` (squash by default). If any step is interrupted (e.g. `Context limit reached`), run `/rite:recover` to recover. Commits rite creates (implementation, fix, Wiki, and the squash or merge commit) follow the worktree `CLAUDE.md` / `AGENTS.md` conventions; nested files nearer the changed path take priority over the worktree root. Unspecified items on the LLM path use Conventional Commits and `rite-config.yml` `language`. Helper auto-commits keep their current fixed text when both files are absent.
 
 Status Transitions:
 ```
