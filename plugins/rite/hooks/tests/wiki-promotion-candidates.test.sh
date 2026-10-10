@@ -337,7 +337,7 @@ test "$(bash -c "$command")" = called
         target.parent.mkdir(parents=True)
         target.write_text(original)
         (self.cwd / consumer).write_text('#!/bin/bash\nprintf "called\\n"\n')
-        command = re.findall(r"```bash\n(.*?)\n[ \t]*```", original.split("## 昇格候補の消化", 1)[1], re.S)[0].strip()
+        command = re.findall(r"```bash\n(.*?)\n[ \t]*```", original.split("## 昇格候補の消化", 1)[1], re.S)[0]
         for key, value in {"plugin_root": "plugins/rite", "wiki_root_abs": str(self.cwd / ".rite/wiki"),
                            "execution_cwd": str(self.cwd), "owner_repo": self.repo}.items():
             command = command.replace("{" + key + "}", value)

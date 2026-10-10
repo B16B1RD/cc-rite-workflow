@@ -56,8 +56,8 @@ def observe_usage(directory, caller, consumer, test, originals):
             patterns = []
             for code in sorted(inline_codes):
                 parts = re.split(r"(?<!\$)(\{[a-z][a-z0-9_]*\})", code)
-                patterns.append("^" + "".join("[[:alnum:]_./:@=+, %-]+" if re.fullmatch(
-                    r"\{[a-z][a-z0-9_]*\}", part) else re.escape(part) for part in parts) + "$")
+                patterns.append("^[[:space:]]*" + "".join("[[:alnum:]_./:@=+, %-]+" if re.fullmatch(
+                    r"\{[a-z][a-z0-9_]*\}", part) else re.escape(part) for part in parts) + "[[:space:]]*$")
             inline_case = "\n_rite_promotion_pattern=" + shlex.quote("(" + "|".join(patterns) + ")") + "\n" + (
                 "if [[ \"${BASH_EXECUTION_STRING:-}\" =~ $_rite_promotion_pattern ]]; then\n"
                 "printf 'doc-exec\\t%s\\t%s\\t%s\\n' \"$BASHPID\" \"$PPID\" \"$RITE_PROMOTION_CALLER\" >> \"$RITE_PROMOTION_TRACE\"\n"
