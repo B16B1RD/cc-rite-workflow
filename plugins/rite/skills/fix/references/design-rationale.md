@@ -225,7 +225,7 @@ H-1: ステップ 1.2 進入時に confidence_override tempfile を無条件 tru
 
 「本 cycle 内で accept 決定が発生」は `ACCEPT_FINGERPRINT_PERSISTED` と `ACCEPT_FINGERPRINT_PERSIST_FAILED` の両方をトリガーにする。reply は永続化の成否に関わらず完了しており、失敗時は次回 review で suppression が効かない。ここで re-review しないと `[fix:replied-only]` で正常終了し、suppression 未確認のまま loop が終わる。`{accept_count}` (累計) を使うと過去 cycle の 1 件で恒久継続になり無限 re-review する。
 
-条件の SoT はステップ 5.1 Output Pattern テーブル row 4/5。4.6 Note と Handoff 節は参照のみ (bit-exact 手動同期に頼らない)。旧 Phase 4.3 の「別Issue作成」残骸を条件に複製していた事故への再発防止。
+条件の SoT はステップ 5.1 Output Pattern テーブル row 4/4.5/5。4.6 Note と Handoff 節は参照のみ (bit-exact 手動同期に頼らない)。旧 Phase 4.3 の「別Issue作成」残骸を条件に複製していた事故への再発防止。
 
 ## wiki-ingest-placement
 
