@@ -231,6 +231,7 @@ while IFS= read -r page; do
     # page-template.md の canonical YAML は multi-line 形式 (`- type: "..."\n  resource: "..."`)。
     # 同一行 `- resource:` の legacy 単行形式と multi-line 形式 ` resource:` (dash なしインデント付き) の両方を support する。
     page_refs=$(printf '%s\n' "$page_content" | awk -v diag="${awk_diag:-/dev/null}" -v page="$page" '
+      /^sources:[[:space:]]*\[\][[:space:]]*$/ { in_sources=0; next }
       /^sources:/ { in_sources=1; sources_seen++; next }
       # frontmatter terminator (`---`) を明示検出。
       # minimal frontmatter (sources: 直後に `---` で閉じる、tags:/confidence: なし) でも

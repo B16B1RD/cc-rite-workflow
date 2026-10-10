@@ -22,6 +22,8 @@
 #   TC-13 same_branch io_error (page path が directory で cat 失敗) → read_ok=io_error
 #   TC-14 lint.md 6.2 helper-不在 fallback の io_error 出力契約 (静的回帰)。
 #         TC-1..13 は helper (.sh) を、TC-14 は delegation 元 lint.md (.md) の fallback 分岐を守る
+#   TC-16 インライン空配列 → 警告なし、出典 0 件
+#   TC-17 resource の無い項目 → 破損警告を維持
 #
 # NOT covered (environment-dependent): mktemp failure on read-only /tmp,
 # sort/awk pipeline OOM. Both downgrade to io_error and are verified by reading.
@@ -177,6 +179,41 @@ rc=$?
 assert "TC-7 exit 0" "0" "$rc"
 assert_grep "TC-7 read_ok=true (空集合は io_error ではない)" "$outf" '^all_source_refs_read_ok=true$'
 assert_grep "TC-7 sources_section_empty WARNING" "$errf" 'resource が 1 件も抽出できませんでした'
+
+# === TC-16: インライン空配列 → 警告なし、出典 0 件 ===
+echo "=== TC-16: sources: [] ==="
+sbx=$(make_sandbox); cleanup_dirs+=("$sbx")
+mkdir -p "$sbx/.rite/wiki/pages"
+cat > "$sbx/.rite/wiki/pages/empty-array.md" <<'EOF'
+---
+title: "Empty array"
+sources: []
+---
+EOF
+errf=$(mk_tmp); outf=$(mk_tmp)
+printf '%s\n' ".rite/wiki/pages/empty-array.md" \
+  | bash "$SCRIPT" --branch-strategy same_branch --repo-root "$sbx" >"$outf" 2>"$errf"
+rc=$?
+assert "TC-16 exit 0" "0" "$rc"
+assert_not_grep "TC-16 WARNING なし" "$errf" 'WARNING'
+assert_grep "TC-16 read_ok=true" "$outf" '^all_source_refs_read_ok=true$'
+refs=$(sed -n '/^---all_source_refs_begin---$/,/^---all_source_refs_end---$/p' "$outf" | sed '1d;$d')
+assert "TC-16 出典 0 件" "" "$refs"
+
+# === TC-17: resource の無い項目 → 破損警告を維持 ===
+echo "=== TC-17: resource の無い項目 ==="
+cat > "$sbx/.rite/wiki/pages/no-resource.md" <<'EOF'
+---
+sources:
+  - type: "review"
+---
+EOF
+errf=$(mk_tmp); outf=$(mk_tmp)
+printf '%s\n' ".rite/wiki/pages/no-resource.md" \
+  | bash "$SCRIPT" --branch-strategy same_branch --repo-root "$sbx" >"$outf" 2>"$errf"
+rc=$?
+assert "TC-17 exit 0" "0" "$rc"
+assert_grep "TC-17 破損 WARNING" "$errf" 'resource が 1 件も抽出できませんでした'
 
 # === TC-8: separate_branch 抽出 (git show) ===
 echo "=== TC-8: separate_branch 抽出 ==="
