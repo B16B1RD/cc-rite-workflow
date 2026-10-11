@@ -103,7 +103,7 @@ def stdout_redirect(words):
             if fd_operand:
                 alias = int(fd_operand[1])
             destination = destinations.get(alias, alias) if alias is not None else ("file", target)
-            if "$" in target or marker_prefix in target:
+            if not target or "$" in target or marker_prefix in target:
                 destination = ("unknown", target)
             if match[1] == "&":
                 destinations[1] = destinations[2] = destination
@@ -131,6 +131,10 @@ def fragments(code, owner="", parent=None, slot=None):
         if quote is None and ch == "#" and (index == 0 or code[index - 1] in " \t;&|()"):
             outer.append(code[index:])
             break
+        if quote is None and code.startswith(">|", index):
+            outer.append(">")
+            index += 2
+            continue
         if quote != "single" and (code.startswith("$(", index) or ch == chr(96)):
             if ch == chr(96):
                 end = code.find(chr(96), index + 1)
@@ -631,6 +635,11 @@ for snippet in 'head -3' 'tail -n 3' "sed -n '1,3p'" 'cat'; do
   check_sweep_fixture "$mode" safe "TC-8: moved file fd stays non-diagnostic $snippet" "$snippet \"\$raw\" 2>/dev/null >&2-"
   check_sweep_fixture "$mode" safe "TC-8: moved stdout reaches neutralization $snippet" "$snippet \"\$safe\" 3>&1 >&3- | neutralize_ctrl >&2"
   check_sweep_fixture "$mode" violation "TC-8: closed moved fd is not a file destination $snippet" "$snippet \"\$raw\" >&2 3>/dev/null >&3- >&3"
+  raw_clobber="$snippet \"\$raw\" >&2 >| /dev/stderr"
+  check_sweep_fixture "$mode" violation "TC-8: noclobber stderr remains diagnostic $snippet" "$raw_clobber"
+  check_sweep_fixture "$mode" violation 'TC-8: safe neighbor cannot hide noclobber stderr' "head -3 \"\$safe\" | neutralize_ctrl >&2; $raw_clobber"
+  check_sweep_fixture "$mode" safe "TC-8: noclobber file output stays non-diagnostic $snippet" "$snippet \"\$raw\" >&2 >| /dev/null"
+  check_sweep_fixture "$mode" safe "TC-8: noclobber stdout reaches neutralization $snippet" "$snippet \"\$safe\" >| /dev/stdout | neutralize_ctrl >&2"
 done
 tc8_cleanup
 trap - EXIT
