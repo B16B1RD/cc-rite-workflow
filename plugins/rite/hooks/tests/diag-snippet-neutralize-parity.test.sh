@@ -87,15 +87,29 @@ def target_args(words):
 
 
 def stdout_redirect(words):
-    destination = None
+    # fdの複製は、その時点の出力先を保持する。最後の記法だけでは判定しない。
+    destinations = {}
     for index, word in enumerate(words):
         if not isinstance(word, scope._Redirection):
             continue
-        match = re.fullmatch(r"(?:(?:1)?(>>|>&|>)|(&>>|&>))(.*)", word)
+        match = re.fullmatch(r"([0-9]*|&)(>>|>&|>)(.*)", word)
         if match:
             target = match[3] or (words[index + 1] if index + 1 < len(words) else "")
-            destination = (match[1] or match[2], target)
-    return destination
+            alias = {"/dev/stdin": 0, "/dev/stdout": 1, "/dev/stderr": 2}.get(target)
+            fd_path = re.fullmatch(r"(?:/dev/fd/|/proc/self/fd/)([0-9]+)", target)
+            if fd_path:
+                alias = int(fd_path[1])
+            if match[2] == ">&" and re.fullmatch(r"[0-9]+", target):
+                alias = int(target)
+            destination = destinations.get(alias, alias) if alias is not None else ("file", target)
+            if "$" in target or marker_prefix in target:
+                destination = ("unknown", target)
+            if match[1] == "&":
+                destinations[1] = destinations[2] = destination
+            else:
+                destinations[int(match[1] or "1")] = destination
+    destination = destinations.get(1, 1)
+    return None if destination == 1 else destination
 
 
 def stdin_redirect(words):
@@ -177,7 +191,7 @@ for row in sys.stdin:
                     continue
                 word, args, count = target
                 inputs = args[count:]
-                if mode != "byte" and destination is not None and destination != (">&", "2"):
+                if mode != "byte" and isinstance(destination, tuple) and destination[0] == "file":
                     continue
                 if mode == "line" and inputs == ["\u0024{BASH_SOURCE[0]}"]:
                     continue
@@ -590,6 +604,20 @@ done
 for snippet in 'head -3' 'tail -n 3' "sed -n '1,3p'"; do
   check_sweep_fixture line violation "TC-8: literal cannot hide a $snippet capture" "echo \"\$($snippet \"\$raw\")\" >&2; printf \"%s\" \"__diag_sub_6__\" | neutralize_ctrl >&2"
 done
+for snippet in 'head -3' 'tail -n 3' "sed -n '1,3p'" 'cat'; do
+  case "$snippet" in cat) mode=cat ;; *) mode=line ;; esac
+  for destination in '> /dev/stderr' '>&02' '>&1' '> /dev/fd/2' '> /proc/self/fd/2'; do
+    raw_alias="$snippet \"\$raw\" >&2 $destination"
+    check_sweep_fixture "$mode" violation "TC-8: stderr alias remains a diagnostic $snippet $destination" "$raw_alias"
+    check_sweep_fixture "$mode" violation 'TC-8: safe neighbor cannot hide stderr alias' "head -3 \"\$safe\" | neutralize_ctrl >&2; $raw_alias"
+  done
+done
+check_sweep_fixture line safe 'TC-8: stdout self-duplication still reaches neutralization' 'head -3 "$safe" >&1 | neutralize_ctrl >&2'
+check_sweep_fixture line safe 'TC-8: fd alias uses the destination at duplication time' 'head -3 "$raw" 2>/dev/null >&2; head -3 "$safe" | neutralize_ctrl >&2'
+check_sweep_fixture line violation 'TC-8: copied stderr fd remains diagnostic' 'head -3 "$raw" 3>&2 >&3'
+check_sweep_fixture line violation 'TC-8: unresolved fd cannot prove non-diagnostic output' 'fd=2; head -3 "$raw" >&2 >&"$fd"'
+check_sweep_fixture line violation 'TC-8: unresolved path cannot prove non-diagnostic output' 'dest=/dev/stderr; head -3 "$raw" >&2 >"$dest"'
+check_sweep_fixture line violation 'TC-8: captured path cannot prove non-diagnostic output' 'head -3 "$raw" >&2 >"$(printf "%s" /dev/stderr)"'
 tc8_cleanup
 trap - EXIT
 
