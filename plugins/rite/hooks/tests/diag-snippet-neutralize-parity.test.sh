@@ -38,6 +38,7 @@
 #         制御文字を残さず、行ごとの indent を維持する
 #   TC-7: 同じ行の各出力を実 sweep と同じ述語で検査し、別の中和済み出力や
 #         対象外コマンド・引用文・解析失敗で未中和出力が消えない
+#   TC-8: 実sweep経路で引用引数・前置構文・置換内外の中和と既存対象外を確認
 #
 # Usage: bash plugins/rite/hooks/tests/diag-snippet-neutralize-parity.test.sh
 set -euo pipefail
@@ -52,7 +53,6 @@ SWEEP_DIRS=("$HOOKS_DIR" "$SCRIPTS_DIR")
 # 中和済みの別コマンドや引用文で、同じ行の未中和出力を除外しない。
 unneutralized_sites() {
   PYTHONDONTWRITEBYTECODE=1 python3 -c 'import re
-import shlex
 import sys
 import importlib
 from pathlib import Path
@@ -62,32 +62,36 @@ if mode not in {"line", "byte", "cat"}:
     sys.exit(2)
 sys.path.insert(0, sys.argv[2])
 scope = importlib.import_module("review-fix-scope")
-stops = {";", "&&", "||", "&", "(", ")", "{", "}"}
-command_before = stops | {"|", "then", "do", "else"}
 
 
-def is_target(tokens, index):
-    word = tokens[index]
-    args = tokens[index + 1:]
-    if index and tokens[index - 1] not in command_before:
-        return False
+def target_args(words):
+    index = scope._prefix_end(words)
+    if index == len(words):
+        return None
+    word, args = words[index], scope._without_redirections(words[index + 1:])
     if mode == "cat":
-        return word == "cat"
+        return (word, args, 0) if word == "cat" else None
     if word in {"head", "tail"}:
         if mode == "byte":
-            return word == "head" and len(args) >= 2 and args[0] == "-c" and args[1].isdigit()
-        return bool(args) and (bool(re.fullmatch(r"-\d+", args[0])) or
-                               len(args) >= 2 and args[0] == "-n" and args[1].isdigit())
-    if mode == "line" and word == "sed":
-        if args and args[0] in {"-n", "-ne"}:
-            args = args[1:]
-            if args and args[0] == "-e":
-                args = args[1:]
-            return bool(args and re.match(r"\d+,\d+p", args[0]))
-    return False
+            if word == "head" and len(args) >= 2 and args[0] == "-c" and args[1].isdigit():
+                return word, args, 2
+        elif args and re.fullmatch(r"-\d+", args[0]):
+            return word, args, 1
+        elif len(args) >= 2 and args[0] == "-n" and args[1].isdigit():
+            return word, args, 2
+    if mode == "line" and word == "sed" and args and args[0] in {"-n", "-ne"}:
+        count = 3 if len(args) > 1 and args[1] == "-e" else 2
+        if len(args) >= count and re.match(r"\d+,\d+p", args[count - 1]):
+            return word, args, count
+    return None
 
 
-def fragments(code, owner=""):
+def redirected(words):
+    return any(isinstance(w, scope._Redirection) and
+               re.match(r"(?:(?:1)?(?:>|>>|>&)|&>)", w) for w in words)
+
+
+def fragments(code, owner="", parent=None, slot=None):
     parts, outer, quote, index = [], [], None, 0
     while index < len(code):
         ch = code[index]
@@ -98,12 +102,20 @@ def fragments(code, owner=""):
         if quote is None and ch == "#" and (index == 0 or code[index - 1] in " \t;&|()"):
             outer.append(code[index:])
             break
-        if quote != "single" and code.startswith("$(", index):
-            end = scope._substitution_end(code, index + 2)
+        if quote != "single" and (code.startswith("$(", index) or ch == chr(96)):
+            if ch == chr(96):
+                end = code.find(chr(96), index + 1)
+                if end < 0:
+                    raise ValueError("unfinished command substitution")
+                inner, end = code[index + 1:end], end + 1
+            else:
+                end = scope._substitution_end(code, index + 2)
+                inner = code[index + 2:end - 1]
+            marker = "__diag_sub_" + str(index) + "__"
             assignment = re.search(r"(?:^|[;&|])\s*(lock_pid|stored_token)=\s*$", code[:index])
-            inner_owner = assignment[1] + "=$" if assignment and quote is None else ""
-            parts.extend(fragments(code[index + 2:end - 1], inner_owner))
-            outer.append("__substitution__")
+            inner_owner = assignment[1] if assignment and quote is None else ""
+            parts.extend(fragments(inner, inner_owner, outer, marker))
+            outer.append(marker)
             index = end
             continue
         if ch == chr(39) and quote != "double":
@@ -112,21 +124,7 @@ def fragments(code, owner=""):
             quote = None if quote == "double" else "double"
         outer.append(ch)
         index += 1
-    return parts + [("".join(outer), owner)]
-
-
-def stdin_only(word, args):
-    count = 1 if args and re.fullmatch(r"-\d+", args[0]) else 2
-    if word == "sed" and len(args) > 1 and args[1] == "-e":
-        count = 3
-    rest = args[count:]
-    while rest:
-        if len(rest) > 1 and rest[0].isdigit() and rest[1].startswith(">"):
-            rest = rest[1:]
-        if len(rest) < 2 or rest[0] not in {">", ">>", ">&", "&>"}:
-            return False
-        rest = rest[2:]
-    return True
+    return parts + [(outer, "".join(outer), owner, parent, slot)]
 
 
 for row in sys.stdin:
@@ -136,57 +134,58 @@ for row in sys.stdin:
     match = re.match(r"(.*?):([0-9]+):(.*)", row)
     path, code = (match[1], match[3]) if match else ("fixture.sh", row)
     try:
-        parts = []
-        for fragment, owner in fragments(code):
-            lexer = shlex.shlex(fragment + "\n", posix=True, punctuation_chars=";&|()<>")
-            lexer.whitespace_split = True
-            parts.append((list(lexer), owner))
+        inherited, unsafe = {}, False
+        for identity, fragment, owner, parent, slot in reversed(fragments(code)):
+            inherited_safe = inherited.get((id(parent), slot), False)
+            segments = scope.shell_segments(fragment)
+            for index, (words, nested, before, after) in enumerate(segments):
+                command_index = scope._prefix_end(words)
+                command = words[command_index] if command_index < len(words) else ""
+                downstream = []
+                cursor = index
+                while cursor + 1 < len(segments) and segments[cursor][3] == "|":
+                    cursor += 1
+                    downstream.append(segments[cursor][0])
+                downstream_safe = any(
+                    (scope._prefix_end(w) < len(w) and w[scope._prefix_end(w)] == "neutralize_ctrl")
+                    for w in downstream
+                )
+                safe = (inherited_safe or downstream_safe) and not redirected(words)
+                for word in words:
+                    for marker in re.findall(r"__diag_sub_\d+__", word):
+                        inherited[(id(identity), marker)] = safe or command == "neutralize_ctrl"
+                target = target_args(words)
+                if target is None:
+                    continue
+                word, args, count = target
+                inputs = args[count:]
+                if mode == "line" and inputs == ["\u0024{BASH_SOURCE[0]}"]:
+                    continue
+                if mode == "byte" and Path(path).name == "work-memory-lock.sh" and owner in {
+                    "lock_pid", "stored_token"
+                }:
+                    continue
+                if mode == "cat":
+                    raw_args = words[command_index + 1:]
+                    if (raw_args and isinstance(raw_args[0], scope._Redirection) and
+                            raw_args[0] in {">&2", "1>&2"} and len(raw_args) > 1 and
+                            isinstance(raw_args[1], scope._Redirection) and raw_args[1].startswith("<<")):
+                        continue
+                cursor, upstream_safe = index, False
+                while cursor and segments[cursor][2] == "|":
+                    cursor -= 1
+                    prior = segments[cursor][0]
+                    first = scope._prefix_end(prior)
+                    if first < len(prior) and prior[first] == "neutralize_ctrl":
+                        upstream_safe = True
+                if not safe and not (word != "cat" and not inputs and upstream_safe):
+                    unsafe = True
+        if unsafe:
+            print(row)
     except (ValueError, RuntimeError) as error:
         print(row)
         print(f"ERROR: diagnostic emission cannot be inspected: {path}: {error}", file=sys.stderr)
-        continue
-    unsafe = False
-    for tokens, owner in parts:
-        owners = [owner]
-        for index, word in enumerate(tokens):
-            if word == "(":
-                owners.append(tokens[index - 1] if index else "")
-            elif word == ")" and owners:
-                owners.pop()
-            if not is_target(tokens, index):
-                continue
-            end = index + 1
-            while end < len(tokens) and tokens[end] not in stops:
-                end += 1
-            pipeline = tokens[index + 1:end]
-            args = pipeline[:pipeline.index("|")] if "|" in pipeline else pipeline
-            if mode == "line" and "${BASH_SOURCE[0]}" in args:
-                continue
-            if mode == "byte" and Path(path).name == "work-memory-lock.sh" and owners and owners[-1] in {
-                "lock_pid=$", "stored_token=$"
-            }:
-                continue
-            if mode == "cat" and args[:3] == [">&", "2", "<<"]:
-                continue
-            neutralized = any(pipeline[i] == "|" and pipeline[i + 1] == "neutralize_ctrl"
-                              for i in range(len(pipeline) - 1))
-            if "|" in pipeline and any(token in {">&", ">"} and
-                                       (i == 0 or args[i - 1] not in {"2", "3", "4", "5", "6", "7", "8", "9"})
-                                       for i, token in enumerate(args)):
-                neutralized = False
-            begin = index
-            while begin > 0 and tokens[begin - 1] not in stops:
-                begin -= 1
-            upstream = tokens[begin:index]
-            if word != "cat" and stdin_only(word, args) and any(
-                token == "neutralize_ctrl" and (i == 0 or upstream[i - 1] == "|")
-                for i, token in enumerate(upstream)
-            ):
-                neutralized = True
-            if not neutralized:
-                unsafe = True
-    if unsafe:
-        print(row)' "$1" "$PLUGIN_ROOT/hooks/scripts/lib"
+' "$1" "$PLUGIN_ROOT/hooks/scripts/lib"
 }
 
 has_ctrl_helper_call() {
@@ -206,7 +205,7 @@ done
 
 echo "=== TC-1: head/tail -N / sed -n 'N,Mp' emission site は全て neutralize_ctrl を経由 ==="
 # 除外: tests/ (fixture/assertion 内の出現)、コメント行、定義元 helper の usage コメント、
-# スクリプト自身のファイル ("${BASH_SOURCE[0]}") を出す site (開発者が書いた静的テキストで
+# スクリプト自身のファイル ("${BASH_SOURCE[0]}") だけを出す site (開発者が書いた静的テキストで
 # 外部由来の制御文字を含まないため中和不要。usage() の自己ソース表示がこれに当たる)。
 # `head`/`tail` の `-[0-9]+` / `-n [0-9]+` (行指向 snippet、両綴り) を対象とする。
 # `tail` を含めるのは、python3 の未捕捉例外のように**根因が最終行に載る** stderr を出す site が
@@ -239,13 +238,36 @@ for sed_spelling in "sed -n '1,3p'" "sed -ne '1,3p'" "sed -n -e '1,3p'"; do
   done
 done
 sweep_emission_sites() {
-  grep -rnE "$SWEEP_RE" "${SWEEP_DIRS[@]}" --include='*.sh' \
-    | grep '>&2' \
-    | grep -vE '^[^:]+/tests/' \
-    | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#'
+  case "${1:-line}" in
+    line)
+      grep -rnE "$SWEEP_RE" "${SWEEP_DIRS[@]}" --include='*.sh' \
+      | grep '>&2' \
+      | grep -vE '^[^:]+/tests/' \
+      | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#'
+      ;;
+    byte)
+      grep -rnE 'head -c [0-9]+' "${SWEEP_DIRS[@]}" --include='*.sh' \
+      | grep -vE '^[^:]+/tests/' \
+      | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
+      || true
+      ;;
+    cat)
+      grep -rnE '(^[[:space:]]*|[;|&{][[:space:]]*)cat [^|;&]*(1)?>&2' "${SWEEP_DIRS[@]}" --include='*.sh' \
+      | grep -vE '^[^:]+/tests/' \
+      | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
+      || true
+      ;;
+    *) return 2 ;;
+  esac
 }
+
+# 実 sweep と合成ファイルの検査に同じ収集・判定経路を使う。
+inspect_emission_sites() {
+  sweep_emission_sites "$1" | unneutralized_sites "$1"
+}
+
 emission_sites=$(sweep_emission_sites || true)
-if ! violations=$(printf '%s\n' "$emission_sites" | unneutralized_sites line); then
+if ! violations=$(inspect_emission_sites line); then
   fail "TC-1: diagnostic emission inspection failed"
 fi
 assert "TC-1: un-neutralized head/tail -N / sed -n 'N,Mp' emission sites" "" "$violations"
@@ -333,11 +355,7 @@ echo "=== TC-3: head -c byte 指向 embed site は全て neutralize_ctrl を経�
 # (mutation 検証で実証)。そのため head -c 全行を sweep し、非 emission の
 # 既知 site のみ明示 allowlist で除外する fail-closed 設計とする。新規の head -c が
 # 非 emission 用途なら本 allowlist に追記すること。
-byte_sites=$(grep -rnE 'head -c [0-9]+' "${SWEEP_DIRS[@]}" --include='*.sh' \
-  | grep -vE '^[^:]+/tests/' \
-  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
-  || true)
-if ! violations_c=$(printf '%s\n' "$byte_sites" | unneutralized_sites byte); then
+if ! violations_c=$(inspect_emission_sites byte); then
   fail "TC-3: diagnostic emission inspection failed"
 fi
 assert "TC-3: un-neutralized head -c emission sites" "" "$violations_c"
@@ -384,11 +402,7 @@ echo "=== TC-4: cat full-file 直接 emission site は全て neutralize_ctrl を
 #     現状 hooks の **stderr 向け cat heredoc** は全て redirect-first のため実害はない
 #     (stdout / tmpfile 向けの body-first heredoc は主 regex の `>&2` 要件で元々マッチしない。
 #     追加で stderr 向け body-first heredoc を書く場合は本 allowlist を拡張する)。
-cat_sites=$(grep -rnE '(^[[:space:]]*|[;|&{][[:space:]]*)cat [^|;&]*(1)?>&2' "${SWEEP_DIRS[@]}" --include='*.sh' \
-  | grep -vE '^[^:]+/tests/' \
-  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
-  || true)
-if ! violations_cat=$(printf '%s\n' "$cat_sites" | unneutralized_sites cat); then
+if ! violations_cat=$(inspect_emission_sites cat); then
   fail "TC-4: diagnostic emission inspection failed"
 fi
 assert "TC-4: un-neutralized cat full-file emission sites" "" "$violations_cat"
@@ -499,6 +513,51 @@ if printf '%s\n' 'head -3 "$raw" >&2' | unneutralized_sites unknown >/dev/null 2
 else
   pass "TC-7: inspection failure returns nonzero"
 fi
+
+
+echo ""
+echo "=== TC-8: 引用・前置構文・置換結果を実 sweep から検査 ==="
+tc8_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-diag-sweep-XXXXXX")
+tc8_cleanup() { rm -rf "$tc8_dir"; }
+trap tc8_cleanup EXIT
+check_sweep_fixture() {
+  local fixture_mode=$1 expectation=$2 label=$3 code=$4 result
+  printf '%s\n' "$code" > "$tc8_dir/emission.sh"
+  if [[ "$code" == *'<<EOF'* ]]; then
+    printf '%s\n' 'static text' 'EOF' >> "$tc8_dir/emission.sh"
+  fi
+  bash -n "$tc8_dir/emission.sh"
+  result=$(SWEEP_DIRS=("$tc8_dir"); inspect_emission_sites "$fixture_mode")
+  if [ "$expectation" = violation ]; then
+    assert "$label" "$tc8_dir/emission.sh:1:$code" "$result"
+  else
+    assert "$label" "" "$result"
+  fi
+}
+for code in 'if head -3 "$raw" >&2; then :; fi' 'if false; then :; elif head -3 "$raw" >&2; then :; fi' 'while head -3 "$raw" >&2; do :; break; done' 'until head -3 "$raw" >&2; do :; break; done' '! head -3 "$raw" >&2' 'command head -3 "$raw" >&2'; do
+  check_sweep_fixture line violation "TC-8: prefixed line output $code" "$code"
+done
+check_sweep_fixture byte violation 'TC-8: command-prefixed substitution' 'value=$(command head -c 20 "$raw")'
+check_sweep_fixture byte violation 'TC-8: backtick output remains a violation' 'echo "`head -c 20 "$raw"`" >&2'
+check_sweep_fixture line violation 'TC-8: self source cannot exclude an independent file' 'head -3 "${BASH_SOURCE[0]}" "$raw" >&2'
+for code in 'cat >&2 <<EOF' 'cat 1>&2 <<EOF'; do
+  check_sweep_fixture cat safe "TC-8: static heredoc $code" "$code"
+  check_sweep_fixture cat violation 'TC-8: static heredoc cannot hide raw cat' "$code; cat \"\$raw\" >&2"
+done
+for snippet in 'head -3' 'tail -n 3' "sed -n '1,3p'"; do
+  quoted="$snippet \"\$raw\" \"|\" \"neutralize_ctrl\" >&2"
+  check_sweep_fixture line violation "TC-8: quoted arguments $snippet" "$quoted"
+  check_sweep_fixture line violation "TC-8: safe neighbor cannot hide quoted $snippet" "head -3 \"\$safe\" | neutralize_ctrl >&2; $quoted"
+done
+check_sweep_fixture byte violation 'TC-8: quoted byte arguments' 'head -c 20 "$raw" "|" "neutralize_ctrl" >&2'
+for syntax in '$(head -c 20 "$safe")' '`head -c 20 "$safe"`'; do
+  safe_outer="printf \"%s\" \"$syntax\" | neutralize_ctrl >&2"
+  check_sweep_fixture byte safe 'TC-8: outer pipeline neutralizes captured stdout' "$safe_outer"
+  check_sweep_fixture byte violation 'TC-8: outer pipeline cannot hide a separate raw capture' "$safe_outer; value=\$(head -c 20 \"\$raw\")"
+done
+check_sweep_fixture byte violation 'TC-8: stderr in capture bypasses outer neutralization' 'printf "%s" "$(head -c 20 "$raw" >&2)" | neutralize_ctrl >&2'
+tc8_cleanup
+trap - EXIT
 
 if ! print_summary "$(basename "$0")" \
   "診断スニペット emission site を hooks/ または scripts/ に追加するときは control-char-neutralize.sh を source し、emission site の構造に応じて中和を挿入すること: \
