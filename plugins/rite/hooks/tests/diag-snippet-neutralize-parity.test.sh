@@ -36,6 +36,8 @@
 #         経路は静的 sweep で構造的に検出不能のため、既知 site を個別に pin する
 #   TC-6: scripts/ の是正 site を実行し、ESC/C1 を含む複数行 stderr が
 #         制御文字を残さず、行ごとの indent を維持する
+#   TC-7: 同じ行の各出力を実 sweep と同じ述語で検査し、別の中和済み出力や
+#         対象外コマンド・引用文・解析失敗で未中和出力が消えない
 #
 # Usage: bash plugins/rite/hooks/tests/diag-snippet-neutralize-parity.test.sh
 set -euo pipefail
@@ -46,6 +48,146 @@ PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 HOOKS_DIR="$PLUGIN_ROOT/hooks"
 SCRIPTS_DIR="$PLUGIN_ROOT/scripts"
 SWEEP_DIRS=("$HOOKS_DIR" "$SCRIPTS_DIR")
+
+# 中和済みの別コマンドや引用文で、同じ行の未中和出力を除外しない。
+unneutralized_sites() {
+  PYTHONDONTWRITEBYTECODE=1 python3 -c 'import re
+import shlex
+import sys
+import importlib
+from pathlib import Path
+
+mode = sys.argv[1]
+if mode not in {"line", "byte", "cat"}:
+    sys.exit(2)
+sys.path.insert(0, sys.argv[2])
+scope = importlib.import_module("review-fix-scope")
+stops = {";", "&&", "||", "&", "(", ")", "{", "}"}
+command_before = stops | {"|", "then", "do", "else"}
+
+
+def is_target(tokens, index):
+    word = tokens[index]
+    args = tokens[index + 1:]
+    if index and tokens[index - 1] not in command_before:
+        return False
+    if mode == "cat":
+        return word == "cat"
+    if word in {"head", "tail"}:
+        if mode == "byte":
+            return word == "head" and len(args) >= 2 and args[0] == "-c" and args[1].isdigit()
+        return bool(args) and (bool(re.fullmatch(r"-\d+", args[0])) or
+                               len(args) >= 2 and args[0] == "-n" and args[1].isdigit())
+    if mode == "line" and word == "sed":
+        if args and args[0] in {"-n", "-ne"}:
+            args = args[1:]
+            if args and args[0] == "-e":
+                args = args[1:]
+            return bool(args and re.match(r"\d+,\d+p", args[0]))
+    return False
+
+
+def fragments(code, owner=""):
+    parts, outer, quote, index = [], [], None, 0
+    while index < len(code):
+        ch = code[index]
+        if ch == "\\" and quote != "single":
+            outer.append(code[index:index + 2])
+            index += 2
+            continue
+        if quote is None and ch == "#" and (index == 0 or code[index - 1] in " \t;&|()"):
+            outer.append(code[index:])
+            break
+        if quote != "single" and code.startswith("$(", index):
+            end = scope._substitution_end(code, index + 2)
+            assignment = re.search(r"(?:^|[;&|])\s*(lock_pid|stored_token)=\s*$", code[:index])
+            inner_owner = assignment[1] + "=$" if assignment and quote is None else ""
+            parts.extend(fragments(code[index + 2:end - 1], inner_owner))
+            outer.append("__substitution__")
+            index = end
+            continue
+        if ch == chr(39) and quote != "double":
+            quote = None if quote == "single" else "single"
+        elif ch == chr(34) and quote != "single":
+            quote = None if quote == "double" else "double"
+        outer.append(ch)
+        index += 1
+    return parts + [("".join(outer), owner)]
+
+
+def stdin_only(word, args):
+    count = 1 if args and re.fullmatch(r"-\d+", args[0]) else 2
+    if word == "sed" and len(args) > 1 and args[1] == "-e":
+        count = 3
+    rest = args[count:]
+    while rest:
+        if len(rest) > 1 and rest[0].isdigit() and rest[1].startswith(">"):
+            rest = rest[1:]
+        if len(rest) < 2 or rest[0] not in {">", ">>", ">&", "&>"}:
+            return False
+        rest = rest[2:]
+    return True
+
+
+for row in sys.stdin:
+    row = row.rstrip("\n")
+    if not row:
+        continue
+    match = re.match(r"(.*?):([0-9]+):(.*)", row)
+    path, code = (match[1], match[3]) if match else ("fixture.sh", row)
+    try:
+        parts = []
+        for fragment, owner in fragments(code):
+            lexer = shlex.shlex(fragment + "\n", posix=True, punctuation_chars=";&|()<>")
+            lexer.whitespace_split = True
+            parts.append((list(lexer), owner))
+    except (ValueError, RuntimeError) as error:
+        print(row)
+        print(f"ERROR: diagnostic emission cannot be inspected: {path}: {error}", file=sys.stderr)
+        continue
+    unsafe = False
+    for tokens, owner in parts:
+        owners = [owner]
+        for index, word in enumerate(tokens):
+            if word == "(":
+                owners.append(tokens[index - 1] if index else "")
+            elif word == ")" and owners:
+                owners.pop()
+            if not is_target(tokens, index):
+                continue
+            end = index + 1
+            while end < len(tokens) and tokens[end] not in stops:
+                end += 1
+            pipeline = tokens[index + 1:end]
+            args = pipeline[:pipeline.index("|")] if "|" in pipeline else pipeline
+            if mode == "line" and "${BASH_SOURCE[0]}" in args:
+                continue
+            if mode == "byte" and Path(path).name == "work-memory-lock.sh" and owners and owners[-1] in {
+                "lock_pid=$", "stored_token=$"
+            }:
+                continue
+            if mode == "cat" and args[:3] == [">&", "2", "<<"]:
+                continue
+            neutralized = any(pipeline[i] == "|" and pipeline[i + 1] == "neutralize_ctrl"
+                              for i in range(len(pipeline) - 1))
+            if "|" in pipeline and any(token in {">&", ">"} and
+                                       (i == 0 or args[i - 1] not in {"2", "3", "4", "5", "6", "7", "8", "9"})
+                                       for i, token in enumerate(args)):
+                neutralized = False
+            begin = index
+            while begin > 0 and tokens[begin - 1] not in stops:
+                begin -= 1
+            upstream = tokens[begin:index]
+            if word != "cat" and stdin_only(word, args) and any(
+                token == "neutralize_ctrl" and (i == 0 or upstream[i - 1] == "|")
+                for i, token in enumerate(upstream)
+            ):
+                neutralized = True
+            if not neutralized:
+                unsafe = True
+    if unsafe:
+        print(row)' "$1" "$PLUGIN_ROOT/hooks/scripts/lib"
+}
 
 has_ctrl_helper_call() {
   awk '
@@ -99,12 +241,13 @@ done
 sweep_emission_sites() {
   grep -rnE "$SWEEP_RE" "${SWEEP_DIRS[@]}" --include='*.sh' \
     | grep '>&2' \
-    | grep -v '/tests/' \
-    | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
-    | grep -vF '"${BASH_SOURCE[0]}" >&2'
+    | grep -vE '^[^:]+/tests/' \
+    | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#'
 }
 emission_sites=$(sweep_emission_sites || true)
-violations=$(printf '%s\n' "$emission_sites" | grep -v 'neutralize_ctrl' | grep -v '^$' || true)
+if ! violations=$(printf '%s\n' "$emission_sites" | unneutralized_sites line); then
+  fail "TC-1: diagnostic emission inspection failed"
+fi
 assert "TC-1: un-neutralized head/tail -N / sed -n 'N,Mp' emission sites" "" "$violations"
 if [ -n "$violations" ]; then
   echo "  検出された未中和 site (head/tail -N / sed -n 'N,Mp' の直後に '| neutralize_ctrl --keep-newline' を挿入すること):"
@@ -190,13 +333,13 @@ echo "=== TC-3: head -c byte 指向 embed site は全て neutralize_ctrl を経�
 # (mutation 検証で実証)。そのため head -c 全行を sweep し、非 emission の
 # 既知 site のみ明示 allowlist で除外する fail-closed 設計とする。新規の head -c が
 # 非 emission 用途なら本 allowlist に追記すること。
-violations_c=$(grep -rnE 'head -c [0-9]+' "${SWEEP_DIRS[@]}" --include='*.sh' \
-  | grep -v '/tests/' \
-  | grep -v 'neutralize_ctrl' \
+byte_sites=$(grep -rnE 'head -c [0-9]+' "${SWEEP_DIRS[@]}" --include='*.sh' \
+  | grep -vE '^[^:]+/tests/' \
   | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
-  | grep -v 'work-memory-lock.sh:.*lock_pid=' \
-  | grep -v 'work-memory-lock.sh:.*stored_token=' \
   || true)
+if ! violations_c=$(printf '%s\n' "$byte_sites" | unneutralized_sites byte); then
+  fail "TC-3: diagnostic emission inspection failed"
+fi
 assert "TC-3: un-neutralized head -c emission sites" "" "$violations_c"
 if [ -n "$violations_c" ]; then
   echo "  検出された未中和 site (診断値を emission 前に default 'neutralize_ctrl' へ通すこと。新規 --c0-only は使用しない):"
@@ -241,12 +384,13 @@ echo "=== TC-4: cat full-file 直接 emission site は全て neutralize_ctrl を
 #     現状 hooks の **stderr 向け cat heredoc** は全て redirect-first のため実害はない
 #     (stdout / tmpfile 向けの body-first heredoc は主 regex の `>&2` 要件で元々マッチしない。
 #     追加で stderr 向け body-first heredoc を書く場合は本 allowlist を拡張する)。
-violations_cat=$(grep -rnE '(^[[:space:]]*|[;|&{][[:space:]]*)cat [^|;&]*(1)?>&2' "${SWEEP_DIRS[@]}" --include='*.sh' \
-  | grep -v '/tests/' \
-  | grep -v 'neutralize_ctrl' \
+cat_sites=$(grep -rnE '(^[[:space:]]*|[;|&{][[:space:]]*)cat [^|;&]*(1)?>&2' "${SWEEP_DIRS[@]}" --include='*.sh' \
+  | grep -vE '^[^:]+/tests/' \
   | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
-  | grep -vE 'cat [^|;&]*(1)?>&2[[:space:]]*<<' \
   || true)
+if ! violations_cat=$(printf '%s\n' "$cat_sites" | unneutralized_sites cat); then
+  fail "TC-4: diagnostic emission inspection failed"
+fi
 assert "TC-4: un-neutralized cat full-file emission sites" "" "$violations_cat"
 if [ -n "$violations_cat" ]; then
   echo "  検出された未中和 site ('neutralize_ctrl --keep-newline < \"\$file\" >&2' へ置換すること):"
@@ -301,6 +445,60 @@ fi
 assert_grep "TC-6: raw C1 line remains indented" "$tc6_dir/stderr" '^  gh-raw\?three$'
 tc6_cleanup
 trap - EXIT
+
+echo ""
+echo "=== TC-7: 同じ行の別コマンドは中和の証拠にしない ==="
+for snippet in 'head -3' 'tail -n 3' "sed -n '1,3p'"; do
+  mixed="$snippet \"\$safe\" | neutralize_ctrl >&2; $snippet \"\$raw\" >&2"
+  actual=$(printf '%s\n' "$mixed" | unneutralized_sites line)
+  assert "TC-7: mixed $snippet remains a violation" "$mixed" "$actual"
+done
+for mode in line byte cat; do
+  case "$mode" in
+    line) raw='head -3 "$raw" >&2'; safe='head -3 "$safe" | neutralize_ctrl >&2' ;;
+    byte) raw='"$(head -c 20 "$raw")"'; safe='"$(head -c 20 "$safe" | neutralize_ctrl)"' ;;
+    cat) raw='cat "$raw" >&2'; safe='neutralize_ctrl < "$safe" >&2' ;;
+  esac
+  mixed="$safe; $raw"
+  actual=$(printf '%s\n' "$mixed" | unneutralized_sites "$mode")
+  assert "TC-7: $mode mixed output remains a violation" "$mixed" "$actual"
+  actual=$(printf '%s\n' "$safe; $safe" | unneutralized_sites "$mode")
+  assert "TC-7: $mode fully neutralized output passes" "" "$actual"
+  for marker in ' # neutralize_ctrl' '; printf "%s" "neutralize_ctrl"'; do
+    marked="$raw$marker"
+    actual=$(printf '%s\n' "$marked" | unneutralized_sites "$mode")
+    assert "TC-7: $mode marker text cannot hide output: $marker" "$marked" "$actual"
+  done
+done
+for excluded in 'head -3 "${BASH_SOURCE[0]}" >&2' 'lock_pid=$(head -c 20 "$lockdir/pid" 2>/dev/null)' 'cat >&2 <<EOF'; do
+  case "$excluded" in
+    head*) mode=line; unsafe='head -3 "$raw" >&2'; row_prefix='fixture.sh:1:' ;;
+    lock_pid*) mode=byte; unsafe='value=$(head -c 20 "$raw")'; row_prefix='work-memory-lock.sh:1:' ;;
+    cat*) mode=cat; unsafe='cat "$raw" >&2'; row_prefix='fixture.sh:1:' ;;
+  esac
+  actual=$(printf '%s\n' "$row_prefix$excluded" | unneutralized_sites "$mode")
+  assert "TC-7: $mode known non-emission still passes" "" "$actual"
+  mixed="$row_prefix$excluded; $unsafe"
+  actual=$(printf '%s\n' "$mixed" | unneutralized_sites "$mode")
+  assert "TC-7: $mode excluded command cannot hide another output" "$mixed" "$actual"
+done
+upstream='neutralize_ctrl < "$safe" | head -c 20'
+actual=$(printf '%s\n' "$upstream" | unneutralized_sites byte)
+assert "TC-7: upstream-neutralized stdin passes" "" "$actual"
+raw_file='neutralize_ctrl < "$safe" | head -c 20 "$raw"'
+actual=$(printf '%s\n' "$raw_file" | unneutralized_sites byte)
+assert "TC-7: upstream neutralization cannot sanitize an independent file" "$raw_file" "$actual"
+redirected='head -3 "$raw" >&2 | neutralize_ctrl'
+actual=$(printf '%s\n' "$redirected" | unneutralized_sites line)
+assert "TC-7: redirect before neutralization remains a violation" "$redirected" "$actual"
+parse_bad='head -3 "$raw >&2 # neutralize_ctrl'
+actual=$(printf '%s\n' "$parse_bad" | unneutralized_sites line 2>/dev/null)
+assert "TC-7: parse failure remains a violation" "$parse_bad" "$actual"
+if printf '%s\n' 'head -3 "$raw" >&2' | unneutralized_sites unknown >/dev/null 2>&1; then
+  fail "TC-7: inspection failure must return nonzero"
+else
+  pass "TC-7: inspection failure returns nonzero"
+fi
 
 if ! print_summary "$(basename "$0")" \
   "診断スニペット emission site を hooks/ または scripts/ に追加するときは control-char-neutralize.sh を source し、emission site の構造に応じて中和を挿入すること: \
