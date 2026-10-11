@@ -99,8 +99,9 @@ def stdout_redirect(words):
             fd_path = re.fullmatch(r"(?:/dev/fd/|/proc/self/fd/)([0-9]+)", target)
             if fd_path:
                 alias = int(fd_path[1])
-            if match[2] == ">&" and re.fullmatch(r"[0-9]+", target):
-                alias = int(target)
+            fd_operand = re.fullmatch(r"([0-9]+)(-?)", target) if match[2] == ">&" else None
+            if fd_operand:
+                alias = int(fd_operand[1])
             destination = destinations.get(alias, alias) if alias is not None else ("file", target)
             if "$" in target or marker_prefix in target:
                 destination = ("unknown", target)
@@ -108,6 +109,8 @@ def stdout_redirect(words):
                 destinations[1] = destinations[2] = destination
             else:
                 destinations[int(match[1] or "1")] = destination
+            if fd_operand and fd_operand[2]:
+                destinations[alias] = ("closed", alias)
     destination = destinations.get(1, 1)
     return None if destination == 1 else destination
 
@@ -618,6 +621,17 @@ check_sweep_fixture line violation 'TC-8: copied stderr fd remains diagnostic' '
 check_sweep_fixture line violation 'TC-8: unresolved fd cannot prove non-diagnostic output' 'fd=2; head -3 "$raw" >&2 >&"$fd"'
 check_sweep_fixture line violation 'TC-8: unresolved path cannot prove non-diagnostic output' 'dest=/dev/stderr; head -3 "$raw" >&2 >"$dest"'
 check_sweep_fixture line violation 'TC-8: captured path cannot prove non-diagnostic output' 'head -3 "$raw" >&2 >"$(printf "%s" /dev/stderr)"'
+for snippet in 'head -3' 'tail -n 3' "sed -n '1,3p'" 'cat'; do
+  case "$snippet" in cat) mode=cat ;; *) mode=line ;; esac
+  for destination in '>&2 >&2-' '3>&2 >&3-' '>&2 >&02-'; do
+    raw_move="$snippet \"\$raw\" $destination"
+    check_sweep_fixture "$mode" violation "TC-8: moved stderr remains diagnostic $snippet $destination" "$raw_move"
+    check_sweep_fixture "$mode" violation 'TC-8: safe neighbor cannot hide moved stderr' "head -3 \"\$safe\" | neutralize_ctrl >&2; $raw_move"
+  done
+  check_sweep_fixture "$mode" safe "TC-8: moved file fd stays non-diagnostic $snippet" "$snippet \"\$raw\" 2>/dev/null >&2-"
+  check_sweep_fixture "$mode" safe "TC-8: moved stdout reaches neutralization $snippet" "$snippet \"\$safe\" 3>&1 >&3- | neutralize_ctrl >&2"
+  check_sweep_fixture "$mode" violation "TC-8: closed moved fd is not a file destination $snippet" "$snippet \"\$raw\" >&2 3>/dev/null >&3- >&3"
+done
 tc8_cleanup
 trap - EXIT
 
