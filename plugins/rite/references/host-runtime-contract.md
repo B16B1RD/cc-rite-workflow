@@ -79,6 +79,14 @@ bash {plugin_root}/hooks/host-runtime.sh init --mode {runtime_mode} --cwd "{exec
 | phase 更新後、子 skill を返す前 | `host-runtime.sh checkpoint --mode explicit --cwd "{execution_cwd}"` | 現 session の local WM と必要な replica 同期を確認。失敗なら保存済み phase を保持して caller の失敗経路へ |
 | 次工程または recover | `host-runtime.sh next --mode explicit --cwd "{execution_cwd}"` | phase / next / handoff を読み、各 skill の分岐表を実行。読取りだけで工程完了にしない |
 
+独立した履歴の作業では、進捗同期の比較元を呼出し時の `WM_BASE_BRANCH_OVERRIDE` で指定できる。値は `origin` のブランチ名で、指定はその呼出しにだけ適用する。例えば実際の比較元が `wiki` の場合は次の形にする（別名の比較元では値を置き換える）。
+
+```bash
+WM_BASE_BRANCH_OVERRIDE=wiki bash {plugin_root}/hooks/host-runtime.sh checkpoint --mode explicit --cwd "{execution_cwd}"
+```
+
+未指定・空指定は従来の `branch.base` と、設定未解決時の `origin/HEAD` の解決を使う。進捗更新対象の phase へ変わったときの同期で、非空の指定が存在しない・差分を取得できない場合は、既定の比較元へ切り替えず checkpoint を非ゼロで返し、`last_synced_phase` を前進しない。共有設定や remote ref を同期のために書き換えない。
+
 表の command はすべて `bash {plugin_root}/hooks/` 配下の helper を呼ぶ。`{tool_payload}` は呼出し直前の tool 入力を保存した絶対 JSON パスで、`tool_name` と `tool_input` を含む。shell は `Bash` / `command`、編集は実操作に対応する `Edit|Write|MultiEdit` / `file_path` 等へ正確に対応付ける。複数ファイル patch は各対象を guard する。Grok の camelCase payload を無変換で通さず、公開 schema から上記入力を構成する。入力が対応付けられない操作は実行前に停止する。
 
 guard 自身・checkpoint の内部 helper を再帰的に guard しない。helper の診断・終了コード・JSON deny を読み、拒否時は保護対象を変更しない。`auto` は native に委ねるだけで、明示 helper の成功証跡ではない。

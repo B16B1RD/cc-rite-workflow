@@ -346,7 +346,7 @@ else
           cd "$STATE_ROOT" || { log_debug "cd STATE_ROOT failed"; _flush_sysmsg; exit 0; }
 
           _base_rc=0
-          _base_branch=$(awk '/^[[:space:]]+base:/ { sub(/^[[:space:]]+base:[[:space:]]*/, ""); sub(/[[:space:]]+#.*/, ""); gsub(/["'"'"'\r]/, ""); sub(/[[:space:]]+$/, ""); print; exit }' "$STATE_ROOT/rite-config.yml" 2>/dev/null) || _base_rc=$?
+          _base_branch="${WM_BASE_BRANCH_OVERRIDE:-$(awk '/^[[:space:]]+base:/ { sub(/^[[:space:]]+base:[[:space:]]*/, ""); sub(/[[:space:]]+#.*/, ""); gsub(/["'"'"'\r]/, ""); sub(/[[:space:]]+$/, ""); print; exit }' "$STATE_ROOT/rite-config.yml" 2>/dev/null)}" || _base_rc=$?
           if [ -z "$_base_branch" ] || [ "$_base_rc" -ne 0 ]; then
             _sym=""
             _sym=$(git -C "$CWD" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null) || _sym=""

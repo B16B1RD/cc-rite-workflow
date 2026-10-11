@@ -14,6 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # session_id from the fixture's `.rite-session-id` file.
 # shellcheck source=_hermetic-env.sh
 source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
+unset WM_BASE_BRANCH_OVERRIDE
 HOOK="$SCRIPT_DIR/../post-tool-wm-sync.sh"
 TEST_DIR="$(mktemp -d)"
 PASS=0
@@ -1138,6 +1139,74 @@ else
   fail "T-23b: list=$list23 wm_replica=$wmrep23 lsp=$lsp23"
 fi
 echo ""
+
+# --- Per-call comparison base follows the invocation's history. ---
+wm_base_fixture() {
+  local wm_dir="$1" wm_history="$2"
+  mkdir -p "$wm_dir/.rite/work-memory"
+  setup_git_repo "$wm_dir" develop
+  if [ "$wm_history" = wiki ]; then
+    git -C "$wm_dir" checkout -q --orphan wiki
+    git -C "$wm_dir" rm -q --cached -r .
+    mkdir -p "$wm_dir/.rite/wiki"
+    printf 'wiki base\n' > "$wm_dir/.rite/wiki/index.md"
+    git -C "$wm_dir" add .rite/wiki/index.md
+    git -C "$wm_dir" -c user.email=t@t.local -c user.name=t commit -qm 'wiki base'
+    git -C "$wm_dir" update-ref refs/remotes/origin/wiki HEAD
+    git -C "$wm_dir" checkout -qb wiki-cleanup
+    printf 'wiki change\n' >> "$wm_dir/.rite/wiki/index.md"
+    git -C "$wm_dir" add .rite/wiki/index.md
+    git -C "$wm_dir" -c user.email=t@t.local -c user.name=t commit -qm 'wiki change'
+  fi
+  printf 'branch:\n  base: develop\n' > "$wm_dir/rite-config.yml"
+  printf '# 📜 rite 作業メモリ\n\n## Summary\n---\nschema_version: 1\nissue_number: 42\nsync_revision: 1\nphase_detail: implementation\n---\n' > "$wm_dir/.rite/work-memory/issue-42.md"
+  create_state_file "$wm_dir" '{"session_id":"11111111-1111-4111-8111-111111111775","active":true,"issue_number":42,"phase":"implement","last_synced_phase":"init","wm_comment_id":4242}' "11111111-1111-4111-8111-111111111775"
+  wm_body_fixture > "$wm_dir/wm-body.md"
+  install_gh_shim "$wm_dir"
+}
+
+for wm_case in wiki-direct wiki-runtime default empty invalid-direct invalid-runtime; do
+  wm_case_dir="$TEST_DIR/base-$wm_case"
+  wm_history=develop; wm_override=""
+  case "$wm_case" in wiki-*) wm_history=wiki; wm_override=wiki ;; invalid-*) wm_override=does-not-exist ;; esac
+  wm_base_fixture "$wm_case_dir" "$wm_history"
+  wm_rc=0
+  case "$wm_case" in
+    *-runtime)
+      PATH="$wm_case_dir/bin:$PATH" WM_BASE_BRANCH_OVERRIDE="$wm_override" \
+        bash "$SCRIPT_DIR/../host-runtime.sh" checkpoint --mode explicit --cwd "$wm_case_dir" \
+        --session 11111111-1111-4111-8111-111111111775 > "$wm_case_dir/hook.stdout" 2> "$wm_case_dir/hook.stderr" || wm_rc=$?
+      ;;
+    default) RITE_RUNTIME_EXPLICIT=1 run_hook_cap "$wm_case_dir" || wm_rc=$? ;;
+    *) WM_BASE_BRANCH_OVERRIDE="$wm_override" RITE_RUNTIME_EXPLICIT=1 run_hook_cap "$wm_case_dir" || wm_rc=$? ;;
+  esac
+  wm_expected_rc=0; wm_expected_phase=implement; wm_expected_file=README.md
+  case "$wm_case" in wiki-*) wm_expected_file=.rite/wiki/index.md ;; invalid-*) wm_expected_rc=1; wm_expected_phase=init ;; esac
+  wm_lsp=$(jq -r '.last_synced_phase' "$(state_file_path "$wm_case_dir" 11111111-1111-4111-8111-111111111775)")
+  if [ "$wm_rc" = "$wm_expected_rc" ] && [ "$wm_lsp" = "$wm_expected_phase" ]; then
+    pass "$wm_case: caller exit and persisted sync phase agree"
+  else
+    fail "$wm_case: rc=$wm_rc phase=$wm_lsp, expected $wm_expected_rc/$wm_expected_phase"
+  fi
+  case "$wm_case" in
+    invalid-*)
+      if grep -qF 'origin/does-not-exist' "$wm_case_dir/hook.stderr" &&
+          grep -qF '| 実装 | ⬜ 未着手 |' "$wm_case_dir/patched.md"; then
+        pass "$wm_case: failed requested ref stays observable and progress stays untouched"
+      else fail "$wm_case: missing requested-ref failure or progress changed"; fi
+      ;;
+    *)
+      if grep -qF -- "- \`$wm_expected_file\` - 変更" "$wm_case_dir/patched.md" &&
+          grep -qF '| 実装 | ✅ 完了 |' "$wm_case_dir/patched.md" &&
+          ! grep -qF 'git diff failed' "$wm_case_dir/hook.stderr"; then
+        pass "$wm_case: saved file list and progress come from the intended history"
+      else fail "$wm_case: saved comparison content or diagnostic disagrees"; fi
+      ;;
+  esac
+  if [ "$(cat "$wm_case_dir/rite-config.yml")" = "$(printf 'branch:\n  base: develop')" ]; then
+    pass "$wm_case: shared base config is preserved"
+  else fail "$wm_case: shared config changed"; fi
+done
 
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed ==="
