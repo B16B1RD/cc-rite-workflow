@@ -86,9 +86,21 @@ def target_args(words):
     return None
 
 
-def redirected(words):
-    return any(isinstance(w, scope._Redirection) and
-               re.match(r"(?:(?:1)?(?:>|>>|>&)|&>)", w) for w in words)
+def stdout_redirect(words):
+    destination = None
+    for index, word in enumerate(words):
+        if not isinstance(word, scope._Redirection):
+            continue
+        match = re.fullmatch(r"(?:(?:1)?(>>|>&|>)|(&>>|&>))(.*)", word)
+        if match:
+            target = match[3] or (words[index + 1] if index + 1 < len(words) else "")
+            destination = (match[1] or match[2], target)
+    return destination
+
+
+def stdin_redirect(words):
+    return any(isinstance(word, scope._Redirection) and
+               re.match(r"0?<", word) for word in words)
 
 
 def fragments(code, owner="", parent=None, slot=None):
@@ -111,7 +123,7 @@ def fragments(code, owner="", parent=None, slot=None):
             else:
                 end = scope._substitution_end(code, index + 2)
                 inner = code[index + 2:end - 1]
-            marker = "__diag_sub_" + str(index) + "__"
+            marker = marker_prefix + str(index) + "__"
             assignment = re.search(r"(?:^|[;&|])\s*(lock_pid|stored_token)=\s*$", code[:index])
             inner_owner = assignment[1] if assignment and quote is None else ""
             parts.extend(fragments(inner, inner_owner, outer, marker))
@@ -134,6 +146,11 @@ for row in sys.stdin:
     match = re.match(r"(.*?):([0-9]+):(.*)", row)
     path, code = (match[1], match[3]) if match else ("fixture.sh", row)
     try:
+        # 引用・escapeを取り除いても元入力と衝突しない置換slotを使う。
+        original_letters = "".join(ch for ch in code if ch.isalnum() or ch == "_")
+        marker_prefix = "__diag_sub_"
+        while marker_prefix in original_letters:
+            marker_prefix += "_"
         inherited, unsafe = {}, False
         for identity, fragment, owner, parent, slot in reversed(fragments(code)):
             inherited_safe = inherited.get((id(parent), slot), False)
@@ -141,24 +158,27 @@ for row in sys.stdin:
             for index, (words, nested, before, after) in enumerate(segments):
                 command_index = scope._prefix_end(words)
                 command = words[command_index] if command_index < len(words) else ""
-                downstream = []
-                cursor = index
-                while cursor + 1 < len(segments) and segments[cursor][3] == "|":
+                downstream_safe, cursor = False, index
+                while (cursor + 1 < len(segments) and segments[cursor][3] == "|"
+                       and stdout_redirect(segments[cursor][0]) is None):
                     cursor += 1
-                    downstream.append(segments[cursor][0])
-                downstream_safe = any(
-                    (scope._prefix_end(w) < len(w) and w[scope._prefix_end(w)] == "neutralize_ctrl")
-                    for w in downstream
-                )
-                safe = (inherited_safe or downstream_safe) and not redirected(words)
+                    downstream_words = segments[cursor][0]
+                    first = scope._prefix_end(downstream_words)
+                    if first < len(downstream_words) and downstream_words[first] == "neutralize_ctrl":
+                        downstream_safe = True
+                        break
+                destination = stdout_redirect(words)
+                safe = (inherited_safe or downstream_safe) and destination is None
                 for word in words:
-                    for marker in re.findall(r"__diag_sub_\d+__", word):
+                    for marker in re.findall(re.escape(marker_prefix) + r"\d+__", word):
                         inherited[(id(identity), marker)] = safe or command == "neutralize_ctrl"
                 target = target_args(words)
                 if target is None:
                     continue
                 word, args, count = target
                 inputs = args[count:]
+                if mode != "byte" and destination is not None and destination != (">&", "2"):
+                    continue
                 if mode == "line" and inputs == ["\u0024{BASH_SOURCE[0]}"]:
                     continue
                 if mode == "byte" and Path(path).name == "work-memory-lock.sh" and owner in {
@@ -171,13 +191,11 @@ for row in sys.stdin:
                             raw_args[0] in {">&2", "1>&2"} and len(raw_args) > 1 and
                             isinstance(raw_args[1], scope._Redirection) and raw_args[1].startswith("<<")):
                         continue
-                cursor, upstream_safe = index, False
-                while cursor and segments[cursor][2] == "|":
-                    cursor -= 1
-                    prior = segments[cursor][0]
+                upstream_safe = False
+                if index and before == "|" and not stdin_redirect(words):
+                    prior = segments[index - 1][0]
                     first = scope._prefix_end(prior)
-                    if first < len(prior) and prior[first] == "neutralize_ctrl":
-                        upstream_safe = True
+                    upstream_safe = first < len(prior) and prior[first] == "neutralize_ctrl"
                 if not safe and not (word != "cat" and not inputs and upstream_safe):
                     unsafe = True
         if unsafe:
@@ -556,6 +574,22 @@ for syntax in '$(head -c 20 "$safe")' '`head -c 20 "$safe"`'; do
   check_sweep_fixture byte violation 'TC-8: outer pipeline cannot hide a separate raw capture' "$safe_outer; value=\$(head -c 20 \"\$raw\")"
 done
 check_sweep_fixture byte violation 'TC-8: stderr in capture bypasses outer neutralization' 'printf "%s" "$(head -c 20 "$raw" >&2)" | neutralize_ctrl >&2'
+check_sweep_fixture line safe 'TC-8: discarded output cannot invalidate a safe diagnostic' 'head -3 "$raw" >/dev/null; head -3 "$safe" | neutralize_ctrl >&2'
+check_sweep_fixture line violation 'TC-8: discarded output cannot hide raw diagnostic' 'head -3 "$raw" >/dev/null; head -3 "$raw" >&2'
+check_sweep_fixture line violation 'TC-8: last stdout redirect determines diagnostic output' 'head -3 "$raw" >/dev/null >&2'
+check_sweep_fixture cat safe 'TC-8: discarded cat cannot invalidate static heredoc' 'cat "$raw" >/dev/null; cat >&2 <<EOF'
+check_sweep_fixture cat violation 'TC-8: discarded cat cannot hide raw cat' 'cat "$raw" >/dev/null; cat "$raw" >&2'
+check_sweep_fixture byte violation 'TC-8: stdin redirect replaces neutralized upstream' 'neutralize_ctrl < "$safe" | head -c 20 < "$raw" >&2'
+check_sweep_fixture byte safe 'TC-8: unchanged neutralized upstream passes' 'neutralize_ctrl < "$safe" | head -c 20 >&2'
+check_sweep_fixture byte violation 'TC-8: intermediate stderr bypasses downstream neutralization' 'printf "%s" "$(head -c 20 "$raw")" | sed "s/^/  /" >&2 | neutralize_ctrl'
+check_sweep_fixture byte safe 'TC-8: intermediate stdout reaches downstream neutralization' 'printf "%s" "$(head -c 20 "$safe")" | sed "s/^/  /" | neutralize_ctrl >&2'
+for literal in '"__diag_sub_6__"' '__diag_\sub_6__' "'__diag_'\"sub_6__\""; do
+  check_sweep_fixture byte violation 'TC-8: literal cannot neutralize a different capture' "echo \"\$(head -c 20 \"\$raw\")\" >&2; head -c 20 \"\$safe\" | neutralize_ctrl >&2; printf \"%s\" $literal | neutralize_ctrl >&2"
+  check_sweep_fixture byte safe 'TC-8: literal cannot invalidate a neutralized capture' "echo \"\$(head -c 20 \"\$safe\")\" | neutralize_ctrl >&2; printf \"%s\" $literal >&2"
+done
+for snippet in 'head -3' 'tail -n 3' "sed -n '1,3p'"; do
+  check_sweep_fixture line violation "TC-8: literal cannot hide a $snippet capture" "echo \"\$($snippet \"\$raw\")\" >&2; printf \"%s\" \"__diag_sub_6__\" | neutralize_ctrl >&2"
+done
 tc8_cleanup
 trap - EXIT
 
