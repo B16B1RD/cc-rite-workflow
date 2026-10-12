@@ -47,6 +47,8 @@ n=0
 for h in "$H1" "$H2" "$H3" "$H4" "$H5" "$H6" "$H7" "$H8" "$H9" "$H10"; do
   n=$((n + 1))
   assert "reference: 節 $n の見出し行が 1 つ" "1" "$(grep -cxF -- "$h" "$REF")"
+  assert "reference: 節 $n に表の区切り行がある" "1" "$(section_of "$REF" "$h" | grep -cxF '|------|------|')"
+  assert "reference: 節 $n の抽出範囲に節見出しが 1 つだけある (次の見出しで閉じる)" "1" "$(section_of "$REF" "$h" | grep -cE '^## [0-9]+\. ')"
   assert "reference: 節 $n に表ヘッダがある" "1" "$(section_of "$REF" "$h" | grep -cxF '| 条件 | 期待 |')"
   # 表ヘッダと区切り行を除いた規則の行が 1 行以上ある (表だけ残して中身が空になる事故を防ぐ。
   # 個々の規則の増減は許し、中核規則だけを下の pin_row で行全体一致で固定する)
@@ -59,16 +61,17 @@ pin_row() { # label heading row
   if section_has_line "$REF" "$2" "$3"; then pass "$1"; else fail "$1 (節に該当行が無い)"; fi
 }
 pin_row "§1 既存実装への pin は変異で要否を確かめる" "$H1" "| 既存の実装に pin を足す | 書く前に mutation を当て、素通りしたときだけ pin を足す（要否と有効性を分離する）。実装より先にテストを書く TDD では、Red（先に落ちること）の確認がこの役を担う |"
-pin_row "§2 否定 assert には positive control" "$H2" "| 「出ない／呼ばれない／作られない」を assert する | 同じ fixture・同じ経路で「出る」ことを示す positive control を先に置く。sandbox の依存不足・早期 exit・ログが書かれない走行で素通りしやすい |"
+pin_row "§2 否定 assert には positive control" "$H2" "| 「出ない／呼ばれない／作られない」を assert する | 同じ fixture・同じ経路で「出る」ことを示す positive control を先に置く。sandbox の依存不足・早期 exit・ログが書かれない走行で空振りしやすい |"
 pin_row "§3 前方一致は行末まで完全一致" "$H3" "| 文言を前方一致で pin する | 接頭辞が短いほど付け足し変異を通す。行末まで完全一致（\`grep -qxF\` 等）にする。「行まるごと」を名乗る照合は行全体一致 |"
 pin_row "§4 対称経路は両側に pin" "$H4" "| 対称な 2 経路（通常経路と回復経路、通常 commit と merge commit 等）を持つ実装 | pin も両側に置く。片側しか実行しない pin は退行を検出できない（片側ずつ外す mutation で生存する） |"
-pin_row "§10 path 比較は pwd -P" "$H10" "| path 出力を比較する | fixture root は生成直後に \`pwd -P\` で正規化する（\`TMPDIR\` 末尾 slash も同様）。被テストが \`cd -P\` で出すなら期待値も \`cd -P\` 側で作る。片辺だけ \`resolve()\` を掛けず \`readlink\` で link 文字列を pin する |"
+pin_row "§8 赤にならないときは変異の効きを疑う" "$H8" "| 赤にならない | pin の不備より先に mutation が効いたか（一致件数・構文・到達）を疑う。「到達して落ちうるか」を実証してから結論にする |"
+pin_row "§10 path 比較は pwd -P" "$H10" "| path 出力を比較する | fixture root は生成直後に \`pwd -P\` で正規化する。\`TMPDIR\` 末尾の slash は、テスト側でパスを連結するときに二重 slash になるので取り除く。被テストが \`cd -P\` で出すなら期待値も \`cd -P\` 側で作る。比較の片辺だけに symlink 解決（\`resolve()\` 等）を掛けない。link 文字列そのものを pin したいときは \`readlink\` を使う |"
 
 # --- 配線: 節限定 + 行全体一致 ---
 IMPL_H="### 5.0.F テスト規律（全 Complexity 共通）"
 IMPL_LINE='pin・mutation・fixture・stub を書くときは `{plugin_root}/references/test-pin-mutation-principles.md` の §1・§2・§8 と該当節を読み、書いた pin は対象を壊す変異で落ちることを実測する。'
 REV_H="### Step 3: Edge Case and Boundary Review"
-REV_LINE='- For each new pin (grep/assert on text, counts, ordering) and each stub/fixture in the diff, apply the rule set `references/test-pin-mutation-principles.md` under the plugin root. Take the absolute path of `_reviewer-base.md` given in your prompt, replace its trailing `agents/_reviewer-base.md` with `references/test-pin-mutation-principles.md`, and Read that file in full before judging the pin (this profile is passed without its file path, so a relative path has no base). Require a positive control for negative asserts, whole-line (whole-sentence for wrapped prose) anchoring for text pins, sibling/both-path symmetry, and a mutation that makes the pin fail. Classify a surviving pin with the テスト網羅性 Finding Gate in `_reviewer-base.md` (`#test-coverage-finding-gate`); do not assign a fixed severity here.'
+REV_LINE='- For each new pin (grep/assert on text, counts, ordering) and each stub/fixture in the diff, apply the rule set `references/test-pin-mutation-principles.md` under the plugin root. Take the absolute path of `_reviewer-base.md` given in your prompt, replace its trailing `agents/_reviewer-base.md` with `references/test-pin-mutation-principles.md`, and Read that file in full before judging the pin (on the named-agent path this profile is passed without its file path, so a relative path has no base). If the file cannot be read, report that and stop instead of judging from memory. Require a positive control for negative asserts, whole-line (whole-sentence for wrapped prose) anchoring for text pins, sibling/both-path symmetry, and a mutation that makes the pin fail. Classify a surviving pin with the テスト網羅性 Finding Gate in `_reviewer-base.md` (`#test-coverage-finding-gate`); do not assign a fixed severity here.'
 
 assert "issue-implement: 5.0.F の見出し行が 1 つ" "1" "$(grep -cxF -- "$IMPL_H" "$IMPL")"
 assert "test-reviewer: Step 3 の見出し行が 1 つ" "1" "$(grep -cxF -- "$REV_H" "$REVIEWER")"
