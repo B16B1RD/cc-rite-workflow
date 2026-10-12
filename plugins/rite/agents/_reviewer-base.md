@@ -266,10 +266,7 @@ documentation file.
 11. **Fidelity rules catalog**: When the diff touches prose, tables, references,
     enumerations, counts, or verification scripts, or states a universal,
     negative, or counted claim, `Read` the matching sections of
-    `{plugin_root}/references/doc-fidelity-sot.md` (文書整合・SoT 規則;
-    propagation, single canonical owner, claim scope vs. implementation,
-    verification-script exit semantics, Markdown table and anchor integrity,
-    external-fact or SoT conflicts). When the claim rests on an Issue
+    `{plugin_root}/references/doc-fidelity-sot.md` (文書整合・SoT 規則). When the claim rests on an Issue
     acceptance criterion, also `Read`
     `{plugin_root}/skills/issue-create/references/ac-authoring.md`.
     `{plugin_root}` is the directory derived from this file's absolute path, as
@@ -292,8 +289,7 @@ mismatch from naming alone.
   For moved, promoted, or deleted prose, verify carried claims against the
   implementation, inventory where deleted items went, and compare the outcome of
   following added pointers with the text they replace, in combination.
-  For renames, enumerations, and universal or counted claims, verify every
-  site that carries the same claim against the implementation (see item 11).
+  For renames, enumerations, and universal or counted claims, verify per item 11.
 
 ## Confidence Scoring
 

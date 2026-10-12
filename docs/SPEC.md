@@ -188,7 +188,7 @@ rite-workflow/
 │ ├── batch-run/ # /rite:batch-run (複数 Issue 順次 open→iterate; --merge で ready→merge→cleanup まで; + references/rationale.md)
 │ ├── pr-create/ # /rite:pr-create (draft PR 作成; + references/rationale.md) — sub-skill
 │ # --- Issue 管理 ---
-│ ├── issue-create/ # /rite:issue-create (+ references/: complexity-gate / contract-section-mapping / slug-generation / body-fact-check / unknowns-boundary-rationale; + references/rationale.md)
+│ ├── issue-create/ # /rite:issue-create (+ references/: complexity-gate / contract-section-mapping / slug-generation / body-fact-check / ac-authoring / unknowns-boundary-rationale; + references/rationale.md)
 │ ├── issue-list/ # /rite:issue-list (+ references/rationale.md)
 │ ├── issue-update/ # /rite:issue-update (+ references/rationale.md)
 │ ├── issue-close/ # /rite:issue-close (+ references/rationale.md)

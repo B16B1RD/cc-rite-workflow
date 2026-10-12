@@ -271,7 +271,7 @@ File 列のセルが実パス ⇔ (`/` を含む、または `.` + 英数字の�
 
 受入条件の定義は対応する節内だけに置く。完了条件は「受入条件を確認した」などの表現にし、数値 AC ID で始まるチェック項目を節外に生成しない。書式判定の正本は `scripts/acceptance-criteria-check.sh extract`（[入口検査との責務分担](../open/references/acceptance-id-preflight.md)）。生成した body は Step 4.2.1 の検証を経て Step 4.3 で最終版を同 reader に渡してから作成する。
 
-受入条件を書くときは [`references/ac-authoring.md`](./references/ac-authoring.md) を Read して従う（検出経路との 1 対 1 対応・実測記録型 AC・deferred の起票等。本体には複製しない）。
+受入条件を書くときは [`references/ac-authoring.md`](./references/ac-authoring.md) を Read して従う（本体には複製しない）。
 
 ### 4.2.1 本文の断定のファクトチェック
 
