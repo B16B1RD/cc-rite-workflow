@@ -59,9 +59,6 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - If a security-related config key changed, verify all consumers handle the new value
 - If a cryptographic function was changed, verify all callers use the updated API
 
-hooks・guard・コマンド解析の分類器・制御文字の中和を変更する差分は、次の設計規則を適用する:
-rationale: ../references/hook-guard-design-rules.md
-
 ## Confidence Calibration
 
 - **95**: SQL query constructed with string concatenation of user input, confirmed by `Read` — textbook SQL injection

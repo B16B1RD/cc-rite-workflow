@@ -1,8 +1,8 @@
 #!/bin/bash
 # 設計規則の節が各 SoT に実在し、規則を指すポインタとリンクのアンカーが実在する見出しに解決する
-# ことを固定する。reviewer からの到達は sentinel・状態・hook/guard の規則だけを検査する
+# ことを固定する。実装者の入口（coding-principles）からの到達は sentinel・状態・hook/guard の規則を検査する
 # （worktree・Wiki・PR 運用の規則は既存のスキルの参照から到達する）。
-# 規則の本文は references 側が SoT であり、reviewer 側は 1 行のポインタだけを持つ。
+# 規則の本文は references 側が SoT であり、入口側は 1 行のポインタだけを持つ。
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,6 +10,7 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 
 RITE="$SCRIPT_DIR/../.."
 REFS="$RITE/references"
+PRINCIPLES="$RITE/skills/rite-workflow/references/coding-principles.md"
 SEC_REVIEWER="$RITE/agents/security-reviewer.md"
 ERR_REVIEWER="$RITE/agents/error-handling-reviewer.md"
 
@@ -74,12 +75,16 @@ else
 fi
 
 # 到達性: reviewer 定義が規則節を指すこと、規則本文にリンク先が実在すること。
-assert_grep "security-reviewer points to the hook/guard rules" "$SEC_REVIEWER" \
-  '^rationale: \.\./references/hook-guard-design-rules\.md$'
-assert_grep "error-handling-reviewer points to the sentinel rules" "$ERR_REVIEWER" \
-  '^rationale: \.\./references/sentinel-contract\.md#設計規則$'
-assert_grep "error-handling-reviewer points to the state rules" "$ERR_REVIEWER" \
-  '^rationale: \.\./references/state-read-evolution\.md#状態パス再入ガードの規則$'
+assert_grep "coding-principles points to the sentinel rules" "$PRINCIPLES" \
+  'references/sentinel-contract\.md#設計規則'
+assert_grep "coding-principles points to the hook/guard rules" "$PRINCIPLES" \
+  'references/hook-guard-design-rules\.md\)'
+assert_grep "coding-principles points to the state rules" "$PRINCIPLES" \
+  'references/state-read-evolution\.md#状態パス再入ガードの規則'
+# reviewer は利用者の project で動き plugin 内の相対パスを解決できない。相対ポインタを置かない。
+for rv in "$SEC_REVIEWER" "$ERR_REVIEWER"; do
+  assert_not_grep "$(basename "$rv") has no relative pointer to references/" "$rv" '\.\./references/(sentinel-contract|hook-guard|state-read)'
+done
 assert_grep "hook rules link the worktree section" "$REFS/hook-guard-design-rules.md" \
   'git-worktree-patterns\.md#worktree-と-git-操作の規則'
 assert_grep "hook rules link the sentinel section" "$REFS/hook-guard-design-rules.md" \
@@ -100,7 +105,7 @@ anchor_resolves() {
   return 1
 }
 refs_found=0
-for src in "$SEC_REVIEWER" "$ERR_REVIEWER" "$REFS/hook-guard-design-rules.md" "$REFS/wiki-patterns.md"; do
+for src in "$PRINCIPLES" "$REFS/hook-guard-design-rules.md" "$REFS/wiki-patterns.md"; do
   while IFS= read -r ref; do
     [ -n "$ref" ] || continue
     refs_found=$((refs_found + 1))
