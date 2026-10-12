@@ -295,7 +295,7 @@ upstream がファイルを直接読む `awk ... "$file"` の `exit` は pipe �
 
 | Situation | Defensive form |
 |-----------|----------------|
-| `n=$(grep -oE ... \| wc -l)` under `set -euo pipefail` aborts the script on zero matches when assigned | `{ grep -oE ... \|\| true; } \| wc -l` (stdin pipe only; with a file argument capture `rc=0; ... || rc=$?` and stop on `rc >= 2`) |
+| `n=$(grep -oE ... \| wc -l)` under `set -euo pipefail` aborts the script on zero matches when assigned | `{ grep -oE ... \|\| true; } \| wc -l` (stdin pipe only; with a file argument capture `rc=0; ... \|\| rc=$?` and stop on `rc >= 2`) |
 | `awk -v var=...` processes escape sequences like a string literal; an unknown escape such as `\[` is undefined by POSIX (gawk yields `[`, mawk keeps `\[`) | Pass via the environment: `VAR="$x" awk '... ENVIRON["VAR"] ...'` |
 | awk `==` on non-ASCII strings (e.g. Japanese headings) matched wrongly on some awks (observed with macOS awk; current POSIX requires identity comparison for `==`) | Resolve the line with `grep -nxF`, require exactly one hit |
 | `d=$(cd "$(mktemp -d)" && pwd -P)`: a failed `mktemp` makes the command `cd ""`, which is a no-op in bash, so the result is the cwd and a later `rm -rf` trap deletes the working tree | Never nest `mktemp` inside `cd`. New code: `rite_tempdir_new d \|\| exit 1` (declares empty, installs the cleanup handler, then creates the directory), then `cd "$d"` |
