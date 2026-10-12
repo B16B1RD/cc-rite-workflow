@@ -34,36 +34,13 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 
 ## 概要
 
-過去 9 件の Issue で導入した 8 種類の防御層 (declarative / sentinel / Pre-check list / whitelist / Pre-flight / Step 0 / 4-site 対称化 / hook case arm) は **AND 論理**で組まれていた。それぞれが `.rite-flow-state.active=true` という単一の前提条件成立に依存していたが、`commands/issue/create.md` などの patch site が **`--active true` を omit** することで前提条件のチェーンが silent に切断され、stop-guard.sh が `EXIT:0 reason=not_active` で early return → 8 種の case arm / WORKFLOW_HINT / RE-ENTRY DETECTED escalation はすべて到達不能になっていた。**`.rite-stop-guard-diag.log` の直近 30 件中 28 件 (93%) が `EXIT:0 reason=not_active`** で、防御層は本番で 9 割以上機能していなかった事実が一次情報で確認された。
+（現行仕様では廃止: 本ページが扱った Stop hook ガード機構 `stop-guard.sh` は機構ごと撤去済みで、後継の `stop-loop-continuation.sh` は `stop_hook_active` に依存しない one-shot 設計のため、`--active true` の省略で防御層が到達不能になる連鎖は成立しない。「AND 論理の防御層は単一の前提条件の omit で全体が無効化される」という一般則のみ、後段の教訓に残る。）
 
 ## 詳細
 
 ### 観測された連鎖
 
-```
-[step 1] session-start.sh:267-294 が新セッション起動時に
-         .rite-flow-state.active を false に強制 reset
-         (前セッション残存 active=true から保護する設計)
-
-[step 2-4] commands/issue/create.md / create-interview.md の Pre-flight
-         + Return Output 直前 re-patch (8 件の bash patch 呼び出し)
-         (★ どの site も --active true を指定しない)
-
-→ .rite-flow-state.active = false が永遠に保持される
-
-[step 5] LLM が end_turn を選択
-         (declarative enforcement で抑制できない症状、
-         「Declarative enforcement で LLM の stop_reason: end_turn は抑制できない」参照)
-
-[step 6] Stop hook fire → stop-guard.sh:79-84
-         ACTIVE != "true" → log_diag "EXIT:0 reason=not_active" → exit 0
-         case arm / WORKFLOW_HINT / RE-ENTRY DETECTED escalation は到達不能
-
-[step 7] stop_hook_summary: preventedContinuation: false
-         → Claude Code は LLM の end_turn をそのまま受理
-
-[step 8] UI: ✻ Churned for X → ユーザー手動 continue で再開
-```
+（現行仕様では廃止: `session-start.sh` の active reset → patch site の `--active true` 省略 → `stop-guard.sh` の `not_active` early return という連鎖は、`stop-guard.sh` の撤去により存在しない。）
 
 ### 一次情報による実証
 
@@ -91,13 +68,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 
 #### 手段 A: hook diag log の集計
 
-stop-guard.sh のような防御 hook が `log_diag` を出している場合、直近 N 件の `EXIT:0 reason=*` 比率を集計する:
-
-```bash
-tail -100 .rite-stop-guard-diag.log | awk -F'reason=' '{print $2}' | awk '{print $1}' | sort | uniq -c
-```
-
-`reason=not_active` や `reason=other_session` のような「block を試みなかった」理由が支配的なら、防御層は本番で機能していない。
+（現行仕様では廃止: hook diag log を集計する方式は撤去済みで、`stop-loop-continuation.sh` の debug 出力は `RITE_DEBUG` 設定時のみ。）
 
 #### 手段 B: stop_hook_summary の確認
 
@@ -136,7 +107,7 @@ stop-guard の early return 条件を「current session が書いた flow-state 
 
 ### 教訓
 
-防御層を追加する際、その層が **fire するための前提条件**を必ず明文化し、本番でその前提条件が成立しているかを **一次情報** (hook diag log / stop_hook_summary / .rite-flow-state の現状) で定期検証する。AND 論理の防御層を組む場合、各 link の前提条件が **生成側の実装で網羅** されているかを grep audit で証明できる構造にする。
+防御層を追加する際、その層が **fire するための前提条件**を必ず明文化し、本番でその前提条件が成立しているかを **一次情報** (stop_hook_summary / state file の現状。hook diag log 方式は現行仕様では廃止) で定期検証する。AND 論理の防御層を組む場合、各 link の前提条件が **生成側の実装で網羅** されているかを grep audit で証明できる構造にする。
 
 ### 実証された短期修復と invariant 強化
 

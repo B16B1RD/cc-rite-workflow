@@ -83,7 +83,7 @@ markdown channel separation モデルが扱う範囲は「後方空行要求の�
 | **前方空行要求** | list item → HTML block 境界 (HTML block 開始前) | 最終 list item 直後の独立 HTML コメントで発動 | inline HTML sentinel で回避 (本 pattern) |
 | **後方空行要求** | markdown 文書末尾 → 後続 content 境界 | sentinel 後に bash UI が続く場合に発動 | bash tool が別チャンネル (markdown 最終行を壊さない) で吸収 |
 
-cleanup.md と ingest.md はこの双対に対して **意図的に異なる構造** (cleanup: inline sentinel + 2 ブロック構造 / ingest: independent sentinel + 3 ブロック構造 = 三点セット規約) を採用しており、両者の **意図的 divergence** を silent unification regression から守るため `stop-guard-cleanup.test.sh` / `stop-guard-ingest.test.sh` の canonical phrase pin で cross-arm lexical consistency を pin している。
+cleanup.md と ingest.md はこの双対に対して **意図的に異なる構造** (cleanup: inline sentinel + 2 ブロック構造 / ingest: independent sentinel + 3 ブロック構造 = 三点セット規約) を採用している。（両者の意図的 divergence を `stop-guard-cleanup.test.sh` / `stop-guard-ingest.test.sh` の canonical phrase pin で守る運用は、これらのテストが撤去済みのため現行仕様では廃止。）
 
 ### 適用 scope
 

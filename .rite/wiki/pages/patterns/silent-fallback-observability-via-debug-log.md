@@ -22,65 +22,13 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-09T06:56:16+00:00" }
 
 ## 概要
 
-`var=$(helper.sh ... 2>/dev/null) || var="<legacy_default>"` 形式で resolver / helper 失敗時に legacy 値へ fallback する pattern は、stderr が捨てられているため deploy regression / migration drift / permission denied 等の根本原因が完全に silent になる。`RITE_DEBUG=1` 環境変数で gate した `.rite-flow-debug.log` への WARNING 出力を caller 側に対称配置することで、silent fallback の本番再現性を維持しつつ root cause を後追い可能にする。
+（現行仕様では廃止: resolver 失敗時に legacy 値へ fallback し、その観測を `RITE_DEBUG` gate の debug log に任せる方式は採らない。想定外の失敗はエラーで止め、fallback を置く場合は常に可視の warning を出す。legacy の `.rite-flow-state` fallback も、現行は v3 のみで撤去済み。）
 
 ## 詳細
 
-### 問題の構造
+### 問題の構造 / Canonical fix
 
-```bash
-# Anti-pattern: silent legacy fallback
-STATE_FILE_PATH=$(bash "$_resolve-flow-state-path.sh" 2>/dev/null) \
-  || STATE_FILE_PATH=".rite-flow-state"  # legacy fallback
-```
-
-このコードは以下の障害経路を全て silent に握り潰す:
-
-- resolver script の deploy 失敗 (path 不在 / permission)
-- migration 中の transient state (per-session file への書き換え途中)
-- per-session file 構造の前提が壊れた場合 (sessions/ ディレクトリの permission denied 等)
-
-caller (pre-tool-bash-guard.sh / post-tool-wm-sync.sh / session-ownership.sh) が同じ pattern を 5 site で複製していると、5 ヵ所すべてで同時 silent failure が起きうるが debug 手段がない。
-
-### Canonical fix: RITE_DEBUG gated WARNING
-
-```bash
-# Canonical: silent fallback + RITE_DEBUG observability
-if STATE_FILE_PATH=$(bash "$_resolve-flow-state-path.sh" 2>/tmp/resolve_err); then
-  :  # success path
-else
-  rc=$?
-  STATE_FILE_PATH=".rite-flow-state"  # legacy fallback (本番挙動は不変)
-  if [ "${RITE_DEBUG:-}" = "1" ]; then
-    {
-      echo "[$(date -Iseconds)] WARNING: _resolve-flow-state-path.sh failed (rc=$rc), falling back to legacy"
-      head -5 /tmp/resolve_err 2>/dev/null
-    } >> "${RITE_FLOW_DEBUG_LOG:-.rite-flow-debug.log}"
-  fi
-  rm -f /tmp/resolve_err
-fi
-```
-
-設計ポイント:
-
-1. **本番挙動を不変に保つ**: legacy fallback への遷移は維持し、observability layer のみ追加する。これにより既存 caller の break risk なしで観測性を獲得できる
-2. **RITE_DEBUG gate で常時 enable しない**: 本番運用での log file 肥大化を防ぐ。デバッグ時のみ `RITE_DEBUG=1` で発火させる
-3. **caller 全件への対称適用 (Wiki: Asymmetric Fix Transcription)**: 1 caller のみに追加すると、別 caller の silent failure が発見できない。同 pattern を持つ全 caller（実測例では pre-tool-bash-guard.sh / post-tool-wm-sync.sh の 2 site）に対称適用する
-
-### 常時 WARNING 事例: fallback が解決先を変える場合は RITE_DEBUG gate せず常時 WARNING にする
-
-`cleanup-work-memory.sh` の `FLOW_STATE` 解決も同型の resolver 呼び出し失敗パターンだったが、本 PR の fix は上記 canonical fix の `RITE_DEBUG` gate を外し、WARNING を常時 stderr に出力する形を採った:
-
-```bash
-if RESOLVED_FLOW_STATE=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" path 2>"${_fs_err:-/dev/null}"); then
-  :
-else
-  echo "WARNING: cleanup-work-memory: flow-state.sh path resolution failed — falling back to legacy $(basename "$STATE_ROOT/.rite-flow-state") (session_id may be missing or invalid)" >&2
-  RESOLVED_FLOW_STATE=""
-fi
-```
-
-判断基準: この実測ケースは fallback 後も**本番挙動が不変**（同じ実質的な state 解決結果に収束）なため、observability を `RITE_DEBUG` gate で opt-in にしても実害がなかった。一方この事例では fallback が **実際に別ファイル**（schema_v2/v3 の per-session file → legacy 共有 file）を操作対象に切り替える — silent だと `/rite:cleanup` が「成功したように見えて実際には別ファイルをリセットした」という schema 不整合を誰にも気づかれず再生産する（実害として観測済み）。**fallback が操作対象そのものを変える場合は、opt-in の debug ログではなく常時可視の WARNING にする**（gate の要否は「fallback後も対象不変か、対象自体が変わるか」で判定する）。
+（現行仕様では廃止: `RITE_DEBUG` gated の debug log で silent legacy fallback を観測する canonical fix と、fallback が解決先を変える場合の常時 WARNING 事例は、legacy fallback 自体の撤去により成立しない。）
 
 ### 上位 Pattern との関係
 

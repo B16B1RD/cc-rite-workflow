@@ -813,13 +813,13 @@ cycle 42 (累積 14 回目 PR の 42 cycle 目) で本 anti-pattern の writer/r
 `severity-levels.md` に COMMENT_QUALITY 軸 + LOW-MEDIUM 等級追加の PR で本 anti-pattern が **severity 等級の拡張** という運用層 invariant に拡張されて 4 cycle 観測:
 
 - **cycle 1 review (HIGH 1件)**: 同一概念 (Hypothetical Exception Categories の 4 reviewer 名) が SoT (`_reviewer-base.md`) と severity-levels.md と Category 表で異なる表記 (`devops infra` vs `devops` vs `Infrastructure`) を持つ cross-file consistency drift。検出は cross-file grep で機械的に可能だが、3 ファイル間の表記等価性は手動同期が必要
-- **cycle 1 review (HIGH 1件)**: agent file (`tech-writer-reviewer.md`) に Detection step (Step 5.5) を追加した際、対応する skill checklist (`skills/reviewers/tech-writer.md`) に self-audit エントリを追加し忘れる Detection-checklist sync 漏れ。reviewer agent file (Detection Process) と skill file (Self-audit Checklist) は対応関係にあり、片側のみの追加は self-audit pass 経路を silent skip させる
+- **cycle 1 review (HIGH 1件)**: （現行仕様では廃止: 対応する `skills/reviewers/{name}.md` の Self-audit Checklist は存在しない。skills/reviewers/ は SKILL.md と references のみで、reviewer profile は `agents/{type}-reviewer.md` に一本化されている）
 - **cycle 2 review (MEDIUM 2件 = cycle 1 fix で導入された regression)**: 概要表に新 severity level (LOW-MEDIUM) を追加しても、同ファイル内の Severity Levels 表 / Impact × Likelihood Matrix / Evaluation Criteria flowchart に対応する分岐を追加しないと self-consistency 違反になる。cycle 1 fix 時に「概要表のみ追加」したことで cycle 2 で新たに同ファイル内 5 箇所 (Severity Levels 定義表 / Impact × Likelihood Matrix / Evaluation Criteria flowchart / Evaluation 表 / Impact 軸を列挙する他箇所) の同期漏れが surface した
 
 **学習**: 本 anti-pattern は「**severity / enum 等の運用 invariant の同ファイル内多箇所 + cross-file 派生** への対称更新契約」にも適用される。同ファイル内 5+ 箇所と cross-file 5 種類 (write spec / JSON schema / read parser / extract regex / measure dict) の合計 10+ sites を atomic に同期しないと silent severity fallback 経路が成立する。canonical 対策:
 
 1. **概要表追加だけで終わらせない sub-checklist mandatory 化**: severity 等級 / enum を**追加する** PR は、概要表 update を 1 step とし、その直後に「同ファイル内 (Severity Levels 表 / Matrix / flowchart / Evaluation 表 / 列挙箇所) 5+ 箇所」「cross-file (write spec / JSON schema / read parser / extract regex / measure dict) 5 種類」の合計 10+ sites を grep で列挙してから commit する
-2. **agent file ↔ skill file 対応関係の grep verification**: `agents/{name}-reviewer.md` の Detection step / Cross-File Impact step を追加する PR は、対応する `skills/reviewers/{name}.md` の Self-audit Checklist にも対称的にエントリを追加する。grep で `Step N.M` の存在を両 file で確認する
+2. **agent file ↔ skill file 対応関係の grep verification**: （現行仕様では廃止: per-reviewer の skill file が存在しないため、この対応関係の同期は不要）
 3. **Inline annotation → blockquote pattern**: Procedure / 手順説明に長文注釈を追加する際は、本文行末に packed せず next-line `> **Note**: ...` blockquote 形式で分離する。SoT への back-reference link も併せて追加することで根拠 traceability を確保 (cycle 2 fix で実測)
 4. **Numerical claim factual check**: 「N 個に細分化」のような具体的数値主張を inline 補足に書く際、SoT 実態 (1:1 マッピング vs N:1 マッピングの分布) と数値が一致しているかを必ず check する。一致しない場合は数値を排して定性的説明に置換する (cycle 2 fix で実測)
 
@@ -1212,7 +1212,7 @@ v0.5.0 リリース前ドキュメント見直しの PR は 14 cycle / 51 findin
 
 - **cycle 3 — forward 方向のみ verify**: Generator-Reviewer regex parity 化を「SoT → Heuristics」方向のみで宣言。SoT (cycle 1 で新設、英語 5 行 + 日本語 2 行) と reviewer Heuristics 表 (`comment-best-practices.md:382` の regex) の forward 一致は確認したが reverse 方向の verify を怠った
 - **cycle 4 — reverse 方向で gap 顕在化**: tech-writer が「Heuristics → SoT」方向で `旧実装は` カテゴリの SoT 欠落を HIGH/current-pr で検出。Detection Heuristics 側にのみ存在していた legacy entry が、cycle 3 の forward 方向 verify では構造的に検出不可能だった
-- **canonical 対策**: SoT 集約 PR では「**両 list の集合差を 0 にする**」を mandatory acceptance test に含める。`grep -rn` で両方向の差分を機械検証し、片方向 verify では legacy entry が silent に残置される経路を構造的に塞ぐ
+- **canonical 対策**: （現行仕様では廃止: 両 list の集合差を 0 にする双方向検証は mandatory にしない。機械検証は forward subset（SoT ⊆ Heuristics）のみで、reverse（Heuristics ⊆ SoT）は best-effort かつ検証対象外と規定されている）
 
 ### Generator-Reviewer regex parity drift sub-pattern
 
@@ -1260,7 +1260,7 @@ cycle 1 で SoT へ集約した直後、SoT への forward-pointer link を `ing
 
 - **cycle 1**: review.md 冒頭 (line 62, 66) で `iterate.md ステップ 7 → ステップ 1` rename を適用したが、同一ファイル内 line 4344 / 4736 の同型 dangling reference を sanity check で取りこぼし。`references/issue-create-with-projects.md` で `Phase 3.14 → ステップ 3.14` rename を caller 側のみ適用し destination file (lint.md は `## Phase 3:` 階層維持) を変更せず片方向 rename。教訓: AC-2 `grep -rE` sanity check の実装は **reference 先 file の heading 一覧との突き合わせ** を必須化しないと同型 dangling を取りこぼす。
 - **cycle 3-5 (累積 17 回目相当)**: 新規 cleanup policy (廃止 caller は enum 削除 + Note 化) を `pr_fix` のみに適用 → cycle 4 で同 staleness class の `parent_routing` / `lint` も連鎖 finding → cycle 5 で 3 値統合 Note ブロックに拡張。教訓: **新規 policy 導入時は同 type の全 entity に同時適用する pre-condition を明示する**。
-- **cycle 6-7 (累積 18 回目)**: cycle 5 で導入した Note 内の 2 件の事実誤認 (Issue を PR とラベルした種別の取り違え / `start.md / parent-routing.md` 併記 → 当該 PR で廃止されたのは parent-routing.md のみ) を tech-writer が `gh CLI + git log -S` で fact-check。教訓: **PR/Issue 番号は `gh pr view N` / `gh issue view N` 両方で type 確認、`PR` prefix を完全削除 (`#N` のみ表記) して type 誤記リスクを構造的に排除**。
+- **cycle 6-7 (累積 18 回目)**: cycle 5 で導入した Note 内の 2 件の事実誤認 (Issue を PR とラベルした種別の取り違え / `start.md / parent-routing.md` 併記 → 当該 PR で廃止されたのは parent-routing.md のみ) を tech-writer が `gh CLI + git log -S` で fact-check。教訓: （現行仕様では廃止: 永続成果物には Issue/PR 番号自体を書かない。3-4 桁の番号は number-reference-check で禁止されるため、`#N` のみ表記にして type 誤記を避ける方法は採れない）
 - **cycle 8-12 (累積 19-21 回目)**: cycle 9 で `(E2E 別 Issue 化 logic)` 略称 → `(Automatic Separate Issue Creation)` literal 引用に修正、tech-writer 自身が cycle 10 / cycle 12 と **2 回連続で直前 cycle の自分の主張を訂正**。実態は `pre-deletion state 定義` を「deletion commit ^1」と「renumber commit ^1」のどちらにとるかで誤読が反復していた。教訓: **retired caller catalog では (a) deletion commit と (b) renumber commit の 2 系列を区別し、retired caller が実際に呼ばれていた最終状態 (= renumber 直前の commit ^1) を `git show` で verify**。略称ではなく **literal な section 名を引用** する。
 - **cycle 18 (累積 25 回目)**: 新規 hook (orphan-reference-check.sh) を作る際に lint.md Phase 4 integration (appendix / summary row / closing policy の 3 連動) を同時整備せず CRITICAL × 3 sites として surface。教訓: **新規 hook + documentation の 3 連動更新は canonical pattern (Phase 3.5-3.14) を踏襲する義務**。
 

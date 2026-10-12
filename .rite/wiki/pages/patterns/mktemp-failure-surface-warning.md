@@ -46,39 +46,13 @@ verified:
 
 ## 概要
 
-`mktemp ... || echo ""` パターンは disk full / inode 枯渇 / permission denied を silent に握り潰し、後続の stderr capture 機能が無効化されたことを操作者に気付かせない。`if ! var=$(mktemp ...); then WARNING; var=""; fi` 形式で WARNING を stderr に surface する。
+（現行仕様では廃止）stderr 退避用 tempfile の `mktemp ... || x=""` は、非ブロッキングの stderr capture 用の許容 idiom であり、WARNING + `[CONTEXT]` の強制は求められていない。tempfile の生成と cleanup は `hooks/scripts/lib/tempfile.sh` に集約され、そちらは失敗時に fail-loud である。
 
 ## 詳細
 
-### Anti-pattern
+### Anti-pattern / Canonical pattern
 
-```bash
-# ❌ NG: mktemp 失敗を silent に握り潰す
-git_err=$(mktemp /tmp/rite-git-err-XXXXXX 2>/dev/null) || git_err=""
-
-# この時点で git_err=="" だと
-git cmd 2>"${git_err:-/dev/null}"  # stderr は捨てられる（silent）
-```
-
-- disk full や inode 枯渇は low-frequency だが high-severity な障害
-- silent 握り潰しにより、後続の `head -3 "$git_err"` による詳細 surface が機能しないまま運用が続く
-- 根本原因（ディスク満杯）への気付きが遅れる
-
-### Canonical pattern
-
-```bash
-# ✅ OK: 失敗を WARNING で可視化
-if ! git_err=$(mktemp /tmp/rite-git-err-XXXXXX); then
-  echo "WARNING: git stderr 退避用 tempfile の mktemp に失敗しました。stderr 詳細は失われます" >&2
-  echo "  対処: /tmp の inode 枯渇 / read-only filesystem / permission 拒否を確認してください" >&2
-  echo "[CONTEXT] FALLBACK=1; reason=mktemp_failure" >&2
-  git_err=""
-fi
-```
-
-- 操作者に root cause を伝える（inode / FS / permission の 3 候補）
-- `[CONTEXT]` sentinel で機械可読な failure flag を emit する
-- `git_err=""` で後続の fallback 経路は維持（best-effort continuation）
+（現行仕様では廃止: `x=$(mktemp ... 2>/dev/null) || x=""` を禁止し、失敗時に WARNING と `[CONTEXT]` を出す canonical pattern は採らない。stderr 退避用の非ブロッキング用途では当該 idiom を許容し、tempfile の確保は `lib/tempfile.sh` に任せる。）
 
 ### 縮退が「成功」を宣言する経路
 
@@ -175,11 +149,8 @@ awk silent swallow 事例の cycle 1 で test / code-quality / error-handling �
 
 ### Flatten refactor 経由の格下げ regression（実測）
 
-`wiki:* commands` を cleanup.md スタイルへ本格フラット化した PR で、**「コメント削除のみ許容」を謳う flatten refactor PR が Pattern 3 規範 WARNING を silent fallback に格下げする regression** を実測した。本 pattern の維持が refactor PR の lurking failure mode として継続することを示す evidence。
+（現行仕様では廃止: flatten refactor で WARNING 付き mktemp が `|| x=""` へ「格下げ」されることを regression とみなす知見は、当該 idiom が許容されている現行仕様では成立しない。）
 
-#### 検出された格下げ
-
-```bash
 # Before (develop): Pattern 3 規範通り
 if ! cat_err=$(mktemp /tmp/rite-wiki-ingest-cat-err-XXXXXX); then
   echo "WARNING: stderr 退避 tempfile (cat_err) の mktemp に失敗しました..." >&2

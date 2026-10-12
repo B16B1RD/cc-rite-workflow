@@ -24,15 +24,13 @@ generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-25T19:13:44Z" }
 
 ## 概要
 
-CHANGELOG の英日ペアは同一 PR で同時更新し、バージョン見出しは英語の bracket 形式を維持する。本文の Issue 番号はリポジトリ文書として書いてよく、機械チェックの走査面には含めない。
+バージョン見出しは ja 版でも英語の bracket 形式を維持する。（英日ペアを PR 単位で同期する運用と、本文に Issue 番号を書いてよいとする運用は現行仕様では廃止: 英日の CHANGELOG はリリース時に両方書き起こし、新規エントリに Issue/PR 番号は書かない。）
 
 ## 詳細
 
-- **PR 単位同期**: リリース時のバージョンバンプ commit は `## [Unreleased]` → `## [x.y.z]` の promote のみを行い翻訳はしない。したがって ja エントリは PR 時に書かなければ永続的に欠落する。git log で「CHANGELOG.md に触れた過去 commit が両ファイル同時更新か」を確認すると慣習の実在を検証できる。
+- （現行仕様では廃止）**PR 単位同期**: ja エントリを PR 時に書く運用は採らない。リリース準備の CHANGELOG 更新で EN / JA を同時に書き起こす。
 - **見出しの言語**: 和訳するのはカテゴリ見出し（`### Changed` → `### 変更`）のみ。バージョン見出し `## [Unreleased]` / `## [x.y.z]` は ja 版でも英語 bracket 形式を維持する。release スクリプトが `-## [Unreleased]` → `+## [x.y.z]` の対称置換を両言語に適用する前提のため、見出しまで訳すと機械処理が非対称に壊れる。
-- **本文の Issue 番号は書いてよい**: CHANGELOG はマーケットプレイス配布物ではなくリポジトリ文書なので、番号-free 面（配布先だけで完結する文書）の対象外である。`number-reference-check.sh` の既定走査面から CHANGELOG を外し、全ファイル走査でも CHANGELOG 上の番号を報告しない。過去リリース節に既にある番号は負債ではなく、この方針と一致する。
-- **リリース時に書くエントリの番号は PR 番号ではなく Issue 番号に解決する**: リリース準備でバージョン節を新規に書き起こす経路（`/release` の CHANGELOG テンプレートは Issue 番号プレースホルダを指定する）では、起点になる `git log --oneline {前タグ}..develop` の各 subject 末尾の番号が squash merge の付けた **PR 番号**である。そのまま転記すると全エントリが PR 番号になり、公開リリースノートの恒久的な参照先が要求元 Issue ではなく実装 PR を指す。`gh pr view {n} --json body` の `Closes #N` で PR→Issue を解決してから書く。番号の種別は `gh pr view {n}` と `gh issue view {n}` のどちらが解決に成功するかで機械的に確定でき、`gh pr view` が `Could not resolve to a PullRequest` を返す番号は Issue である。
-- **書く側と走査面の食い違いは決着済み**: かつては `[Unreleased]` 追記経路が number-free、リリース書き起こし経路が番号あり、で規約が割れていた。canonical は「CHANGELOG に番号を書く」側。走査面から外すことで機械検出が方針と逆向きに 322 件を積む状態を止めた。lint スキルの個別注記と仕様書の旧記述は対象外。
+- （現行仕様では廃止）**本文の Issue 番号は書いてよい**: 新規エントリに Issue/PR 番号は書かない（散文のみ、`git log` 末尾の番号も転記しない）。CHANGELOG は `number-reference-check.sh` の `--all` 走査対象に含まれる。
 
 ## 関連ページ
 

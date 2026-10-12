@@ -764,14 +764,7 @@ cycle 3 で R-3 (L70 :277-284 → 実 278) **単独 nit** として nit-noted �
 
 #### Failure mode 9: auto_demote_low policy override 判断基準の明示化
 
-`rite-config.yml` の `review.scope_assignment.auto_demote_low: true` 設定下では LOW × current-pr は機械的に nit-noted へ降格されるが、累積 44 回目相当 cycle 2 で以下 **2 条件のいずれかに該当する場合は policy override で proper fix を選ぶ** 正当な経路が canonical 化された:
-
-| Override 条件 | 根拠 |
-|--------------|------|
-| **cycle N で自分が混入させた precision drift** | reply-only で受け流すと PR レポートの信頼性が失われ調査結果が価値を失う |
-| **PR の主要成果物 (本件は AC-2 差分表) の正確性に直接影響** | informational nature の PR で deliverable の正確性は mergeability 以上の優先度を持つ |
-
-cycle 1 で auto_demote_low が dogfooding の現実的な blocking 件数を **5 → 2 に削減** した観測値も併せて記録。
+（現行仕様では廃止: `auto_demote_low` 設定は現行 plugin に存在せず、LOW を機械的に降格する機構がないため、この override 条件は成立しない。）
 
 #### 「systemic 一斉対応」収束戦略 (cycle 5)
 
