@@ -69,6 +69,7 @@ issue:
 # レビュー実行設定（reviewer 選定 / debate / fact_check 等）
 review:
   min_reviewers: 1      # マッチするレビュアーがいない場合の最低人数
+  max_reviewers: 6
   criteria:
     - file_types
     - content_analysis
@@ -107,8 +108,8 @@ pr_review:
 # 並列実装
 parallel:
   enabled: true   # 並列実装を有効化
-  max_agents: 3   # 同時実行エージェント数の上限
-  mode: "shared"  # "shared" (作業ディレクトリ共有) または "worktree" (各エージェントが独立 worktree)
+  max_agents: 2   # 同時実行エージェント数の上限
+  mode: "worktree"  # "shared" (作業ディレクトリ共有) または "worktree" (各エージェントが独立 worktree)
   worktree_base: ".worktrees"  # mode が "worktree" のときの worktree ベースディレクトリ
 
 # マルチセッション（セッション別 Git worktree 分離）
