@@ -1069,7 +1069,7 @@ recon_dir=$(_setup_recon_env "repo-fail" "repo_view_fail")
 recon_stderr="$(mktemp "$TEST_DIR/recon-repo-fail-stderr.XXXXXX")"
 echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
   | env PATH="$recon_dir/bin:$PATH" bash "$HOOK" >/dev/null 2>"$recon_stderr" || true
-incident_count=$(grep -cE 'post_compact_gh_repo_view_failed' "$recon_stderr" || echo 0)
+incident_count=$(grep -cE 'post_compact_gh_repo_view_failed' "$recon_stderr") || incident_count=0
 if [ "$incident_count" -eq 1 ]; then
   pass "repo view failure emits exactly 1 WARNING (cascade guard functional)"
 else

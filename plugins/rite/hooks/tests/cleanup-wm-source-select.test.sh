@@ -308,6 +308,17 @@ else
   pass "T-06 (state_root 空・cwd 実 WM → comment、local 不採用)"
 fi
 
+# T-07: 未完了タスク件数が 0 件 / 複数件でも単一の整数 1 行になる（grep -c の二重出力回帰）
+INC="$TEST_DIR/incomplete.sh"
+awk '/^# 未完了タスク抽出/{f=1} f{print} f && /^echo "incomplete_count=/{exit}' "$CLEANUP_MD" > "$INC"
+out0=$(_wm_body="" bash -c 'set -euo pipefail; . "$1"' _ "$INC" 2>&1)
+out2=$(_wm_body=$'### 進捗\n- [ ] a\n- [ ] b\n- [ ] #12\n### 次' bash -c 'set -euo pipefail; . "$1"' _ "$INC" 2>&1)
+if [ "$out0" = "incomplete_count=0" ] && [ "$out2" = "incomplete_count=2" ]; then
+  pass "T-07 (incomplete_count は 0 件・2 件で単一の整数行)"
+else
+  fail "T-07: 期待 0/2、実際 [$out0] / [$out2]"
+fi
+
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [ "$FAIL" -eq 0 ]

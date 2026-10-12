@@ -218,7 +218,8 @@ if [ -n "$_wm_body" ]; then
   incomplete=$(printf '%s\n' "$_wm_body" | sed -n '/### 進捗/,/### /p' \
     | grep -E '^\s*- \[ \]' | grep -v -E '^\s*- \[ \] #[0-9]+' | head -10) || incomplete=""
 fi
-echo "incomplete_count=$(printf '%s\n' "$incomplete" | grep -c . 2>/dev/null || echo 0)"
+incomplete_count=$(printf '%s\n' "$incomplete" | grep -c .) || incomplete_count=0
+echo "incomplete_count=$incomplete_count"
 ```
 
 | `WM_SOURCE` | 意味 |
