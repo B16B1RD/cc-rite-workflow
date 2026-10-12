@@ -15,8 +15,9 @@ counter reset・fresh run の説明は `review_run` がない legacy state に�
 helper のテストが持つ。
 
 `cc >= max_cycles` を先に評価するのは、両立時にどちらを `CB_REASON` として報告するかを決めるため
-だけであり、独立性そのものは変えない。backstop を残す以上、16 cycle 以上を要する収束中の run は
-既定値のままでもこの経路で停止する。引き上げ前の 5 では 6 cycle 以上を要する収束中の run を殺して
+だけであり、独立性そのものは変えない。backstop は、直近 2 cycle 連続で blocking が減少し fix 由来の新規 blocking が 0 の run には適用しない
+（`review-converging.sh`。狭義単調減少は有限回で終わるため延長に別の上限は要らない）。それ以外の
+16 cycle 以上を要する run は従来どおりこの経路で停止する。引き上げ前の 5 では 6 cycle 以上を要する収束中の run を殺して
 いた — backtest の `12,5,3,2,2` がその形で、cycle 5 時点でも blocking が 2 件残っている。
 
 既定値を 15 へ引き上げた実測起点は run `8,5,4,6,3` で、収束トレンド判定が**判定の下りた head では

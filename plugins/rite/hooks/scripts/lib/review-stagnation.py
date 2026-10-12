@@ -917,9 +917,17 @@ def existing_breaker(state, run):
     # A completed mergeable review proceeds to the unchanged quality gates.
     if state["review_cycle"]["verdict"] == "mergeable":
         return None
-    if state["cycle_count"] >= review_cycle_cap():
+    if state["cycle_count"] >= review_cycle_cap() and not converging(state, marker):
         return "max-cycles"
     return "divergence" if marker["TREND_DIVERGENCE"] == "fire" else None
+
+
+def converging(state, marker):
+    """True when the run descends for two cycles with no fix-introduced findings (cap is not applied)."""
+    helper = Path(__file__).resolve().parent.parent / "review-converging.sh"
+    result = subprocess.run(["bash", str(helper), "--pr", str(state["pr_number"]),
+                             "--trend", marker.get("trend", "")], capture_output=True, text=True)
+    return result.returncode == 0 and "REVIEW_CONVERGING=yes" in result.stdout
 
 
 def review_cycle_cap():

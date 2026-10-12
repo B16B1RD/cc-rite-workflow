@@ -453,7 +453,17 @@ retry_pending=$(printf '%s' "$review_state" | jq -r '
      and (.cycle_count // 0) == ($run.retry.stop_context.cycle_count // -1))') || exit 1
 cb_reason=""
 retry_hold=0
+# 上限に達しても、直近 2 cycle 連続で blocking が減り fix 由来の新規 blocking が 0 の run は止めない
+# （判定は review-converging.sh に閉じる。判定不能は上限で止める側）。
+at_cap=0
 if [ "$cc" -ge "$max_cycles" ] 2>/dev/null; then
+  at_cap=1
+  if converging_out=$(bash "$plugin_root"/hooks/scripts/review-converging.sh --pr "$pr_number" --trend "$trend_series") \
+    && [ "$(printf '%s\n' "$converging_out" | marker_get REVIEW_CONVERGING)" = yes ]; then
+    at_cap=0
+  fi
+fi
+if [ "$at_cap" -eq 1 ]; then
   cb_reason=max-cycles
 elif [ "$trend_verdict" = fire ] && [ "$retry_pending" = true ]; then
   retry_hold=1
