@@ -91,6 +91,10 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - If a function now throws where it previously returned null, verify all callers have try-catch
 - If error types were changed or added, check that catch blocks elsewhere handle the new types
 
+sentinel / marker を追加・変更する差分、および状態パス・再入ガードを変更する差分は、次の設計規則を適用する:
+rationale: ../references/sentinel-contract.md#設計規則
+rationale: ../references/state-read-evolution.md#状態パス再入ガードの規則
+
 ## Confidence Calibration
 
 - **95**: `catch(e) {}` with no logging, no fallback notification, in a payment processing function — confirmed by `Read`
