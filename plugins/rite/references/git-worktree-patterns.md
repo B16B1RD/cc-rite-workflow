@@ -890,17 +890,15 @@ worktree を使う手順と、git の出力・状態を読む手順の設計と�
 - `cd` の後の `show-toplevel` は cd 先に collapse する。`cd` の前に捕捉する
 - `git -C <path> status --porcelain` は `.git` の無いディレクトリでも親 checkout の状態を rc=0 で返す。`show-toplevel` が `<path>` 自身と一致するかで最上位かを確かめる
 - worktree の cwd から main checkout へ書くと、sandbox の allowlist でブロックされる。共有 root を解決する helper を経由する
-- `.rite-plugin-root` は作成時のブランチの `plugins/rite` を指し、作業ブランチと食い違うと古い内容を読む。worktree で開発するときのデバッグ用 `plugin_root` は参照先を `md5sum` 比較で確かめる
 - session worktree の helper で検証した結果を main checkout の hook が照合するときは、同じ版の検証器で check と verify を実行する
 - `git worktree add` へ `"$(mktemp -d)"` を埋め込まない。`mktemp` を別の呼び出しで得て正規化（`pwd -P`）してから worktree を作る
-- 現在のブランチは `git branch --show-current` に統一する。`rev-parse --abbrev-ref` は detached HEAD で `HEAD` を返す
+- 現在のブランチ名を使う手順は detached HEAD の扱いを決めて書く。`git branch --show-current` は何も出力せず（空文字を検査する）、`git rev-parse --abbrev-ref HEAD` は `HEAD` を返す。判定が `HEAD` 文字列に依存する箇所は、両者を取り違えて書き換えない
 - merge / rebase の中断検出は `.git` を直書きせず `git rev-parse --git-path` を使う（worktree では `.git` がファイルである）。unmerged status の 7 種を検出する grep と、判定表が列挙する集合は一致させる
 
 **retire と cleanup**
 
 - 手順書のアンインストール・片付けで `.rite` を `rm -rf` すると、live な worktree を壊す。`git worktree remove` → `prune` を先に実行する
-- `rm -rf` 済みの worktree は prunable marker で検出し、自動で prune する。wiki 用など永続の worktree は cleanup で削除しない
-- git-flow で base がデフォルトブランチと異なるときは、remote branch を作る CLI に `--base` を明示する
+- `rm -rf` 済みの worktree は prunable marker で検出し、自動で prune する
 
 **base の取り込みと競合**
 

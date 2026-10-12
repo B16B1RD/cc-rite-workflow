@@ -1,6 +1,7 @@
 #!/bin/bash
-# sentinel・hook/guard・worktree・状態パス・Wiki 検出・PR 運用の設計規則が、各機構の SoT 節に実在し、
-# reviewer 定義のポインタから到達できることを固定する。
+# 設計規則の節が各 SoT に実在し、規則を指すポインタとリンクのアンカーが実在する見出しに解決する
+# ことを固定する。reviewer からの到達は sentinel・状態・hook/guard の規則だけを検査する
+# （worktree・Wiki・PR 運用の規則は既存のスキルの参照から到達する）。
 # 規則の本文は references 側が SoT であり、reviewer 側は 1 行のポインタだけを持つ。
 set -uo pipefail
 
@@ -83,6 +84,49 @@ assert_grep "hook rules link the worktree section" "$REFS/hook-guard-design-rule
   'git-worktree-patterns\.md#worktree-と-git-操作の規則'
 assert_grep "hook rules link the sentinel section" "$REFS/hook-guard-design-rules.md" \
   'sentinel-contract\.md#設計規則'
+
+# アンカーの解決: ポインタとリンクの `<file>.md#<anchor>` が、参照先の見出しの slug に一致すること。
+# slug は小文字化、空白を `-`、`・` と `（）` と `、` を除去（GitHub の規則に合わせる）。
+heading_slug() {
+  local h=${1#\#\# }
+  h=${h//・/}; h=${h//（/}; h=${h//）/}; h=${h//、/}; h=${h// /-}
+  printf '%s' "$h" | tr 'A-Z' 'a-z'
+}
+anchor_resolves() {
+  local target=$1 want=$2 line
+  while IFS= read -r line; do
+    case "$line" in '## '*) [ "$(heading_slug "$line")" = "$want" ] && return 0 ;; esac
+  done < "$target"
+  return 1
+}
+refs_found=0
+for src in "$SEC_REVIEWER" "$ERR_REVIEWER" "$REFS/hook-guard-design-rules.md" "$REFS/wiki-patterns.md"; do
+  while IFS= read -r ref; do
+    [ -n "$ref" ] || continue
+    refs_found=$((refs_found + 1))
+    tfile=${ref%%#*}; tfile=${tfile##*/}; want=${ref#*#}
+    if anchor_resolves "$REFS/$tfile" "$want"; then
+      pass "$(basename "$src"): $tfile#$want resolves to a heading"
+    else
+      fail "$(basename "$src"): $tfile#$want does not resolve to a heading"
+    fi
+  done < <(grep -oE '[A-Za-z0-9_-]+\.md#[^) ]+' "$src" | grep -E '^(sentinel-contract|state-read-evolution|git-worktree-patterns)\.md#')
+done
+[ "$refs_found" -ge 5 ] && pass "anchor references were found ($refs_found)" || fail "too few anchor references found ($refs_found)"
+
+# 負例: 改名後の見出しに対する古いアンカーは解決しない。
+printf '## 状態パス・再入ガードの規則\n' > "$FIX_DIR/renamed.md"
+if anchor_resolves "$FIX_DIR/renamed.md" '状態パス再入ガードの規則'; then
+  pass "slug rule drops the middle dot"
+else
+  fail "slug rule should drop the middle dot"
+fi
+printf '## 状態パスと再入ガードの規則\n' > "$FIX_DIR/renamed2.md"
+if anchor_resolves "$FIX_DIR/renamed2.md" '状態パス再入ガードの規則'; then
+  fail "an anchor left behind by a rename must not resolve"
+else
+  pass "an anchor left behind by a rename does not resolve"
+fi
 
 if ! print_summary "$(basename "$0")" \
   "機構別の設計規則節と reviewer ポインタ。規則本文は plugins/rite/references/ が SoT。"; then

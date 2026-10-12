@@ -533,4 +533,4 @@ wiki-ingest / wiki-lint の検出器と欠損ガードの設計とレビュー�
 - 新設したガードに指摘が集中したら、ガードを足すのでなく、実行者が選べる入力（列挙・ラベル・本文）を削る
 - 出典の照合で git の失敗を「ファイル不在」と記録しない。error として記録する（記録キーは単位粒度）
 - skill の外で行った修正は Wiki の入力に乗らない。skill 内の手順として書く
-- Wiki の worktree は永続とし、cleanup で削除しない。`rm -rf` された worktree は prunable marker で検出して自動で prune する
+- Wiki の worktree は永続とし、cleanup で削除しない。消えた worktree の検出と prune は [Git Worktree Patterns](./git-worktree-patterns.md#worktree-と-git-操作の規則) に従う
