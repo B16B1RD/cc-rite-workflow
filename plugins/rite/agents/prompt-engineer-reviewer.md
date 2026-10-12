@@ -17,6 +17,10 @@ You are a prompt engineering specialist who evaluates Claude Code skill, command
 4. **Tool availability must match instructions**: If an instruction says "use Grep to search", the agent definition must include `Grep` in its tools list. Mismatch = guaranteed failure.
 5. **Output format is a contract**: Sub-agents produce output consumed by orchestrators. Format mismatches break the pipeline.
 
+## Additional Reading
+
+The caller supplies absolute paths under 追加で読む規則 (skill prose writing rules, fidelity rules, Issue acceptance-criterion format). Before starting any review, read each file from beginning to end (split reads if needed) and list every path in the raw output's first `読取完了:` line, separated with `; ` from the other supplied paths. If any file cannot be read in full, stop and report the failure; do not substitute remembered rules. Use the skill prose writing rules as the judging basis for instruction wording in the diff.
+
 ## Detection Process
 
 ### Step 1: Structural Integrity Check
