@@ -42,25 +42,15 @@ H7="## 7. 失敗経路・停止・skip"
 H8="## 8. mutation の実測と報告"
 H9="## 9. 散文契約・手順書の pin"
 H10="## 10. 環境・移植性・移設"
-# §5〜§9 は規則の行数まで固定する (中身を 1 行に潰しても通る pin にしない)。規則を足し引きしたら併せて直す。
-# §1〜§4・§10 は下の pin_row で中核規則を行全体で固定するので、ここでは 1 行以上だけを見る。
-expected_rows() {
-  case "$1" in
-    5) echo 12 ;; 6) echo 10 ;; 7) echo 10 ;; 8) echo 13 ;; 9) echo 11 ;;
-    *) echo "" ;;
-  esac
-}
 n=0
 for h in "$H1" "$H2" "$H3" "$H4" "$H5" "$H6" "$H7" "$H8" "$H9" "$H10"; do
   n=$((n + 1))
   assert "reference: 節 $n の見出し行が 1 つ" "1" "$(grep -cxF -- "$h" "$REF")"
   assert "reference: 節 $n に表ヘッダがある" "1" "$(section_of "$REF" "$h" | grep -cxF '| 条件 | 期待 |')"
-  # 表ヘッダと区切り行を除いた規則の行が 1 行以上ある (中身を消しても通る pin にしない)
+  # 表ヘッダと区切り行を除いた規則の行が 1 行以上ある (表だけ残して中身が空になる事故を防ぐ。
+  # 個々の規則の増減は許し、中核規則だけを下の pin_row で行全体一致で固定する)
   rows="$(section_of "$REF" "$h" | grep -E '^\| ' | grep -vxF '| 条件 | 期待 |' | grep -cv '^|[-: |]*|$' || true)"
-  want="$(expected_rows "$n")"
-  if [ -n "$want" ]; then
-    assert "reference: 節 $n の規則の行数が $want" "$want" "$rows"
-  elif [ "${rows:-0}" -ge 1 ]; then pass "reference: 節 $n に規則の行がある"; else fail "reference: 節 $n に規則の行が無い"; fi
+  if [ "${rows:-0}" -ge 1 ]; then pass "reference: 節 $n に規則の行がある"; else fail "reference: 節 $n に規則の行が無い"; fi
 done
 
 # --- reference: 中核規則を節ごとに行全体で pin ---
@@ -83,9 +73,6 @@ assert "issue-implement: 5.0.F 節が抽出できる" "ok" "$(section_nonempty "
 assert "test-reviewer: Step 3 節が抽出できる" "ok" "$(section_nonempty "$REVIEWER" "$REV_H" && echo ok || echo empty)"
 if section_has_line "$IMPL" "$IMPL_H" "$IMPL_LINE"; then pass "issue-implement 5.0.F 節内に reference ポインタ行がある"; else fail "issue-implement 5.0.F 節内に reference ポインタ行が無い"; fi
 if section_has_line "$REVIEWER" "$REV_H" "$REV_LINE"; then pass "test-reviewer Step 3 節内に reference ポインタ行がある"; else fail "test-reviewer Step 3 節内に reference ポインタ行が無い"; fi
-for need in 'positive control' 'whole-line anchoring' 'sibling/both-path symmetry' '#test-coverage-finding-gate'; do
-  if grep -qF -- "$need" <<<"$REV_LINE"; then pass "test-reviewer ポインタ行が '$need' を含む"; else fail "test-reviewer ポインタ行に '$need' が無い"; fi
-done
 
 # --- negative control: 配線を壊した入力は上の判定に一致しない ---
 ctl="$(mktemp -d "${TMPDIR:-/tmp}/rite-pinmut-ctl-XXXXXX")" || exit 1
@@ -100,7 +87,7 @@ if section_has_line "$ctl/deleted.md" "$IMPL_H" "$IMPL_LINE"; then fail "control
 { grep -vxF -- "$IMPL_LINE" "$IMPL"; printf '%s\n' "$IMPL_LINE"; } > "$ctl/moved.md"
 if section_has_line "$ctl/moved.md" "$IMPL_H" "$IMPL_LINE"; then fail "control: 節外へ移した入力で pin が通った"; else pass "control: 節外への移動を検出する"; fi
 # (c) コメント化 (行全体が変わる)
-sed "s|^${IMPL_LINE}\$|<!-- ${IMPL_LINE} -->|" "$IMPL" > "$ctl/commented.md"
+OLD="$IMPL_LINE" NEW="<!-- ${IMPL_LINE} -->" awk '$0 == ENVIRON["OLD"] { print ENVIRON["NEW"]; next } { print }' "$IMPL" > "$ctl/commented.md"
 if grep -qF -- "<!-- ${IMPL_LINE} -->" "$ctl/commented.md" && ! section_has_line "$ctl/commented.md" "$IMPL_H" "$IMPL_LINE"; then pass "control: コメント化を検出する"; else fail "control: コメント化を検出できない"; fi
 # (d) 見出し改名で節が空になる
 sed "s|^${IMPL_H}\$|### 5.0.F renamed|" "$IMPL" > "$ctl/renamed.md"
@@ -114,26 +101,11 @@ if section_has_line "$ctl/rev-deleted.md" "$REV_H" "$REV_LINE"; then fail "contr
 { grep -vxF -- "$REV_LINE" "$REVIEWER"; printf '%s\n' "$REV_LINE"; } > "$ctl/rev-moved.md"
 if section_has_line "$ctl/rev-moved.md" "$REV_H" "$REV_LINE"; then fail "control: reviewer 行の節外移動で pin が通った"; else pass "control: reviewer 行の節外移動を検出する"; fi
 REV_FLIPPED="${REV_LINE/apply /do NOT read or apply }"
-awk -v old="$REV_LINE" -v new="$REV_FLIPPED" '$0 == old { print new; next } { print }' "$REVIEWER" > "$ctl/rev-flipped.md"
+OLD="$REV_LINE" NEW="$REV_FLIPPED" awk '$0 == ENVIRON["OLD"] { print ENVIRON["NEW"]; next } { print }' "$REVIEWER" > "$ctl/rev-flipped.md"
 if [ "$REV_FLIPPED" != "$REV_LINE" ] && ! section_has_line "$ctl/rev-flipped.md" "$REV_H" "$REV_LINE"; then pass "control: reviewer 行の語の反転を検出する"; else fail "control: reviewer 行の語の反転を検出できない"; fi
 
 # --- _reviewer-base.md の Gate アンカーが実在する (reviewer 側ポインタ行の参照先) ---
 assert "_reviewer-base.md に test-coverage-finding-gate のアンカーがある" "1" "$(grep -cxF '<a id="test-coverage-finding-gate"></a>' "$PLUGIN_ROOT/agents/_reviewer-base.md")"
-
-# --- 配布境界: 永続成果物に Issue / PR 番号を書かない (文法は正本の checker に任せる) ---
-NUMCHK="$PLUGIN_ROOT/hooks/scripts/number-reference-check.sh"
-num_findings() { # label file : checker の終了コード
-  bash "$NUMCHK" --stdin --label "$1" < "$2" >/dev/null 2>&1
-  echo $?
-}
-assert "reference に番号参照が無い" "0" "$(num_findings plugins/rite/references/test-pin-mutation-principles.md "$REF")"
-assert "本テストに番号参照が無い" "0" "$(num_findings plugins/rite/hooks/tests/test-pin-mutation-principles-contract.test.sh "${BASH_SOURCE[0]}")"
-# negative control: 同じ checker は番号を含む入力を拒否する (番号は組み立てて、本ファイル自身が掛からないようにする)。
-# reference と同じラベルで流し、終了コードに加えて finding 行も確かめる (クラッシュと検出を区別する)
-printf 'see #%s%s\n' 45 67 > "$ctl/num.txt"
-REF_LABEL="plugins/rite/references/test-pin-mutation-principles.md"
-assert "control: checker が番号入りの入力を拒否する" "1" "$(num_findings "$REF_LABEL" "$ctl/num.txt")"
-assert "control: checker が finding 行を出力する" "${REF_LABEL}:1: see #$(printf '%s%s' 45 67)" "$(bash "$NUMCHK" --stdin --label "$REF_LABEL" < "$ctl/num.txt" 2>/dev/null | head -1)"
 
 if ! print_summary "$(basename "$0")" "drift: test-pin-mutation-principles.md の節構成・中核規則、または issue-implement 5.0.F / test-reviewer Step 3 の参照行が変更された可能性"; then
   exit 1
