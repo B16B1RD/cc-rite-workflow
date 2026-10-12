@@ -1,6 +1,6 @@
 #!/bin/bash
 # 設計規則の節が各 SoT に実在し、規則を指すリンクが実在するファイルと見出しに解決することを固定する。
-# 検査するのは実装者の入口（coding-principles）から sentinel・状態・hook/guard の規則へのリンクと、
+# 検査するのは、各規則節の実在と代表規則、実装者の入口（coding-principles）から各規則節へのリンク、
 # 規則ファイル間のリンクの解決まで。reviewer が実行時に規則を読む経路は検査しない。
 # 規則の本文は references 側が SoT であり、入口側は 1 行のポインタだけを持つ。
 set -uo pipefail
@@ -19,13 +19,13 @@ RULES=(
   "hook-guard-design-rules.md|## 制御文字と診断|C1 制御バイトを見逃す"
   "hook-guard-design-rules.md|## 防御の検証|防御を外す mutation で FAIL する pin"
   "hook-guard-design-rules.md|## hook の有効化と範囲|同じ条件を読む全 hook を grep"
-  "git-worktree-patterns.md|## Worktree と git 操作の規則|git rev-parse --git-path"
-  "wiki-patterns.md|## ingest・lint の検出規則|判定 regex を共有する"
+  "git-worktree-patterns.md|## Worktree と git 操作の規則|\`.git\` を直書きせず \`git rev-parse --git-path\` を使う"
+  "wiki-patterns.md|## ingest・lint の検出規則|判定 regex を共有する。片方だけ狭いと"
   "state-read-evolution.md|## 状態パス・再入ガードの規則|処理した範囲を、処理本体と同じ単位で記録"
-  "gh-cli-patterns.md|## PR 作成・運用の規則|remote branch を作る CLI"
+  "gh-cli-patterns.md|## PR 作成・運用の規則|に \`--base\` を明示する"
 )
 
-# 節本文の抽出。節見出しから次の `## ` 見出しの手前まで。
+# 節本文の抽出。節見出しから次の `## ` 見出しまたは `---` の手前まで。
 section_body() {
   local line on=0
   while IFS= read -r line || [ -n "$line" ]; do
@@ -33,7 +33,7 @@ section_body() {
       [ "$line" = "$2" ] && on=1
       continue
     fi
-    case "$line" in '## '*) break ;; esac
+    case "$line" in '## '*|'---') break ;; esac
     printf '%s\n' "$line"
   done < "$1"
 }
@@ -79,6 +79,10 @@ assert_grep "coding-principles points to the hook/guard rules" "$PRINCIPLES" \
   'references/hook-guard-design-rules\.md\)'
 assert_grep "coding-principles points to the state rules" "$PRINCIPLES" \
   'references/state-read-evolution\.md#状態パス再入ガードの規則'
+assert_grep "coding-principles points to the PR rules" "$PRINCIPLES" \
+  'references/gh-cli-patterns\.md#pr-作成運用の規則'
+assert_grep "coding-principles points to the wiki rules" "$PRINCIPLES" \
+  'references/wiki-patterns\.md#ingestlint-の検出規則'
 assert_grep "hook rules link the worktree section" "$REFS/hook-guard-design-rules.md" \
   'git-worktree-patterns\.md#worktree-と-git-操作の規則'
 assert_grep "hook rules link the sentinel section" "$REFS/hook-guard-design-rules.md" \
@@ -149,6 +153,14 @@ if anchor_resolves "$FIX_DIR/renamed2.md" '状態パス再入ガードの規則'
   fail "an anchor left behind by a rename must not resolve"
 else
   pass "an anchor left behind by a rename does not resolve"
+fi
+
+# 負例: コードフェンス内の見出しは解決対象にしない。
+printf '```\n## 設計規則\n```\n' > "$FIX_DIR/fenced.md"
+if anchor_resolves "$FIX_DIR/fenced.md" '設計規則'; then
+  fail "a heading inside a code fence must not resolve"
+else
+  pass "a heading inside a code fence does not resolve"
 fi
 
 if ! print_summary "$(basename "$0")" \

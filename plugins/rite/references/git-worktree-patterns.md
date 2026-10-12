@@ -884,7 +884,7 @@ worktree を使う手順と、git の出力・状態を読む手順の設計と�
 - worktree の cwd で `git rev-parse --show-toplevel` は worktree 自身の toplevel を返す。main root の取得には使わず、共有 root を解決する helper（`state-path-resolve.sh` など）を使う
 - `cd` の後の `show-toplevel` は cd 先に collapse する。`cd` の前に捕捉する
 - `git -C <path> status --porcelain` は、checkout の配下で `.git` の無いディレクトリでも親 checkout の状態を rc=0 で返す。`show-toplevel` が `<path>` 自身と一致するかで最上位かを確かめる
-- worktree の cwd から main checkout へ書くと、sandbox の write 許可リストでブロックされることがある。helper を経由しても書き込み先は main checkout のままなので解消しない。恒久対処は main checkout root の絶対パスを許可リストへ足すこと（本ファイルの sandbox の節を参照）
+- worktree の cwd から main checkout へ書くと、sandbox の write 許可リストでブロックされることがある。helper を経由しても書き込み先は main checkout のままなので解消しない。恒久対処は main checkout root の絶対パスを許可リストへ足すこと（本ファイルの[該当節](#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる)を参照。拒否された呼び出しだけ `dangerouslyDisableSandbox: true` で再実行する方法もある）
 - ある場所の検証器が出した結果を別の場所（main checkout の hook など）が照合するときは、プラグインの版が異なりうるので、check と verify を同じ版の検証器で実行する
 - `git worktree add` へ `"$(mktemp -d)"` を埋め込まない。`mktemp` を別の呼び出しで得て正規化（`pwd -P`）してから worktree を作る
 - 現在のブランチ名を使う手順は detached HEAD の扱いを決めて書く。`git branch --show-current` は何も出力せず（空文字を検査する）、`git rev-parse --abbrev-ref HEAD` は `HEAD` を返す。判定が `HEAD` 文字列に依存する箇所は、両者を取り違えて書き換えない
