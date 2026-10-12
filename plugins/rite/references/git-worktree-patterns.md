@@ -875,6 +875,46 @@ dirty 判定と tree 指紋で未追跡のマスクを除外する。symlink は
 **関連 Issue**: （`git-status-filtered.sh` 導入元）/ （drift-hash 経路の sandbox 内外
 コンテキスト混在による誤警報の残件、本節の対象外）
 
+## Worktree と git 操作の規則
+
+worktree を使う手順と、git の出力・状態を読む手順の設計とレビューに適用する。
+
+**作業先と root の解決**
+
+- worktree の cwd で `git rev-parse --show-toplevel` は worktree 自身の toplevel を返す。main root の取得には使わず、共有 root を解決する helper（`state-path-resolve.sh` など）を使う
+- `cd` の後の `show-toplevel` は cd 先に collapse する。`cd` の前に捕捉する
+- `git -C <path> status --porcelain` は、checkout の配下で `.git` の無いディレクトリでも親 checkout の状態を rc=0 で返す。`show-toplevel` が `<path>` 自身と一致するかで最上位かを確かめる
+- worktree の cwd から main checkout へ書くと、sandbox の write 許可リストでブロックされることがある。helper を経由しても書き込み先は main checkout のままなので解消しない。恒久対処は main checkout root の絶対パスを許可リストへ足すこと（本ファイルの[該当節](#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる)を参照。拒否された呼び出しだけ `dangerouslyDisableSandbox: true` で再実行する方法もある）
+- ある場所の検証器が出した結果を別の場所（main checkout の hook など）が照合するときは、プラグインの版が異なりうるので、check と verify を同じ版の検証器で実行する
+- `git worktree add` へ `"$(mktemp -d)"` を埋め込まない。`mktemp` を別の呼び出しで得て正規化（`pwd -P`）してから worktree を作る
+- 現在のブランチ名を使う手順は detached HEAD の扱いを決めて書く。`git branch --show-current` は何も出力せず（空文字を検査する）、`git rev-parse --abbrev-ref HEAD` は `HEAD` を返す。判定が `HEAD` 文字列に依存する箇所は、両者を取り違えて書き換えない
+- merge / rebase の中断検出は `.git` を直書きせず `git rev-parse --git-path` を使う（worktree では `.git` がファイルである）。unmerged status の 7 種を検出する grep と、判定表が列挙する集合は一致させる
+
+**retire と cleanup**
+
+- 手順書のアンインストール・片付けで `.rite` を `rm -rf` すると、live な worktree を壊す。`git worktree remove` → `prune` を先に実行する
+- `rm -rf` 済みの worktree は prunable marker で検出し、自動で prune する
+
+**base の取り込みと競合**
+
+- base の取り込みで競合したら、base 側の行を正本に採り、PR の変更意図だけを載せ直す。解消後は全体で lint を回す
+- 末尾への追記どうし、または長いループの後の競合は、両側を併存させて解き、diff が追加のみであることを確かめる
+- 長い表セルの競合は両側の word-diff を列挙し、片側へ差分だけを載せる。解消後に両親との word-diff で確かめる
+- base 取り込み後の再レビューでは merge commit の審査を PR 側の変更に限定し、3 点差分で帰属を判断する
+- checker を全体実行して hit が出たら、`git show <base>:<path>` と `grep -qF --` で、既存の問題と本 PR 由来を分ける
+- guard の拒否メッセージに退路（許可される代替手順）を案内するときは、拒否の原因となった内容（`cd` / `git -C` が検証済みの作業先の外を指す、など）に当てはまる場合に限る。拒否が起きた事実だけでは案内しない
+
+**git の出力を読む parser と案内**
+
+- diff の parser を直したら、`+++` / `---` / `diff --git` / `@@` を自前で解釈する兄弟箇所を grep で洗う。同じ `-U0` 出力を読む兄弟 helper でも結合幅を固定する
+- 復旧ヒントのパスは、処理が `cd` した先でなく利用者が貼る cwd で解決できる絶対パスにする。共有 helper が印字するヒントは caller が渡すパスで決まるため、caller で絶対パス化し、兄弟 script も grep で揃える
+- 案内の誘導先が既存手順と同じ前提分岐（`MERGE_HEAD` 進行中など）を持つか辿り、同じ文型で書く
+- commit 後の回復手順は、作業ツリーに残っているパスだけを対象にする
+- 入口が識別番号を引数で受けるときは、PR 検索・state・worktree の検出をその番号で束縛し、現在のブランチ名などから対象を推定し直さない
+- owner/repo を解決する helper が複数の script に重複しているときは、全ての複製へ同じ修正を当てる
+
+---
+
 > **Canonical spec (distributed)**: This file is the operational SoT for the
 > session-worktree layer (lifecycle, claim, reap, shared-state-root resolution,
 > crash recovery) inside the plugin. Design history is not shipped with the

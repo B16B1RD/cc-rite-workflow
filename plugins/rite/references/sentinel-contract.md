@@ -62,3 +62,49 @@ rite workflow のスキル間連携は、各 sub-skill が bash 出力に埋め�
 - ドキュメント内の汎用プレースホルダ例: `[file:line]`（`fix/SKILL.md` の `scope_map[file:line]` データ構造キー表記）、`[tag:value]`（`rite-workflow/references/workflow-identity.md` の HTML コメント化を説明する抽象例）。なお `[skill:returned-to-caller]` / `[name:returned-to-caller]` のような抽象 skill 名は `hooks/tests/sentinel-disambiguator-adjacency.test.sh`（テストフィクスチャ）でのみ使われ、I3 スキャン対象（`plugins/rite/skills/` 配下の `*.md` および `plugins/rite/hooks/` 直下の `*.sh` — `hooks/scripts/` と `hooks/tests/` は lint-check ユーティリティ／テストフィクスチャのため対象外）の外にあるため、そもそも denylist に含める必要がない
 - コード中の正規表現文字クラス（例: `[a-z_-]`、`[A-Za-z0-9_]`）。検出 regex はコロン必須のため自然に除外される
 - 検証スクリプトの denylist は `plugins/rite/hooks/scripts/sentinel-contract-check.sh` 冒頭の `NON_SENTINEL_DENYLIST` 配列を参照（本節と同期させること）
+
+## 設計規則
+
+sentinel / marker を新設・変更・削除する設計とレビューに適用する。
+
+**定義と経路**
+
+- sub-skill が success sentinel だけを定義すると、caller は abort / error 経路を区別できない。成功以外の終了経路（中断・エラー）も区別できる sentinel を定義し、caller は排他的に grep する
+- 新しい marker は emit・consume・テストの assertion の 3 点が揃って成立する。caller の分岐に使う marker は consumer が無いと dead signal になるので、consumer が存在しないまま emit しない。終端を示す sentinel と、ターン継続を促す sentinel は例外として、consumer を持たない前提で定義する
+- コメントや仕様で「機械が parse する」と断定する前に、parse 側の実在を grep で確かめる
+- marker の判定表を持つ設計では、新設する fail-loud の出口も marker を emit する。表の外の出口は caller が分類できない
+- marker に発行元を足したら、全発行経路で定義文と報告文が真かを確かめる
+- 機構を廃止するときは、付随する marker・reason・文言も同時に廃止する。rename では現行の emit 箇所だけを対象とし、退役済みの fixture と設計の記録は保持する
+- sentinel の可観測性を成果物とする変更は、自身が足した `2>&1` で sentinel を握りつぶしていないかを確かめる。helper の出力契約を docstring に明記し、caller テストで sentinel の emit と exit code の両方を検証する
+
+**値と照合**
+
+- 主要ツール（awk / grep / diff / sed / jq / find）の予約済み exit code を確かめてから、独自の exit code や sentinel 値を選ぶ。ツール自身の終了コードと衝突させない
+- marker 値の照合は区切り文字まで含む完全一致で規定する。前方一致は別の marker を拾う
+- emit 側が空を想定する値は、消費側（復旧コマンドの置換など）にも同じ想定を書く。bash 変数の初期値は許容値の集合に含める
+- 外部由来の値（ブランチ名など）を無エスケープで marker 値に載せない。契約を満たせない入力は fail-fast する
+- bash 変数を rename するときは変数参照 `${var}` だけを書き換える。同形の emit literal（`reason=` の値など）まで置換すると、ファイルをまたぐ grep 契約が壊れる
+- sub-skill 内の bash 変数による guard は、別の invocation では常に未設定となる。cross-boundary の状態は明示的な context で渡す
+
+**診断と集約**
+
+- 診断 WARNING は事実だけを述べ、冒頭で原因を断定しない。帰結は機械可読な marker に委ねる
+- 同一チャネルに複数の発行元があるときは、判別条件を特定の WARNING literal で閉じる
+- 警告を集約するときは、最終試行・同一目的・正規化先の単一性で解消を判定する。別目的の成功で警告を消さない
+- degraded と fail の境界は、差し戻しで原因を解消できるかで引く。`find` など外部コマンドの rc は検査して区別する
+- 書戻しが失敗した経路で「書戻し済み」と断定しない。識別番号を marker に載せて案内まで運ぶ。追記後の再取得に失敗した場合も、記録の不在と区別して報告する
+- helper を別工程から再利用するとき、`| grep -q MARKER || true` は障害と該当なしを同じ扱いにする。marker が無い非ゼロ終了は停止する規約を引き継ぐ
+- helper の末尾に marker の echo を足すときは、marker の前に値を確かめ、空なら理由を出して止める。依存の失敗を再現する stub fixture でテストする
+
+**gate と再入**
+
+- 新設する gate は、順序規定・動作後に emit する sentinel・鮮度を確かめる参照値の 3 点を持つ。gate 自身を守られる範囲の内側に置かない
+- skip 条件に「queue が active」だけを置かない。cursor が現在の対象を指すことまで含める
+- 処理済みの記録は、判定そのものを行う処理が書く。片付け側への flag 受け渡しにしない
+- 記録の読み手と書き手は同定規則を 1 か所で共有する。重複を見つけたときに古い記録を引き継がない
+- 同じファイルに MUST NOT がある場所へ bash 実行ステップを足すときは、禁止が掛かる層（response text か Bash tool か）を特定し、prose で禁止対象の層を明示する
+
+**pin の置き方**
+
+- 「両側に置いた」と書いたら grep で両側を確かめる。drift 検出の完全一致 pin が片側だけの状態を正解として固定すると、非対称は検出できなくなる
+- 隣接箇所との非対称を直すときは、方向を隣に合わせるのでなく、canonical schema の不変条件で cross-check する
