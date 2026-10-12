@@ -129,7 +129,7 @@ if [[ "${match_count:-0}" -gt 0 ]]; then
 fi
 ```
 
-**Never `|| echo 0` inside the substitution.** `grep -c` already prints `0` and exits 1 on zero matches, so `$(grep -c ... || echo 0)` captures `"0\n0"` and the next integer test fails. Keep the fallback outside the substitution (`cnt=$(... | grep -c . 2>/dev/null) || cnt=0`) or use `|| true` with `${cnt:-0}`. Both `|| true` and `) || cnt=0` also swallow exit 2 (I/O error); when that matters, capture `rc` explicitly and treat `rc >= 2` as a failure. Regression: `hooks/tests/grep-c-echo-fallback.test.sh`.
+**Never `|| echo 0` inside the substitution.** `grep -c` already prints `0` and exits 1 on zero matches, so `$(grep -c ... || echo 0)` captures `"0\n0"` and the next integer test fails. Keep the fallback outside the substitution (`cnt=$(... | grep -c . | ...) || cnt=0`; omit `2>/dev/null` when grepping a file argument so I/O errors stay visible) or use `|| true` with `${cnt:-0}`. Both `|| true` and `) || cnt=0` also swallow exit 2 (I/O error); when that matters, capture `rc` explicitly and treat `rc >= 2` as a failure. Regression: `hooks/tests/grep-c-echo-fallback.test.sh`.
 
 ---
 
@@ -137,10 +137,10 @@ fi
 
 | Situation | Defensive form |
 |-----------|----------------|
-| `$(grep -oE ... \| wc -l)` under `set -euo pipefail` aborts on zero matches | `{ grep -oE ... \|\| true; } \| wc -l` |
-| `awk -v var=...` interprets backslash escapes (a regex `\[` arrives as `[`) | Pass via `ENVIRON["VAR"]`, or double the backslash (`\\[`) |
-| awk `==` on non-ASCII strings (e.g. Japanese headings) matched wrongly on some awks (observed with macOS awk; gawk/POSIX do not use collation for `==`) | Resolve the line with `grep -nxF`, require exactly one hit |
-| `d=$(cd "$(mktemp -d)" && pwd -P)`: a failed `mktemp` leaves the target as the cwd, and a later `rm -rf` trap deletes the working tree | Split in two steps: `tmp=$(mktemp -d) \|\| exit 1`, then `cd`; install the trap after the assignment |
+| `n=$(grep -oE ... \| wc -l)` under `set -euo pipefail` aborts the script on zero matches when assigned | `{ grep -oE ... \|\| true; } \| wc -l` |
+| `awk -v var=...` processes escape sequences like a string literal; an unknown escape such as `\[` is implementation-defined (gawk yields `[`, mawk keeps `\[`) | Pass via the environment: `VAR="$x" awk '... ENVIRON["VAR"] ...'` |
+| awk `==` on non-ASCII strings (e.g. Japanese headings) matched wrongly on some awks (observed with macOS awk; current POSIX requires identity comparison for `==`) | Resolve the line with `grep -nxF`, require exactly one hit |
+| `d=$(cd "$(mktemp -d)" && pwd -P)`: a failed `mktemp` makes the command `cd ""`, which is a no-op in bash, so the result is the cwd and a later `rm -rf` trap deletes the working tree | Split in two steps: `tmp=$(mktemp -d) \|\| exit 1`, then `cd`; install the trap after the assignment |
 | `tmp=$(mktemp) \|\| tmp=""` then `${tmp:-/dev/null}` silently drops diagnostics when they are needed most | Fail loudly (`tmp=$(mktemp) \|\| { echo "ERROR: mktemp failed" >&2; exit 1; }`) or fold stderr with `$(cmd 2>&1)` |
 | LLM-generated JSON placed inside `--argjson '...'` single quotes | Write to a file (`mktemp` + heredoc) and pass with `--slurpfile v f` (read as `$v[0]`) or `--rawfile v f` (string; apply `$v \| fromjson`) |
 
@@ -310,7 +310,7 @@ Before adding Bash code to a command template, verify:
 
 - [ ] All integer comparisons use `[[ ]]` with `${var:-default}`
 - [ ] All `grep` invocations quote variables and use `--` separator
-- [ ] All `grep -c` results are captured with `|| true` (or `) || cnt=0` outside the substitution) — never `$(grep -c ... || echo 0)`
+- [ ] All `grep -c` results are captured with `|| true`, or with `cnt=$(grep -c ...) || cnt=0` (fallback outside the substitution) — never `$(grep -c ... || echo 0)`
 - [ ] Python inline scripts use file-based argument passing (no shell variable embedding)
 - [ ] All file writes are preceded by `mkdir -p` for the target directory
 - [ ] All variables in `[ ]` or `[[ ]]` are double-quoted
