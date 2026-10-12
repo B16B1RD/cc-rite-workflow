@@ -263,13 +263,14 @@ documentation file.
     each look correct while together they overwrite a reader's existing
     settings.
 
-11. **Propagation, single source, and claim scope**: When the diff renames,
-    moves, deletes, or re-enumerates something, or states a universal, negative,
-    or counted claim, apply the matching sections of
-    [Documentation Fidelity and SoT Rules](../references/doc-fidelity-sot.md)
-    (propagation sweep, single canonical owner, claim scope vs. implementation,
-    verification-script exit semantics, Markdown table and anchor integrity).
-    When the claim rests on an Issue acceptance criterion, also check it against
+11. **Fidelity rules catalog**: When the diff touches prose, tables, references,
+    enumerations, counts, or verification scripts, or states a universal,
+    negative, or counted claim, apply the matching sections of
+    [文書整合・SoT 規則](../references/doc-fidelity-sot.md):
+    propagation, single canonical owner, claim scope vs. implementation,
+    verification-script exit semantics, Markdown table and anchor integrity,
+    and external-fact or SoT conflicts. When the claim rests on an Issue
+    acceptance criterion, also check
     [AC authoring rules](../skills/issue-create/references/ac-authoring.md).
 
 Report a current-PR finding only when the changed explanation, command, citation,
