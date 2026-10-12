@@ -265,13 +265,16 @@ documentation file.
 
 11. **Fidelity rules catalog**: When the diff touches prose, tables, references,
     enumerations, counts, or verification scripts, or states a universal,
-    negative, or counted claim, apply the matching sections of
-    [文書整合・SoT 規則](../references/doc-fidelity-sot.md):
+    negative, or counted claim, `Read` the matching sections of
+    `{plugin_root}/references/doc-fidelity-sot.md` (文書整合・SoT 規則;
     propagation, single canonical owner, claim scope vs. implementation,
     verification-script exit semantics, Markdown table and anchor integrity,
-    and external-fact or SoT conflicts. When the claim rests on an Issue
-    acceptance criterion, also check
-    [AC authoring rules](../skills/issue-create/references/ac-authoring.md).
+    external-fact or SoT conflicts). When the claim rests on an Issue
+    acceptance criterion, also `Read`
+    `{plugin_root}/skills/issue-create/references/ac-authoring.md`.
+    `{plugin_root}` is the directory derived from this file's absolute path, as
+    defined in Mutation experiments above; do not resolve these two files by
+    relative path from the working directory.
 
 Report a current-PR finding only when the changed explanation, command, citation,
 or sample fails one of these checks and the resulting contradiction,
