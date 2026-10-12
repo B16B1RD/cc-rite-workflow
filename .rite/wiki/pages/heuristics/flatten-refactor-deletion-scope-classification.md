@@ -70,7 +70,7 @@ flatten refactor PR では、削除前に以下の 3 ステップで分類する
 ### 一般化
 
 - **Keep カテゴリの canonical な扱い方**: 削除でなく SoT への移管 (= [[single-sot-on-references-extract]]) によって drift-free に集約する。inline での性質再宣言は削除し、SoT への forward-pointer に置き換えるのが drift-free 経路
-- **同 PR 内の対称性 grep 検査**: 削除作業中、同 PR の他 site で同型 pattern (`mktemp ... || var=""`) を grep で網羅検査して非対称な regression を防止 ([[asymmetric-fix-transcription]] の予防策)
+- （→ asymmetric-fix-transcription に統合: 同 PR 内の対称位置を同型パターン grep で検査）
 
 ## 関連ページ
 

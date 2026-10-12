@@ -63,7 +63,7 @@ cycle 3 で `session-start.sh` のみに `-not -name '.rite-flow-state.legacy.*'
 - 同じ記録の意味を 2 つの helper が別々に判定すると（評価順の違いなど）、同じ記録に食い違う処分を出す。判定は片方に寄せ、もう片方はその結果を読む。
 - 自前の YAML パーサが null を文字列 "null" として読み、外部 helper に渡していた。
 - 外部 helper が返す warnings を捨てていた（既存の呼び出し側は stderr に出す規約）。
-- nested skill の返却 sentinel に `completed` の語を使うと caller の turn が閉じる。
+- （→ declarative-enforcement-cannot-prevent-llm-end-turn に統合: sentinel の completed は caller の turn を閉じる）
 - 公開リポジトリで Issue 本文の HTML コメント marker を信頼境界なしに処分の根拠にすると、第三者が処分を誘発できる。
 - テストの stub が read 系のフラグ（`--state` など）を無視しており、否定側の fixture も無いため、条件の除去を検出できなかった。
 

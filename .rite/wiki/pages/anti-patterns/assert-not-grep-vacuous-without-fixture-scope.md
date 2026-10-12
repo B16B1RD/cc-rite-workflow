@@ -78,7 +78,7 @@ positive control は「除外側が全滅して否定が恒真になる」変異
 
 `assert_not_grep` を書いたら、**その run の fixture に対象が実在するか**を確認する。機械化するなら、否定 assertion の直前に「同 run の fixture に当該対象が存在する」ことを確かめる薄いラッパを用意する。
 
-より確実なのは mutation。**否定が守っているはずの不変条件を壊す変異**を当てて、その assertion が落ちるかを実測する。落ちなければ恒真である。
+（→ assert-label-overclaims-predicate-scope に統合: 守る不変条件を壊す変異で落ちるか実測）
 
 ### 関連する恒真化
 

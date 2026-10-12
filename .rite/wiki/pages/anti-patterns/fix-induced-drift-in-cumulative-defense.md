@@ -218,7 +218,7 @@ cycle 1 (13) → cycle 2 (10) → cycle 3 (8) → cycle 4 (8) → cycle 5 (4)
 
 1. **[CONTEXT] retained flag の 3 点セット契約**: 新 marker 追加時は (a) emit site、(b) consume site (stop-guard.sh / Pre-check list の grep 参照)、(c) test assertion の 3 点を **同一 PR で** 揃える。欠けた marker は dead signal として次 cycle で削除推奨
 2. **Twin site contract verification**: HINT emit 側 (stop-guard.sh) と grep 参照側 (create.md retained flag emit) が対応する marker は、片側だけ test で verify する pattern が silent regression を許す。TC-634-E のような twin site 両方を同 test で check する canonical template を採用
-3. **Sibling symmetry は fix 前に grep で全列挙**: 3-site 対称セット (TC-634-A/B/C、HINT L310/L325/L331 等) は 1 箇所修正時に必ず grep で他 2 箇所を列挙し **atomic に修正**。cycle 1 F-07 → cycle 2 F-06、cycle 1 F-12 → cycle 2 F-01 はこの原則違反で再検出
+3. （→ asymmetric-fix-transcription に統合: sibling は fix 前に grep 全列挙し atomic に修正）
 4. **Self-aware コメントで同 cycle horizontal propagation を明示**: 同 cycle 内で過去 fix が false-positive を修正した場合、新規 fix にも `(line-number 参照を避ける理由は cycle 8 F-05 参照)` のような self-aware コメントを残す (semantic anchor + trailer convention)
 
 ### 累積対策 PR 特有の pitfall
@@ -326,14 +326,7 @@ cycle 1 (7) → cycle 2 (2) → cycle 3 (1) → cycle 4 (0) mergeable
 
 #### Failure mode 2: Self-referential learned 節 chain (累積 35+ cycle 越えで初観測)
 
-cycle 35 commit message が learned 節で「累積 12 回目の Asymmetric Fix Transcription」を **明記しながら**、同じ commit 内の F-07 修正で同型 `if !` anti-pattern を新規 4 site (`state-read.sh:139-145, 155-161` / `flow-state-update.sh:170-176, 185-191`) に同時播種した self-referential failure mode を cycle 36 で完全修復。13 回目の累積パターン (詳細は [`if ! cmd; then rc=$?` は常に 0 を捕捉する](./bash-if-bang-rc-capture.md))。実機検証:
-
-```bash
-$ set -euo pipefail; if ! bash -c 'exit 7'; then emit_rc=$?; echo $emit_rc; fi
-0  # 期待 7
-```
-
-これは「**learned 節で言及した直後の同 commit で再演する**」特殊な self-referential pattern で、**認知バイアスとレビュー疲労の交差点で発生** する failure mode。今後の bash 系 PR では cycle commit message に書いた learned 節の対象パターンが「**同 commit 内の他箇所**」で再演されていないかを self-verify する step を追加検討する canonical 規範を追加。
+（→ bash-if-bang-rc-capture に統合: learned 節で挙げた `if !` 型を同 commit で再演、commit 前に全 site grep）
 
 #### Failure mode 3: 大規模 scope 拡張時の bug 埋め込みリスク (cycle 5 で実測)
 
@@ -365,12 +358,7 @@ cycle 5 で「軽微 (URL fix / typo) + 中規模 (edge case) + 大規模 (write
 
 #### 累積 14 回目 cycle 12 で観測した DRY 集約助手の overstate (新 sub-pattern)
 
-累積 14 回目 cycle 12 review で MEDIUM × 2 として、累積対策 PR の新 failure mode が surface した:
-
-1. **集約 helper のコメント overstate**: `_validate-helpers.sh` で集約したのは validation logic のみだが、コメントは「helper 追加時の 2 箇所更新が不要になり」と書いており、実際には helper 名 list (両ファイルにハードコード重複 7 entry × 2 箇所) が依然 2 箇所同期更新を要する → この helper 集約が解こうとした root cause (drift 防止) と同型の drift 再発許容経路を文書レベルで作成
-2. **Migration 取り残し**: 新規 helper を 3 caller のうち 2 つだけが使用し、`resume-active-flag-restore.sh` 1 つは旧 inline pattern を残存 → 3 caller 中 2/1 の不均一更新 = DRY 化導入の核心理由 (drift 防止) が部分的にしか達成されない
-
-詳細は [DRY 集約助手の効果記述は『何が集約され、何が依然分散しているか』を明示する](./dry-helper-aggregation-effect-overstate.md) に切り出した。
+（→ dry-helper-aggregation-effect-overstate に統合: DRY 集約 helper の効果記述 overstate と migration 取り残し）
 
 #### 累積対策 14 回目 38+ cycle 観測の収束信号
 

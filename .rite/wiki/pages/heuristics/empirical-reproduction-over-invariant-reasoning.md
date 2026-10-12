@@ -88,9 +88,7 @@ test_writer_fallback_with_per_session_absent_and_legacy_foreign_session() {
 
 ### `rejected(scope-creep)` 判断の empirical gate
 
-cycle 30 で `rejected(scope-creep)` として author が承認した tradeoff (cross-session takeover) が、cycle 31 reviewer の **empirical revert test** で CRITICAL silent corruption と認定された。reject 判断は reviewer cross-validation で empirical 検証する gate を持たないと、author の主観で CRITICAL 級リスクを silent 通過させる。
-
-→ scope-creep rejection も empirical reproduction で verify する規範 (詳細は [`scope-creep-rejection-empirical-gate.md`](scope-creep-rejection-empirical-gate.md))。
+（→ scope-creep-rejection-empirical-gate に統合: scope-creep の reject は revert test で検証）
 
 ### LLM reviewer 特有の bias
 

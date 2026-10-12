@@ -41,7 +41,7 @@ helper が失敗時に出す復旧ヒントは、呼び出し元が stderr を�
 ### 起きたこと
 
 - 呼び出し元が helper の stderr を `head -5` で切り詰めて表示するため、診断行の後ろに置いた復旧ヒントが表示範囲から落ちていた
-- helper が内部で main checkout へ cd して動く一方、利用者はセッション worktree を cwd にしている。helper の cwd を前提にした相対パスのヒントは、利用者の場所では別の場所を指す
+- （→ recovery-hint-path-absolute-for-paste-cwd に統合: 相対パスのヒントは利用者 cwd で空振り）
 - 診断を stderr に出さない stub でテストすると、診断行とヒントの出力順が固定されず、順序の後退を検出できない
 
 ### 対処

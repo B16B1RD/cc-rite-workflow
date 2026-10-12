@@ -55,7 +55,7 @@ helper が失敗理由を stdout の構造化戻り値にだけ載せ自身の s
 
 ### 関連する失敗形
 
-同じ helper の戻り値を巡っては、`status_json=$(bash script.sh) || status_json=""` の形で **helper が既に stdout へ出した診断 JSON を空文字列で上書きして破棄する**失敗も観測されている。こちらは「読まない」ではなく「読んだものを捨てる」形だが、結果は同じで失敗理由が全出力から消える。戻り値の一部にしか診断が載らない helper は、消費側の小さな書き方の差で診断がゼロになる。
+（→ command-substitution-fallback-discards-diagnostic-json に統合: || var="" は出力済み診断を破棄）
 
 ### 非ゼロ終了で捕捉後の診断が表示されない場合
 

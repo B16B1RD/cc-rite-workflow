@@ -176,7 +176,7 @@ mass batch fix 事例 (`migrate-review-state-to-1.1.sh` + `review-schema-version
 
 1. **rename PR は drift class の分散度合いが特殊**: 通常の累積対策 PR は単一 SoT との対称化責務 (format token / bash structure 等) の層数で cycle 数が決まるが、rename PR は **同 file 内の類似 violation の分散度合い** で cycle 数が決まる。本 PR では archive doc 1 file 内に 8 件の同型 violation が散在し、cycle ごとに 1-2 件単位の tail residue が surface する `tail-end pattern` を実証
 2. **AC verification grep の narrow pattern 盲点が cycle 数を伸ばす**: AC を `Phase [0-9]+(\.[0-9]+)?` で定義したことで、bare prose / 表ヘッダ / 命名規約 prose の 13+ 件残留が cycle 0 で検出できず cycle 1 で初めて発火。**AC を word boundary (`Phase\b`) で再定義すれば cycle 1 finding 数を 18 → 5 程度に圧縮できた可能性**（fix cycle 1 から導出された hint）
-3. **archive doc の front-matter policy violation が cycle 1↔2 revert を発生させる**: cycle 1 fix で over-translation → cycle 2 で F-21 revert → cycle 3 で revert 漏れ tail residue という往復が発生。**reviewer 間で document classification (archive vs current) の認識を共有する仕組み** がないと、同一 file の同一行が cycle を往復する経路を生む (詳細は [Archive doc の front-matter で宣言した preservation policy を body 編集が無視して矛盾を生む](../anti-patterns/archive-doc-frontmatter-policy-violation.md) 参照)
+3. （→ archive-doc-frontmatter-policy-violation に統合: archive doc方針をreviewer間で共有しないと往復）
 4. **大規模 rename PR の収束式は `cycle_count ≈ 1 + ⌈log2(tail_residue_density)⌉`**: 本 PR では同 file 内に 8 件分散 → cycle 1 で 6 件 fix → 2 件 tail residue → cycle 2 で 1 件 → cycle 3 で残 1 件、と log2 オーダーで shrinking。経験則として、rename PR の cycle 1 完了時点で **同 file 内の全 `(Phase|ステップ) [0-9]` を pre-fix scan + audit** を導入すれば 4 cycle → 2 cycle に圧縮できる可能性
 
 ### CRITICAL 1 件の共有リソース契約違反から始まる 4-cycle 収束

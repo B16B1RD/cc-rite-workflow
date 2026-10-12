@@ -56,7 +56,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T02:49:27Z" }
 | 前提条件の成立 | （前提をテストが作るなら）何も pin しない | 前提を壊す変異が存在するなら、その変異での FAIL |
 | 出力に X が含まれない | grep が読める範囲での不在 | ロケール・エンコードを跨いだ不在 |
 
-いずれも共通の判定法は同じ: **新規 assert を書いたら対応する mutation を当て、その assert だけが FAIL することを確認する。** 落ちなければ pin ではなく装飾である。
+（→ mutation-prove-new-pin に統合: 新規assertは対応mutationを当て当該assertだけFAILを確認）
 
 ## 関連ページ
 

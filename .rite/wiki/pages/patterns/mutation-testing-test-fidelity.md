@@ -242,9 +242,7 @@ assert_eq "$(jq -r .phase legacy_state.json)" "new_value"
 
 ### 適用 3: load-bearing test の verification
 
-cycle 2 で error-handling reviewer が pre-fix code を `/tmp/state-read-revert-test` に再現して silent exit 1 / empty stdout を確認、test reviewer が TC-8 を pre-fix で revert すると 11/12 PASS + TC-8.1 FAIL → post-fix 12/12 PASS の **2 段階を実機で検証**。
-
-これは「fix が真に bug を防いでいることを実証する load-bearing test」の canonical pattern。
+（→ mutation-prove-new-pin に統合: 修正前で赤・修正後で緑の2点を実機確認）
 
 ### 適用累積実績（同一 PR 内の cycle 3 → 4 → 5 → 31 → 42）
 
@@ -596,7 +594,7 @@ deny / JSON emit フォールバックの neutralize 失敗時 placeholder 縮�
 
 1. **「placeholder 文言あり (positive) + 通常 reason なし (negative)」の両方向 assert が縮退発生の証明として機能**: placeholder 縮退経路は「placeholder が出る」だけでは通常経路の reason が混在しても PASS しうる。「pattern 名を含まない (非 vacuous)」「通常 reason を含まない」の negative 側を対にすることで、縮退が実際に発生したことを decisive に pin する (適用 10 の対称 pin 系譜)。
 2. **fake binary の引数 matcher は対象モードのみに精密スコープし、他用途は real binary へ委譲する**: fake tr は `case "$1" in *000-*)` で neutralize_ctrl の `\000-` レンジ引数のみ exit 1 させ、hook 内の他の tr 用途 (`$1=-d` / `$1=\n` 等) は real tr へ委譲。`flow-state.sh` の `tr -d '[:space:]'` / `contains_ctrl` の `tr -d` への巻き添えゼロを事前調査で確認してから commit する (適用 12 の mktemp 引数分岐 shim 技法の tr 版 — PATH-shim の引数分岐は「実質失敗しない」固定引数パイプ経路を強制発火させる canonical 技法として定着)。
-3. **negative assertion 単独は空出力 mutation で trivially pass するため positive assertion とのペア構成が必須**: 「X を含まない」だけの assert は出力が空になる mutation でも PASS する。「fallback 出力が存在する」「valid JSON である」等の positive assert と組むことで初めて identification power を持つ。
+3. （→ negative-assertion-positive-control に統合: negative 単独は空出力で通る、positive と対にする）
 
 なお recommendation 7 件は全て design_confirmation (mktemp rc 未チェック / fake_bin trap 未登録 / sandbox cleanup を OS reaper に委ねる設計はいずれも対称転記元と同一規約で PR 由来でない) — 既存スイート規約への準拠確認が finding 化しない運用も併せて実測。
 

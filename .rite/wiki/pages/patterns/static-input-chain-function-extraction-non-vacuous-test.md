@@ -63,7 +63,7 @@ cycle 1 の「source ガード追加 (fail-closed 化)」という defensive cod
 
 ### 検証の独立再実証 (cycle 2)
 
-cycle 2 の test reviewer は fix 側の mutation claim を鵜呑みにせず、独立に 4 種の mutation 実験 (各エスケープ行の個別削除 + neutralize→cat 置換) を worktree-only pattern で再実施し、4 段連鎖のどの 1 行を壊しても assertion が落ちることを再実証した。fix 側 claim (2 assertion fail) と観測数は異なったが「非 vacuous」という核心の一致を確認して合意 — 詳細は [[mutation-testing-test-fidelity]] を参照。
+（→ mutation-testing-test-fidelity に統合: reviewer は fix 側の mutation claim を独立に再実証する）
 
 ### detection program 抽出への拡張（0 findings で確認）
 

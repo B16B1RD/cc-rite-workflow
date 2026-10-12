@@ -92,7 +92,7 @@ grep -nE 'if ! .*; then' --include='*.md' --include='*.sh' -r .
 
 ### Asymmetric Transcription との複合悪化
 
-同型 pattern が複数箇所にある場合、片方だけ fix すると Asymmetric Fix Transcription の温床となる。2 site 同時事例では `ingest.md Phase 1.3` と `init.md Phase 3.5` の両方に本 anti-pattern があり、cycle 2 fix は前者のみ修正し cycle 3 で後者が triple cross-validation で検出された。fix 時は関連する全スクリプト・全 phase を grep で網羅的に確認すること。
+（→ asymmetric-fix-transcription に統合: 同型pattern複数siteの片方のみ修正は非対称）
 
 ### 累積 14 回目の cycle 35: 同 commit 内 4 site 同時播種 (累積 13 回目 + self-referential)
 
@@ -109,11 +109,7 @@ production の sentinel emit failure 経路で operator に false `rc=0` を表�
 
 ### bash semantics 版の cycle 1: format 同期 refactor で新 SoT の bash 構造を見落とした再発
 
-ある PR は `plugins/rite/commands/pr/fix.md` L797-L802 の `mktemp_failure_find_err` 経路を、先行 PR が導入した新 SoT (L1147-L1150 `mktemp_failure_norm_tmp`) と format 同期する小規模 refactor。元の `|| find_err=""` silent fallback を WARNING-emit 構造に書き換える際、**新 SoT は `if cmd; then ... else rc=$?` 形式**で実装されていたにもかかわらず、本 PR cycle 1 では `if ! cmd; then rc=$?; ...; fi` 形式で実装し本 anti-pattern を新規導入。reviewer 2 名 (prompt-engineer / code-quality) が cross-validation 一致で CRITICAL 検出。
-
-**累積再発要因の独自観点**: 「**format 同期 (WARNING wording / CONTEXT emit token 一致)**」と「**structural / runtime semantics 同期 (bash の if-else 構造そのものを SoT と完全一致)**」を区別する責務が confused。同じ wording を異なる bash 構造で実装すると、`if !` boolean 反転による rc 常時 0 化 silent regression を新規 introduce する。本 PR は累積 34 回目 Asymmetric Fix Transcription (`asymmetric-fix-transcription.md` 累積 34 回目セクション参照) の起点となり、「**format token symmetry / bash structure symmetry / runtime semantics symmetry の三層対称化義務**」doctrine を Wiki に確立した。
-
-→ SoT を rebrand する際は WARNING wording / CONTEXT emit format だけでなく、bash の if-else 構造そのものを SoT と完全一致させること。小規模な format 同期 PR ほど reviewer 注意が runtime semantics 層に届きにくいため、本 anti-pattern の発火リスクが高い。
+（→ asymmetric-fix-transcription に統合: format同期refactorではSoTのbash構造まで一致させる）
 
 ### 姉妹型: `set -e` 下の裸 `$?` 読み `var=$(cmd); rc=$?` は rc 行に到達しない
 

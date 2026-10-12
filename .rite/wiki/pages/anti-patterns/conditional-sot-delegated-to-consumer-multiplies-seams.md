@@ -48,7 +48,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 
 ### SoT を直したら転記先を全部 grep する
 
-SoT に判別子を足した cycle で、同じ規則を転記していた consumer 2 箇所のうち 1 箇所しか同期していなかった。**SoT 変更は「SoT を引用・要約している全箇所」の同期とセットで 1 commit にする。**
+（→ asymmetric-fix-transcription に統合: SoT 変更は引用・要約する全箇所を同 commit で同期）
 
 削除も同様で、SoT から default rule を削除した同じ commit で consumer 側にその default rule を根拠として引く文を追加していた事例がある。
 

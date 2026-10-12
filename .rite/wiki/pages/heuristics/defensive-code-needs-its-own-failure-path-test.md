@@ -91,9 +91,7 @@ verified:
 
 ### helper 単体の pin では caller 側の stderr 破棄が生き残る
 
-設定ファイルが見つからないとき既定値で続行する経路に WARNING を足した fix で、WARNING の出力は helper 単体のテストでだけ固定されていた。helper を呼ぶ側が `2>/dev/null` で stderr を捨てる変異を入れても helper のテストは green のままで、利用者には何も届かない。レビューはこの pin 不足を non-blocking の指摘として残した。
-
-**WARNING を出すのが helper でも、それが利用者に届くかは caller が決める。** 既定値続行の経路に告知を足したら、caller 側のテストでも「不在ケースで WARNING が出る」ことを assert する。caller が複数あるなら caller ごとに要る（読み取り箇所ごとの扱いの揃え方は [同じ設定値を独立した bash 呼び出しで複数回読むなら、不在・読み取り不能の扱いを読み取り箇所ごとに揃える](./config-read-sites-each-handle-absence-and-unreadable.md) を参照）。
+（→ config-read-sites-each-handle-absence-and-unreadable に統合: 告知は caller ごとにテストで固定）
 
 ### 副次的な教訓: worktree 環境でのデバッグ時は plugin_root の参照先を要確認
 

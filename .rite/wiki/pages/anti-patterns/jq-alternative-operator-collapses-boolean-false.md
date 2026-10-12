@@ -40,7 +40,7 @@ PR の draft 状態を `gh pr view --json isDraft --jq '.isDraft // null'` で�
 
 ### 検出
 
-モックの gh がフィクスチャ JSON を実 jq に通していれば、`{"isDraft":false}` を与えた瞬間に退行が赤くなる。固定文字列を返すモックでは何度回しても検出できない。検出網の作り方は関連ページに委ねる。
+（→ test-double-evaluates-real-expression-records-helper-calls に統合: mock gh は fixture を実 jq に通す）
 
 ## 関連ページ
 

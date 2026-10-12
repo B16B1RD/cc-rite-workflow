@@ -82,14 +82,7 @@ esac
 
 ### `if ! cmd; then rc=$?` 版との区別
 
-本 anti-pattern は姉妹 anti-pattern [`if ! cmd; then rc=$?` は常に 0 を捕捉する] と **root cause が異なる**:
-
-| failure mode | 原因 | 症状 |
-|--------------|------|------|
-| bare statement (本ページ) | `set -e` が非ゼロ exit で abort | `rc=$?` 以降が **dead code** (未到達) |
-| `if ! cmd` (姉妹ページ) | `!` 演算子が exit status を boolean 反転 | `rc=$?` が **常に 0** (到達するが値が誤り) |
-
-両者とも「`set -euo pipefail` 下で外部コマンドの実 rc を安全に捕捉する」ファミリに属するが、前者は到達不能、後者は誤値という別の壊れ方をする。canonical fix の `if cmd; then rc=0; else rc=$?; fi` は **`!` を付けない** 点が重要 (`!` を付けると姉妹 anti-pattern を踏む)。
+（→ bash-if-bang-rc-capture に統合: 到達不能(set -e)と rc常時0(! 反転)の根因区別）
 
 ### 変種: command-substitution 代入 `out=$(...); rc=$?` も同じ dead code を生む
 
