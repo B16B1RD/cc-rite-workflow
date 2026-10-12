@@ -6,6 +6,7 @@
 # reference が節構造と中核規則 (§1〜§4・§10 の代表行) を保つことを pin する。配線は両側とも、節を切り出して
 # リテラルの行全体一致で検査し、ポインタ行の移動・コメント化・削除を負例 (negative control) として
 # 落ちることを確かめる (負例: 実装側は削除・節外移動・コメント化・見出し改名、reviewer 側は削除・節外移動・語の反転)。
+# あわせて、reviewer 側ポインタ行が参照する _reviewer-base.md のアンカーが実在することも検査する。
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -50,7 +51,7 @@ for h in "$H1" "$H2" "$H3" "$H4" "$H5" "$H6" "$H7" "$H8" "$H9" "$H10"; do
   # 表ヘッダと区切り行を除いた規則の行が 1 行以上ある (表だけ残して中身が空になる事故を防ぐ。
   # 個々の規則の増減は許し、中核規則だけを下の pin_row で行全体一致で固定する)
   rows="$(section_of "$REF" "$h" | grep -E '^\| ' | grep -vxF '| 条件 | 期待 |' | grep -cv '^|[-: |]*|$' || true)"
-  if [ "${rows:-0}" -ge 1 ]; then pass "reference: 節 $n に規則の行がある"; else fail "reference: 節 $n に規則の行が無い"; fi
+  if [ "$rows" -ge 1 ]; then pass "reference: 節 $n に規則の行がある"; else fail "reference: 節 $n に規則の行が無い"; fi
 done
 
 # --- reference: 中核規則を節ごとに行全体で pin ---
@@ -65,9 +66,9 @@ pin_row "§10 path 比較は pwd -P" "$H10" "| path 出力を比較する | fixt
 
 # --- 配線: 節限定 + 行全体一致 ---
 IMPL_H="### 5.0.F テスト規律（全 Complexity 共通）"
-IMPL_LINE='pin・mutation・fixture・stub を書くときは `{plugin_root}/references/test-pin-mutation-principles.md` の該当節を読み、書いた pin は対象を壊す変異で落ちることを実測する。'
+IMPL_LINE='pin・mutation・fixture・stub を書くときは `{plugin_root}/references/test-pin-mutation-principles.md` の §1・§2・§8 と該当節を読み、書いた pin は対象を壊す変異で落ちることを実測する。'
 REV_H="### Step 3: Edge Case and Boundary Review"
-REV_LINE='- For each new pin (grep/assert on text, counts, ordering) and each stub/fixture in the diff, apply the rule set `references/test-pin-mutation-principles.md` under the plugin root. Take the absolute path of `_reviewer-base.md` given in your prompt, replace its trailing `agents/_reviewer-base.md` with `references/test-pin-mutation-principles.md`, and Read that file in full before judging the pin (a relative path from this profile does not resolve in a user project). Require a positive control for negative asserts, whole-line anchoring for text pins, sibling/both-path symmetry, and a mutation that makes the pin fail. Classify a surviving pin with the テスト網羅性 Finding Gate in `_reviewer-base.md` (`#test-coverage-finding-gate`); do not assign a fixed severity here.'
+REV_LINE='- For each new pin (grep/assert on text, counts, ordering) and each stub/fixture in the diff, apply the rule set `references/test-pin-mutation-principles.md` under the plugin root. Take the absolute path of `_reviewer-base.md` given in your prompt, replace its trailing `agents/_reviewer-base.md` with `references/test-pin-mutation-principles.md`, and Read that file in full before judging the pin (this profile is passed without its file path, so a relative path has no base). Require a positive control for negative asserts, whole-line (whole-sentence for wrapped prose) anchoring for text pins, sibling/both-path symmetry, and a mutation that makes the pin fail. Classify a surviving pin with the テスト網羅性 Finding Gate in `_reviewer-base.md` (`#test-coverage-finding-gate`); do not assign a fixed severity here.'
 
 assert "issue-implement: 5.0.F の見出し行が 1 つ" "1" "$(grep -cxF -- "$IMPL_H" "$IMPL")"
 assert "test-reviewer: Step 3 の見出し行が 1 つ" "1" "$(grep -cxF -- "$REV_H" "$REVIEWER")"
