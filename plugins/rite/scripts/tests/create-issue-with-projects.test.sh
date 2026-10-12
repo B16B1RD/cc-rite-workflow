@@ -1112,7 +1112,8 @@ if [ "$LAST_RC" -eq 0 ]; then
   reg=$(json_field '.project_registration')
   warns_text=$(printf '%s\n' "$LAST_OUTPUT" | jq -r '.warnings[]?' 2>/dev/null)
   # All three fields set (Status/Priority/Complexity → ステータス/優先度/複雑度).
-  edit_count=$(grep -c "item-edit" "$LAST_GH_LOG" 2>/dev/null || echo 0)
+  edit_count=$(grep -c "item-edit" "$LAST_GH_LOG" 2>/dev/null || true)
+  edit_count=${edit_count:-0}
   if [ "$reg" = "ok" ] && [ "$edit_count" -ge 3 ] \
      && ! grep -q "not found" <<< "$warns_text"; then
     pass "JP field names: reg=ok, 3 fields set via aliases, no 'not found' warning"

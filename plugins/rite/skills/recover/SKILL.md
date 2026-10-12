@@ -95,7 +95,7 @@ if [ -z "$issue_arg" ]; then
   [ -n "$ms_base" ] || ms_base=".claude/worktrees"
   wt_issues=$(git worktree list --porcelain 2>/dev/null | awk '$1=="worktree"{print $2}' \
     | grep -E "/${ms_base}/issue-[0-9]+\$" | sed -nE 's|.*/issue-([0-9]+)$|\1|p' | sort -un)
-  cnt=$(printf '%s' "$wt_issues" | grep -c . 2>/dev/null || echo 0)
+  cnt=$(printf '%s' "$wt_issues" | grep -c . 2>/dev/null || true); cnt=${cnt:-0}
   echo "[CONTEXT] RESUME_WT_CANDIDATES=$(printf '%s' "$wt_issues" | tr '\n' ',' | sed 's/,$//'); count=$cnt"
 fi
 if [ -n "$issue_arg" ]; then
