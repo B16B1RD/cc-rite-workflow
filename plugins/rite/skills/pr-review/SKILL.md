@@ -1436,7 +1436,7 @@ emit 形式 (Step 2 line で実装):
 
 ### 5.2 Cross-Validation
 
-reviewer 間の割れ・regression 帰属・数値や外部事実の主張・却下の扱いは [判断規則 §3](../../references/review-loop-judgment-rules.md#3-pr-review-採否と集約) に従う。
+reviewer 間の割れ・regression 帰属・数値や外部事実の主張・却下の扱いは、着手前に [判断規則 §3](../../references/review-loop-judgment-rules.md#3-pr-review-採否と集約) を Read して従う。
 
 本文照合の指摘は [照合手順](references/reviewer-prompt-generator.md) の「説明の欠陥」と「検査の欠陥」を保持する。同じ `file:line` でも根因と修正先が異なるため、本文修正とテスト追加を一件へ潰さない。各主張・実測範囲・照合結果を統合結果に残し、既存の重大度・採否・実測ゲートは変更しない。
 

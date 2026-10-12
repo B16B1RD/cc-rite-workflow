@@ -911,7 +911,7 @@ When "コードを修正する" is selected:
 bash {plugin_root}/scripts/fix-step.sh pr-body-edit --pr {pr_number} --owner-repo {owner_repo} --body-file '{edited_pr_body_file}'
 ```
 
-修正の適用・伝播確認・検証・完了宣言の判断は [判断規則 §1](../../references/review-loop-judgment-rules.md#1-fix-修正の適用と検証) に従う。
+修正の適用・伝播確認・検証・完了宣言の判断は、着手前に [判断規則 §1](../../references/review-loop-judgment-rules.md#1-fix-修正の適用と検証) を Read して従う。
 
 ### 2.3.1 Propagation Scan
 
