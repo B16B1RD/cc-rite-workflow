@@ -2,10 +2,11 @@
 # Regression guard: `grep -c ... || echo 0` must not appear in any *.md / *.sh under plugins/rite.
 # grep -c prints "0" and exits 1 on zero matches, so the `|| echo 0` branch appends a second "0"
 # and the captured value becomes "0\n0".
-# Detected: one command (no `;` / `)` between), quoted args may contain `|`, flags `-c` / `-cE` /
-# `-E -c` / `--count`, fallbacks `echo 0` / `printf 0` / `{ echo 0; }`. Not detected: the fallback on
-# a following line, and a `-c` flag hidden in a variable. `x=$(grep -c p f) || echo 0` is harmless
-# and intentionally not matched. A scan error (grep rc>=2) and an unused allowlist entry both FAIL.
+# Detected (not exhaustive): one command (no `;` / `)` between), quoted args may contain `|`, flags
+# `-c` / `-cE` / `-E -c` / `--count`, fallbacks `echo 0` / `printf 0` / `{ echo 0; }`. Not detected:
+# a fallback on a following line, a `-c` hidden in a variable, `echo -n 0`, `printf '%s' 0`, `| tr`
+# stages. `x=$(grep -c p f) || echo 0` keeps the capture intact (it only prints a stray 0) and is not
+# this test's concern. A scan error (grep rc>=2) and an unused allowlist entry both FAIL.
 # Usage: bash plugins/rite/hooks/tests/grep-c-echo-fallback.test.sh
 set -uo pipefail
 
@@ -20,7 +21,7 @@ for neg in 'x=$(printf "" | grep -c . 2>/dev/null || echo 0)' \
   grep -qE "$pat" <<< "$neg" || { echo "FAIL: detector missed known-bad form: $neg" >&2; exit 1; }
 done
 # 正例: 修正後の形は拾わないこと
-for pos in 'x=$(printf "" | grep -c . 2>/dev/null) || x=0' 'x=$(grep -c p f) || echo 0'; do
+for pos in 'x=$(printf "" | grep -c . 2>/dev/null) || x=0'; do
   grep -qE "$pat" <<< "$pos" && { echo "FAIL: detector flagged a harmless form: $pos" >&2; exit 1; }
 done
 

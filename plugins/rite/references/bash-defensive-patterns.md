@@ -15,10 +15,10 @@ A collection of defensive Bash patterns to prevent recurring syntax errors in ri
 - [Summary: Error Pattern → Defensive Pattern Mapping](#summary-error-pattern--defensive-pattern-mapping)
 - [Pattern 1: Integer Comparison](#pattern-1-integer-comparison)
 - [Pattern 2: grep Variable Expansion](#pattern-2-grep-variable-expansion)
-- [Other Bash Pitfalls](#other-bash-pitfalls)
 - [Pattern 3: Python Inline Scripts with Japanese](#pattern-3-python-inline-scripts-with-japanese)
 - [Pattern 4: Directory Pre-creation](#pattern-4-directory-pre-creation)
 - [Pattern 5: SIGPIPE Prevention in Pipelines](#pattern-5-sigpipe-prevention-in-pipelines)
+- [Other Bash Pitfalls](#other-bash-pitfalls)
 - [Quick Checklist for Template Authors](#quick-checklist-for-template-authors)
 
 ---
@@ -129,20 +129,7 @@ if [[ "${match_count:-0}" -gt 0 ]]; then
 fi
 ```
 
-**Never `|| echo 0` inside the substitution.** `grep -c` already prints `0` and exits 1 on zero matches, so `$(grep -c ... || echo 0)` captures `"0\n0"` and the next integer test fails. Keep the fallback outside the substitution (`cnt=$(... | grep -c . | ...) || cnt=0`; omit `2>/dev/null` when grepping a file argument so I/O errors stay visible) or use `|| true` with `${cnt:-0}`. Both `|| true` and `) || cnt=0` also swallow exit 2 (I/O error); when that matters, capture `rc` explicitly and treat `rc >= 2` as a failure. Regression: `hooks/tests/grep-c-echo-fallback.test.sh`.
-
----
-
-## Other Bash Pitfalls
-
-| Situation | Defensive form |
-|-----------|----------------|
-| `n=$(grep -oE ... \| wc -l)` under `set -euo pipefail` aborts the script on zero matches when assigned | `{ grep -oE ... \|\| true; } \| wc -l` |
-| `awk -v var=...` processes escape sequences like a string literal; an unknown escape such as `\[` is implementation-defined (gawk yields `[`, mawk keeps `\[`) | Pass via the environment: `VAR="$x" awk '... ENVIRON["VAR"] ...'` |
-| awk `==` on non-ASCII strings (e.g. Japanese headings) matched wrongly on some awks (observed with macOS awk; current POSIX requires identity comparison for `==`) | Resolve the line with `grep -nxF`, require exactly one hit |
-| `d=$(cd "$(mktemp -d)" && pwd -P)`: a failed `mktemp` makes the command `cd ""`, which is a no-op in bash, so the result is the cwd and a later `rm -rf` trap deletes the working tree | Split in two steps: `tmp=$(mktemp -d) \|\| exit 1`, then `cd`; install the trap after the assignment |
-| `tmp=$(mktemp) \|\| tmp=""` then `${tmp:-/dev/null}` silently drops diagnostics when they are needed most | Fail loudly (`tmp=$(mktemp) \|\| { echo "ERROR: mktemp failed" >&2; exit 1; }`) or fold stderr with `$(cmd 2>&1)` |
-| LLM-generated JSON placed inside `--argjson '...'` single quotes | Write to a file (`mktemp` + heredoc) and pass with `--slurpfile v f` (read as `$v[0]`) or `--rawfile v f` (string; apply `$v \| fromjson`) |
+**Never `|| echo 0` inside the substitution.** `grep -c` already prints `0` and exits 1 on zero matches, so `$(grep -c ... || echo 0)` captures `"0\n0"` and the next integer test fails. Keep the fallback outside the substitution: `cnt=$(... | grep -c .) || cnt=0` (the substitution closes right after `grep -c`; a further pipe stage would let `pipefail` overwrite a real count with `0`), or use `|| true` with `${cnt:-0}`. **Both forms are for stdin pipes only**: they also swallow exit 2 (I/O error), so with a file argument capture `rc` (`cnt=$(grep -c -- "$pat" "$file"); rc=$?`) and stop when `rc >= 2`. Regression: `hooks/tests/grep-c-echo-fallback.test.sh`.
 
 ---
 
@@ -304,13 +291,26 @@ upstream がファイルを直接読む `awk ... "$file"` の `exit` は pipe �
 
 ---
 
+## Other Bash Pitfalls
+
+| Situation | Defensive form |
+|-----------|----------------|
+| `n=$(grep -oE ... \| wc -l)` under `set -euo pipefail` aborts the script on zero matches when assigned | `{ grep -oE ... \|\| true; } \| wc -l` (stdin pipe only; with a file argument capture `rc` and stop on `rc >= 2`) |
+| `awk -v var=...` processes escape sequences like a string literal; an unknown escape such as `\[` is undefined by POSIX (gawk yields `[`, mawk keeps `\[`) | Pass via the environment: `VAR="$x" awk '... ENVIRON["VAR"] ...'` |
+| awk `==` on non-ASCII strings (e.g. Japanese headings) matched wrongly on some awks (observed with macOS awk; current POSIX requires identity comparison for `==`) | Resolve the line with `grep -nxF`, require exactly one hit |
+| `d=$(cd "$(mktemp -d)" && pwd -P)`: a failed `mktemp` makes the command `cd ""`, which is a no-op in bash, so the result is the cwd and a later `rm -rf` trap deletes the working tree | Split in two steps: `tmp=$(mktemp -d) \|\| exit 1`, then `cd`; install the trap after the assignment (new code: `rite_tempdir_new`) |
+| `tmp=$(mktemp) \|\| tmp=""` then `${tmp:-/dev/null}` when the captured stderr is **used for a judgment** (marker grep, diagnosis): a failed `mktemp` silently turns the judgment into "nothing happened". The non-blocking stderr-capture slot (`x=$(mktemp 2>/dev/null) \|\| x=""`, stderr only displayed) is a sanctioned idiom and out of scope | Fail loudly (`tmp=$(mktemp) \|\| { echo "ERROR: mktemp failed" >&2; exit 1; }`), or fold stderr with `$(cmd 2>&1)` when stdout is not interpreted. New helpers take temp files from `hooks/scripts/lib/tempfile.sh` instead of raw `mktemp` |
+| LLM-generated JSON placed inside `--argjson '...'` single quotes | Write to a file (`mktemp` + heredoc) and pass with `--rawfile v f` and apply `$v \| fromjson` (a malformed file fails loudly). `--slurpfile v f` reads as `$v[0]` and silently ignores a second JSON value |
+
+---
+
 ## Quick Checklist for Template Authors
 
 Before adding Bash code to a command template, verify:
 
 - [ ] All integer comparisons use `[[ ]]` with `${var:-default}`
 - [ ] All `grep` invocations quote variables and use `--` separator
-- [ ] All `grep -c` results are captured with `|| true`, or with `cnt=$(grep -c ...) || cnt=0` (fallback outside the substitution) — never `$(grep -c ... || echo 0)`
+- [ ] All `grep -c` results are captured with `|| true`, or with `cnt=$(grep -c ...) || cnt=0` (fallback outside the substitution; stdin pipes only — for a file argument capture `rc` and stop on `rc >= 2`) — never `$(grep -c ... || echo 0)`
 - [ ] Python inline scripts use file-based argument passing (no shell variable embedding)
 - [ ] All file writes are preceded by `mkdir -p` for the target directory
 - [ ] All variables in `[ ]` or `[[ ]]` are double-quoted
