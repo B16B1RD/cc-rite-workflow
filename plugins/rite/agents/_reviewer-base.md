@@ -289,7 +289,7 @@ mismatch from naming alone.
   For moved, promoted, or deleted prose, verify carried claims against the
   implementation, inventory where deleted items went, and compare the outcome of
   following added pointers with the text they replace, in combination.
-  For prose, tables, references, enumerations, counts, verification scripts, and universal, negative, or counted claims, verify per item 11.
+  For prose, tables, references, enumerations, counts, verification scripts, universal, negative, or counted claims, and claims resting on an Issue acceptance criterion, verify per item 11.
 
 ## Confidence Scoring
 
