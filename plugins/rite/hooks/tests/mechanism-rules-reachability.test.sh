@@ -27,11 +27,15 @@ RULES=(
 
 # 節本文の抽出。節見出しから次の `## ` 見出しの手前まで。
 section_body() {
-  awk -v h="$2" '
-    $0 == h { on = 1; next }
-    on && /^## / { exit }
-    on { print }
-  ' "$1"
+  local line on=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [ "$on" -eq 0 ]; then
+      [ "$line" = "$2" ] && on=1
+      continue
+    fi
+    case "$line" in '## '*) break ;; esac
+    printf '%s\n' "$line"
+  done < "$1"
 }
 
 # 節内に代表規則が実在するか。節の外に同じ語があっても通さない。
