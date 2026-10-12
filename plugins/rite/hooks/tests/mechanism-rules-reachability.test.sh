@@ -14,14 +14,14 @@ PRINCIPLES="$RITE/skills/rite-workflow/references/coding-principles.md"
 
 # 規則節: ファイル|節見出し|節内に必ず残る代表規則（正常系の pin）
 RULES=(
-  "sentinel-contract.md|## 設計規則|成功以外の終了経路"
-  "hook-guard-design-rules.md|## 脅威モデルと fail 方向|旧実装が例外で拒否していた入力を列挙"
-  "hook-guard-design-rules.md|## 制御文字と診断|C1 制御バイトを見逃す"
-  "hook-guard-design-rules.md|## 防御の検証|防御を外す mutation で FAIL する pin"
-  "hook-guard-design-rules.md|## hook の有効化と範囲|同じ条件を読む全 hook を grep"
+  "sentinel-contract.md|## 設計規則|成功以外の終了経路（中断・エラー）も区別できる sentinel を定義し"
+  "hook-guard-design-rules.md|## 脅威モデルと fail 方向|旧実装が例外で拒否していた入力を列挙し、新実装でも拒否されることを確かめる"
+  "hook-guard-design-rules.md|## 制御文字と診断|を使うと C1 制御バイトを見逃す"
+  "hook-guard-design-rules.md|## 防御の検証|防御を外す mutation で FAIL する pin を置く"
+  "hook-guard-design-rules.md|## hook の有効化と範囲|同じ条件を読む全 hook を grep し"
   "git-worktree-patterns.md|## Worktree と git 操作の規則|\`.git\` を直書きせず \`git rev-parse --git-path\` を使う"
   "wiki-patterns.md|## ingest・lint の検出規則|判定 regex を共有する。片方だけ狭いと"
-  "state-read-evolution.md|## 状態パス・再入ガードの規則|処理した範囲を、処理本体と同じ単位で記録"
+  "state-read-evolution.md|## 状態パス・再入ガードの規則|処理した範囲を、処理本体と同じ単位で記録し、最新と一致するときだけ skip する"
   "gh-cli-patterns.md|## PR 作成・運用の規則|に \`--base\` を明示する"
 )
 
