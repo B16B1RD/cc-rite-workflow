@@ -37,6 +37,7 @@ user-invocable: false
 
 task が求める挙動 1 つにテスト 1 つ。隣接するテストファイルと同規模。scratch の検証スクリプトを permanent test にしない。既存 suite がある種別は新規ファイルより追記する。テスト数の上限は設けない。
 rationale: references/rationale.md#test-file-discipline
+pin・mutation・fixture・stub を書くときは `{plugin_root}/references/test-pin-mutation-principles.md` の該当節を読み、書いた pin は対象を壊す変異で落ちることを実測する。
 
 既存 suite が無い種別は新規テストファイルを認め、規模は隣接テストファイルに合わせる。**XS/S では 5.1.0.8 の新規テストファイル禁止が優先**し、既存 suite が無くても新規ファイルは作らない。
 

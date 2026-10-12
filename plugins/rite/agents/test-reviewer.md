@@ -42,6 +42,7 @@ For each tested function:
 - Are error paths tested (network failures, invalid input, permission denied)?
 - If the fix adds a fallback, WARNING, catch/else branch, or other error path, require a regression test that enters that exact new branch and asserts the observable outcome. Require a non-vacuity check: reverting the fix (or applying an equivalent mutation) must make the new test fail. See `skills/pr-review/references/promotion-audit-review-fix-loop.md#new-error-path-regression-gate`.
 - `Grep` for similar test patterns in the codebase to verify consistency of edge case coverage
+- For each new pin (grep/assert on text, counts, ordering) and each stub/fixture in the diff, apply `references/test-pin-mutation-principles.md` (path: the plugin root, i.e. `_reviewer-base.md`'s grandparent directory, plus `/references/`): require a positive control for negative asserts, anchoring to whole lines for text pins, sibling/both-path symmetry, and a mutation that makes the pin fail. A pin that survives its own obvious mutation is a finding (MEDIUM, HIGH when it guards a contract the Issue states).
 
 ### Step 4: Test Isolation and Reliability
 
