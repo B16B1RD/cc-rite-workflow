@@ -1,9 +1,10 @@
 #!/bin/bash
 # review-loop-judgment-rules-wiring.test.sh
 #
-# Static-pin: iterate / fix / pr-review each link to their own section of
-# references/review-loop-judgment-rules.md, and the linked heading exists.
-# Each pin is also run against a mutant without the pinned text.
+# Static-pin: iterate / fix / pr-review each link to a section of
+# references/review-loop-judgment-rules.md, and the link's anchor equals the
+# GitHub slug computed from that section's heading (the heading must appear
+# exactly once). The negative control renames the heading and must break the pin.
 
 set -euo pipefail
 
@@ -17,28 +18,37 @@ REF="$PLUGIN_ROOT/references/review-loop-judgment-rules.md"
 
 echo "=== review-loop-judgment-rules-wiring.test.sh ==="
 
-check_link() { grep -qF -- "$2" "$1"; }
+# GitHub slug: lowercase, drop everything but word chars / hyphens / spaces, space -> hyphen
+slug_of() {
+  python3 -I -c 'import re,sys; print(re.sub(r"[^\w\- ]", "", sys.argv[1].lower()).replace(" ", "-"))' "$1"
+}
+
+# 見出し行 ($3 の接頭辞で始まる ## 見出し) が ref ($1) に 1 回だけ出現し、
+# その slug が skill ($2) のリンクの anchor と一致すること
+check_pin() {
+  local ref="$1" skill="$2" prefix="$3" heading slug
+  [ "$(grep -c "^## ${prefix}" "$ref")" = "1" ] || return 1
+  heading=$(grep "^## ${prefix}" "$ref" | sed 's/^## //')
+  slug=$(slug_of "$heading")
+  grep -qF -- "review-loop-judgment-rules.md#${slug})" "$skill"
+}
 
 pin() {
-  local label="$1" file="$2" link="$3" heading="$4"
-  if check_link "$file" "$link"; then pass "$label: link"; else fail "$label: link"; fi
-  if grep -qxF -- "$heading" "$REF"; then pass "$label: heading"; else fail "$label: heading"; fi
+  local label="$1" skill="$2" prefix="$3"
+  if check_pin "$REF" "$skill" "$prefix"; then pass "$label: link anchor == slug(heading)"; else fail "$label: link anchor == slug(heading)"; fi
   local mutant
   mutant=$(mktemp "${TMPDIR:-/tmp}/rite-judgment-pin-XXXXXX") || { fail "$label (mktemp failed)"; return; }
-  grep -vF -- "$link" "$file" > "$mutant" || true
-  if ! cmp -s "$file" "$mutant" && ! check_link "$mutant" "$link"; then
-    pass "NC: $label is live"
+  sed "s/^## ${prefix}/## ${prefix}X/" "$REF" > "$mutant"
+  if ! cmp -s "$REF" "$mutant" && ! check_pin "$mutant" "$skill" "$prefix"; then
+    pass "NC: $label breaks when the heading is renamed"
   else
-    fail "NC: $label is not live"
+    fail "NC: $label survives a heading rename"
   fi
   rm -f "$mutant"
 }
 
-pin "iterate" "$PLUGIN_ROOT/skills/iterate/SKILL.md" \
-  'review-loop-judgment-rules.md#2-iterate-収束終了の読み方' '## 2. iterate: 収束・終了の読み方'
-pin "fix" "$PLUGIN_ROOT/skills/fix/SKILL.md" \
-  'review-loop-judgment-rules.md#1-fix-修正の適用と検証' '## 1. fix: 修正の適用と検証'
-pin "pr-review" "$PLUGIN_ROOT/skills/pr-review/SKILL.md" \
-  'review-loop-judgment-rules.md#3-pr-review-採否と集約' '## 3. pr-review: 採否と集約'
+pin "iterate" "$PLUGIN_ROOT/skills/iterate/SKILL.md" '2\. iterate'
+pin "fix" "$PLUGIN_ROOT/skills/fix/SKILL.md" '1\. fix'
+pin "pr-review" "$PLUGIN_ROOT/skills/pr-review/SKILL.md" '3\. pr-review'
 
 print_summary "review-loop-judgment-rules-wiring.test.sh"

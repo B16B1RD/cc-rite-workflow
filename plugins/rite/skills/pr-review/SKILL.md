@@ -1436,6 +1436,8 @@ emit 形式 (Step 2 line で実装):
 
 ### 5.2 Cross-Validation
 
+reviewer 間の割れ・regression 帰属・数値や外部事実の主張・却下の扱いは [判断規則 §3](../../references/review-loop-judgment-rules.md#3-pr-review-採否と集約) に従う。
+
 本文照合の指摘は [照合手順](references/reviewer-prompt-generator.md) の「説明の欠陥」と「検査の欠陥」を保持する。同じ `file:line` でも根因と修正先が異なるため、本文修正とテスト追加を一件へ潰さない。各主張・実測範囲・照合結果を統合結果に残し、既存の重大度・採否・実測ゲートは変更しない。
 
 **Same file/line**: `file:line` で束ねる。2+ reviewer でも人数・severity を証拠の代わりにせず、対応確認（5.2.2）の前に High Confidence 扱いへ上げない。
@@ -2373,8 +2375,6 @@ Source A は `Likelihood-Evidence:` の有無を保持する。
 ### 7.2-7.3 採否の出口による処分
 
 `candidate_count == 0`（hold の候補を含む）かつ triage の hold ファイルが無いときだけ 7.2〜7.7 をスキップする。それ以外は [スコープ外指摘のトリアージ手順 7.2〜7.7](references/scope-triage.md) を読み、採否ゲートの出口による処分・post-condition gate まで完了する。`source_issue_number` を引き継ぐ。失敗時は同手順の停止規則に従い、成功後だけステップ 8 へ進む。
-
-reviewer 間の割れ・regression 帰属・却下の扱いは [判断規則 §3](../../references/review-loop-judgment-rules.md#3-pr-review-採否と集約)、few-shot と入力文法は §4 に従う。
 
 ## Error Handling
 
