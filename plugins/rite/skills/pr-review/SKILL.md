@@ -2374,6 +2374,8 @@ Source A は `Likelihood-Evidence:` の有無を保持する。
 
 `candidate_count == 0`（hold の候補を含む）かつ triage の hold ファイルが無いときだけ 7.2〜7.7 をスキップする。それ以外は [スコープ外指摘のトリアージ手順 7.2〜7.7](references/scope-triage.md) を読み、採否ゲートの出口による処分・post-condition gate まで完了する。`source_issue_number` を引き継ぐ。失敗時は同手順の停止規則に従い、成功後だけステップ 8 へ進む。
 
+reviewer 間の割れ・regression 帰属・却下の扱いは [判断規則 §3](../../references/review-loop-judgment-rules.md#3-pr-review-採否と集約)、few-shot と入力文法は §4 に従う。
+
 ## Error Handling
 
 | Error | Action |
