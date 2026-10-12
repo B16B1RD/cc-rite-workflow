@@ -22,7 +22,8 @@ section_of() {
 }
 # 節の中に行全体が一致する行があるか
 section_has_line() {
-  section_of "$1" "$2" | grep -qxF -- "$3"
+  local body; body="$(section_of "$1" "$2")"
+  grep -qxF -- "$3" <<<"$body"
 }
 # 節の抽出結果が空でないこと (見出し改名で空振りしない)
 section_nonempty() {
@@ -68,7 +69,7 @@ assert "test-reviewer: Step 3 節が抽出できる" "ok" "$(section_nonempty "$
 if section_has_line "$IMPL" "$IMPL_H" "$IMPL_LINE"; then pass "issue-implement 5.0.F 節内に reference ポインタ行がある"; else fail "issue-implement 5.0.F 節内に reference ポインタ行が無い"; fi
 if [ -n "$REV_LINE" ] && section_has_line "$REVIEWER" "$REV_H" "$REV_LINE"; then pass "test-reviewer Step 3 節内に reference ポインタ行がある"; else fail "test-reviewer Step 3 節内に reference ポインタ行が無い"; fi
 for need in 'positive control' 'whole-line anchoring' 'sibling/both-path symmetry' '#test-coverage-finding-gate'; do
-  if printf '%s\n' "$REV_LINE" | grep -qF -- "$need"; then pass "test-reviewer ポインタ行が '$need' を含む"; else fail "test-reviewer ポインタ行に '$need' が無い"; fi
+  if grep -qF -- "$need" <<<"$REV_LINE"; then pass "test-reviewer ポインタ行が '$need' を含む"; else fail "test-reviewer ポインタ行に '$need' が無い"; fi
 done
 
 # --- negative control: 配線を壊した入力は上の判定に一致しない ---
