@@ -1,7 +1,7 @@
 #!/bin/bash
-# 設計規則の節が各 SoT に実在し、規則を指すポインタとリンクのアンカーが実在する見出しに解決する
-# ことを固定する。実装者の入口（coding-principles）からの到達は sentinel・状態・hook/guard の規則を検査する
-# （worktree・Wiki・PR 運用の規則は既存のスキルの参照から到達する）。
+# 設計規則の節が各 SoT に実在し、規則を指すリンクが実在するファイルと見出しに解決することを固定する。
+# 検査するのは実装者の入口（coding-principles）から sentinel・状態・hook/guard の規則へのリンクと、
+# 規則ファイル間のリンクの解決まで。reviewer が実行時に規則を読む経路は検査しない。
 # 規則の本文は references 側が SoT であり、入口側は 1 行のポインタだけを持つ。
 set -uo pipefail
 
@@ -11,12 +11,10 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 RITE="$SCRIPT_DIR/../.."
 REFS="$RITE/references"
 PRINCIPLES="$RITE/skills/rite-workflow/references/coding-principles.md"
-SEC_REVIEWER="$RITE/agents/security-reviewer.md"
-ERR_REVIEWER="$RITE/agents/error-handling-reviewer.md"
 
 # 規則節: ファイル|節見出し|節内に必ず残る代表規則（正常系の pin）
 RULES=(
-  "sentinel-contract.md|## 設計規則|3 経路を定義し"
+  "sentinel-contract.md|## 設計規則|成功以外の終了経路"
   "hook-guard-design-rules.md|## 脅威モデルと fail 方向|旧実装が例外で拒否していた入力を列挙"
   "hook-guard-design-rules.md|## 制御文字と診断|C1 制御バイトを見逃す"
   "hook-guard-design-rules.md|## 防御の検証|防御を外す mutation で FAIL する pin"
@@ -61,37 +59,34 @@ done
 # 負例: 節が空の fixture と、代表規則が節の外にだけある fixture は検出される。
 FIX_DIR=$(mktemp -d) || { fail "fixture dir could not be created"; exit 1; }
 trap 'rm -rf "$FIX_DIR"' EXIT
-printf '## 設計規則\n\n## 別の節\n3 経路を定義し\n' > "$FIX_DIR/outside.md"
-if rule_in_section "$FIX_DIR/outside.md" '## 設計規則' '3 経路を定義し'; then
+printf '## 設計規則\n\n## 別の節\n成功以外の終了経路\n' > "$FIX_DIR/outside.md"
+if rule_in_section "$FIX_DIR/outside.md" '## 設計規則' '成功以外の終了経路'; then
   fail "a rule outside its section must not satisfy the pin"
 else
   pass "a rule outside its section does not satisfy the pin"
 fi
 printf '# t\n' > "$FIX_DIR/no-section.md"
-if rule_in_section "$FIX_DIR/no-section.md" '## 設計規則' '3 経路を定義し'; then
+if rule_in_section "$FIX_DIR/no-section.md" '## 設計規則' '成功以外の終了経路'; then
   fail "a missing section must not satisfy the pin"
 else
   pass "a missing section does not satisfy the pin"
 fi
 
-# 到達性: reviewer 定義が規則節を指すこと、規則本文にリンク先が実在すること。
+# 到達性: 実装者の入口が規則を指すこと、規則本文にリンク先が実在すること。
 assert_grep "coding-principles points to the sentinel rules" "$PRINCIPLES" \
   'references/sentinel-contract\.md#設計規則'
 assert_grep "coding-principles points to the hook/guard rules" "$PRINCIPLES" \
   'references/hook-guard-design-rules\.md\)'
 assert_grep "coding-principles points to the state rules" "$PRINCIPLES" \
   'references/state-read-evolution\.md#状態パス再入ガードの規則'
-# reviewer は利用者の project で動き plugin 内の相対パスを解決できない。相対ポインタを置かない。
-for rv in "$SEC_REVIEWER" "$ERR_REVIEWER"; do
-  assert_not_grep "$(basename "$rv") has no relative pointer to references/" "$rv" '\.\./references/(sentinel-contract|hook-guard|state-read)'
-done
 assert_grep "hook rules link the worktree section" "$REFS/hook-guard-design-rules.md" \
   'git-worktree-patterns\.md#worktree-と-git-操作の規則'
 assert_grep "hook rules link the sentinel section" "$REFS/hook-guard-design-rules.md" \
   'sentinel-contract\.md#設計規則'
 
-# アンカーの解決: ポインタとリンクの `<file>.md#<anchor>` が、参照先の見出しの slug に一致すること。
-# slug は小文字化、空白を `-`、`・` と `（）` と `、` を除去（GitHub の規則に合わせる）。
+# リンクの解決: 規則ファイルへの `<相対パス>.md(#<anchor>)?` を、リンク元のディレクトリ基準で解決する。
+# ファイルの実在と、アンカーがあれば参照先の見出しの slug との一致を確かめる。
+# slug は小文字化、空白を `-`、本ファイル群の見出しに現れる `・` `（` `）` `、` を除去して作る。
 heading_slug() {
   local h=${1#\#\# }
   h=${h//・/}; h=${h//（/}; h=${h//）/}; h=${h//、/}; h=${h// /-}
@@ -104,20 +99,41 @@ anchor_resolves() {
   done < "$target"
   return 1
 }
+# 引数: リンク元ファイル リンク文字列（`path.md` または `path.md#anchor`）。解決できれば 0。
+link_resolves() {
+  local src=$1 ref=$2 tfile want=""
+  tfile=${ref%%#*}
+  case "$ref" in *'#'*) want=${ref#*#} ;; esac
+  [ -f "$(dirname "$src")/$tfile" ] || return 1
+  [ -z "$want" ] || anchor_resolves "$(dirname "$src")/$tfile" "$want"
+}
 refs_found=0
 for src in "$PRINCIPLES" "$REFS/hook-guard-design-rules.md" "$REFS/wiki-patterns.md"; do
   while IFS= read -r ref; do
     [ -n "$ref" ] || continue
     refs_found=$((refs_found + 1))
-    tfile=${ref%%#*}; tfile=${tfile##*/}; want=${ref#*#}
-    if anchor_resolves "$REFS/$tfile" "$want"; then
-      pass "$(basename "$src"): $tfile#$want resolves to a heading"
+    if link_resolves "$src" "$ref"; then
+      pass "$(basename "$src"): $ref resolves"
     else
-      fail "$(basename "$src"): $tfile#$want does not resolve to a heading"
+      fail "$(basename "$src"): $ref does not resolve"
     fi
-  done < <(grep -oE '[A-Za-z0-9_-]+\.md#[^) ]+' "$src" | grep -E '^(sentinel-contract|state-read-evolution|git-worktree-patterns)\.md#')
+  done < <(grep -oE '\]\([^)]*(sentinel-contract|hook-guard-design-rules|state-read-evolution|git-worktree-patterns)\.md[^)]*\)' "$src" | sed -e 's/^](//' -e 's/)$//')
 done
-[ "$refs_found" -ge 5 ] && pass "anchor references were found ($refs_found)" || fail "too few anchor references found ($refs_found)"
+[ "$refs_found" -ge 6 ] && pass "rule links were found ($refs_found)" || fail "too few rule links found ($refs_found)"
+
+# 負例: 階層を誤ったリンクは解決しない。
+printf '## 設計規則\n' > "$FIX_DIR/target.md"
+printf '[x](../references/target.md#設計規則)\n' > "$FIX_DIR/link.md"
+if link_resolves "$FIX_DIR/link.md" "../references/target.md#設計規則"; then
+  fail "a link with a wrong directory must not resolve"
+else
+  pass "a link with a wrong directory does not resolve"
+fi
+if link_resolves "$FIX_DIR/link.md" "target.md#設計規則"; then
+  pass "a correct relative link resolves"
+else
+  fail "a correct relative link should resolve"
+fi
 
 # 負例: 改名後の見出しに対する古いアンカーは解決しない。
 printf '## 状態パス・再入ガードの規則\n' > "$FIX_DIR/renamed.md"
@@ -134,6 +150,6 @@ else
 fi
 
 if ! print_summary "$(basename "$0")" \
-  "機構別の設計規則節と reviewer ポインタ。規則本文は plugins/rite/references/ が SoT。"; then
+  "機構別の設計規則節と、規則へのリンクの解決。規則本文は plugins/rite/references/ が SoT。"; then
   exit 1
 fi

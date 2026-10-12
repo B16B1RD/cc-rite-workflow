@@ -69,8 +69,8 @@ sentinel / marker を新設・変更・削除する設計とレビューに適�
 
 **定義と経路**
 
-- sub-skill が success sentinel だけを定義すると、caller は abort / error 経路を区別できない。成功・中断・エラーの 3 経路を定義し、caller は排他的に grep する
-- 新しい marker は emit・consume・テストの assertion の 3 点が揃って成立する。どれかが欠けた marker は dead signal である。consumer が存在しない marker は emit しない
+- sub-skill が success sentinel だけを定義すると、caller は abort / error 経路を区別できない。成功以外の終了経路（中断・エラー）も区別できる sentinel を定義し、caller は排他的に grep する
+- 新しい marker は emit・consume・テストの assertion の 3 点が揃って成立する。caller の分岐に使う marker は consumer が無いと dead signal になるので、consumer が存在しないまま emit しない。終端を示す sentinel と、ターン継続を促す sentinel は例外として、consumer を持たない前提で定義する
 - コメントや仕様で「機械が parse する」と断定する前に、parse 側の実在を grep で確かめる
 - marker の判定表を持つ設計では、新設する fail-loud の出口も marker を emit する。表の外の出口は caller が分類できない
 - marker に発行元を足したら、全発行経路で定義文と報告文が真かを確かめる

@@ -11,7 +11,7 @@ hooks（`hooks/*.sh`）と、コマンド文字列や diff を解析して許可
 - substring の over-match でユーザー設定を無言で除去するのは fail-safe でなく integrity 違反である。over-capture しうる pattern は区切りを明示する
 - fail-open / fail-closed の設計判断は、対称転記するコメントにも写す。deny gate へ転記する場合は fail-open の危険を明記する
 - guard の対象を種別で狭める前に、新たに対象外となる種別が失う副次的な担保と、子起動への委譲経路を列挙し、判断を記録する
-- 静的パーサの構文列挙は収束しない。通す形は COMMON-SET と宣言し、完全性を主張しない。残りは上位の層へ渡す
+- 静的パーサの構文列挙は収束しない。通す形は「よく使う形の集合（COMMON-SET）」と宣言し、完全性を主張しない。残りは上位の層へ渡す
 - 構文ごとの特例追加が 3 cycle 以上続き、前の形が壊れるなら、特例を捨てて粗い規則（構造を含むコマンドは一律に動的として扱う等）へ置換する。全 cycle の指摘形を、base・修正前・修正後で通して検証する
 - 手書きのシェル解析器は、複合構造（`&&` / `||` / 括弧）を通常の 1 コマンドとして返さない。リスト境界は bash の意味に合わせる（空セグメントは継続演算子を保持する）
 - 解析器が追えない構文（閉じない heredoc など）は規則を足さず、判定不能として fail-loud に拒否する。テストは helper に実際に届く形で書く
@@ -34,7 +34,7 @@ hooks（`hooks/*.sh`）と、コマンド文字列や diff を解析して許可
 ## 防御の検証
 
 - 防御コードには、その失敗経路のテストを付ける。security 起因の防御修正は、防御を外す mutation で FAIL する pin を置く
-- 防御機構を導入する修正は、Step 番号を絶対参照にし（相対参照にしない）、防御の有無で攻撃シナリオを再現する revert テストで自己否定を検出する
+- 防御機構を導入する修正は、手順書内の Step への参照を「前の Step」のような相対表現でなく Step 番号で書き、防御の有無で攻撃シナリオを再現する revert テストで自己否定を検出する
 - defense-in-depth の cleanup を追記するときは、保護対象の race window が trap の install 後にも存在するかを確かめる
 - helper に写しを足すときは、下流の防御（symlink 拒否・allowlist）を外さず、caller のファイルを直接渡す
 - 処方するコマンドの判別力は実行環境（sandbox の内外）で変わる。実行場所を書き、処方環境で実測する
@@ -47,7 +47,7 @@ hooks（`hooks/*.sh`）と、コマンド文字列や diff を解析して許可
 - gate の検査範囲を広げる前に、判定条件を共有する全 caller と後始末を列挙する。これまで skip されていた caller が検査対象に入る
 - 停止案内へ退路を足したら、同じ停止を運ぶ全面（hook の出力・skill・テスト・仕様）を同じ commit で揃える
 - parity test の sweep 対象に、markdown に埋め込まれた bash（`skills/**/*.md`）も含める。hooks と同じ idiom が skills 側にもある
-- 同一機構の全メンバー（skip_file / body_file / author_file など）へ、marker 化や surface の変更を一括で適用する
+- 同一機構に属する全メンバー（同じ役割の一時ファイル変数や出力経路など）へ、marker 化や surface の変更を一括で適用する
 - state を接頭辞・接尾辞だけの glob で読むと、別の gate の保留ファイルを拾う。名前の全体を固定して読む
 - 新設する lint helper は、findings を stdout、summary を stderr（`log()`）に出し、兄弟に揃える。caller は findings を出す helper をコマンド置換で閉じない（指摘が会話から消える）
 - best-effort の advisory lock の `exec 9>` は、subshell guard で先に試す
