@@ -122,7 +122,6 @@ REV_FLIPPED="${REV_LINE/apply /do NOT read or apply }"
 OLD="$REV_LINE" NEW="$REV_FLIPPED" awk '$0 == ENVIRON["OLD"] { print ENVIRON["NEW"]; next } { print }' "$REVIEWER" > "$ctl/rev-flipped.md"
 if [ "$REV_FLIPPED" != "$REV_LINE" ] && ! section_has_line "$ctl/rev-flipped.md" "$REV_H" "$REV_LINE"; then pass "control: reviewer 行の語の反転を検出する"; else fail "control: reviewer 行の語の反転を検出できない"; fi
 
-# --- _reviewer-base.md の Gate アンカーが実在する (reviewer 側ポインタ行の参照先) ---
 # (f) 次の見出しを平文化し、ポインタ行をその下へ移した入力は、位置の検査で落ちる
 demote_move() { # file heading line
   OLD="$2" PTR="$3" awk '
@@ -136,6 +135,7 @@ if section_has_line "$ctl/impl-demoted.md" "$IMPL_H" "$IMPL_LINE" && ! impl_orde
 demote_move "$REVIEWER" "$REV_H" "$REV_LINE" > "$ctl/rev-demoted.md"
 if section_has_line "$ctl/rev-demoted.md" "$REV_H" "$REV_LINE" && ! rev_last_ok "$ctl/rev-demoted.md"; then pass "control: test-reviewer の見出し平文化 + 移動を位置検査が検出する"; else fail "control: test-reviewer の見出し平文化 + 移動を検出できない"; fi
 
+# --- _reviewer-base.md の Gate アンカーが実在する (reviewer 側ポインタ行の参照先) ---
 assert "_reviewer-base.md に test-coverage-finding-gate のアンカーがある" "1" "$(grep -cxF '<a id="test-coverage-finding-gate"></a>' "$PLUGIN_ROOT/agents/_reviewer-base.md")"
 
 if ! print_summary "$(basename "$0")" "drift: test-pin-mutation-principles.md の節構成・中核規則、または issue-implement 5.0.F / test-reviewer Step 3 の参照行が変更された可能性"; then
