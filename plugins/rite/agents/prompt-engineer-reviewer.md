@@ -182,9 +182,6 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - Maintain consistent formatting
 - Link related sections
 
-### Prose Writing Conditions
-- When the diff adds or rewrites normative prose (MUST/MUST NOT, qualifiers, recovery guidance, diagnostics, `rationale:` pointers), `Read` [`skill-prose-writing.md`](../references/skill-prose-writing.md) and check the matching section
-
 ## Finding Quality Guidelines
 
 As a Prompt Engineer, report findings based on concrete facts, not vague observations.

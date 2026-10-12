@@ -337,7 +337,7 @@ rite-workflow/
   ├── stop-loop-continuation-contract.md # Stop hook handoff 機構の解説 SoT (iterate/pr-review/fix/cleanup/ready から参照)
   ├── sentinel-contract.md # skill 間 sentinel の emitter / consumer 対応 SoT
   ├── skill-diet-method.md # SKILL 記述ダイエットの手法 SoT (線引き / pin 移送 / 測定)
-  ├── skill-prose-writing.md # スキル・散文手順の書き方の条件表 (配置 / 規範の強さ / 限定 / 参照 / 診断 / 復旧)
+  ├── skill-prose-writing.md # スキル・散文手順の書き方の条件表 (配置 / 規範の強さ / 限定 / 参照 / rationale / 実装の裏づけ / 診断 / 復旧 / 自己適用)
   ├── ja-symbol-style.md # 日本語文書の記号の字形規定（SoT）
   └── bottleneck-detection.md
   # Note: references/i18n-usage.md and plugins/rite/i18n/ directory (ja.yml,
