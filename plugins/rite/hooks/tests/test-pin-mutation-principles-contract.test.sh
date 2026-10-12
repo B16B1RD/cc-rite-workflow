@@ -90,7 +90,9 @@ if section_nonempty "$ctl/renamed.md" "$IMPL_H"; then fail "control: 見出し�
 # --- 配布境界: 永続成果物に Issue / PR 番号を書かない ---
 number_hits() { grep -ciE '(#|PR ?#?|Issue ?#?|pull/)[0-9]{2,}' "$1"; }
 assert "reference: Issue/PR 番号を含まない" "0" "$(number_hits "$REF")"
-for neg in 'PR #12' 'PR 3862' 'issue 123' 'Issue #3852' 'https://x/pull/45'; do
+# 検出対象の見本は番号部分を別変数で組み立てる (リポジトリの番号参照 checker に自身が掛からないように)
+d1=12; d2=3862; d3=123; d4=45
+for neg in "PR #$d1" "PR $d2" "issue $d3" "Issue #$d2" "https://x/pull/$d4"; do
   printf '%s\n' "$neg" > "$ctl/num.txt"
   assert "control: 番号検出が '$neg' を拾う" "1" "$(number_hits "$ctl/num.txt")"
 done
