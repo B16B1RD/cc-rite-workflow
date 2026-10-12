@@ -20,7 +20,7 @@
 | pin を足す・深める | 述語・配置・routing・副作用・到達の 5 軸で mutation を当てる。既存 literal は残し、極性（肯定/否定）まで固定する |
 | 回帰テストを書く | 修正前コードに当てて落ちることを確認する（grep token は修正パス固有 literal にする）。直らない失敗の確認には修正前版でも同じ実行を回して再現する対照を示す |
 | 防御・guard・fail-loud 分岐を足した | 分岐ごとに失敗を起こすテストを同じ変更で足す。guard を壊す mutation で落ちることを測る。到達入力を構成できない防御は、テスト不足でなくデッドコードとして扱う |
-| 新規 lint・検出 helper | 中核ロジックを no-op にした mutation で落ちる TC を持つ。検出分岐を足したら per-arm のヒット数を修復前の tree で測り、0 なら arm を削るか走査根を広げる |
+| 新規 lint・検出 helper | 中核ロジックを no-op にした mutation で落ちる TC を持つ。検出分岐を足したら 分岐ごとのヒット数を修復前の tree で測り、0 なら arm を削るか走査根を広げる |
 | 「X を守る」と書いた assert | X を壊す変異で落ちることを実測する。assert 名・TC 名は実際に強制する範囲と同じ広さで書き、強度（`-ge 1` と 3 回）・方向・順序を名乗り過ぎない |
 
 ## 2. 空振りを防ぐ（positive / negative control）
@@ -30,7 +30,7 @@
 | 「出ない／呼ばれない／作られない」を assert する | 同じ fixture・同じ経路で「出る」ことを示す positive control を先に置く。sandbox の依存不足・早期 exit・ログが書かれない走行で素通りしやすい |
 | 否定 assert が上流の早期 exit・ゲートの後ろにある | ゲート条件を洗い出し、経路を通過した証拠（到達マーカーを記録する stub + 陽性対照）を pin する |
 | 無出力が正常な契約 | 非空チェックを liveness に使わない。control を別に置く |
-| 警告のみ・rc=0 の helper を pin に使う | 対象の実在確認と警告 grep の 2 段で塞ぐ。degraded と pass が同じ rc なら経路固有 marker の不在を pin する |
+| 警告のみ・rc=0 の helper を pin に使う | 対象の実在確認と警告 grep の 2 段で塞ぐ。縮退動作と正常動作 が同じ rc なら経路固有 marker の不在を pin する |
 | 負例 fixture | 修正前・guard なしなら通ってしまう入力を選ぶ。複数の検証に掛かる値は避け、検証したい分岐だけが拒否する値にする |
 | 拒否側 pin を足した | 受理側（弾いてはいけない正当入力）も同時に固定する。入力を狭める変更には「弾かれる側の正当入力」fixture を 1 本入れる |
 | 禁止文・否定 pin を書く | 許可語彙の denylist を対で置き、対象行の件数を先に確認する。失敗理由（0 件／2 件以上／残存）を切り分けて出す |
@@ -46,12 +46,12 @@
 | 条件 | 期待 |
 |------|------|
 | 文言を前方一致で pin する | 接頭辞が短いほど付け足し変異を通す。行末まで完全一致（`grep -qxF` 等）にする。「行まるごと」を名乗る照合は行全体一致 |
-| ファイル全体への grep で pin する | 双子 site（強制用と診断用など）の片方が残れば緑になる。pin 対象を 1 箇所に絞り、一意な行まで狭める |
+| ファイル全体への grep で pin する | 対になる記述箇所（強制用と診断用など）の片方が残れば緑になる。pin 対象を 1 箇所に絞り、一意な行まで狭める |
 | 散文と同居する行を pin する | コマンド span に絞り、引数の出どころまで固定する。折り返された散文は空白正規化して文全体を `grep -F` |
 | 出現数を数える | `grep -c` は行数で出現数ではない。同一行に複数あり得るなら `grep -o | wc -l`。`-ge N` は片側 mutation を隠すので `-eq N`。count の注記に対象 literal を書くと注記自身が N+1 個目になる |
-| 出現回数 pin（count=2 等） | 一意な行を消しても、同じ語を含む別の行（おとり）が残れば件数が合って素通りする。producer / consumer / ACTION 行を独立に pin する |
-| 閾値・下限（floor）を置く | 実数に近い値（1 件の欠落を捕まえる値）にする。閾値ちょうどの入力 fixture を置く |
-| grep の方言 | `grep -E` に BRE の `\|` を渡すと literal 化し、否定の pin は常時緑、肯定の pin は常時赤になる。ERE の素の `|` は交替で恒真になる。ERE の対にならない `)` は grep の実装により扱いが異なりうる（GNU grep は literal、エラーにする実装もある）。helper の方言を確認する |
+| 出現回数 pin（count=2 等） | 一意な行を消しても、同じ語を含む別の行（おとり）が残れば件数が合って素通りする。出力する側・読む側・実行を促す行を独立に pin する |
+| 閾値・下限を置く | 実数に近い値（1 件の欠落を捕まえる値）にする。閾値ちょうどの入力 fixture を置く |
+| grep の方言 | `grep -E` に BRE の `\|` を渡すと literal 化し、否定の pin は常時緑、肯定の pin は常時赤になる。`|` を含む文字列（markdown の表の行など）を ERE に渡すと、空の枝が全行に一致して恒真になる。ERE の対にならない `)` は grep の実装により扱いが異なりうる（GNU grep は literal、エラーにする実装もある）。helper の方言を確認する |
 | 部分文字列 grep（`grep -ci stop` 等） | `nonstop` や否定形にも一致する。境界例で確かめる。停止語は続行語の不在も確認する |
 | 述語を広げた／狭めた | 肯定・否定の両例で実測する。alternation は各枝を単独 grep し、quantifier 境界・flag ごとに positive test を置く |
 | テキスト検査の対象に残骸が入りうる | `__pycache__` や古い生成物を事前に整える。大小のみ違う fixture ファイル名は macOS の既定のファイルシステムでは同一ファイルになる |
@@ -69,7 +69,7 @@
 | 条件 | 期待 |
 |------|------|
 | 対称な 2 経路（通常経路と回復経路、通常 commit と merge commit 等）を持つ実装 | pin も両側に置く。片側しか実行しない pin は退行を検出できない（片側ずつ外す mutation で生存する） |
-| N 箇所へ同じ修正を展開した | 適用箇所数 = pin 箇所数を完了条件にする。N 個の family に規約を適用したら N 個すべてを pin する |
+| N 箇所へ同じ修正を展開した | 適用箇所数 = pin 箇所数を完了条件にする。N 個の系統 に規約を適用したら N 個すべてを pin する |
 | 新規 TC を足す | sibling TC の共通 helper・fixture の形・variant 数と命名に揃える。sibling が固定する列・値の集合を継承し、自分だけ弱い集合を選ばない |
 | 同一 invariant を表す 3 site（一覧・実装・コメント） | 同期更新ルールを 1 行で明文化する。値を足したら限定句・固定 regex・assert ラベルを同一 commit で揃える |
 | 期待値を片側から抽出する symmetry pin | 両側同時 drift は固定されない。2 値を同一視する正規化をしたら前提を別 assert で固定する |
@@ -77,10 +77,10 @@
 | helper へ共通化した | helper 単体 test に加え caller 側の routing・引数 wiring も pin する。呼出件数だけの pin は引数 wiring を守らない |
 | 新しい出力フィールド・marker | producer の emit だけでなく consumer（表なら各行）を行単位で pin する。marker は payload まで完全一致で、producer と consumer を対にする |
 | OR 接続の拒否条件・連言 | 項ごとにその項だけで拒否される case を置く。受理側は片項だけ外した入力で pin する |
-| 母集団に対する `all()`／全称契約 | 複数要素 fixture で pin し、代表 1 値でなく arm 値をループで固定する |
+| 母集団に対する `all()`／全称契約 | 複数要素 fixture で pin し、代表 1 値でなく全ての分岐の値をループで固定する |
 | 掃き出し（sweep）の完了検証 | 抽出と同じ grep を使わない（死角が継承され残存ゼロが偽になる）。対象の性質から独立に検証する |
 | 同一 1 文への drift 修正が繰り返された | 逐語 pin を足さず、詰め込んだ構造を箇条書きに分割する |
-| 同じ構造を複数 test が持つ（複数の test が同じ形を持つ） | 共通 helper 化を検討する |
+| 複数の test が同じ形を持つ | 共通 helper 化を検討する |
 
 ## 5. fixture 設計
 
@@ -88,9 +88,9 @@
 |------|------|
 | fixture を作る | 本番で普通に起きる state（レビュー履歴あり・実データの逸脱）を入れる。テンプレートでなく生成器の実出力から作り、書き込み元が同時に書く全フィールドを揃える |
 | 境界を検証する | 境界ちょうど・直下・直上の入力を置く。上限と下限は別 fixture（区間制約は下限を破る fixture と上限を破る fixture を別々に） |
-| 選択規則（最新・先頭・優先順） | 規則を区別できる fixture（字句順と更新時刻が食い違う、先頭は marker なし・2 つ目に marker）で書く。tie-break の入力は cycle 毎に値をずらす |
+| 選択規則（最新・先頭・優先順） | 規則を区別できる fixture（字句順と更新時刻が食い違う、先頭は marker なし・2 つ目に marker）で書く。tie-break の入力は レビュー・修正の周回ごとに値をずらす |
 | 省略時・既定値の TC | 既定値と他値で結果が分かれる入力で書く。既定値と同値の assert / 等価変異は強化でなく relabel して名前を実態に合わせる。本番引数形（既定解決経路）を通す arm を 1 本置く |
-| fixture helper が入力を既定値へ正規化する | 対象 arm に届かない。state を直接書き換える fixture にする |
+| fixture helper が入力を既定値へ正規化する | 対象の分岐に届かない。state を直接書き換える fixture にする |
 | 2 つの候補値が同じ fixture | 参照先を区別できない。旧値と新値を分離して識別力を持たせる |
 | 重複排除・集計 | 入力に重複を実在させる。対象と対象外が混在する fixture でも件数を固定する |
 | 一時 repo | 実 repo と同じ追跡除外（ツールの作業ディレクトリなど）を入れる。git 失敗は `&&` 連結か `rev-parse` で捕捉する。`|| continue` でツール欠落を握りつぶさず即 exit 1 |
@@ -109,9 +109,9 @@
 | 書込系 subcommand の不呼出を pin する | 記録 stub を使い、スタブ呼出ログの全行が読取であることを allowlist で検査する。複数行引数（GraphQL mutation）は改行を正規化してから行単位 denylist に掛ける |
 | 絶対パス呼出しの helper | PATH 注入が効かない。sandbox の plugin root に記録用 mock を置き、受領 payload を観測する |
 | stub が引数（フィルタ式）を無視する | その処理はテスト外れになる。fixture に非対象要素を混ぜる |
-| mock の intercept | mktemp 等は `TMPDIR` 有無の両形に対応する arm にする。mock への marker 追加は事後 `sed -i` でなく mock 定義へ直接書く |
+| mock の intercept | mktemp 等は `TMPDIR` 有無の両形に対応する分岐にする。mock への marker 追加は事後 `sed -i` でなく mock 定義へ直接書く |
 | stub の結果返却 | stdout で返し、失敗時は原因を残す。出力を足したときに他 assert が空振りしないか確認する |
-| 縮退した mock | 他 arm の到達不能を隠す。同一 fixture で正常走行を先に回して helper 到達を assert し、再武装してから失敗走行を回す |
+| 縮退した mock | 他の分岐の到達不能を隠す。同一 fixture で正常走行を先に回して helper 到達を assert し、再武装してから失敗走行を回す |
 | `output=$(hook を source する helper ...)` | source した hook が親に残す変数はサブシェルで消える。hook は直接起動する。helper の `fail` を `$()` 内で呼ぶとカウンタ加算も消える |
 
 ## 7. 失敗経路・停止・skip
@@ -120,27 +120,28 @@
 |------|------|
 | 停止・失敗を検証する | 終了コードだけでなく理由出力（経路固有の診断 marker）まで assert する。同じ exit code を返す gate が複数あるなら exit + 固有文言の対で固定する |
 | 非ブロッキング契約（exit 0 always） | 末尾 `exit 0` を削除する mutation で立証し、`|| true` で捨てずに終了コードを assert する |
-| 失敗経路のテスト | 有効入力・実 resolver で副作用境界（起票 0 回・書込 0 回）まで到達させる。失敗しない resolver の停止分岐は、失敗する resolver を置いた一時 tree に script を複製して git 管理外 cwd から実行する |
+| 失敗経路のテスト | 有効入力・実際の解決処理 で副作用境界（外部への書込 0 回）まで到達させる。失敗しない resolver の停止分岐は、失敗する resolver を置いた一時 tree に script を複製して git 管理外 cwd から実行する |
 | 「止まる」と「通る」 | 原因状態をループで回して止まること、解除後に通ることを両方検査する。コメントの主張はループ範囲に限る |
 | 新規失敗分岐（rc=1 再生成／rc=2 即停止） | rc は非ゼロでなく完全一致で固定する |
 | 停止条件を絞る・引数を必須化する | 全コマンドを列挙し直し、空値で続行していた正常経路が無いか確認する。fail-loud の OR 分岐は各側をテストする |
 | 無音失敗を可視化する WARNING 修正 | その防御自体の失敗パスをテストし、同じ PR で mutation 確認する。WARNING は対象パスを含むこと・corrupt 入力で出ることを別 fixture で pin する。書込不可 state の検査は root では skip になる |
-| テスト自体の skip | 集計されない skip 形態（exit 0 で抜ける、`pass '...skipped'`）を既存パターンから grep で特定してから規約化する。capability probe の skip には blocking gate 側の床（permission 非依存の失敗誘発）を残し、前提は `euid` でなく実際の `os.access` で確かめる。skip を持つ TC は skip 側に固定して mutation を当て、素通り（カバレッジ 0）を検出する |
+| テスト自体の skip | 集計されない skip 形態（exit 0 で抜ける、`pass '...skipped'`）を既存パターンから grep で特定してから規約化する。環境の能力を調べて skip する場合は、skip で検査が丸ごと消えないよう、CI を止める側の検査に権限に依存しない失敗誘発（存在しないパスへの書込など）で下限を残す。前提は uid の値で推測せず、実際に書き込みを試して確かめる。skip を持つ TC は skip 側に固定して mutation を当て、素通り（カバレッジ 0）を検出する |
 | `id -u` 等の gate で root 環境が skip になる | pin が失われる。gate の外にも下限を置く |
-| 環境値から前提を導出する（`$TMPDIR` 長など） | floor で assert する。blocking gate は hard fail、他は skip にする |
+| 環境値から前提を導出する（`$TMPDIR` 長など） | 下限値を assert する。CI を止める検査は失敗にし、それ以外は skip にする |
 
 ## 8. mutation の実測と報告
 
 | 条件 | 期待 |
 |------|------|
-| mutation を当てる | 検証対象の artifact から導出し、作業ツリーと分離した場所（使い捨ての detached worktree など）で行い、レビュー対象の working tree は変更しない。reviewer は `agents/_reviewer-base.md` の Mutation experiments の手順に従う戻しは `git checkout` でなく文字列置換で行う |
+| mutation を当てる（実装者） | 検証対象の artifact から導出し、作業ツリーでその場で変異させる。戻しは `git checkout` でなく文字列置換で行い、`git diff` が変異前と同じ状態に戻ったことを確かめる |
+| mutation を当てる（reviewer） | レビュー対象の working tree は変更しない。`agents/_reviewer-base.md` の Mutation experiments の手順に従い、使い捨ての detached worktree で行う |
 | 赤にならない | pin の不備より先に mutation が効いたか（一致件数・構文・到達）を疑う。「到達して落ちうるか」を実証してから結論にする |
 | mutation が生存した | テストを足す前に届かない理由を実測する。生存 mutant は 1 件ずつ到達経路を実証して説明できて完了。等価変異は分けて数える |
 | mutation の報告 | 生存 mutation の列挙を本体にし、投入 mutant の一覧を申し送りに残す。clean tree の PASS と mutant の FAIL は別の欠陥を排除するので両方向測る |
 | 入力値・正規化との相互作用 | テスト入力値が変異の落ち方を変えて assert の単独検出力を奪っていないか確かめる。production の正規化処理（`tr`/`sed`）との相互作用も実測する |
 | 正規化の除外境界・選択肢 | 境界ごと（単/二重引用・backslash・行継続）に 1 本ずつ弱める mutant を当て、恒等関数 mutant だけで済ませない |
 | 位置固定（前方一致・最終行等値）の述語 | 位置だけを崩す mutation で識別力を確認する |
-| load-bearing な空白・コメント | mutation fixture の空白は test 内 grep で self-pin し、formatter による剥離を防ぐ。コメントが守る不変条件は mutation で生存を確認する |
+| load-bearing な空白・コメント | mutation fixture の空白は test 内の grep で自己検査（その空白が残っているかを pin）し、formatter による剥離を防ぐ。コメントが守る不変条件は mutation で生存を確認する |
 | 「戻らない」契約 | 戻り先に成功側の内容（おとり）を置くテストでしか固定できない。契約の入口（キー欠落・型違い）ごとにおとりを置く |
 | signal handler・trap | EXIT trap だけで rc/副作用が満たされるなら、handler 削除 mutant を落とすために `trap -p` 等を assert する |
 | 計算量・計時の修正 | 旧実装を参照に境界入力で突合する。計時テストは最悪形（因子の積で決まる。最長入力とは限らない）を定数から組み立て、遅い経路への到達を reason で assert し、閾値は性質（hook timeout 等）から決める |
@@ -175,6 +176,6 @@
 | 判定式・検出式を変えた | 式の断片で repo 全体を grep し、全スイートを実行してから push する。過去の実コマンドを新旧 guard に再生し、差分が意図形だけかを測る |
 | 新しい検査 regex | 修正前コードに当てて一致件数が期待どおりか確認する（本来 N 件が 1 件なら対象を見ていない） |
 | 共有 assert helper を source する | 独自の pass/fail カウンタを持つスイートでは FAIL が終了コードに反映されないことがある。summary 行は `$(basename "$0")` で自己参照する |
-| base を取り込んだ | テスト番号が衝突したら番号から作る作業 dir 名も機械検証し直す |
+| base を取り込んだ | テストの通し番号が衝突したら番号から作る作業 dir 名も機械検証し直す |
 | テストの `/tmp` 直書きを禁じる lint | `*/tests/*` を除外していると再発が不可視になる。走査を広げるか、除外理由を記録して棚卸しする |
-| 新規 bash test を書く | 既存の metatest を 1 つ以上参照して慣用パターンを確認する |
+| 新規 bash test を書く | 既存の テストを検査するテスト を 1 つ以上参照して慣用パターンを確認する |
