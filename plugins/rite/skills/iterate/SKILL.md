@@ -43,7 +43,7 @@ rationale: references/rationale.md#circuit-breaker-conditions
 
 保存済みレビューの [停滞診断](../../references/review-stagnation.md) は、実作業時間または根因再発を契機に修正方針を見直す。証跡欠損・権限拒否・既存 breaker を優先し、時間だけでは停止しない。見直し後の非収束はステップ 6 の既存停止 sentinel に合流する。
 
-収束の読み方・CI 赤の扱いなど breaker が判断できない場面は、着手前に [判断規則 §2](../../references/review-loop-judgment-rules.md#2-iterate-収束の読み方) を Read して従う。
+収束の読み方など breaker が判断できない場面は、着手前に [判断規則 §2](../../references/review-loop-judgment-rules.md#2-iterate-収束の読み方) を Read して従う。
 
 途中で止まったら flow-state に現 phase (review or fix) が残るので `/rite:recover` で再開する。
 

@@ -4,7 +4,8 @@
 # Static-pin: iterate / fix / pr-review each point to a section of
 # references/review-loop-judgment-rules.md from the place where the rule is used.
 #   - the pointer sits inside the expected section of the skill
-#   - it is a link of the exact form ](../../references/...#slug) and says Read
+#   - one line ends with "着手前に [判断規則 §N](../../references/...#slug) を Read して従う。"
+#     (outside code fences / indented code / comments; nothing may follow it)
 #   - slug == GitHub slug of the referenced heading (heading appears exactly once)
 #   - the referenced section holds at least one table data row
 # Each pin has a negative control run only when the positive pin passed.
@@ -36,17 +37,31 @@ section_of() {
   awk -v s="$2" -v e="$3" 'index($0, s) == 1 { on = 1; seen = 1; next } on && index($0, e) == 1 { hit = 1; exit } on { print } END { exit !(seen && hit) }' "$1"
 }
 
-# 参照先の節 ($2 の接頭辞の ## 見出し) の、区切り行より後の表データ行数が 1 以上であること
+# 参照先の節 ($2 の接頭辞の ## 見出し) の表に、区切り行より後のデータ行（空でないセルが 2 つ以上）が 1 行以上あること
 ref_section_has_rows() {
-  awk -v p="## $2" 'index($0, p) == 1 { on = 1; next } on && /^## / { exit } on && /^\|-+\|/ { sep = 1; next } on && sep && /^\| [^|]+ \| [^|]+ \|$/ { n++ } END { exit !(n >= 1) }' "$1"
+  awk -v p="## $2" '
+    index($0, p) == 1 { on = 1; next }
+    on && /^## / { exit }
+    on && /^\|[-: |]+\|$/ { sep = 1; next }
+    on && sep && /^\|.*\|$/ { t = $0; gsub(/^\||\|$/, "", t); m = split(t, c, "|"); k = 0
+      for (x = 1; x <= m; x++) { v = c[x]; gsub(/[ \t]/, "", v); if (v != "") k++ }
+      if (k >= 2) n++ }
+    END { exit !(n >= 1) }' "$1"
 }
 
-# 1 行の中で「着手前に … ](link#slug) … Read して従う。」の順に並び、行末が Read して従う。 であること
+# 本文 ($1) の中に、フェンス・インデントコード・コメントの外で、行末が
+# 「着手前に [判断規則 §N](link) を Read して従う。」で終わる行が 1 つあること ($2 = N + link)
 pointer_line_ok() {
-  awk -v link="$2" '
-    index($0, "<!--") || substr($0, 1, 1) == "`" { next }
-    { k = index($0, "着手前に"); i = index($0, link); j = index($0, "Read して従う。")
-      if (k > 0 && i > k && j > i && j + length("Read して従う。") - 1 == length($0)) ok = 1 }
+  awk -v want="着手前に [判断規則 §$2 を Read して従う。" '
+    /^[ \t]*```/ { fence = !fence; next }
+    fence { next }
+    /<!--/ { if ($0 !~ /-->/) cmt = 1; next }
+    cmt { if ($0 ~ /-->/) cmt = 0; next }
+    /^(    |\t)/ { next }
+    { n = length($0); w = length(want)
+      if (n >= w && substr($0, n - w + 1) == want) {
+        pre = substr($0, 1, n - w)
+        if (pre == "" || pre ~ /、$/) ok = 1 } }
     END { exit !ok }' <<<"$1"
 }
 
@@ -58,7 +73,7 @@ check_pin() {
   heading=$(awk -v p="## ${prefix}" 'index($0, p) == 1 { print substr($0, 4); exit }' "$ref")
   slug=$(slug_of "$heading")
   body=$(section_of "$skill" "$start" "$end") || { echo "  reason: skill section markers not found" >&2; return 1; }
-  pointer_line_ok "$body" "${LINK_PREFIX}${slug})" || { echo "  reason: no single pointer line with link #${slug} and 'Read して従う。'" >&2; return 1; }
+  pointer_line_ok "$body" "${prefix%%.*}${LINK_PREFIX}${slug})" || { echo "  reason: no single pointer line with link #${slug} and 'Read して従う。'" >&2; return 1; }
   ref_section_has_rows "$ref" "$prefix" || { echo "  reason: no table data row under '## ${prefix}'" >&2; return 1; }
 }
 
@@ -76,6 +91,16 @@ pin() {
   }
   awk -v p="## ${prefix}" 'index($0, p) == 1 { print $0 "X"; next } { print }' "$REF" > "$mutant"
   nc "heading rename" "$mutant" "$skill"
+  awk -v p="## ${prefix}" 'index($0, p) == 1 { print; print "" } { print }' "$REF" > "$mutant"
+  nc "duplicated heading" "$mutant" "$skill"
+  sed 's/を Read して従う。/を Read して従う。ただし任意。/' "$skill" > "$mutant"
+  nc "trailing text after Read" "$REF" "$mutant"
+  sed 's/を Read して従う。/を\nRead して従う。/' "$skill" > "$mutant"
+  nc "Read split across lines" "$REF" "$mutant"
+  sed 's/着手前に/任意で着手前に/' "$skill" > "$mutant"
+  nc "optional prefix" "$REF" "$mutant"
+  sed 's/^\(.*着手前に.*Read して従う。\)$/```\n\1\n```/' "$skill" > "$mutant"
+  nc "pointer inside a code fence" "$REF" "$mutant"
   grep -vF -- "$start" "$skill" > "$mutant"
   nc "losing the section start" "$REF" "$mutant"
   grep -vF -- "$end" "$skill" > "$mutant"
