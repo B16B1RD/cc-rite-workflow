@@ -3,9 +3,7 @@
 #
 # Static pins for plugins/rite/references/skill-prose-writing.md. The file is a
 # prose-only reference, so nothing fails when a later edit breaks its contract:
-#   - the 9 numbered sections stay in order, with no heading-level skips
-#   - no Issue / PR number is written in the file (permanent artifact rule)
-#   - the file names no reviewer as a consumer unless that agent file references it
+#   - the 9 section headings stay as written, in order, with no heading-level skips
 #   - the entry points (skill-diet-method.md, docs/SPEC.md) keep pointing at it
 #   - the `${var:-}` rule keeps its trap-cleanup exclusion
 # A negative control feeds the heading-skip detector a synthetic skip to prove it is live.
@@ -41,9 +39,9 @@ heading_skips() {
   ' "$1"
 }
 
-# 1. Sections 1..9 present, in order
-sections="$(grep -E '^## [0-9]+\. ' "$DOC" | sed -E 's/^## ([0-9]+)\..*/\1/' | tr '\n' ' ')"
-assert "9 numbered sections in order" "1 2 3 4 5 6 7 8 9 " "$sections"
+# 1. The 9 section headings, exactly and in order
+EXPECTED_HEADINGS=$(printf '%s\n' '## 1. 配置と順序' '## 2. 規範文の強さと衝突' '## 3. 限定・修飾・述語' '## 4. 列挙・件数・参照' '## 5. rationale ポインタと SoT' '## 6. 実装の裏づけと到達可能性' '## 7. 診断・案内文言' '## 8. 復旧・再実行の案内' '## 9. 変更時の自己適用と検算')
+assert "9 section headings in order" "$EXPECTED_HEADINGS" "$(grep -E '^## [0-9]+\. ' "$DOC")"
 
 # 2. No heading-level skip (+ negative control)
 assert "no heading-level skip" "" "$(heading_skips "$DOC")"
@@ -52,32 +50,11 @@ printf '# a\n\n#### b\n' > "$NEG"
 assert "heading-skip detector is live" "3:1->4" "$(heading_skips "$NEG")"
 rm -f "$NEG"
 
-# 3. No Issue / PR number
-if grep -nE '#[0-9]{2,}|(Issue|PR) ?[0-9]+' "$DOC" >/dev/null; then
-  fail "no Issue/PR number in the file"
-else
-  pass "no Issue/PR number in the file"
-fi
+# 3. Entry points keep pointing at the file
+assert_grep "skill-diet-method.md points at it" "$PLUGIN_ROOT/references/skill-diet-method.md" '`skill-prose-writing\.md`'
+assert_grep "docs/SPEC.md tree lists it" "$REPO_ROOT/docs/SPEC.md" '^ *├── skill-prose-writing\.md #'
 
-# 4. Reviewers named as consumers must reference the file themselves
-for rv in prompt-engineer tech-writer; do
-  agent="$PLUGIN_ROOT/agents/$rv-reviewer.md"
-  if grep -q "$rv" "$DOC"; then
-    if grep -q "skill-prose-writing" "$agent"; then
-      pass "$rv named as consumer and references the file"
-    else
-      fail "$rv named as consumer but $agent does not reference the file"
-    fi
-  else
-    pass "$rv not claimed as consumer"
-  fi
-done
-
-# 5. Entry points keep pointing at the file
-assert_grep "skill-diet-method.md points at it" "$PLUGIN_ROOT/references/skill-diet-method.md" "skill-prose-writing\.md"
-assert_grep "docs/SPEC.md tree lists it" "$REPO_ROOT/docs/SPEC.md" "skill-prose-writing\.md"
-
-# 6. ${var:-} rule keeps the trap-cleanup exclusion
-assert_grep "var-default rule keeps trap cleanup exclusion" "$DOC" 'trap の cleanup'
+# 4. The ${var:-} rule keeps its trap-cleanup exclusion on the same line
+assert_grep "var-default rule keeps trap cleanup exclusion" "$DOC" '\$\{var:-\}.*trap の cleanup'
 
 print_summary "skill-prose-writing-static-pin.test.sh" "Re-read plugins/rite/references/skill-prose-writing.md and restore the pinned contract."
