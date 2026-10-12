@@ -330,6 +330,7 @@ rite-workflow/
   ├── sub-issue-link-handler.md / issue-create-with-projects.md
   ├── execution-metrics.md
   ├── plugin-path-resolution.md / git-worktree-patterns.md
+  ├── hook-guard-design-rules.md # hook・guard・分類器の設計規則
   ├── common-error-handling.md
   ├── box-display-width.md # 罫線 box の表示幅ルール (SoT)
   ├── session-id-validation-contract.md # Session ID validation contract (SoT)

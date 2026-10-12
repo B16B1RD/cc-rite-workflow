@@ -884,7 +884,7 @@ worktree を使う手順と、git の出力・状態を読む手順の設計と�
 - worktree の cwd で `git rev-parse --show-toplevel` は worktree 自身の toplevel を返す。main root の取得には使わず、共有 root を解決する helper（`state-path-resolve.sh` など）を使う
 - `cd` の後の `show-toplevel` は cd 先に collapse する。`cd` の前に捕捉する
 - `git -C <path> status --porcelain` は、checkout の配下で `.git` の無いディレクトリでも親 checkout の状態を rc=0 で返す。`show-toplevel` が `<path>` 自身と一致するかで最上位かを確かめる
-- worktree の cwd から main checkout へ書くと、環境によっては sandbox の allowlist でブロックされる。共有 root を解決する helper（`state-path-resolve.sh` など）を経由して書く
+- worktree の cwd から main checkout へ書くと、sandbox の write 許可リストでブロックされることがある。helper を経由しても書き込み先は main checkout のままなので解消しない。恒久対処は main checkout root の絶対パスを許可リストへ足すこと（本ファイルの sandbox の節を参照）
 - ある場所の検証器が出した結果を別の場所（main checkout の hook など）が照合するときは、プラグインの版が異なりうるので、check と verify を同じ版の検証器で実行する
 - `git worktree add` へ `"$(mktemp -d)"` を埋め込まない。`mktemp` を別の呼び出しで得て正規化（`pwd -P`）してから worktree を作る
 - 現在のブランチ名を使う手順は detached HEAD の扱いを決めて書く。`git branch --show-current` は何も出力せず（空文字を検査する）、`git rev-parse --abbrev-ref HEAD` は `HEAD` を返す。判定が `HEAD` 文字列に依存する箇所は、両者を取り違えて書き換えない
@@ -912,6 +912,8 @@ worktree を使う手順と、git の出力・状態を読む手順の設計と�
 - commit 後の回復手順は、作業ツリーに残っているパスだけを対象にする
 - 入口が識別番号を引数で受けるときは、PR 検索・state・worktree の検出をその番号で束縛し、現在のブランチ名などから対象を推定し直さない
 - owner/repo を解決する helper が複数の script に重複しているときは、全ての複製へ同じ修正を当てる
+
+---
 
 > **Canonical spec (distributed)**: This file is the operational SoT for the
 > session-worktree layer (lifecycle, claim, reap, shared-state-root resolution,

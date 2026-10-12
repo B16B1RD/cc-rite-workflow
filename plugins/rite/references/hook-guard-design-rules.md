@@ -28,7 +28,7 @@ hooks（`hooks/*.sh`）と、コマンド文字列や diff を解析して許可
 - 制御文字の中和をバイト単位で行うと UTF-8 の診断を壊す。`LC_ALL=C` を前置して上流の入力を制約し、安全機構は緩めない。fail-loud 化の価値は、中和フィルタを含む出力経路の全段を通過できるかを実測して確かめる
 - 中和のモードは、既存の呼び出し箇所の多数派でなく、信頼境界で選ぶ
 - 共有 helper のモード契約を変えるときは、全 call site を数えて波及を確かめる
-- 診断の本文を運ぶ変数に sentinel 値（`_polluted=1` など）を入れない
+- 診断の本文を運ぶ変数に sentinel 値（`_polluted=1` のような固定値）を入れない
 - consume 呼び出しの `2>/dev/null` は `RITE_DEBUG` で gate し、診断を surface する。delete してから return する consume 操作は fail-closed にする
 
 ## 防御の検証

@@ -276,6 +276,8 @@ OK patterns:
 - [Shell Helper Conventions](#shell-helper-conventions) - `hooks/` / `scripts/` の bash helper を新規に書くときの規約 (tempfile は lib 経由で作る)
 - [Sentinel Contract の設計規則](../../../references/sentinel-contract.md#設計規則) - sentinel / marker を新設・変更するときの規則
 - [Hook・ガード・分類器の設計規則](../../../references/hook-guard-design-rules.md) - hook と guard、コマンド解析の分類器を変更するときの規則
+- [PR 作成・運用の規則](../../../references/gh-cli-patterns.md#pr-作成運用の規則) - PR の作成・画像添付・Issue のクローズ手順を設計するときの規則
+- [ingest・lint の検出規則](../../../references/wiki-patterns.md#ingestlint-の検出規則) - Wiki の ingest と lint の検出を変更するときの規則
 - [状態パス・再入ガードの規則](../../../references/state-read-evolution.md#状態パス再入ガードの規則) - 状態ファイルの保存先と再入ガードを変更するときの規則
 - [gh-cli-patterns.md](../../../references/gh-cli-patterns.md) - Related bang character (U+0021) handling in bash command contexts (Shell Escaping Notes)
 - [graphql-helpers.md](../../../references/graphql-helpers.md) - Related bang character handling in GraphQL query / jq contexts (History Expansion and Special Character Prevention)

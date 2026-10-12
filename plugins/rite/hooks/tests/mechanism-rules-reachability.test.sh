@@ -22,7 +22,7 @@ RULES=(
   "git-worktree-patterns.md|## Worktree と git 操作の規則|git rev-parse --git-path"
   "wiki-patterns.md|## ingest・lint の検出規則|判定 regex を共有する"
   "state-read-evolution.md|## 状態パス・再入ガードの規則|処理した範囲を、処理本体と同じ単位で記録"
-  "gh-cli-patterns.md|## PR 作成・運用の規則|--base"
+  "gh-cli-patterns.md|## PR 作成・運用の規則|remote branch を作る CLI"
 )
 
 # 節本文の抽出。節見出しから次の `## ` 見出しの手前まで。
@@ -86,15 +86,17 @@ assert_grep "hook rules link the sentinel section" "$REFS/hook-guard-design-rule
 
 # リンクの解決: 規則ファイルへの `<相対パス>.md(#<anchor>)?` を、リンク元のディレクトリ基準で解決する。
 # ファイルの実在と、アンカーがあれば参照先の見出しの slug との一致を確かめる。
-# slug は小文字化、空白を `-`、本ファイル群の見出しに現れる `・` `（` `）` `、` を除去して作る。
+# slug は小文字化、空白を `-`、見出しに現れる `・` を除去して作る。
 heading_slug() {
   local h=${1#\#\# }
-  h=${h//・/}; h=${h//（/}; h=${h//）/}; h=${h//、/}; h=${h// /-}
+  h=${h//・/}; h=${h// /-}
   printf '%s' "$h" | tr 'A-Z' 'a-z'
 }
 anchor_resolves() {
-  local target=$1 want=$2 line
+  local target=$1 want=$2 line fence=0
   while IFS= read -r line; do
+    case "$line" in '```'*) fence=$((1 - fence)); continue ;; esac
+    [ "$fence" -eq 0 ] || continue
     case "$line" in '## '*) [ "$(heading_slug "$line")" = "$want" ] && return 0 ;; esac
   done < "$target"
   return 1
@@ -117,9 +119,9 @@ for src in "$PRINCIPLES" "$REFS/hook-guard-design-rules.md" "$REFS/wiki-patterns
     else
       fail "$(basename "$src"): $ref does not resolve"
     fi
-  done < <(grep -oE '\]\([^)]*(sentinel-contract|hook-guard-design-rules|state-read-evolution|git-worktree-patterns)\.md[^)]*\)' "$src" | sed -e 's/^](//' -e 's/)$//')
+  done < <(grep -oE '\]\([^)]*(sentinel-contract|hook-guard-design-rules|state-read-evolution|git-worktree-patterns|gh-cli-patterns|wiki-patterns)\.md[^)]*\)' "$src" | sed -e 's/^](//' -e 's/)$//')
 done
-[ "$refs_found" -ge 6 ] && pass "rule links were found ($refs_found)" || fail "too few rule links found ($refs_found)"
+[ "$refs_found" -ge 8 ] && pass "rule links were found ($refs_found)" || fail "too few rule links found ($refs_found)"
 
 # 負例: 階層を誤ったリンクは解決しない。
 printf '## 設計規則\n' > "$FIX_DIR/target.md"
