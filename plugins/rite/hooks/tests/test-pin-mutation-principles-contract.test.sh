@@ -5,7 +5,7 @@
 # 実装側 (issue-implement 5.0.F) と reviewer 側 (test-reviewer Step 3) が同じ reference を読むこと、
 # reference が節構造と中核規則を保つことを pin する。配線は両側とも、節を切り出して
 # リテラルの行全体一致で検査し、ポインタ行の移動・コメント化・削除を負例 (negative control) として
-# 落ちることを確かめる (負例は実装側の入力で行う)。
+# 落ちることを確かめる (負例は実装側・reviewer 側の両方で行う)。
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,7 +17,7 @@ REVIEWER="$PLUGIN_ROOT/agents/test-reviewer.md"
 
 assert_file_exists_or_fail "reference が存在する" "$REF" || exit 1
 
-# 見出し行 (完全一致) から次の見出し (任意の階層の #) 直前までを標準出力へ。見出しが無ければ空
+# 見出し行 (完全一致) から次の見出し (## 以上の # を持つ行。#### も含む) 直前までを標準出力へ。見出しが無ければ空
 section_of() {
   awk -v start="$2" '$0 == start { f = 1; print; next } f && /^##+ / { exit } f { print }' "$1"
 }
@@ -47,6 +47,9 @@ for h in "$H1" "$H2" "$H3" "$H4" "$H5" "$H6" "$H7" "$H8" "$H9" "$H10"; do
   n=$((n + 1))
   assert "reference: 節 $n の見出し行が 1 つ" "1" "$(grep -cxF -- "$h" "$REF")"
   assert "reference: 節 $n に表ヘッダがある" "1" "$(section_of "$REF" "$h" | grep -cxF '| 条件 | 期待 |')"
+  # 表ヘッダと区切り行を除いた規則の行が 1 行以上ある (中身を消しても通る pin にしない)
+  rows="$(section_of "$REF" "$h" | grep -E '^\| ' | grep -vxF '| 条件 | 期待 |' | grep -cv '^|[-: |]*|$' || true)"
+  if [ "${rows:-0}" -ge 1 ]; then pass "reference: 節 $n に規則の行がある"; else fail "reference: 節 $n に規則の行が無い"; fi
 done
 
 # --- reference: 中核規則を節ごとに行全体で pin ---
@@ -76,6 +79,9 @@ done
 # --- negative control: 配線を壊した入力は上の判定に一致しない ---
 ctl="$(mktemp -d "${TMPDIR:-/tmp}/rite-pinmut-ctl-XXXXXX")" || exit 1
 trap 'rm -rf "$ctl"' EXIT
+# 前提: 元の入力に当該行が実在する (無いと負例が素通りで「検出」と表示される)
+assert "前提: issue-implement に実装側ポインタ行が実在する" "1" "$(grep -cxF -- "$IMPL_LINE" "$IMPL")"
+assert "前提: test-reviewer に reviewer 側ポインタ行が実在する" "1" "$(grep -cxF -- "$REV_LINE" "$REVIEWER")"
 # (a) ポインタ行だけ削除
 grep -vxF -- "$IMPL_LINE" "$IMPL" > "$ctl/deleted.md"
 if section_has_line "$ctl/deleted.md" "$IMPL_H" "$IMPL_LINE"; then fail "control: 削除した入力で pin が通った"; else pass "control: ポインタ行の削除を検出する"; fi
@@ -89,7 +95,7 @@ if grep -qF -- "<!-- ${IMPL_LINE} -->" "$ctl/commented.md" && ! section_has_line
 sed "s|^${IMPL_H}\$|### 5.0.F renamed|" "$IMPL" > "$ctl/renamed.md"
 if section_nonempty "$ctl/renamed.md" "$IMPL_H"; then fail "control: 見出し改名で節が空にならない"; else pass "control: 見出し改名は空の抽出として検出する"; fi
 
-# (e) reviewer 側: 行を削除・節外 (Step 2) へ移動・語を反転した入力は通らない
+# (e) reviewer 側: 行を削除・ファイル末尾 (節外) へ移動・語を反転した入力は通らない
 grep -vxF -- "$REV_LINE" "$REVIEWER" > "$ctl/rev-deleted.md"
 if section_has_line "$ctl/rev-deleted.md" "$REV_H" "$REV_LINE"; then fail "control: reviewer 行の削除で pin が通った"; else pass "control: reviewer 行の削除を検出する"; fi
 { grep -vxF -- "$REV_LINE" "$REVIEWER"; printf '%s\n' "$REV_LINE"; } > "$ctl/rev-moved.md"
@@ -97,6 +103,9 @@ if section_has_line "$ctl/rev-moved.md" "$REV_H" "$REV_LINE"; then fail "control
 REV_FLIPPED="${REV_LINE/apply /do NOT read or apply }"
 awk -v old="$REV_LINE" -v new="$REV_FLIPPED" '$0 == old { print new; next } { print }' "$REVIEWER" > "$ctl/rev-flipped.md"
 if [ "$REV_FLIPPED" != "$REV_LINE" ] && ! section_has_line "$ctl/rev-flipped.md" "$REV_H" "$REV_LINE"; then pass "control: reviewer 行の語の反転を検出する"; else fail "control: reviewer 行の語の反転を検出できない"; fi
+
+# --- _reviewer-base.md の Gate アンカーが実在する (reviewer 側ポインタ行の参照先) ---
+assert "_reviewer-base.md に test-coverage-finding-gate のアンカーがある" "1" "$(grep -cxF '<a id="test-coverage-finding-gate"></a>' "$PLUGIN_ROOT/agents/_reviewer-base.md")"
 
 # --- 配布境界: 永続成果物に Issue / PR 番号を書かない (文法は正本の checker に任せる) ---
 NUMCHK="$PLUGIN_ROOT/hooks/scripts/number-reference-check.sh"
