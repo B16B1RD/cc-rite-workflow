@@ -128,6 +128,19 @@ if [[ "${match_count:-0}" -gt 0 ]]; then
 fi
 ```
 
+**Never `|| echo 0` inside the substitution.** `grep -c` already prints `0` and exits 1 on zero matches, so `$(grep -c ... || echo 0)` captures `"0\n0"` and the next integer test fails. Keep the fallback outside the substitution (`cnt=$(... | grep -c . 2>/dev/null) || cnt=0`) or use `|| true` with `${cnt:-0}`. `|| true` also swallows exit 2 (I/O error); when that matters, test `rc` explicitly. Regression: `hooks/tests/grep-c-echo-fallback.test.sh`.
+
+### Other Pitfalls Seen in Shipped Scripts
+
+| Situation | Defensive form |
+|-----------|----------------|
+| `$(grep -oE ... \| wc -l)` under `set -euo pipefail` aborts on zero matches | `{ grep -oE ... \|\| true; } \| wc -l` |
+| `awk -v var=...` interprets backslash escapes (a regex `\[` arrives as `[`) | Pass via `ENVIRON["VAR"]`, or double the backslash (`\\[`) |
+| awk string equality on non-ASCII (e.g. Japanese headings) is locale-collation dependent | Resolve the line with `grep -nxF`, require exactly one hit |
+| `d=$(cd "$(mktemp -d)" && pwd -P)`: a failed `mktemp` leaves the target as the cwd, and a later `rm -rf` trap deletes the working tree | Split in two steps: `tmp=$(mktemp -d) \|\| exit 1`, then `cd`; install the trap after the assignment |
+| `tmp=$(mktemp) \|\| tmp=""` then `${tmp:-/dev/null}` silently drops diagnostics when they are needed most | Fail loudly (`tmp=$(mktemp 2>/dev/null) \|\| { echo "WARNING: ..." >&2; exit 1; }`) or fold stderr with `$(cmd 2>&1)` |
+| LLM-generated JSON placed inside `--argjson '...'` single quotes | Write to a file (`mktemp` + heredoc) and pass with `--slurpfile` / `--rawfile` |
+
 ---
 
 ## Pattern 3: Python Inline Scripts with Japanese
@@ -294,7 +307,7 @@ Before adding Bash code to a command template, verify:
 
 - [ ] All integer comparisons use `[[ ]]` with `${var:-default}`
 - [ ] All `grep` invocations quote variables and use `--` separator
-- [ ] All `grep -c` results are captured with `|| true`
+- [ ] All `grep -c` results are captured with `|| true` (or `) || cnt=0` outside the substitution) — never `$(grep -c ... || echo 0)`
 - [ ] Python inline scripts use file-based argument passing (no shell variable embedding)
 - [ ] All file writes are preceded by `mkdir -p` for the target directory
 - [ ] All variables in `[ ]` or `[[ ]]` are double-quoted
