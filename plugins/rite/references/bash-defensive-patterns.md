@@ -15,6 +15,7 @@ A collection of defensive Bash patterns to prevent recurring syntax errors in ri
 - [Summary: Error Pattern → Defensive Pattern Mapping](#summary-error-pattern--defensive-pattern-mapping)
 - [Pattern 1: Integer Comparison](#pattern-1-integer-comparison)
 - [Pattern 2: grep Variable Expansion](#pattern-2-grep-variable-expansion)
+- [Other Bash Pitfalls](#other-bash-pitfalls)
 - [Pattern 3: Python Inline Scripts with Japanese](#pattern-3-python-inline-scripts-with-japanese)
 - [Pattern 4: Directory Pre-creation](#pattern-4-directory-pre-creation)
 - [Pattern 5: SIGPIPE Prevention in Pipelines](#pattern-5-sigpipe-prevention-in-pipelines)
@@ -128,18 +129,20 @@ if [[ "${match_count:-0}" -gt 0 ]]; then
 fi
 ```
 
-**Never `|| echo 0` inside the substitution.** `grep -c` already prints `0` and exits 1 on zero matches, so `$(grep -c ... || echo 0)` captures `"0\n0"` and the next integer test fails. Keep the fallback outside the substitution (`cnt=$(... | grep -c . 2>/dev/null) || cnt=0`) or use `|| true` with `${cnt:-0}`. `|| true` also swallows exit 2 (I/O error); when that matters, test `rc` explicitly. Regression: `hooks/tests/grep-c-echo-fallback.test.sh`.
+**Never `|| echo 0` inside the substitution.** `grep -c` already prints `0` and exits 1 on zero matches, so `$(grep -c ... || echo 0)` captures `"0\n0"` and the next integer test fails. Keep the fallback outside the substitution (`cnt=$(... | grep -c . 2>/dev/null) || cnt=0`) or use `|| true` with `${cnt:-0}`. Both `|| true` and `) || cnt=0` also swallow exit 2 (I/O error); when that matters, capture `rc` explicitly and treat `rc >= 2` as a failure. Regression: `hooks/tests/grep-c-echo-fallback.test.sh`.
 
-### Other Pitfalls Seen in Shipped Scripts
+---
+
+## Other Bash Pitfalls
 
 | Situation | Defensive form |
 |-----------|----------------|
 | `$(grep -oE ... \| wc -l)` under `set -euo pipefail` aborts on zero matches | `{ grep -oE ... \|\| true; } \| wc -l` |
 | `awk -v var=...` interprets backslash escapes (a regex `\[` arrives as `[`) | Pass via `ENVIRON["VAR"]`, or double the backslash (`\\[`) |
-| awk string equality on non-ASCII (e.g. Japanese headings) is locale-collation dependent | Resolve the line with `grep -nxF`, require exactly one hit |
+| awk `==` on non-ASCII strings (e.g. Japanese headings) matched wrongly on some awks (observed with macOS awk; gawk/POSIX do not use collation for `==`) | Resolve the line with `grep -nxF`, require exactly one hit |
 | `d=$(cd "$(mktemp -d)" && pwd -P)`: a failed `mktemp` leaves the target as the cwd, and a later `rm -rf` trap deletes the working tree | Split in two steps: `tmp=$(mktemp -d) \|\| exit 1`, then `cd`; install the trap after the assignment |
-| `tmp=$(mktemp) \|\| tmp=""` then `${tmp:-/dev/null}` silently drops diagnostics when they are needed most | Fail loudly (`tmp=$(mktemp 2>/dev/null) \|\| { echo "WARNING: ..." >&2; exit 1; }`) or fold stderr with `$(cmd 2>&1)` |
-| LLM-generated JSON placed inside `--argjson '...'` single quotes | Write to a file (`mktemp` + heredoc) and pass with `--slurpfile` / `--rawfile` |
+| `tmp=$(mktemp) \|\| tmp=""` then `${tmp:-/dev/null}` silently drops diagnostics when they are needed most | Fail loudly (`tmp=$(mktemp) \|\| { echo "ERROR: mktemp failed" >&2; exit 1; }`) or fold stderr with `$(cmd 2>&1)` |
+| LLM-generated JSON placed inside `--argjson '...'` single quotes | Write to a file (`mktemp` + heredoc) and pass with `--slurpfile v f` (read as `$v[0]`) or `--rawfile v f` (string; apply `$v \| fromjson`) |
 
 ---
 
