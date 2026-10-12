@@ -68,5 +68,3 @@ review ⇄ fix ループで繰り返し発散・空転しやすい判断を、�
 | 配布境界の指摘が実測手段を持たず降格しそう | 捨てずに、判定記録の V/C/T と reason を書いてゲートに渡す。verdict と出口はゲートが決める |
 | 指摘を FIXED と判定する | 目視・self-claim でなく、実ファイルの grep 等の機械証拠で行う。`bash -n` は構文の確認にしかならず、挙動の証拠にはならない |
 | CI の赤 job を判断入力にする | 失敗 step を特定する。test 実行前（checkout 等）の失敗は再実行で切り分け、suite 全体時間に起因する timeout は本 PR の指摘にしない。他 OS の job も読み、base で green なら PR 起因として直す |
-| 収束局面で reviewer が 0 件を返す | 正常終了として受容し、捏造した指摘で埋めない。reviewer の prompt には、0 件の根拠（実施した mutation 等）を報告に含めるよう指示する |
-| base 取り込み後に再レビューする | reviewer の prompt に、取り込み側のファイルと PR が触れた契約の矛盾確認を含める |
