@@ -5,7 +5,7 @@
 # 実装側 (issue-implement 5.0.F) と reviewer 側 (test-reviewer Step 3) が同じ reference を読むこと、
 # reference が節構造と中核規則を保つことを pin する。配線は両側とも、節を切り出して
 # リテラルの行全体一致で検査し、ポインタ行の移動・コメント化・削除を負例 (negative control) として
-# 落ちることを確かめる (負例は実装側・reviewer 側の両方で行う)。
+# 落ちることを確かめる (負例: 実装側は削除・節外移動・コメント化・見出し改名、reviewer 側は削除・節外移動・語の反転)。
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -42,6 +42,14 @@ H7="## 7. 失敗経路・停止・skip"
 H8="## 8. mutation の実測と報告"
 H9="## 9. 散文契約・手順書の pin"
 H10="## 10. 環境・移植性・移設"
+# §5〜§9 は規則の行数まで固定する (中身を 1 行に潰しても通る pin にしない)。規則を足し引きしたら併せて直す。
+# §1〜§4・§10 は下の pin_row で中核規則を行全体で固定するので、ここでは 1 行以上だけを見る。
+expected_rows() {
+  case "$1" in
+    5) echo 12 ;; 6) echo 10 ;; 7) echo 10 ;; 8) echo 13 ;; 9) echo 11 ;;
+    *) echo "" ;;
+  esac
+}
 n=0
 for h in "$H1" "$H2" "$H3" "$H4" "$H5" "$H6" "$H7" "$H8" "$H9" "$H10"; do
   n=$((n + 1))
@@ -49,7 +57,10 @@ for h in "$H1" "$H2" "$H3" "$H4" "$H5" "$H6" "$H7" "$H8" "$H9" "$H10"; do
   assert "reference: 節 $n に表ヘッダがある" "1" "$(section_of "$REF" "$h" | grep -cxF '| 条件 | 期待 |')"
   # 表ヘッダと区切り行を除いた規則の行が 1 行以上ある (中身を消しても通る pin にしない)
   rows="$(section_of "$REF" "$h" | grep -E '^\| ' | grep -vxF '| 条件 | 期待 |' | grep -cv '^|[-: |]*|$' || true)"
-  if [ "${rows:-0}" -ge 1 ]; then pass "reference: 節 $n に規則の行がある"; else fail "reference: 節 $n に規則の行が無い"; fi
+  want="$(expected_rows "$n")"
+  if [ -n "$want" ]; then
+    assert "reference: 節 $n の規則の行数が $want" "$want" "$rows"
+  elif [ "${rows:-0}" -ge 1 ]; then pass "reference: 節 $n に規則の行がある"; else fail "reference: 節 $n に規則の行が無い"; fi
 done
 
 # --- reference: 中核規則を節ごとに行全体で pin ---
@@ -93,7 +104,9 @@ sed "s|^${IMPL_LINE}\$|<!-- ${IMPL_LINE} -->|" "$IMPL" > "$ctl/commented.md"
 if grep -qF -- "<!-- ${IMPL_LINE} -->" "$ctl/commented.md" && ! section_has_line "$ctl/commented.md" "$IMPL_H" "$IMPL_LINE"; then pass "control: コメント化を検出する"; else fail "control: コメント化を検出できない"; fi
 # (d) 見出し改名で節が空になる
 sed "s|^${IMPL_H}\$|### 5.0.F renamed|" "$IMPL" > "$ctl/renamed.md"
-if section_nonempty "$ctl/renamed.md" "$IMPL_H"; then fail "control: 見出し改名で節が空にならない"; else pass "control: 見出し改名は空の抽出として検出する"; fi
+if grep -qxF -- "$IMPL_H" "$ctl/renamed.md"; then fail "control: 見出し改名が適用されていない"
+elif section_nonempty "$ctl/renamed.md" "$IMPL_H"; then fail "control: 見出し改名で節が空にならない"
+else pass "control: 見出し改名は空の抽出として検出する"; fi
 
 # (e) reviewer 側: 行を削除・ファイル末尾 (節外) へ移動・語を反転した入力は通らない
 grep -vxF -- "$REV_LINE" "$REVIEWER" > "$ctl/rev-deleted.md"
@@ -115,9 +128,12 @@ num_findings() { # label file : checker の終了コード
 }
 assert "reference に番号参照が無い" "0" "$(num_findings plugins/rite/references/test-pin-mutation-principles.md "$REF")"
 assert "本テストに番号参照が無い" "0" "$(num_findings plugins/rite/hooks/tests/test-pin-mutation-principles-contract.test.sh "${BASH_SOURCE[0]}")"
-# 陽性対照: 同じ checker は番号を含む入力を拒否する (番号は組み立てて、本ファイル自身が掛からないようにする)
+# negative control: 同じ checker は番号を含む入力を拒否する (番号は組み立てて、本ファイル自身が掛からないようにする)。
+# reference と同じラベルで流し、終了コードに加えて finding 行も確かめる (クラッシュと検出を区別する)
 printf 'see #%s%s\n' 45 67 > "$ctl/num.txt"
-assert "control: checker が番号入りの入力を拒否する" "1" "$(num_findings plugins/rite/references/x.md "$ctl/num.txt")"
+REF_LABEL="plugins/rite/references/test-pin-mutation-principles.md"
+assert "control: checker が番号入りの入力を拒否する" "1" "$(num_findings "$REF_LABEL" "$ctl/num.txt")"
+assert "control: checker が finding 行を出力する" "${REF_LABEL}:1: see #$(printf '%s%s' 45 67)" "$(bash "$NUMCHK" --stdin --label "$REF_LABEL" < "$ctl/num.txt" 2>/dev/null | head -1)"
 
 if ! print_summary "$(basename "$0")" "drift: test-pin-mutation-principles.md の節構成・中核規則、または issue-implement 5.0.F / test-reviewer Step 3 の参照行が変更された可能性"; then
   exit 1
