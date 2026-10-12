@@ -6,7 +6,7 @@
 set -uo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-pat='grep +(-[A-Za-z]*c[A-Za-z]*)[^|]*\|\| *echo'
+pat='grep +(-[A-Za-z]*c[A-Za-z]*)[^|]*\|\| *echo +["'"'"']?0'
 
 # 負例: 検出器自身が二重出力形を拾えること
 neg='x=$(printf "" | grep -c . 2>/dev/null || echo 0)'
@@ -19,9 +19,9 @@ if grep -qE "$pat" <<< "$pos"; then
   echo "FAIL: detector flagged the fixed form" >&2; exit 1
 fi
 
-hits=$(grep -rnE --include='*.md' --include='*.sh' "$pat" "$root/skills" "$root/hooks/scripts" "$root/references" 2>/dev/null) || hits=""
+hits=$(grep -rnE --include='*.md' --include='*.sh' "$pat" "$root/skills" "$root/hooks/scripts" "$root/references" "$root/hooks/tests" "$root/scripts" 2>/dev/null) || hits=""
 # 注意書きとして形を引用している行（`grep -c || echo 0` をバッククォートで示す説明）は除外
-hits=$(grep -vE '`[^`]*grep +-[A-Za-z]*c[^`]*\|\| *echo[^`]*`' <<< "$hits") || hits=""
+hits=$(grep -v -e 'grep-c-echo-fallback' -e 'wiki-lint-descriptive-refs.test.sh' -E -e '`[^`]*grep +-[A-Za-z]*c[^`]*\|\| *echo[^`]*`' <<< "$hits") || hits=""
 if [ -n "$hits" ]; then
   echo "FAIL: grep -c || echo found:" >&2; echo "$hits" >&2; exit 1
 fi
