@@ -263,6 +263,16 @@ documentation file.
     each look correct while together they overwrite a reader's existing
     settings.
 
+11. **Fidelity rules catalog**: When the diff touches prose, tables, references,
+    enumerations, counts, or verification scripts, or states a universal,
+    negative, or counted claim, `Read` the matching sections of
+    `{plugin_root}/references/doc-fidelity-sot.md` (文書整合・SoT 規則). When the claim rests on an Issue
+    acceptance criterion, also `Read`
+    `{plugin_root}/skills/issue-create/references/ac-authoring.md`.
+    `{plugin_root}` is the directory derived from this file's absolute path, as
+    defined in Mutation experiments above; do not resolve these two files by
+    relative path from the working directory.
+
 Report a current-PR finding only when the changed explanation, command, citation,
 or sample fails one of these checks and the resulting contradiction,
 wrong target, lost instruction, or outcome mismatch is demonstrable. Record
@@ -279,6 +289,7 @@ mismatch from naming alone.
   For moved, promoted, or deleted prose, verify carried claims against the
   implementation, inventory where deleted items went, and compare the outcome of
   following added pointers with the text they replace, in combination.
+  For prose, tables, references, enumerations, counts, verification scripts, universal, negative, or counted claims, and claims resting on an Issue acceptance criterion, verify per item 11.
 
 ## Confidence Scoring
 
