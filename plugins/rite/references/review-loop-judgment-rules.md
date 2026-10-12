@@ -75,6 +75,7 @@ review ⇄ fix ループで過去に繰り返し発散・空転した判断を�
 | 既定の発火条件を持つ規則 | 判定材料の不在 2 層（文書不在・節不在）を覆い、契約節を持たない Issue でも fail-loud にする |
 | 推奨文が「必須ではない」と自己宣言する LOW 指摘 | bikeshedding として non-blocking 扱いにしてよい |
 | パターン統一の follow-up PR が先行 PR と byte 同型で、Issue が統一を宣言している | 経験則違反の指摘でも推奨事項へ降格する |
+| 指摘が scope 内かを判定する | 基準は cycle diff でなく PR diff とする。base に存在しない行は何 cycle 目でも scope 内。incremental review が決めるのは読み直すファイルだけで、scope ではない |
 | scope 外の同期 drift | 別 Issue 化し、後続の最小 PR で解消する |
 | 直前に merge された PR が確立した規約を後続 PR が破る | review 時に直近 merged PR の規約を参照する |
 | doc diff に未完了 marker と時制依存表現が 2 条件以上ある | MEDIUM として doc 外での追跡を推奨する |
