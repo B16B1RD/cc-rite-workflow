@@ -263,6 +263,15 @@ documentation file.
     each look correct while together they overwrite a reader's existing
     settings.
 
+11. **Propagation, single source, and claim scope**: When the diff renames,
+    moves, deletes, or re-enumerates something, or states a universal, negative,
+    or counted claim, apply the matching sections of
+    [Documentation Fidelity and SoT Rules](../references/doc-fidelity-sot.md)
+    (propagation sweep, single canonical owner, claim scope vs. implementation,
+    verification-script exit semantics, Markdown table and anchor integrity).
+    When the claim rests on an Issue acceptance criterion, also check it against
+    [AC authoring rules](../skills/issue-create/references/ac-authoring.md).
+
 Report a current-PR finding only when the changed explanation, command, citation,
 or sample fails one of these checks and the resulting contradiction,
 wrong target, lost instruction, or outcome mismatch is demonstrable. Record
@@ -279,6 +288,8 @@ mismatch from naming alone.
   For moved, promoted, or deleted prose, verify carried claims against the
   implementation, inventory where deleted items went, and compare the outcome of
   following added pointers with the text they replace, in combination.
+  For renames, enumerations, and universal or counted claims, verify every
+  site that carries the same claim against the implementation (see item 11).
 
 ## Confidence Scoring
 
