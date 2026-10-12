@@ -3,7 +3,7 @@
 #
 # テストの pin・mutation 設計原則 (references/test-pin-mutation-principles.md) の配線契約を固定する。
 # 実装側 (issue-implement 5.0.F) と reviewer 側 (test-reviewer Step 3) が同じ reference を読むこと、
-# reference が節構造と中核規則を保つことを pin する。配線は両側とも、節を切り出して
+# reference が節構造と中核規則 (§1〜§4・§10 の代表行) を保つことを pin する。配線は両側とも、節を切り出して
 # リテラルの行全体一致で検査し、ポインタ行の移動・コメント化・削除を負例 (negative control) として
 # 落ちることを確かめる (負例: 実装側は削除・節外移動・コメント化・見出し改名、reviewer 側は削除・節外移動・語の反転)。
 set -uo pipefail
@@ -17,9 +17,9 @@ REVIEWER="$PLUGIN_ROOT/agents/test-reviewer.md"
 
 assert_file_exists_or_fail "reference が存在する" "$REF" || exit 1
 
-# 見出し行 (完全一致) から次の見出し (## 以上の # を持つ行。#### も含む) 直前までを標準出力へ。見出しが無ければ空
+# 見出し行 (完全一致) から次の見出し (# が 2 個以上続く見出し。#### も含む) 直前までを標準出力へ。見出しが無ければ空
 section_of() {
-  awk -v start="$2" '$0 == start { f = 1; print; next } f && /^##+ / { exit } f { print }' "$1"
+  START="$2" awk '$0 == ENVIRON["START"] { f = 1; print; next } f && /^##+ / { exit } f { print }' "$1"
 }
 # 節の中に行全体が一致する行があるか
 section_has_line() {
@@ -69,6 +69,8 @@ IMPL_LINE='pin・mutation・fixture・stub を書くときは `{plugin_root}/ref
 REV_H="### Step 3: Edge Case and Boundary Review"
 REV_LINE='- For each new pin (grep/assert on text, counts, ordering) and each stub/fixture in the diff, apply the rule set `references/test-pin-mutation-principles.md` under the plugin root. Take the absolute path of `_reviewer-base.md` given in your prompt, replace its trailing `agents/_reviewer-base.md` with `references/test-pin-mutation-principles.md`, and Read that file in full before judging the pin (a relative path from this profile does not resolve in a user project). Require a positive control for negative asserts, whole-line anchoring for text pins, sibling/both-path symmetry, and a mutation that makes the pin fail. Classify a surviving pin with the テスト網羅性 Finding Gate in `_reviewer-base.md` (`#test-coverage-finding-gate`); do not assign a fixed severity here.'
 
+assert "issue-implement: 5.0.F の見出し行が 1 つ" "1" "$(grep -cxF -- "$IMPL_H" "$IMPL")"
+assert "test-reviewer: Step 3 の見出し行が 1 つ" "1" "$(grep -cxF -- "$REV_H" "$REVIEWER")"
 assert "issue-implement: 5.0.F 節が抽出できる" "ok" "$(section_nonempty "$IMPL" "$IMPL_H" && echo ok || echo empty)"
 assert "test-reviewer: Step 3 節が抽出できる" "ok" "$(section_nonempty "$REVIEWER" "$REV_H" && echo ok || echo empty)"
 if section_has_line "$IMPL" "$IMPL_H" "$IMPL_LINE"; then pass "issue-implement 5.0.F 節内に reference ポインタ行がある"; else fail "issue-implement 5.0.F 節内に reference ポインタ行が無い"; fi
@@ -90,7 +92,7 @@ if section_has_line "$ctl/moved.md" "$IMPL_H" "$IMPL_LINE"; then fail "control: 
 OLD="$IMPL_LINE" NEW="<!-- ${IMPL_LINE} -->" awk '$0 == ENVIRON["OLD"] { print ENVIRON["NEW"]; next } { print }' "$IMPL" > "$ctl/commented.md"
 if grep -qF -- "<!-- ${IMPL_LINE} -->" "$ctl/commented.md" && ! section_has_line "$ctl/commented.md" "$IMPL_H" "$IMPL_LINE"; then pass "control: コメント化を検出する"; else fail "control: コメント化を検出できない"; fi
 # (d) 見出し改名で節が空になる
-sed "s|^${IMPL_H}\$|### 5.0.F renamed|" "$IMPL" > "$ctl/renamed.md"
+OLD="$IMPL_H" NEW="### 5.0.F renamed" awk '$0 == ENVIRON["OLD"] { print ENVIRON["NEW"]; next } { print }' "$IMPL" > "$ctl/renamed.md"
 if grep -qxF -- "$IMPL_H" "$ctl/renamed.md"; then fail "control: 見出し改名が適用されていない"
 elif section_nonempty "$ctl/renamed.md" "$IMPL_H"; then fail "control: 見出し改名で節が空にならない"
 else pass "control: 見出し改名は空の抽出として検出する"; fi
