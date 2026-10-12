@@ -36,7 +36,9 @@ section_body() {
 
 # 節内に代表規則が実在するか。節の外に同じ語があっても通さない。
 rule_in_section() {
-  section_body "$1" "$2" | grep -qF -- "$3"
+  local body
+  body=$(section_body "$1" "$2") || return 1
+  grep -qF -- "$3" <<<"$body"
 }
 
 for entry in "${RULES[@]}"; do
