@@ -65,7 +65,7 @@ rite workflow のスキル間連携は、各 sub-skill が bash 出力に埋め�
 
 ## 設計規則
 
-sentinel / marker を新設・変更・削除する設計とレビューに適用する。条件 → 規則の順で書く。
+sentinel / marker を新設・変更・削除する設計とレビューに適用する。
 
 **定義と経路**
 

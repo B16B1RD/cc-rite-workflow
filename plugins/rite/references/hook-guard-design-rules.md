@@ -1,6 +1,6 @@
 # Hook・ガード・分類器の設計規則
 
-hooks（`hooks/*.sh`）と、コマンド文字列や diff を解析して許可・拒否を決める guard / 分類器を設計・変更・レビューするときに適用する。条件 → 規則の順で書く。sentinel / marker の規則は [Sentinel Contract](./sentinel-contract.md#設計規則)、worktree 固有の規則は [Git Worktree Patterns](./git-worktree-patterns.md#worktree-と-git-操作の規則) を参照する。
+hooks（`hooks/*.sh`）と、コマンド文字列や diff を解析して許可・拒否を決める guard / 分類器を設計・変更・レビューするときに適用する。sentinel / marker の規則は [Sentinel Contract](./sentinel-contract.md#設計規則)、worktree 固有の規則は [Git Worktree Patterns](./git-worktree-patterns.md#worktree-と-git-操作の規則) を参照する。
 
 ## 脅威モデルと fail 方向
 
