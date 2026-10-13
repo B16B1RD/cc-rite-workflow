@@ -845,9 +845,9 @@ rationale: references/rationale.md#notice-trend-and-notes
 | `max-cycles` | `fire` | `review⇄fix cycle が上限 {max_review_cycles} に到達（収束トレンドの発散も同時に検出。延長なし: {converging_reason}）` |
 | `max-cycles` | `insufficient` / `unavailable` | `review⇄fix cycle が上限 {max_review_cycles} に到達（発散判定は未実施 — {trend_reason}。延長なし: {converging_reason}）` |
 
-`{converging_reason}` は供給元 marker の値をそのままリテラル置換する。`not_descending` / `fix_introduced_findings` / `need_3_cycles` / `trend_need_3_cycles` は延長条件を満たさなかった正当な停止、`不明` / `helper_failed` / `helper_no_marker` / `fix_state_*` / `state_root_unresolved` / `trend_*`（`trend_need_3_cycles` を除く）/ `helper_no_reason` は延長を判定できなかったデータ異常なので、停止通知の末尾に「延長を判定できなかった理由は WARNING を確認」と1行添える。
+`{converging_reason}` は供給元 marker の値をそのままリテラル置換する。`not_descending` / `fix_introduced_findings` / `need_3_cycles` / `trend_need_3_cycles` は延長条件を満たさなかった正当な停止、`不明` / `helper_failed` / `helper_no_marker` / `helper_bad_verdict` / `fix_state_*` / `state_root_unresolved` / `trend_*`（`trend_need_3_cycles` を除く）/ `helper_no_reason` は延長を判定できなかったデータ異常なので、停止通知の末尾に「延長を判定できなかった理由は WARNING を確認」と1行添える。
 
-`{trend_reason}` はステップ 1 の `TREND_REASON=` marker の値をそのままリテラル置換する（`need_3_cycles` / `no_results_file` / `helper_unavailable` 等。値の一覧はステップ 1 の `TREND_REASON` 説明を参照）。
+`{trend_reason}`（ステップ 3 経由の停止ではステップ 3 の `ITERATE_STAGNATION=stop` marker の値）はステップ 1 の `TREND_REASON=` marker の値をそのままリテラル置換する（`need_3_cycles` / `no_results_file` / `helper_unavailable` 等。値の一覧はステップ 1 の `TREND_REASON` 説明を参照）。
 
 **`- blocking 推移:` 行の差し替え条件は `TREND_VERDICT` であって `TREND=` の空判定ではない。** `TREND_VERDICT` が `ok` / `fire` 以外のときは、推移行を次へ差し替える:
 

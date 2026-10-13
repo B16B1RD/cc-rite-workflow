@@ -944,10 +944,13 @@ def converging(state, marker):
         # iterate-step.sh と同じく、判定できないときは上限で止める側へ倒す（理由は stderr に残す）
         sys.stderr.write("WARNING: convergence check could not run (rc=%d); stopping at the cycle cap\n" % result.returncode)
         return False, "helper_failed"
-    found = re.search(r"^\[CONTEXT\] REVIEW_CONVERGING=(yes|no); reason=([A-Za-z0-9_]*)", result.stdout, re.M)
-    if not found:
+    found = re.search(r"^\[CONTEXT\] REVIEW_CONVERGING=([^;\n]*)(?:; reason=([A-Za-z0-9_]*))?", result.stdout, re.M)
+    if not found or not found[1]:
         sys.stderr.write("WARNING: convergence check printed no verdict; stopping at the cycle cap\n")
         return False, "helper_no_marker"
+    if found[1] not in ("yes", "no"):
+        sys.stderr.write("WARNING: convergence check printed an unexpected verdict (%s); stopping at the cycle cap\n" % found[1])
+        return False, "helper_bad_verdict"
     if not found[2]:
         sys.stderr.write("WARNING: convergence check printed no reason; stopping at the cycle cap\n")
         return False, "helper_no_reason"

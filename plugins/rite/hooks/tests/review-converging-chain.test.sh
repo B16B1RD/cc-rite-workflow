@@ -94,5 +94,12 @@ has "T-10: helper が verdict を出さなければ延長せず helper_no_marker
 printf '#!/bin/bash\necho "[CONTEXT] REVIEW_CONVERGING=yes; reason=descending_without_fix_regressions"\n' > "$STUB/review-converging.sh"
 OUT=$(run_converging)
 has "T-11: verdict が yes なら延長する" "RESULT .*True.*descending_without_fix_regressions"
+printf '#!/bin/bash\necho "[CONTEXT] REVIEW_CONVERGING=yes; reason="\n' > "$STUB/review-converging.sh"
+OUT=$(run_converging)
+has "T-12: reason が空の yes は延長せず helper_no_reason" "RESULT .*False.*helper_no_reason"
+has "T-12: WARNING を stderr に出す" "WARNING: convergence check printed no reason"
+printf '#!/bin/bash\necho "[CONTEXT] REVIEW_CONVERGING=maybe; reason=x"\n' > "$STUB/review-converging.sh"
+OUT=$(run_converging)
+has "T-13: 想定外の verdict は延長せず helper_bad_verdict" "RESULT .*False.*helper_bad_verdict"
 
 print_summary "review-converging-chain"

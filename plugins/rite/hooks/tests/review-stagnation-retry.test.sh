@@ -369,6 +369,13 @@ try:
     route = marker(f.run(['bash', str(plugin / 'scripts/iterate-step.sh'), 'stagnation-route']).stdout, 'ITERATE_STAGNATION')
     check('ITERATE_STAGNATION=stop' in route and 'TREND=1,2,3;' in route and 'TREND_VERDICT=fire' in route
           and 'CONVERGING_REASON' not in route, 'T-22: a divergence stop carries the observed trend without a cap reason:\n' + route)
+    saved = f.state_path.read_text()
+    broken = json.loads(saved)
+    broken['review_run'].pop('trend', None)
+    f.state_path.write_text(json.dumps(broken))
+    failed = f.run(['bash', str(plugin / 'scripts/iterate-step.sh'), 'stagnation-route'], ok=False)
+    check(failed.returncode != 0 and 'ERROR' in failed.stderr, 'T-22: a stop without a saved trend fails loudly:\n' + failed.stdout + failed.stderr)
+    f.state_path.write_text(saved)
     f.plan()
     retry(f)
     f.fix()
@@ -1190,7 +1197,7 @@ for label, entries, stops in [
     finally:
         f.close()
 
-# T-23b: cycle-gate が判定不能な入力を「延長しない」理由として載せる (trend 不足 / helper 失敗 / verdict 無し)
+# T-23b: cycle-gate が判定不能な入力を「延長しない」理由として載せる (trend 不足 / helper 失敗 / verdict 無し / reason 無し / 想定外 verdict)
 import shutil
 copied = Path(tempfile.mkdtemp()) / 'rite'
 shutil.copytree(plugin, copied)
