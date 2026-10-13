@@ -82,7 +82,13 @@ cp "$TEST_DIR/tail-unmeasured.json" "$TEST_DIR/root/.rite/fix-cycle-state/5.json
 OUT=$(cd "$TEST_DIR/root" && bash "$HELPER" --pr 5 --trend "9,6,3" 2>/dev/null)
 out_has "T-03g: --fix-state なしでも state root の既定パスを読む" "REVIEW_CONVERGING=yes"
 # 値の無い引数は無限ループせず rc=2 で終わる
-timeout 5 bash "$HELPER" --pr 1 --trend >/dev/null 2>&1; rc=$?
+# timeout(1) は macOS に無いので、バックグラウンド実行 + 5 秒後の kill で打ち切る (打ち切られると rc=143)
+bash "$HELPER" --pr 1 --trend >/dev/null 2>&1 &
+helper_pid=$!
+( sleep 5; kill "$helper_pid" 2>/dev/null ) &
+killer_pid=$!
+wait "$helper_pid"; rc=$?
+kill "$killer_pid" 2>/dev/null; wait "$killer_pid" 2>/dev/null
 assert "T-03h: 値の無い --trend は rc=2 (無限ループしない)" "2" "$rc"
 
 echo "=== T-04: 呼び出し側が判定を使っている ==="
