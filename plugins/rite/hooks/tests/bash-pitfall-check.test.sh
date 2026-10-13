@@ -62,6 +62,12 @@ fixture bang-ok-else 'rc=0' 'if cmd; then' '  :' 'else' '  rc=$?' 'fi'
 fixture bang-ok-or 'rc=0' 'cmd || rc=$?' 'if [ "$rc" -ne 0 ]; then' '  echo "rc=$rc"' 'fi'
 fixture bang-ok-no-status 'if ! cmd; then' '  echo "failed" >&2' '  exit 1' 'fi' 'x=$?'
 check "\$? in the then-body of if !" bang-ng 1 if-bang-rc
+fixture bang-ng-comment 'if ! cmd; then' '  # capture the status' '  rc=$?' 'fi'
+fixture bang-ng-then-line 'if ! cmd' 'then' '  rc=$?' 'fi'
+fixture bang-ok-other-first 'if ! cmd; then' '  other' '  rc=$?' 'fi'
+check "comment line between then and \$? does not disarm" bang-ng-comment 1 if-bang-rc
+check "then on its own line" bang-ng-then-line 1 if-bang-rc
+check "\$? after another command belongs to that command" bang-ok-other-first 0 ""
 check "\$? on the same line as if ! ... then" bang-ng-oneline 1 if-bang-rc
 check "status read in the else branch of a positive if" bang-ok-else 0 ""
 check "status captured with || rc=\$?" bang-ok-or 0 ""
@@ -77,24 +83,28 @@ check "mktemp and cd in separate steps" cd-ok 0 ""
 fixture sed-ng "$S -i 's/a/b/' f"
 fixture sed-ng-flag "$S -E -i 's/a/b/' f"
 fixture sed-ok-suffix "$S -i.bak 's/a/b/' f"
-fixture sed-ok-empty "$S -i '' 's/a/b/' f"
+fixture sed-ng-empty "$S -i '' 's/a/b/' f"
 fixture sed-ok-stdout "$S 's/a/b/' f > g"
 check "sed -i with an expression directly after" sed-ng 1 sed-inplace-gnu
 check "sed -E -i with an expression directly after" sed-ng-flag 1 sed-inplace-gnu
 check "sed -i.bak" sed-ok-suffix 0 ""
-check "sed -i with an empty suffix argument" sed-ok-empty 0 ""
+check "sed -i with an empty-string argument (BSD-only form)" sed-ng-empty 1 sed-inplace-gnu
 check "sed without -i" sed-ok-stdout 0 ""
 
 # --- pipestatus-subst ---------------------------------------------------------
 fixture ps-ng 'v=$(a | b)' "[ \"\${${PS}[0]}\" -eq 0 ]"
 fixture ps-ng-sameline "v=\$(a | b); [ \"\${${PS}[0]}\" -eq 0 ]"
+fixture ps-ok-ownpipe 'v=$(a | b)' "x | y; [ \"\${${PS}[0]}\" -eq 0 ]"
 fixture ps-ok 'a | b' "[ \"\${${PS}[0]}\" -eq 0 ]"
 check "PIPESTATUS read after a pipeline inside \$( )" ps-ng 1 pipestatus-subst
 check "PIPESTATUS read on the same line after \$( )" ps-ng-sameline 1 pipestatus-subst
 check "PIPESTATUS read after a plain pipeline" ps-ok 0 ""
+check "PIPESTATUS of the next line's own pipeline" ps-ok-ownpipe 0 ""
 
 # --- exclusions ---------------------------------------------------------------
 fixture ign-above "# drift-check-ignore: reviewed" "n=\$($G -c x f || echo 0)"
+fixture ign-sameline "n=\$($G -c x f || echo 0) # drift-check-ignore"
+check "drift-check-ignore on the same line" ign-sameline 0 ""
 fixture ign-comment "# n=\$($G -c x f || echo 0)"
 check "drift-check-ignore on the line above" ign-above 0 ""
 check "comment lines are skipped" ign-comment 0 ""
@@ -118,6 +128,18 @@ if [[ "$md_out" == *"ref.md:5:"* && "$md_out" != *"ref.md:1:"* ]]; then
 else
   fail "wrong line attribution — got: $md_out"
 fi
+# fences in a list item (4+ columns of indent), tilde fences, an sh info string, two blocks, a colon in the path
+printf -- '- step\n\n    ```sh\n    %s\n    ```\n' "$bad" > "$SANDBOX/plugins/rite/skills/demo/list.md"
+assert "bad form in an indented list fence is a finding (exit 1)" "1" "$(run --quiet --target plugins/rite/skills/demo/list.md)"
+printf '~~~bash\n%s\n~~~\n' "$bad" > "$SANDBOX/plugins/rite/skills/demo/tilde.md"
+assert "bad form in a tilde fence is a finding (exit 1)" "1" "$(run --quiet --target plugins/rite/skills/demo/tilde.md)"
+printf '```bash\nok=1\n```\n\ntext\n\n```bash\nok=2\n%s\n```\n' "$bad" > "$SANDBOX/plugins/rite/skills/demo/two.md"
+two_out="$(out --target plugins/rite/skills/demo/two.md)"
+[[ "$two_out" == *"two.md:9:"* ]] && pass "line number of the second block is its file line (9)" || fail "wrong line in second block — got: $two_out"
+printf '```bash\n%s\n```\n' "$bad" > "$SANDBOX/plugins/rite/skills/demo/a:b.md"
+assert "path containing a colon is scanned without a crash (exit 1)" "1" "$(run --quiet --target plugins/rite/skills/demo/a:b.md)"
+printf 'x\n' > "$SANDBOX/plugins/rite/skills/demo/other.bash"
+assert "unsupported file type exits 2" "2" "$(run --quiet --target plugins/rite/skills/demo/other.bash)"
 printf '```bash\n%s\n' "$bad" > "$SANDBOX/plugins/rite/skills/demo/unbalanced.md"
 assert "unbalanced fence exits 2 (not scanned != clean)" "2" \
   "$(run --quiet --target plugins/rite/skills/demo/unbalanced.md)"

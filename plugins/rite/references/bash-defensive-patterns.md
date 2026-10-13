@@ -316,12 +316,13 @@ Each row is a condition and the form that avoids it. Forms marked **lint** are d
 | `out=$(cmd); rc=$?` aborts at the assignment under `set -e`, so the `rc` branch is dead code (also in test code) | `rc=0; out=$(cmd) \|\| rc=$?`, or bracket the call with `set +e` / `set -e` |
 | `if ! cmd; then rc=$?` — `$?` is the negated status, always 0 (**lint**: `if-bang-rc`) | `rc=0; cmd \|\| rc=$?`, or read `$?` in the `else` of a positive `if cmd` |
 | `git diff --quiet`, `grep`, `diff` return 0 / 1 / ≥2; folding them with a negated `if` turns a real error (≥2) into the "differs / no match" branch | Capture `rc` and branch on 0, 1 and ≥2 separately |
+| `$(grep -c ... \|\| echo 0)` captures "0" twice on no match (**lint**: `grep-c-echo-fallback`; see Pattern 2) | Keep the fallback outside the substitution |
 | `grep -v ... > f \|\| true` and `grep ... \|\| true` treat no-match (1) and I/O error (≥2) alike; a destructive branch chosen on "no match" runs on an error | Capture `rc`; stop at `rc >= 2` before any destructive step. Do not wrap a `grep` whose no-match is itself the bug |
 | `local v=$(cmd)` masks the failure while top-level `v=$(cmd)` aborts; a guard written after the top-level form is dead code. "A simple assignment is exempt from `set -e`" is false for a command substitution | `local v; v=$(cmd) \|\| v=""` (symmetric), then validate `v` |
 | `v=$(cmd) \|\| v=""` overwrites a diagnostic the command already wrote to stdout (for example a parser's JSON error) | No fallback on the capture: `if v=$(cmd); then ...; else` show `v` as the reason |
 | `exit` inside a helper called as `$(helper)` stops the substitution, not the caller | After the assignment check `rc`, then emptiness, then `${v:?}`. A substitution embedded in a condition (`[ "$(cmd)" = x ]`) discards its status: assign first |
 | `[ "$x" -eq 0 ]` on a non-numeric `$x` returns 2, so a fail-closed intent falls into the `else` | Validate numeric (`[[ "$x" =~ ^[0-9]+$ ]]`) before comparing |
-| `v=$(a \| b); ... ${PIPESTATUS[0]}` — the array is set in the substitution's subshell (**lint**: `pipestatus-subst`) | `v=$(a) \|\| fallback` with parameter expansion, or capture the status inside the substitution |
+| `v=$(a \| b); ... ${PIPESTATUS[0]}` — after the assignment the array holds the substitution's own status (one element), not the stages' (**lint**: `pipestatus-subst`) | `v=$(a) \|\| fallback` with parameter expansion, or capture the status inside the substitution |
 | `v=$(fn \| tr ...)` without `pipefail` loses `fn`'s `return 1`; the script continues on the opt-out default | Declare `pipefail`, or capture `fn` first and filter the variable |
 | `set -euo pipefail` with `v=$(a \| grep x \| head)` aborts on no-match; `v=$(cmd \| jq ... 2>/dev/null)` aborts on invalid JSON and makes the later FAIL branch dead | `mapfile -t arr < <(grep x f \|\| true)` for lists; `if ! v=$(cmd \| jq ...); then <named reason>` for judged values |
 | `( subshell )` returning non-zero under `set -e` stops the script before the status is read | `rc=0; ( ... ) \|\| rc=$?` |
@@ -357,7 +358,7 @@ Each row is a condition and the form that avoids it. Forms marked **lint** are d
 | `$(cmd 2>&1)` where the helper writes a token on stdout and diagnostics on stderr: the token no longer matches any `case` arm and the sentinel is silently never emitted | Capture stdout and stderr separately and document the helper's output contract |
 | A recovery hint printed after a long diagnostic is cut by the caller's `head -5` | Put the one line a person must act on first |
 | A refactor adds `2>/dev/null` | Look for it in the diff and justify each one |
-| Discarding diagnostics with `cmd 2>/dev/null` also hides the redirect's own failure (disk full) | `{ cmd; } 2>/dev/null` when the diagnostic is truly disposable |
+| `cmd 2>/dev/null` still prints a failing redirection's own error, while `{ cmd; } 2>/dev/null` hides that too | Use the brace group only when every diagnostic, redirection errors included, is disposable; otherwise capture (previous row) |
 | A fallback hides a failure that looks like success (`git rev-parse HEAD \|\| echo unknown`) | Print a WARNING in the fallback branch |
 | A best-effort loop continues past failures | Count each failure so that "summary total == items processed" holds; pass the delegate's stderr through |
 
@@ -368,12 +369,12 @@ Each row is a condition and the form that avoids it. Forms marked **lint** are d
 | awk `exit` still runs the `END` rule; a body `print` plus an `END` fallback prints twice | Put the single `print` in `END` |
 | awk `> file` mixed with `close(file)` re-truncates on the next write | Do not `close()` a file written with `>` mid-run |
 | CRLF input: awk's default `FS` leaves the `\r`, so `NF == 0` fails on empty lines | Strip `\r` once where the input is captured |
-| `{m,n}` interval in an awk regex is ignored by mawk and the range silently widens | Alternation: `(##\|###\|####)` |
+| `{m,n}` interval in an awk regex is not supported by older mawk (before the 2020 interval support), so the match differs silently | Alternation: `(##\|###\|####)` where such an awk must work |
 | `[^#].*X` (negated class, greedy, literal) misses `X` at the line start | Filter comments first (`!/^[[:space:]]*#/`), match `X` separately; POSIX ERE has no lookahead |
 | awk `-v` and a regex: `\.` becomes any character, `\[` needs `\\[` | Pass through `ENVIRON`, or use `[.]` / `[[]` |
 | `out = out c` one byte at a time is quadratic on mawk | Decide and `printf` in place |
 | ERE `?` on a multibyte character applies to its last byte under `LC_ALL=C` | Group the character: `(値)?`. Wrap variables followed by a multibyte character in `${VAR}` (a non-UTF-8 locale otherwise reads the bytes into the name and trips `set -u`) |
-| `sed -i 'expr'` (**lint**: `sed-inplace-gnu`); `sed '20i\text'` one-liner; BRE `\?` / `\+` | `-i.bak` or temp file + `mv`; `awk 'NR==20 {...}'`; `sed -E` with `?` / `+` |
+| `sed -i` with or without an empty-string argument (**lint**: `sed-inplace-gnu`; GNU and BSD disagree on the argument form); `sed '20i\text'` one-liner; BRE `\?` / `\+` | `-i.bak` or temp file + `mv`; `awk 'NR==20 {...}'`; `sed -E` with `?` / `+` |
 | `paste -sd ' '` without an operand on BSD | `paste -sd ' ' -` |
 | `grep -oE '(^\|[^A-Za-z])D-[0-9]+'` returns the boundary character with the match | Add a stage that extracts only the token |
 | `git log --grep=12` matches `123`; a short number hides behind a longer one | Express the word boundary with several `--grep` options (OR) and re-test in the consumer |
@@ -394,7 +395,7 @@ Each row is a condition and the form that avoids it. Forms marked **lint** are d
 | Situation | Defensive form |
 |-----------|----------------|
 | `cd "$(mktemp -d)"` (**lint**: `nested-mktemp-cd`) | Create, check, then `cd` as separate steps; register the `trap` after the assignment |
-| A temp file is created before the `trap` that removes it | Register the `trap` first; where that is impossible use a scoped mini-trap and remember that `trap -` clears the other traps |
+| A temp file is created before the `trap` that removes it | Register the `trap` first; where that is impossible use a scoped mini-trap and remember that `trap - EXIT` resets the handler to the default instead of restoring an outer one |
 | A temp file handed to a downstream step and the variable emptied | Add the hand-off variable to the cleanup |
 | `mkdir -p` creates a directory in a flow | Pair it with `rmdir <dir> 2>/dev/null \|\| true` in cleanup |
 | A fixture helper called as `$(helper)` pushes onto a cleanup array | The push happens in the subshell; register in the parent shell. A function that restores `trap` via `eval` inside `$()` fires the `EXIT` trap when the subshell ends and removes the parent's fixture directory |

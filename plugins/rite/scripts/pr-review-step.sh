@@ -33,7 +33,7 @@
 #   bash pr-review-step.sh wiki-apply-check --keywords KEYWORDS
 #   bash pr-review-step.sh shared-principles
 #   bash pr-review-step.sh prose-principles --reviewer-type REVIEWER_TYPE
-#   bash pr-review-step.sh extra-references --reviewer-type REVIEWER_TYPE
+#   bash pr-review-step.sh extra-references --reviewer-type REVIEWER_TYPE --bash-diff true|false
 #   bash pr-review-step.sh spawn-at
 #   bash pr-review-step.sh rejected-ledger --owner-repo OWNER_REPO --pr PR_NUMBER
 #   bash pr-review-step.sh tmp-dir
@@ -591,6 +591,13 @@ fi
 case "$reviewer_type" in
   prompt-engineer|tech-writer) extra_relpaths="references/skill-prose-writing.md $fidelity_refs" ;;
   test) extra_relpaths="references/test-pin-mutation-principles.md $fidelity_refs" ;;
+  error-handling)
+    # bash の diff のときだけ渡す（約 30KB。bash の無いレビューでは読ませない）
+    if [ "$bash_diff" = true ]; then
+      extra_relpaths="references/bash-defensive-patterns.md $fidelity_refs"
+    else
+      extra_relpaths="$fidelity_refs"
+    fi ;;
   *) extra_relpaths="$fidelity_refs" ;;
 esac
 extra_list=""
@@ -1352,6 +1359,7 @@ base_branch=""
 selection=""
 keywords=""
 changed_paths=""
+bash_diff=""
 orig_br=""
 orig_sc=""
 orig_blh=""
@@ -1410,6 +1418,7 @@ while [ "$#" -gt 0 ]; do
     --selection) selection=$2 ;;
     --keywords) keywords=$2 ;;
     --paths) changed_paths=$2 ;;
+    --bash-diff) bash_diff=$2 ;;
     --orig-br) orig_br=$2 ;;
     --orig-sc) orig_sc=$2 ;;
     --orig-blh) orig_blh=$2 ;;
@@ -1461,6 +1470,10 @@ case "$subcommand" in
   fingerprints-load|fingerprint-check) ;;
   *) case "$pr_number" in ''|*[!0-9]*) [ -z "$pr_number" ] || usage_error "--pr must be a number: $pr_number" ;; esac ;;
 esac
+case "$bash_diff" in
+  ''|true|false) ;;
+  *) usage_error "--bash-diff must be true or false: $bash_diff" ;;
+esac
 case "$result" in
   ''|mergeable|fix-needed|ac-unverified) ;;
   *) usage_error "--result must be mergeable, fix-needed or ac-unverified: $result" ;;
@@ -1481,6 +1494,7 @@ require() {
       selection) opt=--selection ;;
       keywords) opt=--keywords ;;
       changed_paths) opt=--paths ;;
+      bash_diff) opt=--bash-diff ;;
       orig_br) opt=--orig-br ;;
       orig_sc) opt=--orig-sc ;;
       orig_blh) opt=--orig-blh ;;
@@ -1538,7 +1552,7 @@ case "$subcommand" in
   wiki-apply-check) require keywords; step_wiki_apply_check ;;
   shared-principles) step_shared_principles ;;
   prose-principles) require reviewer_type; step_prose_principles ;;
-  extra-references) require reviewer_type; step_extra_references ;;
+  extra-references) require reviewer_type bash_diff; step_extra_references ;;
   spawn-at) step_spawn_at ;;
   rejected-ledger) require pr_number owner_repo; step_rejected_ledger ;;
   tmp-dir) step_tmp_dir ;;

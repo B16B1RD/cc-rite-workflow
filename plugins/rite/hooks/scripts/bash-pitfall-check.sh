@@ -7,15 +7,15 @@
 #   grep-c-echo-fallback  a zero-fallback (echo or printf) inside a `grep -c` substitution captures "0\n0" on no match
 #   if-bang-rc            `if ! cmd; then ... $?` reads the negated status, always 0
 #   nested-mktemp-cd      `cd "$(mktemp ...)"`: a failed mktemp makes it `cd ""`, a no-op
-#   sed-inplace-gnu       `sed -i 'expr'` (no suffix argument) fails on BSD sed
-#   pipestatus-subst      `v=$(a | b)` then `${PIPESTATUS[...]}`: the array is not set outside `$( )`
+#   sed-inplace-gnu       `sed -i` without an attached suffix: GNU and BSD disagree on the argument form
+#   pipestatus-subst      `v=$(a | b)` then `${PIPESTATUS[...]}`: it holds the substitution's own status, not the stages'
 #
 # Scan scope: plugins/rite/{hooks,scripts}/**/*.sh excluding tests/ (fixtures embed the
 # patterns deliberately), and fenced code blocks of plugins/rite/**/*.md. Comment lines are
 # skipped. Exclusion marker: `drift-check-ignore` on the finding line or the line above.
 #
 # Usage: bash-pitfall-check.sh --all [--repo-root DIR] [--quiet] [--skip-if-no-target]
-#        bash-pitfall-check.sh --target FILE... [--repo-root DIR] [--quiet]
+#        bash-pitfall-check.sh --target FILE [--target FILE ...] [--repo-root DIR] [--quiet]
 # Exit: 0 clean, 1 findings, 2 invocation error or a file that could not be scanned.
 set -uo pipefail
 
@@ -53,32 +53,43 @@ if use_all:
         if skip:
             print("Total bash-pitfall findings: 0", file=sys.stderr); sys.exit(0)
         print(f"ERROR: --all requested but plugins/rite does not exist under {root}", file=sys.stderr); sys.exit(2)
+    walk_errors = []
+    def walk(top):
+        return os.walk(top, onerror=lambda e: walk_errors.append(e))
     for base in ("hooks", "scripts"):
-        for d, dirs, files in os.walk(os.path.join(plugin, base)):
+        if not os.path.isdir(os.path.join(plugin, base)): continue
+        for d, dirs, files in walk(os.path.join(plugin, base)):
             dirs[:] = sorted(x for x in dirs if x != "tests")
             targets += [os.path.relpath(os.path.join(d, f), root) for f in sorted(files) if f.endswith(".sh")]
-    for d, dirs, files in os.walk(plugin):
+    for d, dirs, files in walk(plugin):
         dirs.sort()
         targets += [os.path.relpath(os.path.join(d, f), root) for f in sorted(files) if f.endswith(".md")]
+    for e in walk_errors:
+        print(f"WARNING: cannot list {e.filename}: {e.strerror} — not scanned", file=sys.stderr)
 
 # `tok` = one shell word fragment of a grep invocation (no `;` `)` `|` unless quoted)
 tok = r"""(?:[^|);'"]|'[^']*'|"[^"]*")"""
 GREP_C = re.compile(r"grep(?: +%s*)? +(?:-[A-Za-z]*c[A-Za-z]*|--count) %s*\|\| *(?:\{ *)?(?:echo|printf) +[\"']?0" % (tok, tok))
 MKTEMP_CD = re.compile(r"""\bcd\s+(?:--\s+)?["']?\$\(\s*mktemp\b""")
-SED_I = re.compile(r"""\bsed\s+(?:-[A-Za-z]+\s+)*(?:-i|--in-place)\s+(?!'')(?!"")\S""")
+SED_I = re.compile(r"""\bsed\s+(?:-[A-Za-z]+\s+)*(?:-i|--in-place)(?![.\w=])""")
 IF_BANG = re.compile(r"^\s*(?:if|elif)\s+!\s")
 BLOCK_END = re.compile(r"^\s*(?:fi|else|elif|if)\b")
 PIPE_SUBST = re.compile(r"=\$\([^)]*\|")
 IGNORE = "drift-check-ignore"
 
-findings = []; unscannable = 0
+findings = []; unscannable = len(walk_errors) if use_all else 0
 
-def scan(rel, lines):
-    prev = ""; bang_armed = 0
-    for n, line in enumerate(lines, 1):
-        stripped = line.strip()
-        if stripped.startswith("#"):
-            prev = line; bang_armed = 0; continue
+BANG_MSG = "`$?` read as the first statement of an `if !` body is the negated status (always 0); use `cmd || rc=$?` with `rc=0` before, or read it in the `else` of a positive `if cmd`"
+
+def first_segment(text):
+    return re.split(r";|&&|\|\|", text, maxsplit=1)[0]
+
+def scan(rel, numbered):
+    """numbered: list of (line number, text). Reports the original line numbers."""
+    prev = ""; bang = None   # bang: None, or ("then", budget) / ("body", 0)
+    for n, line in numbered:
+        if line.strip().startswith("#"):
+            prev = line; continue
         marked = IGNORE in line or IGNORE in prev
         def add(rule, msg):
             if not marked: findings.append(f"[bash-pitfall] {rel}:{n}: {rule}: {msg}")
@@ -87,53 +98,63 @@ def scan(rel, lines):
         if MKTEMP_CD.search(line):
             add("nested-mktemp-cd", "a failed mktemp turns this into `cd \"\"` (no-op); create the directory in its own step and stop on failure")
         if SED_I.search(line):
-            add("sed-inplace-gnu", "in-place sed without a suffix argument is GNU-only (BSD sed needs one). Write to a temp file and `mv`, or use `-i.bak`")
-        if (PIPE_SUBST.search(line) and re.search(r"\)[^)]*PIPESTATUS", line)) or ("PIPESTATUS" in line and PIPE_SUBST.search(prev)):
-            add("pipestatus-subst", "PIPESTATUS set inside `$( )` is not visible to the parent shell; capture status inside the substitution or split the pipeline")
-        # if-bang-rc: look at the then-body of `if ! cmd; then`
+            add("sed-inplace-gnu", "`-i` without an attached suffix is accepted by only one of GNU / BSD sed (an empty-string argument is BSD-only). Write to a temp file and `mv`, or use `-i.bak`")
+        before_ps = line.split("PIPESTATUS", 1)[0]
+        if ("PIPESTATUS" in line and ((PIPE_SUBST.search(before_ps) and ")" in before_ps) or (PIPE_SUBST.search(prev) and "|" not in before_ps))):
+            add("pipestatus-subst", "PIPESTATUS read after `$( )` holds the substitution's own status, not the pipeline stages'; capture the status inside the substitution or split the pipeline")
+        # if-bang-rc: only the first statement of the then-body is judged
         if IF_BANG.match(line):
-            bang_armed = 4
-            after = line.split("then", 1)[1] if re.search(r"\bthen\b", line) else ""
-            if "$?" in after:
-                add("if-bang-rc", "`$?` after `if !` is the negated status (always 0); use `cmd || rc=$?` with `rc=0` before, or `if cmd; then ... else rc=$?`")
-        elif bang_armed:
-            if BLOCK_END.match(line):
-                bang_armed = 0
+            m = re.search(r"\bthen\b(.*)$", line)
+            if m and m.group(1).strip() and not m.group(1).strip().startswith("#"):
+                if "$?" in first_segment(m.group(1)): add("if-bang-rc", BANG_MSG)
+                bang = None
             else:
-                bang_armed -= 1
-                if "$?" in line:
-                    add("if-bang-rc", "`$?` after `if !` is the negated status (always 0); use `cmd || rc=$?` with `rc=0` before, or `if cmd; then ... else rc=$?`")
+                bang = ("then", 3) if not m else ("body", 0)
+        elif bang is not None and line.strip():
+            body = line.strip()
+            if bang[0] == "then":
+                m = re.match(r"then\b(.*)$", body)
+                if m:
+                    rest = m.group(1).strip()
+                    if rest and not rest.startswith("#"):
+                        if "$?" in first_segment(rest): add("if-bang-rc", BANG_MSG)
+                        bang = None
+                    else:
+                        bang = ("body", 0)
+                else:
+                    bang = ("then", bang[1] - 1) if bang[1] > 1 else None
+            else:
+                if "$?" in first_segment(body): add("if-bang-rc", BANG_MSG)
+                bang = None
         prev = line
 
-fence_open = re.compile(r"^( {0,3})(`{3,}|~{3,})(.*)$")
+fence_open = re.compile(r"^(\s*)(`{3,}|~{3,})(.*)$")
 for rel in targets:
     path = os.path.join(root, rel)
+    if not rel.endswith((".sh", ".md")):
+        print(f"WARNING: unsupported file type, not scanned: {rel}", file=sys.stderr); unscannable += 1; continue
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
             text = fh.read().split("\n")
     except OSError as e:
         print(f"WARNING: cannot read {rel}: {e} — not scanned", file=sys.stderr); unscannable += 1; continue
     if rel.endswith(".sh"):
-        scan(rel, text); continue
-    code = []; in_fence = False; ch = ""; ln = 0; blocks = []
+        scan(rel, list(enumerate(text, 1))); continue
+    in_fence = False; ch = ""; ln = 0; open_indent = 0; blocks = []
     for n, line in enumerate(text, 1):
         m = fence_open.match(line)
         if m:
-            run = m.group(2)
+            run = m.group(2); indent = len(m.group(1).expandtabs(4))
             if not in_fence:
-                in_fence = True; ch = run[0]; ln = len(run); blocks.append([]); continue
-            if run[0] == ch and len(run) >= ln and m.group(3).strip() == "":
+                in_fence = True; ch = run[0]; ln = len(run); open_indent = indent; blocks.append([]); continue
+            # a closing fence has no info string, is at most 3 columns deeper than its opener, same character, at least as long
+            if run[0] == ch and len(run) >= ln and m.group(3).strip() == "" and indent <= open_indent + 3:
                 in_fence = False; continue
         if in_fence: blocks[-1].append((n, line))
     if in_fence:
         print(f"WARNING: unbalanced code fence in {rel} — file not scanned", file=sys.stderr); unscannable += 1; continue
     for block in blocks:
-        # keep original line numbers by scanning per block and rewriting the reported number
-        before = len(findings)
-        scan(rel, [l for _, l in block])
-        for k in range(before, len(findings)):
-            m = re.match(r"(\[bash-pitfall\] [^:]+:)(\d+)(:.*)", findings[k])
-            findings[k] = f"{m.group(1)}{block[int(m.group(2)) - 1][0]}{m.group(3)}"
+        scan(rel, block)
 
 for f in findings: print(f)
 if not quiet: print(f"Total bash-pitfall findings: {len(findings)}", file=sys.stderr)

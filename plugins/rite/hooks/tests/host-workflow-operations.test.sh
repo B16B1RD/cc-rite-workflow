@@ -355,8 +355,8 @@ class WorkflowContracts(unittest.TestCase):
         # Additional reading: one placeholder, a per-reviewer path list, and the same declaration check.
         extra_code = "\n".join(line[1:] if line.startswith(" ") else line for line in blocks[2].splitlines())
 
-        def run_extra(plugin_root, reviewer_type):
-            code = extra_code.replace("{plugin_root}", str(plugin_root)).replace("{reviewer_type}", reviewer_type)
+        def run_extra(plugin_root, reviewer_type, bash_diff="false"):
+            code = extra_code.replace("{plugin_root}", str(plugin_root)).replace("{reviewer_type}", reviewer_type).replace("{bash_diff}", bash_diff)
             return subprocess.run(["bash", "-c", code], cwd=str(self.fixture), capture_output=True, text=True, timeout=20)
 
         fidelity = ["references/doc-fidelity-sot.md", "skills/issue-create/references/ac-authoring.md"]
@@ -371,6 +371,17 @@ class WorkflowContracts(unittest.TestCase):
             result = run_extra(plugin, reviewer_type)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout.strip(), "[CONTEXT] ADDITIONAL_REVIEWER_REFERENCES=" + "; ".join(str(plugin / rel) for rel in rels))
+        # The bash rules reach error-handling only for a bash diff; no other reviewer or diff gets them.
+        bash_ref = "references/bash-defensive-patterns.md"
+        result = run_extra(plugin, "error-handling", "true")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "[CONTEXT] ADDITIONAL_REVIEWER_REFERENCES=" + "; ".join(str(plugin / rel) for rel in [bash_ref] + fidelity))
+        for reviewer_type in ["security", "test", "devops"]:
+            result = run_extra(plugin, reviewer_type, "true")
+            self.assertNotIn(bash_ref, result.stdout, reviewer_type)
+        result = run_extra(plugin, "error-handling", "maybe")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "")
         # Every selectable reviewer type is covered, and a mistyped one stops instead of silently getting only the shared fidelity list.
         registry = sorted(path.name[:-len("-reviewer.md")] for path in (plugin / "agents").glob("*-reviewer.md"))
         self.assertEqual(registry, sorted(expected_extra))
@@ -462,7 +473,7 @@ class WorkflowContracts(unittest.TestCase):
             self.assertIn(sentence, load_part)
         pr_review_lines = pr_review.splitlines()
         step5 = next(line for line in pr_review_lines if line.startswith("5. **追加読取元を確定する**"))
-        self.assertTrue(step5.endswith("対応表は helper が持つ（文書整合の規則は全 reviewer、固有の規則は prompt-engineer / tech-writer / test）。named / 独立子とも同じ全文読取義務を渡す。"))
+        self.assertTrue(step5.endswith("対応表は helper が持つ（文書整合の規則は全 reviewer、固有の規則は prompt-engineer / tech-writer / test、error-handling は bash を含む diff に限る）。`{bash_diff}` は、変更ファイルに `.sh` / `.bash` がある、または差分の追加行に bash / sh の fenced block があれば `true`、それ以外は `false`。named / 独立子とも同じ全文読取義務を渡す。"))
         self.assertNotIn("のときだけ", step5)
         dispatch = next(line for line in pr_review_lines if line.startswith("**並列（MUST）**"))
         self.assertTrue(dispatch.endswith("tech-writer には `{prose_reviewer_principles}` も渡す。全 reviewer に `{additional_reviewer_references}` も渡す。"))
