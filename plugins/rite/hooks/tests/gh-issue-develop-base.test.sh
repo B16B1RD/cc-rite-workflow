@@ -49,7 +49,7 @@ if scan_out=$(scan_dir "$PLUGIN_ROOT"); then
     fail "TC-1 gh issue develop が 1 行も検出されない (走査対象の誤りの可能性)"
   fi
 else
-  fail "TC-1 走査 (grep) が rc>=2 で失敗"
+  fail "TC-1 走査に失敗 (rc>=2)"
 fi
 
 # TC-2: 全ての gh issue develop 記述が --base を伴う（走査が成功したときのみ判定）
@@ -63,11 +63,11 @@ $violations"
   fi
 fi
 
-# TC-2b: 復旧案内 (recover スキル) の gh issue develop が走査対象に含まれる
+# TC-2b: 復旧案内 (recover スキルの Branch 不在の行) の gh issue develop がヒットに含まれる
 if [ "$scan_ok" -eq 1 ]; then
   case "$scan_out" in
-    *skills/recover/SKILL.md*) pass "TC-2b recover スキルの gh issue develop 記述を検出" ;;
-    *) fail "TC-2b recover スキルの gh issue develop 記述が検出されない" ;;
+    *skills/recover/SKILL.md:*"Branch 不在"*gh*issue*develop*) pass "TC-2b recover スキルの Branch 不在の行を検出" ;;
+    *) fail "TC-2b recover スキルの Branch 不在の行 (gh issue develop) が検出されない" ;;
   esac
 fi
 
@@ -76,21 +76,23 @@ fixture=$(mktemp -d)
 trap 'rm -rf "$fixture"' EXIT
 printf '%s\n' 'run gh issue develop 1 -R o/r' 'run gh issue develop 1 -R o/r --base develop' > "$fixture/sample.md"
 if ! fixture_out=$(scan_dir "$fixture"); then
-  fail "TC-3 fixture の走査が rc>=2 で失敗"
-  fixture_out=""
-fi
-fixture_violations=$(printf '%s' "$fixture_out" | filter_violations)
-if [ "$(printf '%s' "$fixture_violations" | grep -c .)" -eq 1 ] && [ "${fixture_violations#*:1:}" = "run gh issue develop 1 -R o/r" ]; then
-  pass "TC-3 fixture の --base なし行のみを違反として検出"
+  fail "TC-3 fixture の走査に失敗"
 else
-  fail "TC-3 検出処理が fixture で期待どおりに動作しない: $fixture_violations"
+  fixture_violations=$(printf '%s' "$fixture_out" | filter_violations)
+  if [ "$(printf '%s' "$fixture_violations" | grep -c .)" -eq 1 ] && [ "${fixture_violations#*:1:}" = "run gh issue develop 1 -R o/r" ]; then
+    pass "TC-3 fixture の --base なし行のみを違反として検出"
+  else
+    fail "TC-3 検出処理が fixture で期待どおりに動作しない: $fixture_violations"
+  fi
 fi
 
-# TC-4: ディレクトリでないパスの走査は 2 を返す
-if scan_dir "$fixture/missing" >/dev/null 2>&1; then
-  fail "TC-4 ディレクトリでないパスの走査が成功扱いになった"
+# TC-4: ディレクトリでないパスの走査は rc=2 を返す
+rc=0
+scan_dir "$fixture/missing" >/dev/null 2>&1 || rc=$?
+if [ "$rc" -eq 2 ]; then
+  pass "TC-4 ディレクトリでないパスの走査が rc=2 を返す"
 else
-  pass "TC-4 ディレクトリでないパスの走査を 2 で返す"
+  fail "TC-4 ディレクトリでないパスの走査の rc が 2 でない (rc=$rc)"
 fi
 
 print_summary "gh-issue-develop-base.test.sh"
