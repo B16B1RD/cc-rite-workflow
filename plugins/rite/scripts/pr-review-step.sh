@@ -593,13 +593,25 @@ case "$reviewer_type" in
   test) extra_relpaths="references/test-pin-mutation-principles.md $fidelity_refs" ;;
   error-handling)
     # 変更ファイルが bash を含むときだけ渡す（約 30KB。bash の無いレビューでは読ませない）。
-    # 判定は file 単位: .sh / .bash の変更、または bash / sh の fenced block を持つ .md の変更
+    # 判定は file 単位: .sh / .bash の変更、または bash / sh / shell の fenced block を持つ .md の変更
+    # 入力はカンマ区切りの 1 行。改行・空要素・前後の空白は変換ミスなので、黙って false にせず止める
+    case "$changed_paths" in
+      *$'\n'*|,*|*,|*,,*|' '*|*' '|*', '*|*' ,'*) usage_error "--paths must be one comma-separated line without empty or space-padded elements: $changed_paths" ;;
+    esac
     bash_changed=false
     IFS=, read -ra changed_list <<< "$changed_paths"
     for changed in "${changed_list[@]}"; do
       case "$changed" in
         *.sh|*.bash) bash_changed=true ;;
-        *.md) if [ -f "$changed" ] && grep -Eq '^[[:space:]]*(`{3,}|~{3,})[[:space:]]*(bash|sh|shell)([[:space:]]|$)' "$changed"; then bash_changed=true; fi ;;
+        *.md)
+          [ -f "$changed" ] || continue   # 削除された .md は fence を持てない
+          fence_rc=0
+          grep -Eq '^[[:space:]]*(`{3,}|~{3,})[[:space:]]*(bash|sh|shell)([[:space:]]|$)' "$changed" || fence_rc=$?
+          case "$fence_rc" in
+            0) bash_changed=true ;;
+            1) ;;
+            *) echo "[review:error] cannot scan changed file for bash fences: $changed" >&2; exit 1 ;;
+          esac ;;
       esac
     done
     if [ "$bash_changed" = true ]; then

@@ -21,7 +21,10 @@ if [ ! -f "$SCRIPT" ]; then
 fi
 
 SANDBOX="$(make_plain_sandbox)"
-cleanup() { [ -n "${SANDBOX:-}" ] && rm -rf "$SANDBOX"; }
+cleanup() {
+  [ -z "${LOCKED:-}" ] || { chmod -R 755 "$LOCKED" 2>/dev/null; rm -rf "$LOCKED"; }
+  [ -z "${SANDBOX:-}" ] || rm -rf "$SANDBOX"
+}
 trap 'rc=$?; cleanup; exit $rc' EXIT
 trap 'cleanup; exit 130' INT
 trap 'cleanup; exit 143' TERM
@@ -143,6 +146,8 @@ assert "path containing a colon is scanned without a crash (exit 1)" "1" "$(run 
 # an indented fence-looking line inside a top-level block (4+ columns deeper) does not close it; one with an info string does not either
 printf '```bash\nawk %s\n    ```\n%s\n```\n' "'" "$bad" > "$SANDBOX/plugins/rite/skills/demo/deep-literal.md"
 assert "indented fence literal does not close the block (exit 1)" "1" "$(run --quiet --target plugins/rite/skills/demo/deep-literal.md)"
+printf '```bash\nok=1\n   ```\n%s\n' "$bad" > "$SANDBOX/plugins/rite/skills/demo/close-3.md"
+assert "a closing fence exactly three columns deep closes the block (exit 0)" "0" "$(run --quiet --target plugins/rite/skills/demo/close-3.md)"
 printf '```bash\n```json\n%s\n```\n' "$bad" > "$SANDBOX/plugins/rite/skills/demo/inner-info.md"
 assert "inner fence with an info string does not close the block (exit 1)" "1" "$(run --quiet --target plugins/rite/skills/demo/inner-info.md)"
 printf 'x\n' > "$SANDBOX/plugins/rite/skills/demo/other.bash"
@@ -163,7 +168,7 @@ else
   mkdir -p "$LOCKED/plugins/rite/hooks/locked" "$LOCKED/plugins/rite/scripts"; chmod 000 "$LOCKED/plugins/rite/hooks/locked"
   assert "unlistable directory exits 2 (not scanned != clean)" "2" \
     "$(bash "$SCRIPT" --repo-root "$LOCKED" --quiet --all >/dev/null 2>&1; echo $?)"
-  chmod 755 "$LOCKED/plugins/rite/hooks/locked"; rm -rf "$LOCKED"
+  chmod 755 "$LOCKED/plugins/rite/hooks/locked"; rm -rf "$LOCKED"; LOCKED=""
 fi
 EMPTY="$(make_plain_sandbox)"
 assert "--all without plugins/rite exits 2" "2" "$(bash "$SCRIPT" --repo-root "$EMPTY" --quiet --all >/dev/null 2>&1; echo $?)"

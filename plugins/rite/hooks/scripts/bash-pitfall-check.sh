@@ -157,6 +157,6 @@ for rel in targets:
 
 for f in findings: print(f)
 if not quiet: print(f"Total bash-pitfall findings: {len(findings)}", file=sys.stderr)
-if unscannable: print(f"ERROR: {unscannable} file(s) could not be scanned — this run is not a clean bill", file=sys.stderr)
+if unscannable: print(f"ERROR: {unscannable} target(s) (file or directory) could not be scanned — this run is not a clean bill", file=sys.stderr)
 sys.exit(1 if findings else (2 if unscannable else 0))
 PY
