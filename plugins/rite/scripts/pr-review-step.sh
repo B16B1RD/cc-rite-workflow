@@ -608,7 +608,7 @@ case "$reviewer_type" in
       # （形の揺れは判定を食い違わせるので先に拒否する。.. は repo の外を読み、絶対パスは $repo_top//abs を読み、
       #   // や /./ は HEAD の tree 参照と rev-list の pathspec で正規化の有無が違う）
       case "$changed" in
-        /*|.|./*|..|../*|*/.|*/..|*/./*|*/../*|*//*|*/) usage_error "--paths elements must be normalized repository-root-relative paths (no leading '/', '.', '..' segments, '//' or trailing '/'): $changed" ;;
+        /*|.|./*|..|../*|*/.|*/..|*/./*|*/../*|*//*|*/) usage_error "--paths elements must be normalized repository-root-relative paths (no leading '/', no '.' or '..' segments, no '//', no trailing '/'): $changed" ;;
       esac
       if [ ! -e "$repo_top/$changed" ]; then
         if git -C "$repo_top" rev-parse --verify -q "HEAD:$changed" >/dev/null 2>&1; then
