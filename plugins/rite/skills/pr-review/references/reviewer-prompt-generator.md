@@ -57,7 +57,7 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 {prose_reviewer_principles}
 
 ## 追加で読む規則
-<!-- helper が絶対パスを返さない場合は placeholder とこのセクション全体を省略する。light / incremental / verification でも通常テンプレートの本読取義務を保持する。 -->
+<!-- 全 reviewer に渡す（helper が絶対パスを返さないときは起動前に停止する）。light / incremental / verification でも通常テンプレートの本読取義務を保持する。 -->
 {additional_reviewer_references}
 
 ## Doc-Heavy PR Mode (Conditional — 適用時のみ非空)

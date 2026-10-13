@@ -372,8 +372,8 @@ class WorkflowContracts(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout.strip(), "[CONTEXT] ADDITIONAL_REVIEWER_REFERENCES=" + "; ".join(str(plugin / rel) for rel in rels))
         # Every selectable reviewer type is covered, and a mistyped one stops instead of reading as "no extra reading".
-        registry = re.findall(r"`([a-z-]+)-reviewer\.md`", pr_review)
-        self.assertEqual(sorted(set(registry)), sorted(expected_extra))
+        registry = sorted(path.name[:-len("-reviewer.md")] for path in (plugin / "agents").glob("*-reviewer.md"))
+        self.assertEqual(registry, sorted(expected_extra))
         result = run_extra(plugin, "tech-writter")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("[review:error]", result.stderr)
@@ -382,12 +382,14 @@ class WorkflowContracts(unittest.TestCase):
         for reviewer_type in ["test", "tech-writer"]:
             rels = expected_extra[reviewer_type]
             for broken_index in range(len(rels)):
-                for kind in ["missing", "empty", "directory"] + ([] if os.geteuid() == 0 else ["unreadable"]):
+                for kind in ["missing", "empty", "directory", "unreadable"]:
                     fixture_root = self.fixture / ("extra-%s-%d-%s" % (reviewer_type, broken_index, kind))
                     (fixture_root / "scripts").mkdir(parents=True)
                     (fixture_root / "hooks").mkdir(parents=True)
                     shutil.copy2(plugin / "scripts/pr-review-step.sh", fixture_root / "scripts/pr-review-step.sh")
                     shutil.copy2(plugin / "hooks/control-char-neutralize.sh", fixture_root / "hooks/control-char-neutralize.sh")
+                    (fixture_root / "agents").mkdir()
+                    (fixture_root / "agents" / (reviewer_type + "-reviewer.md")).write_text("profile\n", encoding="utf-8")
                     for index, rel in enumerate(rels):
                         target = fixture_root / rel
                         target.parent.mkdir(parents=True, exist_ok=True)
@@ -401,6 +403,8 @@ class WorkflowContracts(unittest.TestCase):
                             target.write_text("reference\n", encoding="utf-8")
                             target.chmod(0)
                     label = "%s %s %s" % (reviewer_type, rels[broken_index], kind)
+                    if kind == "unreadable" and os.access(fixture_root / rels[broken_index], os.R_OK):
+                        continue  # running as a user that bypasses file modes (root): the case cannot be set up
                     result = run_extra(fixture_root, reviewer_type)
                     self.assertNotEqual(result.returncode, 0, label)
                     self.assertIn("[review:error]", result.stderr, label)
@@ -411,6 +415,8 @@ class WorkflowContracts(unittest.TestCase):
             (complete / "hooks").mkdir(parents=True)
             shutil.copy2(plugin / "scripts/pr-review-step.sh", complete / "scripts/pr-review-step.sh")
             shutil.copy2(plugin / "hooks/control-char-neutralize.sh", complete / "hooks/control-char-neutralize.sh")
+            (complete / "agents").mkdir()
+            (complete / "agents" / (reviewer_type + "-reviewer.md")).write_text("profile\n", encoding="utf-8")
             for rel in rels:
                 (complete / rel).parent.mkdir(parents=True, exist_ok=True)
                 (complete / rel).write_text("reference\n", encoding="utf-8")
@@ -418,12 +424,18 @@ class WorkflowContracts(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("ADDITIONAL_REVIEWER_REFERENCES=", result.stdout)
         extra_row = next(line for line in pr_review.splitlines() if line.startswith("| `{additional_reviewer_references}` |"))
-        for clause in ["全文読む", "読めなければ", "`読取完了:`", "; ", "セクションごと省略", "通常・light・incremental・verification", "全文 inline しない"]:
+        for clause in ["**全 reviewer**:", "全文読む", "読めなければ", "`読取完了:`", "; ", "出力が無いときは step 5 で停止しており、空文字列で起動しない", "通常・light・incremental・verification", "全文 inline しない"]:
             self.assertIn(clause, extra_row)
+        for omitted in ["出力がある reviewer だけ", "セクションごと省略", "追加読取がある reviewer"]:
+            self.assertNotIn(omitted, extra_row)
         self.assertEqual(prompt.count("{additional_reviewer_references}"), 1)
         extra_section = re.search(r"(?ms)^## 追加で読む規則.*?(?=^## )", prompt).group()
+        extra_section_text = extra_section + load_part + entry_part
+        for omitted in ["出力がある reviewer だけ", "セクション全体を省略", "追加読取がある reviewer", "追加読取がない reviewer"]:
+            self.assertNotIn(omitted, extra_section_text)
         self.assertIn("{additional_reviewer_references}", extra_section)
-        self.assertIn("セクション全体を省略", extra_section)
+        self.assertIn("全 reviewer に渡す（helper が絶対パスを返さないときは起動前に停止する）", extra_section)
+        self.assertNotIn("セクション全体を省略", extra_section)
         self.assertIn("追加読取元を確定する", load_part)
         self.assertIn("ADDITIONAL_REVIEWER_REFERENCES=", load_part)
         self.assertIn("extra-references", load_part)
@@ -432,8 +444,18 @@ class WorkflowContracts(unittest.TestCase):
         for token in ["{shared_reviewer_principles}", "{prose_reviewer_principles}", "{additional_reviewer_references}", "every missing path"]:
             self.assertIn(token, retry_row)
         for clause in ["全 reviewer は、`pr-review-step.sh extra-references` が返す絶対パス",
-                       "渡した全パスを同じ行へ申告する", "申告しない、または 1 件でも欠けるときは未読とみなす"]:
+                       "渡した全パスを同じ行へ申告する", "申告行が無い、または 1 件でも欠ける raw 出力は未読とみなし"]:
             self.assertIn(clause, handoff_part)
+        self.assertNotIn("申告しない、または", handoff_part)
+        self.assertNotIn("その 1 パスの申告を同じ規則で確認する", handoff_part)
+        for sentence in ["5. **追加読取元を確定する**: 全 reviewer で次を実行し、`ADDITIONAL_REVIEWER_REFERENCES=` の絶対パス列（`; ` 区切り）を保持する。出力が無い、または非ゼロなら `[review:error]` で停止し、名簿を減らさない。",
+                         "named / 独立子とも同じ全文読取義務を渡す。"]:
+            self.assertIn(sentence, load_part)
+        self.assertIn("全 reviewer に `{additional_reviewer_references}` も渡す。", pr_review)
+        self.assertIn("と、全 reviewer の `{additional_reviewer_references}` も named 経路と同じ絶対パス・全文読取義務・先頭行の申告で渡す。", entry_part)
+        retry_input = next(line for line in pr_review.splitlines() if line.startswith("- 入力データ (`{previous_findings_table}`"))
+        for token in ["{shared_reviewer_principles}", "{prose_reviewer_principles}", "{additional_reviewer_references}"]:
+            self.assertIn(token, retry_input)
         # Profiles point at the supplied section; no relative or borrowed plugin-root path to these references remains.
         names = ["skill-prose-writing.md", "doc-fidelity-sot.md", "ac-authoring.md", "test-pin-mutation-principles.md"]
         for profile_path in sorted((plugin / "agents").glob("*.md")):
@@ -441,12 +463,15 @@ class WorkflowContracts(unittest.TestCase):
             for name in names:
                 self.assertNotIn(name, profile_text, profile_path.name + " " + name)
         base_text = (plugin / "agents/_reviewer-base.md").read_text(encoding="utf-8")
-        item11 = re.search(r"(?ms)^11\. \*\*Fidelity rules catalog\*\*.*?(?=^Report a current-PR finding)", base_text).group()
+        item11 = re.search(r"(?ms)^11\. \*\*Fidelity rules catalog\*\*.*?(?=^12\. |^Report a current-PR finding)", base_text).group()
         self.assertIn("追加で読む規則", item11)
         self.assertIn("report that and stop", item11)
         self.assertNotIn("{plugin_root}", item11)
+        self.assertIn("stop the whole review (not just this item)", item11)
+        self.assertNotIn("skips this item", item11)
         test_text = (plugin / "agents/test-reviewer.md").read_text(encoding="utf-8")
         self.assertIn("追加で読む規則", test_text)
+        self.assertIn("any supplied file cannot be read", test_text)
         self.assertNotIn("trailing `agents/_reviewer-base.md`", test_text)
         DECL = {"agents/prompt-engineer-reviewer.md": "first `読取完了:` line",
                 "agents/tech-writer-reviewer.md": "add every path to the same `読取完了:` line"}
