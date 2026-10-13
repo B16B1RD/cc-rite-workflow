@@ -1133,5 +1133,40 @@ try:
 finally:
     f.close()
 
+# T-23: at the cycle cap iterate's cycle gate lets a descending run with no fix-introduced findings
+# go on, and stops every other run on the cap.
+for label, entries, stops in [
+        ('measured clean', [dict(findings_total=1, findings_new_from_fix=0)], False),
+        ('fix-introduced findings', [dict(findings_total=1, findings_new_from_fix=2)], True),
+        ('unmeasured initial value', [dict(findings_new_from_fix=0)], True),
+        ('no fix-cycle-state', None, True)]:
+    f = Fixture()
+    try:
+        (f.root / 'rite-config.yml').write_text('safety:\n  max_review_cycles: 3\n')
+        (f.root / '.git/info/exclude').write_text('.rite/\nrite-config.yml\n')
+        for roots in (('a', 'b', 'c'), ('a', 'b')):
+            f.cycle(roots=roots)
+            f.fix()
+            time.sleep(1.1)
+        if entries is not None:
+            (f.root / '.rite/fix-cycle-state').mkdir(parents=True, exist_ok=True)
+            dump(f.root / '.rite/fix-cycle-state/71.json', dict(cycles=entries))
+        f.cycle(roots=('a',))
+        (f.root / 'source.txt').write_text('moved head\n')
+        f.commit()
+        output = gate(f)
+        cb = marker(output, 'ITERATE_CB')
+        if stops:
+            check('ITERATE_CB=fire;' in cb and 'CB_REASON=max-cycles' in cb, 'T-23: ' + label + ' stops on the cap:\n' + output)
+            check('CONVERGING_REASON=' + {'fix-introduced findings': 'fix_introduced_findings',
+                                          'unmeasured initial value': 'fix_state_unmeasured',
+                                          'no fix-cycle-state': 'fix_state_missing'}[label] in cb,
+                  'T-23: ' + label + ' reports why it was not extended:\n' + cb)
+        else:
+            check(cb.startswith('[CONTEXT] ITERATE_CB=ok;') and 'TREND=3,2,1;' in cb,
+                  'T-23: ' + label + ' is not stopped by the cap:\n' + output)
+    finally:
+        f.close()
+
 print('PASS: review stagnation retry: ' + str(stagnation_fixture.checks) + ' assertions; real clocks, receipts, repairs and retained stops')
 PYTEST

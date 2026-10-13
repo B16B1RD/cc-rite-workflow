@@ -138,7 +138,7 @@ case "$cur_phase" in
   review|fix) cb_mode_init=resume ;;
   *)          cb_mode_init=fresh ;;
 esac
-# **この起動でステップ 1 が review を回さずに fire するか**（上限以上なら fire）。ステップ 6.2 の
+# **この起動でステップ 1 が review を回さずに fire しうるか**（上限以上なら fire しうる。収束中の run はステップ 1 の判定で止まらない）。ステップ 6.2 の
 # 注意行 (a) の付加条件をこの述語が決める。ここでは reset 試行**前**の値で暫定的に立て、
 # reset に成功したら下の分岐で 0 に落とす（実効 counter に合わせる）。
 cb_will_refire=0
@@ -453,14 +453,19 @@ retry_pending=$(printf '%s' "$review_state" | jq -r '
      and (.cycle_count // 0) == ($run.retry.stop_context.cycle_count // -1))') || exit 1
 cb_reason=""
 retry_hold=0
-# 上限に達しても、直近 2 cycle 連続で blocking が減り fix 由来の新規 blocking が 0 の run は止めない
+# 上限に達しても、直近 2 cycle 連続で blocking が減り fix 由来の新規指摘 が 0 の run は止めない
 # （判定は review-converging.sh に閉じる。判定不能は上限で止める側）。
 at_cap=0
+converging_reason=""
 if [ "$cc" -ge "$max_cycles" ] 2>/dev/null; then
   at_cap=1
-  if converging_out=$(bash "$plugin_root"/hooks/scripts/review-converging.sh --pr "$pr_number" --trend "$trend_series") \
-    && [ "$(printf '%s\n' "$converging_out" | marker_get REVIEW_CONVERGING)" = yes ]; then
-    at_cap=0
+  converging_out=$(bash "$plugin_root"/hooks/scripts/review-converging.sh --pr "$pr_number" --trend "$trend_series"); converging_rc=$?
+  if [ "$converging_rc" -ne 0 ]; then
+    echo "WARNING: 収束中の判定を実行できませんでした（rc=${converging_rc}）。上限で停止します" >&2
+    converging_reason=helper_failed
+  else
+    converging_reason=$(printf '%s\n' "$converging_out" | marker_get REVIEW_CONVERGING --field reason)
+    [ "$(printf '%s\n' "$converging_out" | marker_get REVIEW_CONVERGING)" = yes ] && at_cap=0
   fi
 fi
 if [ "$at_cap" -eq 1 ]; then
@@ -529,6 +534,7 @@ elif [ -n "$cb_reason" ]; then
     "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=none"
   marker_emit ITERATE_CB fire "cycle=$cc" "max=$max_cycles" "CB_REASON=$cb_reason" \
     "TREND=$trend_series" "TREND_VERDICT=$trend_verdict" "TREND_REASON=$trend_reason" \
+    "CONVERGING_REASON=$converging_reason" \
     "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "HANDOFF_CLEAR=$handoff_clear"
 else
   # 名簿を確定してから review-start が一度だけ counter を進める。

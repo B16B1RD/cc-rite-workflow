@@ -887,27 +887,21 @@ exit "$_gate_rc"
 
 # --- attribution-gate ------------------------------------------------------------
 step_attribution_gate() {
-# `if ! var=$(cmd); then rc=$?` は bash 仕様上 `$?` が常に 0 になるため、capture と exit code を
-# 両方取る場合は if/else 形式にする。
-if loop_count=$(bash "$plugin_root"/hooks/flow-state.sh get --field loop_count --default 0); then
- :
-else
- rc=$?
- echo "ERROR: flow-state.sh failed (rc=$rc) for --field loop_count in ステップ 5.3.8" >&2
- echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_3_8_loop_count; rc=$rc" >&2
- echo "RESUME_HINT: flow-state.sh が異常 exit (rc=$rc) しました。ファイル不在/empty/jq parse 失敗は --default で吸収 (exit 0) されるため、本経路は helper validation 失敗 / --field 引数欠落 / invalid field name 等の caller 側引数異常で発火します。\$PLUGIN_ROOT/hooks/_validate-helpers.sh と state-path-resolve.sh の存在/実行権限を確認し、必要なら /rite:recover で再開、または STATE_ROOT 配下の sessions/ を確認してください。" >&2
- exit 1
+# fix 後の再レビューかは fix-cycle-state に fix 由来の cycle 記録があるかで決める
+# （fix が cycle を追加してから review が帰属を書く。state が無い = 初回 review）。
+_gate_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh 2>/dev/null) || _gate_root=""
+[ -n "$_gate_root" ] || { echo "ERROR: state root unresolved; attribution gate cannot decide" >&2; exit 1; }
+gate_state="$_gate_root/.rite/fix-cycle-state/${pr_number}.json"
+if [ ! -f "$gate_state" ]; then
+ echo "[CONTEXT] FINDING_ATTRIBUTION skip (first review, no fix-cycle-state)"
+ exit 0
 fi
-# non-numeric injection 経路 (`{"loop_count": "true"}` 等) を遮断し、後続 integer 比較が
-# silent regression する経路を fail-safe で default 0 に降格する。
-case "$loop_count" in
- ''|*[!0-9]*)
- echo "WARNING: loop_count is not numeric ('$loop_count'), defaulting to 0 (treat as first review)" >&2
- loop_count=0
- ;;
-esac
-if [ "$loop_count" -lt 1 ]; then
- echo "[CONTEXT] FINDING_ATTRIBUTION skip (first review, loop_count=$loop_count)"
+gate_cycles=$(jq -er '.cycles | length' "$gate_state" 2>/dev/null) || {
+ echo "ERROR: fix-cycle-state を読めません ($gate_state)" >&2
+ exit 1
+}
+if [ "$gate_cycles" -lt 1 ]; then
+ echo "[CONTEXT] FINDING_ATTRIBUTION skip (first review, no fix cycles)"
  exit 0
 fi
 }
@@ -1522,7 +1516,7 @@ case "$subcommand" in
   number-ref-diff) require base_branch; step_number_ref_diff ;;
   spawn-timings-check) require spawn_file; step_spawn_timings_check ;;
   measured-gate) require input pr_number; step_measured_gate ;;
-  attribution-gate) step_attribution_gate ;;
+  attribution-gate) require pr_number; step_attribution_gate ;;
   attribution-files) require base_branch; step_attribution_files ;;
   attribution-write) require pr_number total fix_introduced critical high medium low_medium low; step_attribution_write ;;
   cycle-id) require pr_number; step_cycle_id ;;

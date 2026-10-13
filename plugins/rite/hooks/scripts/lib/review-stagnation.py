@@ -652,9 +652,9 @@ def deviate(state, args, directory):
     require(receipt is not None, "saved review receipt missing")
     require(not any(f.get("scope") in ("current-pr", "follow-up") for f in receipt[1]["findings"]),
             "the review still has blocking findings; fix them through the ordinary fix path")
-    # The fix of this cycle could not be re-reviewed: the next review would trip max-cycles.
+    # The fix of this cycle could not be re-reviewed: the next review may trip max-cycles.
     require(state["cycle_count"] < review_cycle_cap(),
-            "the review is at safety.max_review_cycles; its fix could not be re-reviewed")
+            "the review is at safety.max_review_cycles; its fix may not be re-reviewed")
     require(pr_added(state, record["file"], line, end),
             "deviation does not point at a line this PR added")
     # A fix that disposed this review's deviations without a new commit returns to
@@ -926,8 +926,11 @@ def converging(state, marker):
     """True when the run descends for two cycles with no fix-introduced findings (cap is not applied)."""
     helper = Path(__file__).resolve().parent.parent / "review-converging.sh"
     result = subprocess.run(["bash", str(helper), "--pr", str(state["pr_number"]),
-                             "--trend", marker.get("trend", "")], capture_output=True, text=True)
-    return result.returncode == 0 and "REVIEW_CONVERGING=yes" in result.stdout
+                             "--trend", marker["trend"]], capture_output=True, text=True)
+    require(result.returncode == 0, "convergence check could not run: " + result.stderr.strip())
+    if result.stderr:
+        sys.stderr.write(result.stderr)
+    return "REVIEW_CONVERGING=yes" in result.stdout
 
 
 def review_cycle_cap():

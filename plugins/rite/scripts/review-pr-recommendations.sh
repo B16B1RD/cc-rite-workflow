@@ -17,7 +17,7 @@
 #
 # capacity (the adoption gate, kind=triage): whether a fix registered on this
 #   review could still be re-reviewed. A cycle at or past
-#   safety.max_review_cycles could not: the next review would trip max-cycles and
+#   safety.max_review_cycles may not: the next review may trip max-cycles and
 #   leave the fix commit unreviewed. There is no other limit: an adopted
 #   PR-origin root cause is never deferred by a count.
 #     [CONTEXT] PR_RECOMMENDATIONS_CAPACITY=open|cycle_cap

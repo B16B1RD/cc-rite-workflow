@@ -215,8 +215,10 @@ assert_grep "T-04i: CONFIGURATION.md の loop head 数が $DEFAULT_CYCLES から
   "default budget of $DEFAULT_CYCLES that leaves twelve loop heads"
 assert_grep "T-04j: CONFIGURATION.md の backstop 到達 cycle が 16" "$CONFIG_DOC" \
   'backstop takes over at the head of cycle 16'
-assert_grep "T-04k: iterate/SKILL.md が「16 cycle 以上」で記述されている" "$ITERATE" \
-  '16 cycle 以上'
+assert_grep "T-04k: iterate/SKILL.md が上限到達時の収束中の扱い (review-converging.sh) を述べる" "$ITERATE" \
+  'review-converging\.sh'
+assert_not_grep "T-04k2: iterate/SKILL.md に変更前の「収束中でも停止する」記述が残っていない" "$ITERATE" \
+  '収束中の run は既定値のままでも本経路で停止する'
 # トレンド判定が発火しうる下限 (4 以上) を満たす値であることの明記 (§4.4 MUST)
 assert_grep "T-04l: CONFIGURATION.md が下限 4 制約と既定値の関係を明記" "$CONFIG_DOC" \
   "is 4 or more.*default of $DEFAULT_CYCLES satisfies that lower bound"
@@ -231,14 +233,16 @@ assert_grep "T-04m: CONFIGURATION.md が既定値の複製箇所を drift 源と
 # `grep -c` では 4 出現を 2 と数えてしまう。`at` を含めず `the default of N` で数えるのは、
 # 下限制約の記述 (`the default of 15 satisfies that lower bound`) と引き上げ根拠の記述
 # (`Whether the default of 15 is right`) も既定値を述べる箇所として同じ網に入れるため。
-assert "T-04n: CONFIGURATION.md の英文既定値 3 箇所が $DEFAULT_CYCLES" \
-  "3" "$(grep -o "the default of $DEFAULT_CYCLES" "$CONFIG_DOC" | wc -l | tr -d '[:space:]')"
+assert "T-04n: CONFIGURATION.md の英文既定値 2 箇所が $DEFAULT_CYCLES" \
+  "2" "$(grep -o "the default of $DEFAULT_CYCLES" "$CONFIG_DOC" | wc -l | tr -d '[:space:]')"
 # `${DEFAULT_CYCLES}` をブレースで囲む。直後が多バイト文字 `）` のため、素の `$DEFAULT_CYCLES` だと
 # 非 UTF-8 ロケールで後続バイトが変数名に畳み込まれ set -u を踏む (flow-state.test.sh TC-8b-h)。
 assert "T-04o: iterate/SKILL.md の散文既定値 3 箇所が $DEFAULT_CYCLES" \
   "3" "$(grep -c "（既定 ${DEFAULT_CYCLES}）" "$ITERATE")"
-assert "T-04p: SPEC.md の英文既定値 1 箇所が $DEFAULT_CYCLES" \
-  "1" "$(grep -c "at the default of $DEFAULT_CYCLES" "$SPEC_DOC")"
+assert_grep "T-04p: SPEC.md が上限到達時の収束中の扱いを述べる" "$SPEC_DOC" \
+  "is not stopped at the limit"
+assert_not_grep "T-04p2: SPEC.md に変更前の「収束中の run も停止する」記述が残っていない" "$SPEC_DOC" \
+  "also stops a converging run"
 assert "T-04q: fix relaxation rules の既定値 2 箇所が $DEFAULT_CYCLES" \
   "2" "$(grep -o "既定 $DEFAULT_CYCLES" "$FIX_RELAXATION" | wc -l | tr -d '[:space:]')"
 

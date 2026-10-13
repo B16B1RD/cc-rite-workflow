@@ -36,7 +36,7 @@ argument-hint: "<pr_number>"
 **サーキットブレーカーの発火条件は 2 つ**:
 
 - **収束トレンドの発散**（主経路）: 永続レビュー JSON の per-cycle blocking 件数から `hooks/scripts/review-trend-divergence.sh` が発散を機械判定する。「直近 2 値がともに過去の最良水準を超え、かつ下降中でもない」を発散とし、**収束中のループは本判定では殺されない**（cycle 数上限は別条件として下記 2. のとおり働く）
-- **`safety.max_review_cycles`（既定 15）到達**（保険）: 発散判定をすり抜ける非収束を受け止める backstop。`cc >= max_cycles` は trend 判定と**独立した発火条件**。**ただし上限到達時も、直近 2 cycle 連続で blocking が減少し、かつ最新 cycle の fix 由来の新規 blocking（`findings_new_from_fix`）が 0 なら停止しない**（`hooks/scripts/review-converging.sh` が判定。16 cycle 以上を要しても下降中の run は止まらず、判定不能・下降停止は従来どおり上限で止まる）
+- **`safety.max_review_cycles`（既定 15）到達**（保険）: 発散判定をすり抜ける非収束を受け止める backstop。`cc >= max_cycles` は trend の verdict と**独立した発火条件**（収束中の判定は件数列だけを見る）。**ただし上限到達時も、直近 2 cycle 連続で blocking が減少し、かつ最新 cycle の fix 由来の新規指摘（`findings_new_from_fix`）が 0 なら停止しない**（`hooks/scripts/review-converging.sh` が判定。16 cycle 以上を要しても下降中の run は止まらず、判定不能・下降停止は従来どおり上限で止まる）
 rationale: references/rationale.md#circuit-breaker-conditions
 
 ブレーカー発火は review⇄fix ループの停止 signal である。`review_run` がある現在の run は counter・根因観測・見直し履歴・停止理由を保持して終了する。同じ run の再起動で履歴を消さない。review / fix は invoke しない。以下に残る counter reset と fresh entry の手順は `review_run` がない legacy state に限る。
@@ -220,7 +220,7 @@ bash {plugin_root}/scripts/iterate-step.sh nb-sweep-resume --pr {pr_number}
 
 1. **lost 修復ゲート** — helper の `lost=` が `0` より大きい（完了済み cycle に対して JSON 不足 = 増分）、または `cc>=1` かつ raw `lost=` 欠落かつ reason が `no_results_file` / `results_dir_missing` / `no_file_after_pin`（`_undecidable` は `lost=` を出さない）。次 cycle を始めず (a)/(b) へ。`cc=0` と `helper_unavailable` は発火させない
 2. **収束トレンドの発散**（主経路）— `hooks/scripts/review-trend-divergence.sh` が永続レビュー JSON から現 run の per-cycle blocking 列を復元し発散と判定した場合。`cycle_count` が上限未満でも発火する
-3. **`max_review_cycles` 到達**（保険）— 発散判定をすり抜けた非収束を受け止める backstop（16 cycle 以上を要しても、直近 2 cycle 連続で blocking が減少し fix 由来の新規 blocking が 0 の run は止めない）
+3. **`max_review_cycles` 到達**（保険）— 発散判定をすり抜けた非収束を受け止める backstop（16 cycle 以上を要しても、直近 2 cycle 連続で blocking が減少し fix 由来の新規指摘 が 0 の run は止めない）
 rationale: references/rationale.md#lost-repair-gate
 
 `max_review_cycles` は marker 依存を避けるため config から再読込する（無効値はステップ 0.6 で検証済みのため silent。config 不在は試したパス付き WARNING + 既定値、読めない config は ERROR で marker を出さずに停止）:
@@ -273,9 +273,11 @@ bash {plugin_root}/scripts/iterate-step.sh lost-repair --repair {repair} --cycle
 | `CB_REASON` | 意味 |
 |---|---|
 | `divergence` | 収束トレンドが発散と判定された（`cycle_count < max_review_cycles` でも発火する）。無駄な cycle を早期に切る主経路 |
-| `max-cycles` | `cycle_count >= max_review_cycles`。発散判定をすり抜けた非収束を受け止める保険（下降中で fix 由来の新規 blocking が 0 の run は対象外。両方成立する場合もこちらを理由として報告する） |
+| `max-cycles` | `cycle_count >= max_review_cycles`。発散判定をすり抜けた非収束を受け止める保険（下降中で fix 由来の新規指摘 が 0 の run は対象外。両方成立する場合もこちらを理由として報告する） |
 
 `RETRY_HOLD=1`（`ok` 分岐）は、`review-retry` が発行した未決着の再試行権により、発行した cycle に限って発散判定を保留したことを示す。分岐は通常の `ok` と同じく review を invoke する。`max-cycles` と lost 修復ゲートは保留しない。決着は再試行の review の観測が行う（[review-stagnation.md](../../references/review-stagnation.md)）。
+
+`CONVERGING_REASON` は `fire` 分岐だけに載り、上限到達時に延長しなかった理由（`review-converging.sh` の reason。`CB_REASON=divergence` では空）。
 
 `TREND_VERDICT` は**両分岐に載る**トレンド判定の診断値。`ok`（収束中・下降中）/ `fire`（発散）/ `insufficient`（データ不足・データ異常で判定不能）/ `unavailable`（helper 自体を実行できなかった）を取る。`insufficient` / `unavailable` は発火しない側へ倒れ、`max_review_cycles` が従来どおり backstop として働く。**`fire` 分岐にも載せる**のは、`CB_REASON=max-cycles` で停止したときに発散判定が下りていたのか未実施だったのかをステップ 6.2 が読み分ける必要があるため（下記 `TREND_REASON` と組で使う）。
 

@@ -781,5 +781,33 @@ finally:
     f.close()
 
 
+# T-17: at the cycle cap a run that kept descending with no fix-introduced findings is not stopped;
+# anything else (introduced findings, unmeasured fix state, no fix state) still stops at the cap.
+for label, entries, expected in [
+        ('measured clean', [dict(findings_total=1, findings_new_from_fix=0)], 'go on'),
+        ('fix-introduced findings', [dict(findings_total=1, findings_new_from_fix=1)], 'stop'),
+        ('unmeasured initial value', [dict(findings_new_from_fix=0)], 'stop'),
+        ('no fix-cycle-state', None, 'stop')]:
+    f = Fixture()
+    try:
+        (f.root / 'rite-config.yml').write_text('safety:\n  max_review_cycles: 3\n')
+        (f.root / '.git/info/exclude').write_text('.rite/\nrite-config.yml\n')
+        f.cycle(roots=('a', 'b', 'c'))
+        f.fix()
+        f.cycle(roots=('a', 'b'))
+        f.fix()
+        if entries is not None:
+            (f.root / '.rite/fix-cycle-state').mkdir(parents=True, exist_ok=True)
+            dump(f.root / '.rite/fix-cycle-state/71.json', dict(cycles=entries))
+        f.cycle(roots=('a',))
+        check((f.decision() == 'stop') == (expected == 'stop'), 'T-17: cap with descending run, ' + label + ' -> ' + expected)
+        if expected == 'stop':
+            check(f.state()['stop_reason'] == 'circuit-breaker:max-cycles', 'T-17: ' + label + ' stops on the cap')
+        else:
+            check(f.state().get('stop_reason') != 'circuit-breaker:max-cycles', 'T-17: ' + label + ' is not stopped by the cap')
+    finally:
+        f.close()
+
+
 print('PASS: review stagnation breaker: ' + str(stagnation_fixture.checks) + ' assertions; real clocks, receipts, repairs and retained stops')
 PYTEST
