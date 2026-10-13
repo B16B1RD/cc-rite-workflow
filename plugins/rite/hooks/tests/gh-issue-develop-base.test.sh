@@ -23,6 +23,8 @@ PATTERN='gh[[:space:]]+issue[[:space:]]+develop'
 # 走査自体の失敗 (rc>=2) は 2 を返す。ヒット 0 件 (rc=1) は空出力で 0 を返す。
 scan_dir() {
   local rc=0
+  # BSD grep (macOS) は存在しないパスでも rc>=2 を返さないため、先に明示検査する
+  [ -d "$1" ] || return 2
   grep -rnE "$PATTERN" "$1" \
     --include='*.md' --include='*.sh' --include='*.yml' \
     --exclude='gh-issue-develop-base.test.sh' || rc=$?
