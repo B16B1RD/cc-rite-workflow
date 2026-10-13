@@ -1880,7 +1880,7 @@ rationale: references/design-rationale.md#ci-base-conflict
 | 観測 | Action |
 |---|---|
 | rc=0 + `REVIEW_CI_FINAL=passed; state=healthy` または `state=none` | 必須 check が完了・非失敗、または必須なし。非必須失敗は warnings として保持。stdout の最新 JSON を `{ci_status}`、その `.state` を `{ci_state}` に保持し、5.3.8 → 5.4 → 6.1.a へ進む |
-| rc=0 + `REVIEW_CI_FINAL=skipped; reason=fix_needed` | 修正が必要なので CI を待たず、既存の fix-needed の報告・保存へ進む |
+| rc=0 + `REVIEW_CI_FINAL=skipped; reason=fix_needed` | 修正が必要なので CI を待たず、5.3.8 → 既存の fix-needed の報告・保存（5.4 → 6.1.a）へ進む（5.3.8 を飛ばすと帰属が書かれず、上限到達時の延長判定が効かない） |
 | rc=1 + `REVIEW_CI_FINAL=failed; reason=unhealthy` | 最終 mergeable を出力せず、下記の CI 失敗回収へ進む。report/save は実行しない |
 | rc=1 + `REVIEW_CI_FINAL=blocked; reason=base_conflict; base={base}` | 最終 mergeable を出力せず、report/save は実行しない。下の `review-ci-base-conflict` で cycle を放棄し（review_run・counter・所有の対応は保持される）、`[CONTEXT] REVIEW_STOP=base_conflict; base={base}` と `[review:error]` をこの順で出して停止する。取り込みは [fix-plan の base 取り込み](../fix/references/fix-plan.md#base-取り込み) の「CI 待ちの cycle を閉じた後」に従い、取り込んだ HEAD は次の cycle でレビューする。放棄が拒否されたら helper の診断を表示し、`REVIEW_STOP` を出さずに `[review:error]` で停止する。期限超過の行とは別の停止であり、期限超過をこの行で迂回しない |
 | その他の非ゼロ、`REVIEW_CI_FINAL=error`、成功 marker 不在 | 診断を保持し `[review:error]` で停止。report/save は実行しない。取得不能・期限超過を再生成で迂回しない |

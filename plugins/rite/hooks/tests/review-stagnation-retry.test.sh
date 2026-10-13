@@ -1159,6 +1159,10 @@ for label, entries, stops in [
             f.commit()
         else:
             f.fix()
+            # 本番の形: fix が未計測の entry を 1 件足した直後に cycle-gate が走る (trailing=1)
+            added = json.loads((f.root / '.rite/fix-cycle-state/71.json').read_text())
+            added['cycles'].append(dict(findings_new_from_fix=0))
+            dump(f.root / '.rite/fix-cycle-state/71.json', added)
         output = gate(f)
         cb = marker(output, 'ITERATE_CB')
         if stops:

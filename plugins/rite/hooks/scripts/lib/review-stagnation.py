@@ -829,7 +829,7 @@ def observe(state, args, directory):
     # existing_breaker re-reads every saved receipt and checks the observation
     # series for gaps before it decides anything, so it runs on every path. Only
     # which stop is recorded depends on the grant.
-    breaker = existing_breaker(state, run)
+    breaker, converging_reason = existing_breaker(state, run)
     concluded = conclude_retry(run, receipt[1])
     if concluded:
         entry["decision"] = concluded.copy()
@@ -839,7 +839,7 @@ def observe(state, args, directory):
     if breaker:
         decision = dict(action="stop", reasons=[breaker])
         if breaker == "max-cycles":
-            decision["converging_reason"] = run.pop("converging_reason", "")
+            decision["converging_reason"] = converging_reason
         entry["decision"] = decision.copy()
         run.update(status="stopped", stop_reason="circuit-breaker:" + breaker, current_decision=decision)
         state.update(active=False, stop_reason=run["stop_reason"], updated_at=cycle.now())
@@ -918,13 +918,12 @@ def existing_breaker(state, run):
     run["trend"] = marker
     # A completed mergeable review proceeds to the unchanged quality gates.
     if state["review_cycle"]["verdict"] == "mergeable":
-        return None
+        return None, ""
     if state["cycle_count"] >= review_cycle_cap():
         extended, reason = converging(state, marker)
         if not extended:
-            run["converging_reason"] = reason
-            return "max-cycles"
-    return "divergence" if marker["TREND_DIVERGENCE"] == "fire" else None
+            return "max-cycles", reason
+    return ("divergence" if marker["TREND_DIVERGENCE"] == "fire" else None), ""
 
 
 def converging(state, marker):

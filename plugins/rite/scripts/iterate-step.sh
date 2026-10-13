@@ -473,7 +473,12 @@ if [ "$cc" -ge "$max_cycles" ] 2>/dev/null; then
       converging_reason=helper_no_marker
     else
       converging_reason=$(printf '%s\n' "$converging_out" | marker_get REVIEW_CONVERGING --field reason)
-      [ "$converging_verdict" = yes ] && { at_cap=0; cap_extended=1; }
+      if [ -z "$converging_reason" ]; then
+        echo "WARNING: 収束中の判定が reason を出しませんでした。上限で停止します" >&2
+        converging_reason=helper_no_marker
+      elif [ "$converging_verdict" = yes ]; then
+        at_cap=0; cap_extended=1
+      fi
     fi
   fi
 fi

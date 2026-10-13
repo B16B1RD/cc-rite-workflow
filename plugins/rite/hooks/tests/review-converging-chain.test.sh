@@ -51,12 +51,15 @@ has "T-06: review 完了直後に呼ぶ側 (--max-trailing 0) は計測が抜け
 # 書き込みが抜けて fix だけが積まれた場合
 fix_cycle >/dev/null
 OUT=$(converging 9,6,3)
-has "T-07: 帰属の書き込みを 2 回飛ばすと古い計測値で延長しない" "reason=fix_state_stale"
+has "T-07: 帰属の書き込みを 1 回飛ばすと古い計測値で延長しない" "reason=fix_state_stale"
 
 # fix 由来の新規指摘が 1 件ある計測
 write 3 1 >/dev/null
 OUT=$(converging 9,6,3)
 has "T-08: 書かれた fix 由来 1 件で延長しない" "reason=fix_introduced_findings"
+
+OUT=$(converging 9,6,3 2); rc=$?
+has "T-08b: --max-trailing は 0 か 1 のみ (2 は呼び出しエラー)" "ERROR"
 
 # python 側: helper が失敗・無出力でも延長せず理由を返す (fail-open に倒さない)
 STUB="$TEST_DIR/stub"
