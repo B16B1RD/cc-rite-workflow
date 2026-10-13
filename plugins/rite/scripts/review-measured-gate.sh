@@ -450,7 +450,7 @@ if [ "$anchor_undetermined" -gt 0 ]; then
   if ! finding_ids=$(printf '%s\n' "$result" | jq -r '.stats.anchor_undetermined_ids | map(tostring) | join(",")' 2>"${diag_file:-/dev/null}"); then
     _fail stats_read_failed "形式崩れアンカーの finding ID を読み出せません"
   fi
-  echo "ERROR: Verification: の形式崩れを検出しました。該当 finding のみ reviewer reject + reroll してください。記法: Verification: repro <cmd> => <観測> / Verification: failing_test <path> => <失敗出力>。アンカー直前は行頭・改行タグ・空白とし、コマンドのパイプは ¦ に置換してください" >&2
+  echo "ERROR: Verification: の形式崩れを検出しました。該当 finding を出した reviewer を reject + reroll し、作り直した出力で元の出力を丸ごと置き換えてください。記法: Verification: repro <cmd> => <観測> / Verification: failing_test <path> => <失敗出力>。アンカー直前は行頭・改行タグ・空白とし、コマンドのパイプは ¦ に置換してください" >&2
   printf '[CONTEXT] MEASURED_GATE_FAILED=1; reason=anchor_undetermined; count=%s; findings=%s' "$anchor_undetermined" "$finding_ids" | neutralize_ctrl >&2
   printf '\n' >&2
   exit 1

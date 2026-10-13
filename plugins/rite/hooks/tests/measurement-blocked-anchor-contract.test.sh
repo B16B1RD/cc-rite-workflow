@@ -77,12 +77,22 @@ echo "=== T-06: anchor_undetermined は reviewer 再生成へ同 cycle 内で差
 routing_file=$(mktemp)
 trap 'rm -f "$routing_file"' EXIT
 grep '^| .*reason=verification_preset_by_caller.*anchor_undetermined' "$PR_REVIEW" > "$routing_file" || true
-assert_grep "routing targets only diagnostic finding IDs" "$routing_file" \
-  '診断の対象 finding IDs のみ'
+assert "routing row is extracted exactly once" "1" "$(wc -l < "$routing_file" | tr -d ' ')"
+assert_grep "routing rerolls only reviewers that emitted the diagnostic finding IDs" "$routing_file" \
+  '診断の対象 finding IDs を出した reviewer のみ'
 assert_grep "routing uses reviewer reject and reroll" "$routing_file" \
   'Reviewer reject \+ reroll'
-assert_grep "routing preserves other findings" "$routing_file" \
+# 作り直した出力の統合方法は丸ごと置き換えの 1 つだけで、5.1.1.1 の retry と同じ方式であること。
+assert_grep "routing replaces the original reviewer output as a whole" "$routing_file" \
+  '作り直した出力は当該 reviewer の元の出力を丸ごと置き換える（5\.1\.1\.1 の結果 merge 戦略と同じ'
+assert_grep "routing discards the original output and uses only the rerolled one" "$routing_file" \
+  '元の出力を破棄し、作り直した出力のみを使う'
+assert_not_grep "routing does not keep findings from the original output" "$routing_file" \
   '他 finding は保持する'
+assert_not_grep "routing does not splice only the target findings" "$routing_file" \
+  '対象 finding だけ.*差し替え'
+assert_grep "5.1.1.1 merge strategy is still replace" "$PR_REVIEW" \
+  'retry 結果は元 reviewer の output を \*\*置き換える\*\* \(append ではない\)'
 assert_grep "routing retries JSON generation and helper in the same cycle" "$routing_file" \
   '同 cycle 内.*step 1 の JSON を作り直し step 2 を再実行する'
 assert_grep "routing does not hand format repair to fix or increment the review cycle" "$routing_file" \
