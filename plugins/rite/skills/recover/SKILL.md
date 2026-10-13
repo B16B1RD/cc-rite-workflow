@@ -51,6 +51,7 @@ argument-hint: ""
 | `{pr_mergeable}` | Phase 3.3: `[CONTEXT] PR_MERGEABLE` marker (`gh pr view` の `.mergeable`: MERGEABLE/CONFLICTING/UNKNOWN)。Phase 3.4.5 で CONFLICTING をコンフリクト状態として扱う |
 | `{wm_next}` | Phase 3.4: work memory (`{state_root}/.rite/work-memory/issue-{n}.md`) の `next_action:` |
 | `{resolved_phase}` | Phase 3.5: cross-check 確定 phase (`[CONTEXT] RESOLVED_PHASE` marker)。Phase 4.2 で user が phase 変更を選んだ場合は `[CONTEXT] FINAL_PHASE` marker を優先 |
+| `{state_branch}` | Phase 3.1: `[CONTEXT] STATE_BRANCH` marker (flow-state の `branch`) |
 | `{type}` / `{slug}` | ブランチ名 `{type}/issue-{number}-{slug}` の構成要素 |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 | `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute |
@@ -617,7 +618,7 @@ Phase 5.4 で resume した個別スキルの終端状態を、[`skills/batch-ru
 | 状況 | 対応 |
 |------|------|
 | Issue not found | エラー終了、`gh issue list -R {owner_repo}` で確認するよう案内 |
-| Branch 不在 | `gh issue develop -R {owner_repo}` で再生成するよう案内 |
+| Branch 不在 | `gh issue develop {issue_number} -R {owner_repo} --base {base_branch} --name {state_branch}` で再生成するよう案内 |
 | flow-state 不在 + WM 不在 | 「新規セッション」として `/rite:open {issue_arg}` を提案 |
 | 矛盾検出 (phase vs commit/PR) | 実態から推定した phase と根拠を表示して続行。推定できないときだけ AskUserQuestion で「推定 phase で再開 / 別 phase を選ぶ / 中止」（Phase 3.5 と同じ） |
 | migrate 失敗 | WARNING 表示後、cross-check で実態推定して続行 |
