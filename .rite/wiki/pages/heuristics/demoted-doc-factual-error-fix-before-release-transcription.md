@@ -63,7 +63,7 @@ confidence: medium
 ## 関連ページ
 
 - [散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする](./prose-cited-implementation-behavioral-verification.md)
-- [bilingual CHANGELOG は PR 単位で同期し、バージョン見出しは英語、本文には Issue 番号を書いてよい](../patterns/bilingual-changelog-sync-conventions.md)
+- [CHANGELOG のバージョン見出しは ja 版でも英語の bracket 形式を維持する](../patterns/bilingual-changelog-sync-conventions.md)
 
 ## ソース
 - [レビュー結果](../../raw/reviews/20260917T054339Z-pr-2924.md)

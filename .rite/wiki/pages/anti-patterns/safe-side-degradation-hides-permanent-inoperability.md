@@ -44,7 +44,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T14:00:41+09:00" }
 
 ## 関連ページ
 
-- [resolver / helper 失敗時の silent fallback は debug log で観測性を確保する](../patterns/silent-fallback-observability-via-debug-log.md)
+- [【現行仕様では廃止】resolver / helper 失敗時の silent fallback は debug log で観測性を確保する](../patterns/silent-fallback-observability-via-debug-log.md)
 - [抽出述語の厳格化は「壊れた入力」と「入力なし」を同一経路へ畳み、fail-loud を構造的に壊す](./strict-predicate-collapses-broken-into-absent.md)
 - [観測母集団を確認してから仕様上の前提へ昇格する](../heuristics/observed-population-check-before-promoting-to-spec-premise.md)
 

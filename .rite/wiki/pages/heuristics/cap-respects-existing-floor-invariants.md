@@ -63,8 +63,8 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-02T23:12:48Z" }
 ## 関連ページ
 
 - [散文で宣言した設計は対応する実装契約がなければ機能しない](../anti-patterns/prose-design-without-backing-implementation.md)
-- [resolver / helper 失敗時の silent fallback は debug log で観測性を確保する](../patterns/silent-fallback-observability-via-debug-log.md)
-- [前提条件の silent omit が AND 論理の防御層チェーンを全体無効化する](../anti-patterns/silent-precondition-omit-disables-and-defense-chain.md)
+- [【現行仕様では廃止】resolver / helper 失敗時の silent fallback は debug log で観測性を確保する](../patterns/silent-fallback-observability-via-debug-log.md)
+- [【現行仕様では廃止】前提条件の silent omit が AND 論理の防御層チェーンを全体無効化する](../anti-patterns/silent-precondition-omit-disables-and-defense-chain.md)
 
 ## ソース
 

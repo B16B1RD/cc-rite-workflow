@@ -1,7 +1,7 @@
 ---
-title: "resolver / helper 失敗時の silent fallback は debug log で観測性を確保する"
+title: "【現行仕様では廃止】resolver / helper 失敗時の silent fallback は debug log で観測性を確保する"
 domain: "patterns"
-description: "`var=$(helper.sh ... 2>/dev/null) || var=\"<legacy_default>\"` 形式で resolver / helper 失敗時に legacy 値へ fallback する pattern は、stderr が捨てられているため deploy regression / migration drift / permission denied 等の根本原因が完全に silent になる。"
+description: "`RITE_DEBUG` gate の debug log で legacy fallback を観測する方式は採らない。想定外の失敗はエラーで止め、fallback を置く場合は常に可視の warning を出す。legacy の `.rite-flow-state` fallback も撤去済み。"
 promote: rite-plugin
 created: "2026-04-30T08:03:08Z"
 sources:
@@ -18,7 +18,7 @@ confidence: high
 generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-09T06:56:16+00:00" }
 ---
 
-# resolver / helper 失敗時の silent fallback は debug log で観測性を確保する
+# 【現行仕様では廃止】resolver / helper 失敗時の silent fallback は debug log で観測性を確保する
 
 ## 概要
 

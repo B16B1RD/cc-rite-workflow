@@ -106,7 +106,7 @@ prose 強制では LLM の skip 経路を塞げないため、機械的 gate を
 ## 関連ページ
 
 - [Reviewer 自身が「対応不要」と明記する LOW finding は replied-only として尊重し fix loop で再発火させない](../heuristics/respect-reviewer-no-action-recommendation.md): 本 anti-pattern の `design_confirmation` 分類と補完関係。reviewer が明示的に「対応不要」と書いた case を `replied-only` で尊重する heuristic。本 anti-pattern はその拡張で、reviewer が明示的に書かない場合でも分類を要求することで silent skip を防ぐ。
-- [前提条件の silent omit が AND 論理の防御層チェーンを全体無効化する](./silent-precondition-omit-disables-and-defense-chain.md): 本 anti-pattern と同種の構造 — prose 強制のみで連結された防御層が 1 link skip で全無効化される pattern。本 anti-pattern は Phase 7.2 という単一 link の skip が下流 5 層を貫通する事例として記録される。
+- [【現行仕様では廃止】前提条件の silent omit が AND 論理の防御層チェーンを全体無効化する](./silent-precondition-omit-disables-and-defense-chain.md): 本 anti-pattern と同種の構造 — prose 強制のみで連結された防御層が 1 link skip で全無効化される pattern。本 anti-pattern は Phase 7.2 という単一 link の skip が下流 5 層を貫通する事例として記録される。
 - [Issue body 内 `Scope 外指摘ハンドリングポリシー` 宣言で reviewer advisory finding を Issue 化なし recommendation に降格する](../heuristics/issue-body-scope-out-policy-demotes-advisory-finding.md): umbrella Issue の特殊運用で aggregate label を許容する scope 限定 heuristic。本 anti-pattern の例外として位置づけられる (Issue body の明示宣言が前提)。
 
 ## ソース

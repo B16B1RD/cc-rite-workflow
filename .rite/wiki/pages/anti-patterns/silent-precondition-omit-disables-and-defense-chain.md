@@ -1,7 +1,7 @@
 ---
-title: "前提条件の silent omit が AND 論理の防御層チェーンを全体無効化する"
+title: "【現行仕様では廃止】前提条件の silent omit が AND 論理の防御層チェーンを全体無効化する"
 domain: "anti-patterns"
-description: "初期から後期までの 9 件の関連課題で導入した 8 種類の防御層 (declarative / sentinel / Pre-check list / whitelist / Pre-flight / Step 0 / 4-site 対称化 / hook case arm) は **AND 論理**で組まれていた。"
+description: "Stop hook ガード機構（stop-guard.sh）は撤去済みで、本ページの `--active true` 省略による連鎖は現行では成立しない。「AND 論理の防御層は単一の前提条件の omit で全体が無効化される」という一般則のみ、後段の教訓として有効。"
 promote: rite-plugin
 created: "2026-04-25T12:30:00+00:00"
 sources:
@@ -30,7 +30,7 @@ confidence: high
 generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 ---
 
-# 前提条件の silent omit が AND 論理の防御層チェーンを全体無効化する
+# 【現行仕様では廃止】前提条件の silent omit が AND 論理の防御層チェーンを全体無効化する
 
 ## 概要
 

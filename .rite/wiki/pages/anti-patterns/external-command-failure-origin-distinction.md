@@ -86,7 +86,7 @@ verified:
 ## 関連ページ
 
 - [gh api graphql は HTTP 200 + .errors[] で partial failure を返す (exit code では検知できない)](./gh-api-graphql-http200-partial-errors.md)
-- [resolver / helper 失敗時の silent fallback は debug log で観測性を確保する](../patterns/silent-fallback-observability-via-debug-log.md)
+- [【現行仕様では廃止】resolver / helper 失敗時の silent fallback は debug log で観測性を確保する](../patterns/silent-fallback-observability-via-debug-log.md)
 - [散文で宣言した設計は対応する実装契約がなければ機能しない](./prose-design-without-backing-implementation.md)
 - [検証手順を書くときは処方するコマンドの判別能力そのものを実測する](../heuristics/prescribed-command-discriminating-power-measured.md)
 

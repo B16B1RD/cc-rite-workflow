@@ -82,7 +82,7 @@ review/fix SKILL.md（各 4,040 行）のコンテキストダイエット PR �
 ## 関連ページ
 
 - [Markdown 大規模圧縮 refactor 時の heading hierarchy skip](../anti-patterns/heading-hierarchy-skip-on-large-markdown-compression.md)
-- [PR シリーズ間で stub 残置 markdown formatting を踏襲する](../patterns/pr-series-stub-format-consistency.md)
+- [【現行仕様では廃止】PR シリーズ間で stub 残置 markdown formatting を踏襲する](../patterns/pr-series-stub-format-consistency.md)
 
 ## ソース
 

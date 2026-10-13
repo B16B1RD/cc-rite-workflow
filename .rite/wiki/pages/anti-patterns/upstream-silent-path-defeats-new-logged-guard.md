@@ -49,7 +49,7 @@ verified:
 
 ## 関連ページ
 
-- [前提条件の silent omit が AND 論理の防御層チェーンを全体無効化する](../anti-patterns/silent-precondition-omit-disables-and-defense-chain.md)
+- [【現行仕様では廃止】前提条件の silent omit が AND 論理の防御層チェーンを全体無効化する](../anti-patterns/silent-precondition-omit-disables-and-defense-chain.md)
 - [Test が early exit 経路で silent pass する false-positive](../anti-patterns/test-false-positive-early-exit.md)
 - [位置決めを外部データから取る設計で「取れなかったら既定値を仮定する」と、無言の縮退になる](./guessed-default-position-creates-silent-degradation.md)
 

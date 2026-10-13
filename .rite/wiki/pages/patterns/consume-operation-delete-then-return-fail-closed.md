@@ -79,7 +79,7 @@ correctness path を導入したら同 PR 内で「invariant を壊す mutation 
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
-- [resolver / helper 失敗時の silent fallback は debug log で観測性を確保する](./silent-fallback-observability-via-debug-log.md)
+- [【現行仕様では廃止】resolver / helper 失敗時の silent fallback は debug log で観測性を確保する](./silent-fallback-observability-via-debug-log.md)
 - [jq -n create mode: 既存値を読み取ってから再構築する](./jq-create-mode-preserve-existing.md)
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](./mutation-testing-test-fidelity.md)
 

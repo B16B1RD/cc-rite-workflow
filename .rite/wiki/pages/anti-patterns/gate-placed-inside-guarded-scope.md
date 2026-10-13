@@ -64,7 +64,7 @@ review⇄fix ループのように同じ skill が同一 conversation 内で複�
 - [Success-only Sentinel Design — sub-skill abort path sentinel 未定義](./success-only-sentinel-design.md)
 - [無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する](../heuristics/defensive-code-needs-its-own-failure-path-test.md)
 - [新設した検証機構が、その機構自身の目的を局所的に打ち消す](./self-defeating-guard-local-purpose-negation.md)
-- [前提条件の silent omit が AND 論理の防御層チェーンを全体無効化する](./silent-precondition-omit-disables-and-defense-chain.md)
+- [【現行仕様では廃止】前提条件の silent omit が AND 論理の防御層チェーンを全体無効化する](./silent-precondition-omit-disables-and-defense-chain.md)
 
 ## ソース
 

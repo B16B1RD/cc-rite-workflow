@@ -41,7 +41,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-07T18:40:00+09:00" }
 
 ## 関連ページ
 
-- [前提条件の silent omit が AND 論理の防御層チェーンを全体無効化する](../anti-patterns/silent-precondition-omit-disables-and-defense-chain.md)
+- [【現行仕様では廃止】前提条件の silent omit が AND 論理の防御層チェーンを全体無効化する](../anti-patterns/silent-precondition-omit-disables-and-defense-chain.md)
 - [機械強制の anchor を強制される側が選べる値にすると、2 層の gate が同一の誤りで同時に無効化される](../anti-patterns/enforcement-anchor-chosen-by-enforced-party.md)
 
 ## ソース

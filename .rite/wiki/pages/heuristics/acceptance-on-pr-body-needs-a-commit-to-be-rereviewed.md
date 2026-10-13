@@ -1,8 +1,8 @@
 ---
 type: "heuristics"
-title: "受入条件が PR 本文を対象にするときは、本文の更新だけでは再レビューされない — 対応するファイルの修正と合わせて commit する"
+title: "受入条件が PR 本文の表を対象にするときは、表の突き合わせを項目の名前ではなく行単位で行う"
 domain: "heuristics"
-description: "受入条件が PR 本文の表を対象にしていると、本文だけを直しても HEAD が変わらず、差分スコープの再レビューでは確認されない。対応するファイルの修正と同じ commit で直し、本文の状態は検証コマンドで固定する。表の突き合わせは項目の名前の集合ではなく行単位で行う。"
+description: "受入条件が PR 本文の表を対象にしているときは、表の突き合わせを項目の名前の集合ではなく行単位で行う。本文だけを直した場合も fix は review へ再突入するため、本文の修正を対応ファイルの commit に合わせる必要はない。"
 created: "2026-09-30T09:18:44Z"
 generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-30T09:18:44Z" }
 promote: rite-plugin
@@ -15,7 +15,7 @@ tags: ["review-loop", "acceptance-criteria", "pr-body", "inventory"]
 confidence: medium
 ---
 
-# 受入条件が PR 本文を対象にするときは、本文の更新だけでは再レビューされない — 対応するファイルの修正と合わせて commit する
+# 受入条件が PR 本文の表を対象にするときは、表の突き合わせを項目の名前ではなく行単位で行う
 
 ## 概要
 

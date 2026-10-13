@@ -58,7 +58,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-09-24T13:40:00Z" }
 
 ## 関連ページ
 
-- [resolver / helper 失敗時の silent fallback は debug log で観測性を確保する](../patterns/silent-fallback-observability-via-debug-log.md)
+- [【現行仕様では廃止】resolver / helper 失敗時の silent fallback は debug log で観測性を確保する](../patterns/silent-fallback-observability-via-debug-log.md)
 
 ## ソース
 

@@ -1,8 +1,8 @@
 ---
 type: "patterns"
-title: "bilingual CHANGELOG は PR 単位で同期し、バージョン見出しは英語、本文には Issue 番号を書いてよい"
+title: "CHANGELOG のバージョン見出しは ja 版でも英語の bracket 形式を維持する"
 domain: "patterns"
-description: "CHANGELOG の英日ペアは同一 PR で同時更新し、バージョン見出しは英語の bracket 形式を維持する。本文の Issue 番号はリポジトリ文書として書いてよく、機械チェックの走査面には含めない。"
+description: "CHANGELOG の ja 版でも、バージョン見出し（`## [Unreleased]` / `## [x.y.z]`）は英語の bracket 形式を維持し、和訳するのはカテゴリ見出しだけにする。英日の CHANGELOG はリリース時に両方書き起こし、新規エントリに Issue / PR 番号は書かない。"
 created: "2026-07-17T12:04:54Z"
 sources:
   - type: "reviews"
@@ -20,7 +20,7 @@ confidence: high
 generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-25T19:13:44Z" }
 ---
 
-# bilingual CHANGELOG は PR 単位で同期し、バージョン見出しは英語、本文には Issue 番号を書いてよい
+# CHANGELOG のバージョン見出しは ja 版でも英語の bracket 形式を維持する
 
 ## 概要
 

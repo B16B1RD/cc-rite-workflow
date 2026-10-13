@@ -61,7 +61,7 @@ grep -nE "目標.*[0-9]+.*行|≤[0-9]+" docs/designs/<topic>.md
 
 - [圧縮 refactor の AC は protected 区域 + scope 制約から逆算して決める](compression-refactor-ac-vs-structural-constraint.md)
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
-- [PR シリーズ間で stub 残置 markdown formatting を踏襲する](../patterns/pr-series-stub-format-consistency.md)
+- [【現行仕様では廃止】PR シリーズ間で stub 残置 markdown formatting を踏襲する](../patterns/pr-series-stub-format-consistency.md)
 
 ## ソース
 
