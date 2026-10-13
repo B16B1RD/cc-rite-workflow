@@ -54,7 +54,7 @@ assert "in_worktree arm never emits the delegation marker" "0" \
 
 ### 実行行にアンカーする
 
-内側の `grep` は**実行行の形**（行頭の空白 + `echo` / `printf`）でアンカーする。marker 名だけを見ると、同じ marker 名に言及する散文・コメント行が範囲内にあるだけで positive 側が充足し、pin が実質的に無効化される。逆に `echo` 形だけを見ると `printf '%s\n' "..."` 形の emit を追加する変異が negative 側で生存する（実測: プラグイン全体に printf 形の `[CONTEXT]` emit が 29 箇所あり、書き換えは現実的な変異）。
+（→ section-scoped-assertion-prevents-narrative-false-negative に統合: 実行行の形 echo/printf にアンカー、printf 形 emit 29 箇所の実測）
 
 ### テスト名は述語より広い主張を名乗らない
 

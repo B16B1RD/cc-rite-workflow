@@ -43,7 +43,7 @@ verified:
 3. **置換機構変更時のコメント同期 (cycle 3, MEDIUM)**: gsub → index/substr のような機構変更で、数行上の overview コメント (「gsub する」) が stale 化し、直下の新コメント (「gsub だと壊れる」) と同一ブロック内で矛盾する。機構変更時は同一ブロックの全コメントを同期対象にする。
 4. **付随観察**: gate 形式の置換で旧 gate のみが参照していた変数が dead 化する (置換時に変数参照の生存確認をする)。review-fix loop 内で書く新規コメントに「cycle N fix」と書くと次 cycle の comment-journal 検査で HIGH になる (経緯は commit message へ、コメントは機構の WHY のみ)。
 
-検証面では、test reviewer の worktree-only mutation (gate 無効化 / anchor 除去 / grep 復帰 / degraded 分岐除去) が 4 cycle 全てで新規テストの non-vacuity を実証しており、gate 強化 PR のテストは「旧実装に戻すと FAIL する」ことの mutation 確認が収束の決定打になる。
+検証面では、test reviewer の worktree-only mutation (gate 無効化 / anchor 除去 / grep 復帰 / degraded 分岐除去) が 4 cycle 全てで新規テストの non-vacuity を実証した（mutation 確認の一般則 → [mutation-testing-test-fidelity](../patterns/mutation-testing-test-fidelity.md)）。
 
 5. **新 arm 追加時の per-arm テスト pin（resume cycle、MEDIUM ×2 reviewer 独立検出）**: exfiltration 境界などの allowlist gate に新しい受理 arm を追加するときは、per-arm のテスト pin — **正例 (受理) + 負例 (拒否) + fallback 経路 (realpath 失敗時の fail-closed + 診断 WARNING)** — の 3 点セットを同一 PR で追加する。実装が正しくてもテスト無しでは受理経路の drift と診断消失の回帰から守れない (test + security の 2 reviewer が独立検出)。
 

@@ -48,7 +48,7 @@ helper の引数検査を probe するテストも同じ形になる。exit 2 �
 
 ### 変異で検出力を確かめる
 
-変更を戻す変異（probe から改行を除く、見出し行の probe を外す、例外の握りつぶしを戻す）を入れて、新しい assert が落ちることを確かめる。落ちない assert は、主張している挙動を固定していない。
+（→ mutation-testing-test-fidelity に統合: 検出器 probe 用 assert に当てる 3 変異の例）
 
 ## 関連ページ
 

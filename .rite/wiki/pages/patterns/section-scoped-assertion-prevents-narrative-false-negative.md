@@ -61,9 +61,7 @@ verified:
 
 ### 変種: source-code を grep する静的 test は header comment でなく load-bearing logic 行に anchor する
 
-被テストスクリプトを実行せず source を grep して「特定ロジックが存在する」ことを確認する**静的 test** も同じ false negative を起こす。grep が **header comment にマッチする** と「文字列の存在」を検証しているだけになり、肝心の検出ロジックが消えても test が pass する。
-
-exit code semantic 事例では `projects-board-drift-check.sh` の検出ロジックを検証する静的 test が `COMPLETED` / `"Done"` を素朴に grep していた。これらの文字列は header comment にも現れるため、quoted jq 述語 (`stateReason == "COMPLETED"` / `select($st != "Done")`) という **load-bearing logic 行に anchor** する形へ強化した。quoted/predicate 形は header comment の散文と区別でき、述語を削除する mutation で assert が FAIL することを確認した (quoted `COMPLETED` 述語は AC-2 の NOT_PLANNED 除外も同時に pin する — 誤形化で literal が消えるため)。「narrative mention の false negative」が prose だけでなく **code comment** にも生じる、本ページ canonical の code 版。
+（→ prose-pin-requires-positive-control に統合: 静的 test は header comment でなく load-bearing 述語行に anchor、emit 行は echo/printf 両形）
 
 **sibling 教訓 — exit-code 契約を持つスクリプトの test は exact code を assert する**: `exit 1=drift warning` / `exit 2=invocation error` のような独自 exit-code 契約を持つ script の test は、「非ゼロ」ではなく **「exit 2」を明示 assert** すべき。「非ゼロ」判定では exit 1 ↔ exit 2 の取り違え (Exit code semantic preservation の F-01 type regression) を捕捉できない。同事例では bare `--limit` 値欠落ケースを追加し exit 2 を明示 assert することで契約 regression を test で固定した。capture 行は `set +e`/`set -e` で囲み `set -euo pipefail` 下の harness abort を回避する。
 

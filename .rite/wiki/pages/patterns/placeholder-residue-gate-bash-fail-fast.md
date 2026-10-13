@@ -87,7 +87,7 @@ placeholder が state ファイル名に直接入る場合（`.rite/state/review
 
 ### LLM 内部状態 vs shell 変数の境界
 
-bash tool 呼び出し境界を跨いで shell 変数は保持されない。Phase A で `count=5` を定義しても Phase B からは参照不能で、LLM は自身の内部状態 (会話コンテキスト) から literal 値を substitute する責務を負う。この契約は bash コメントで明示することで、将来の読者が「なぜ placeholder が多いのか」を理解できる。
+bash tool 呼び出し境界を跨いで shell 変数は保持されないため、LLM は会話コンテキストから literal 値を substitute する責務を負う（詳細は [SKILL.md の別 Bash 呼び出しをまたぐシェル変数はデッドコード](../anti-patterns/skill-md-shell-var-cross-bash-call-dead-code.md)）。この契約を bash コメントで明示すると、将来の読者が「なぜ placeholder が多いのか」を理解できる。
 
 ## 関連ページ
 

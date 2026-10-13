@@ -60,7 +60,7 @@ faithful-port 委譲の 1 例目は `archive-procedures.md` §3.5.2 の inline P
 
 2 例目は `wiki/lint.md` §6.2 の `all_source_refs` 集合構築 (~240 行 inline bash) を `wiki-lint-source-refs.sh` へ委譲した (同 umbrella の別ブロック)。この例の特徴は、差分検証の対象がアルゴリズム等価性だけでなく **出力契約そのもの** に及ぶ点: marker block (`---all_source_refs_begin/end---`) と 3 値 enum (`unknown` / `true` / `io_error`) を verbatim 保持することが下流 step の分岐を壊さない hard constraint であり、reviewer は (a) develop inline 実装との byte-level diff、(b) 新規 test 34/34 pass、(c) 実機 injection 検証の 3 点で確認し、5 reviewer 全員 0 blocking / 1 cycle 収束。
 
-- **最も効率的な検証経路**: 「inline 削除版 vs helper 新規版の機械 diff」+「既存テスト実行」+「出力契約 (marker block / enum) の verbatim 一致確認」の 3 点セット。先行事例に続く同 umbrella 内 2 例目の独立再現で、faithful-port 委譲の検証手法として differential equivalence + 出力契約 verbatim の組み合わせが定着していることを示す。
+- **最も効率的な検証経路**: 「inline 削除版 vs helper 新規版の機械 diff」+「既存テスト実行」+「出力契約 (marker block / enum) の verbatim 一致確認」の 3 点セット（1 例目に続く同 umbrella 内 2 例目の独立再現）。
 - **trust boundary を確定してから injection を評価する**: faithful-port の bash injection 評価では入力の trust boundary を明示するのが有効。本 PR の page/branch 入力は LLM 制御下の wiki ページパスで外部ユーザー入力ではなく、防御は double-quote + allowlist gate (placeholder residue / partial pollution) の二層。injection リスクは「入力が誰の制御下にあるか」を確定してから severity を評価する。
 
 ### doc 適用範囲の対称記述 (sub-insight)

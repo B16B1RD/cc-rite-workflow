@@ -92,9 +92,11 @@ bare statement だけでなく、**command-substitution を含む代入** も `s
 
 bare statement 版 (上記) と root cause は同一 (`set -e` の非ゼロ abort) で、`if cmd; then rc=0; else rc=$?; fi` と `set +e; ...; rc=$?; set -e` のどちらの set -e 免除文脈に置くかは周辺コードの慣用と一致させる。test harness では `set +e`/`set -e` 囲みが慣用 (上位 if 条件にすると test の意図する rc 比較が読みにくくなるため)。
 
+hook / スクリプト本体の実例: errexit 事例の Gate 3 (`_st_out=$(git status ...); _st_rc=$?`) は「status rc≠0 → conservative skip」分岐を到達不能にし、broken worktree 入力 (このゲートが守るべきまさにその入力) で reap ループごと停止していた。canonical fix は `rc=0; var=$(cmd) || rc=$?`。
+
 ### Asymmetric Fix Transcription との関係
 
-本バグは先行 PR の **inline → delegate refactor** (RITE_HOOK_RE を python script へ委譲) の際に、`&&` 条件形式から外部コマンド呼び出しを単独文へ移動したことで guard が解体された pre-existing latent bug だった (revert test 不成立で別 Issue 化)。これは [Asymmetric Fix Transcription (対称位置への伝播漏れ)] の「inline → delegate refactor 時の wrapper guard 解体」sub-pattern の実例であり、本ページの事例はその **逆方向 (修復) の適用例**。
+（→ asymmetric-fix-transcription に統合: inline→delegate refactor で set -e 免除文脈を失い guard 解体）
 
 ### Detection Heuristic
 

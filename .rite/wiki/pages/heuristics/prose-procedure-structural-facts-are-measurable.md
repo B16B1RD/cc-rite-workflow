@@ -52,7 +52,7 @@ cycle 1〜3 は規則の欠落、cycle 4 は規則の適用範囲、cycle 5 は�
 
 ### 上限 cycle では判断基準を prompt 側で固定すると reviewer の判定が揃う
 
-最終 cycle で「merge を止める欠陥だけ」を明示的に求め、必須自問の厳格適用を prompt に明記したところ、3 reviewer のうち 2 名が推奨事項へ降格させて指摘 0 件の「可」を返した。**収束判定が reviewer の裁量ぶれに左右されにくくなる。**
+（→ orchestrator-resolves-reviewer-self-contradiction-and-counter-evidence の実例 5 に統合: 上限 cycle では判断基準を入力側プロンプトで固定する）
 
 ## 関連ページ
 

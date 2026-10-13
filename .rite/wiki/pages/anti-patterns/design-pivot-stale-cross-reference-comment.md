@@ -56,8 +56,7 @@ bash 実体を helper script へ委譲した後、その実体を説明する離
 
 要点:
 
-- **委譲は drift の発生源**: 実体を helper へ移すと、その実体を指す参照 (canonical 確立先 / 採用 site / cross-reference コメント) はすべて潜在 drift 候補になる。委譲を完了扱いにする前に、移送対象の識別子を同一ファイル全体で grep する
-- **同型 drift は単発で終わらない**: 1 箇所の stale 参照を見つけたら、同じファイル内に同型の参照節が他にないか必ず確認する (L236 を直す PR が L144 を見落とす)。reviewer の Cross-File Impact Check はこの「横の漏れ」を発掘する装置として機能する
+- **委譲も pivot の一種**: 実体を helper へ移した後は、移送対象の識別子を同一ファイル全体で grep する（防止策 1）。1 箇所の stale 参照を見つけたら同型の参照節が他にないか確認する（L236 を直す PR が L144 を見落とした）。reviewer の Cross-File Impact Check はこの「横の漏れ」を発掘する装置として機能する
 - **スコープ判断**: 横断検出した同型 drift は、現 PR の最小スコープを守るなら別 Issue 化が適切。「ついでに直す」とスコープが膨らみ review 面積が広がる
 
 ### 関連する既知 anti-pattern との区別

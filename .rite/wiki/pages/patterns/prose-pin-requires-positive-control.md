@@ -87,6 +87,8 @@ assert_prose_pin <text> <pattern> <weakened-probe> <label>
 - **「文言を含むか」だけの pin は、同じ行へ矛盾する条項を付け足す変異に盲目。** 条件文の行に「〜でも skip する」を足す変異、表セルの先頭に逆の但し書きを挿入する変異のどちらも生存した。丸ごと旧文言へ戻す変異は検出できても、付け足し型には対象行への意味単位の否定 assert（対象語の近傍に反対の動詞が現れないこと）が要る。
 - **section 内の 1 箇所ではなく要素単位で要求する。** `branch=` スコープの pin を section 全体への grep 1 本にしたところ、ルール側のスコープを全部外しても fallback に残った 1 箇所で緑になった。
 - **必須文字列はコード行だけに現れる形に狭める。** `push origin --delete` は同じ抽出範囲のコメント（「一方 `git push origin --delete` は tail 解決せず…」）だけで充足され、コマンド本体を消しても素通りした。説明文に登場する語をそのまま必須文字列にすると、その説明文が pin を無効化する。
+  - 静的 test が `projects-board-drift-check.sh` の `COMPLETED` / `"Done"` を素朴に grep すると header comment でも充足される。quoted jq 述語 (`stateReason == "COMPLETED"` / `select($st != "Done")`) に anchor すれば、述語削除の変異で落ち、`COMPLETED` 述語は NOT_PLANNED 除外も同時に pin する。
+  - emit 行は行頭の空白 + `echo` / `printf` の両形を許す。`echo` 形だけだと `printf` 形 emit を足す変異が negative 側で生存する (実測: `[CONTEXT]` の printf 形 emit がプラグイン全体に 29 箇所)。
 - **pin は「literal の存在」ではなく「marker 名 ↔ 判定値」の連言で書く。** 存在だけを要求する形は、(a) 判定値を正常系へ反転する mutation、(b) 分岐を `if false` で殺す mutation の両方を素通しする。**条件式そのもの** も pin 対象にする。
 - **`grep ... | head -1` は「1 行に収まっている」ことを暗黙の前提にする。** 対象を複数行へ分割するだけで assertion を回避でき、否定表現を 2 行目へ移すと false-fail 方向にも壊れる。宣言の単位（bullet / セクション）を awk で抽出してから検査する。
 - **`grep -q` をパイプの終端に置かない。** `printf '%s' "$x" | grep -qF "$lit"` は grep の早期終了で printf が SIGPIPE を受け、pipefail 下でパイプライン status が 141 になり否定条件が誤成立する。here-string（`grep -qF "$lit" <<<"$x"`）なら起きない。
@@ -110,6 +112,7 @@ assert_prose_pin <text> <pattern> <weakened-probe> <label>
 ### 検出器そのものの検証
 
 - **negative assertion には positive control をセットで足す。** 既知違反の probe を **本スキャンと同じ関数** に通し、発火することを確認してから本スキャンへ進む。関数へ括り出すのが要点で、probe と本スキャンで別のコマンドを書くと「control 自身が腐る」経路が残る。
+- **「誤検出しない」ことを assert する negative control は、目的の分岐へ到達したうえで発火しないことを確認する。** 正規の入力を併記した fixture では前段の判定が成功して検証したい分岐に入らず、assert が常に真（識別力ゼロ）になる事例が同 PR で 2 件あった。fixture は前段が成功する要素を併記せず分岐に確実に入る形にし、対応する mutation を当てて落ちなければ到達していないと判断する。
 - **バイトレベル検査は入力デコードを明示的に殺す。** `perl -ne '/[\x{80}-\x{FF}]/'` は `PERLIO=:utf8` / `PERL_UNICODE=SD` で見逃す。`LC_ALL=C awk '/[^ -~]/'` は同 env でも検出する。既にファイル内で使っているツールで書ければ可用性プローブも不要になり、「ツール不在時に rc=127 が違反あり分岐へ落ちて存在しない欠陥を名指しする」誤帰属も同時に消える。`grep -P` の `[\x80-\xFF]` はロケール依存で取りこぼす。
 - **コメントに書いた rationale 自体が検証対象。** 「救済文言を要求すれば `x` 判定には存在し得ないので堅い」と書いた主張は、文言を残したまま判定値だけ反転する mutation で反証された。誤った rationale は次サイクルの reviewer の探索をそこで止める。
 - **プラットフォーム固有の欠陥は static guard で pin する。** `$var。` の多バイト取り込みは glibc では再現せず、Linux leg では behavioral TC が vacuous になる。「壊れることを示すテスト」ではなく「その形を書けなくするテスト」で守る。ただし **既存の invariant テストがあっても走査範囲の外なら守られない** — TC-8b-h は `*.sh` のみを走査し SKILL.md の bash fence は blind spot だった。
@@ -136,10 +139,7 @@ assert_grep "$SKILL" 'CLEANUP_DELEGATED=1` を emit している場合、本ス�
 
 ### 語順に依存しない部分一致は、同じ行に足した説明文で充足されうる
 
-手順書の 1 行を検査するテストで、`*"A"*"B"*` の語順依存を避けるために A と B の存在を別々に確かめる形へ緩めた。同じ修正でその行に理由文を足しており、理由文が A と B の両方の語を含んでいたため、コマンド本体から A を消しても、名前空間を消しても、両方を消しても検査が通るようになった。緩める前の形はコマンドからの A の除去を検出できていたので、検出力の後退である。
-
-- 照合対象を行全体ではなくコマンドの span（バッククォート内）に絞る
-- 検査を緩める変更は、その行に同時に足した文言だけで条件が満たされないかを変異で確かめてから確定する
+（→ procedure-pin-scopes-command-span-and-argument-provenance に統合: 語順依存を緩めた検査は同じ行に足した理由文で充足される。コマンド span に絞り、緩める変更は変異で確かめる）
 
 ## 関連ページ
 

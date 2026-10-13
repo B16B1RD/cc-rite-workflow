@@ -77,6 +77,9 @@ precedence rule (canonical 優先) が明文化されていると、cycle 2 revi
 - canonical 宣言を blockquote で目立たせ、他 site から `[[canonical-source-declaration-for-multi-site-procedure]]` リンクで参照
 - summary site / cross-reference site には「canonical: §X.Y 参照」を明記し、独自詳細を書かない
 - 変更時は canonical を先に更新し、他 site の summary をそれに従わせる契約を本文 / DRIFT-CHECK ANCHOR に書く
+- pair placeholder (`{related_page_title}` と `{related_page_path}` 等) は片方だけ詳細化すると drift を生むため、両方の value source を同一 section で明示する (title 規約サブセクションを canonical 内に置く)
+- canonical を置かず両端から相互参照 blockquote (anchor 付き) で意図的同期を可視化する「sibling sync 契約」は、両側修正と hub 化の中間形態 (第 3 の選択肢)。ただし双方が他方を参照する循環では canonical を一方に固定しないと drift 制御が効かない。同期契約は prose で明示する（例: 「本 `commit_msg` 文字列と直下の gate は Phase 5.0.c canonical と Phase 5.1 / 5.2 の同一文字列と 3 箇所 explicit sync を契約。変更時は 3 箇所同時更新必須」）。将来 `/rite:lint` で grep ベースの drift 検出を実装可能にする設計意図も含む
+- fallback 文字列が canonical と placeholder 表の 2 箇所に literal 存在する状態は triplication の予兆 (cycle 1 で MEDIUM 指摘)
 
 ### 3 cycle 事例の観測 (3 cycle convergence + multi-canonical-per-file scope distinction)
 

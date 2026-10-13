@@ -75,11 +75,13 @@ Documentation の prose が言及する実装側 (commands/, scripts/, templates
 2. **`# wave` grep sweep**: CHANGELOG に `# N` 言及がある場合、その PR で削除された全 keys / features を `git show {sha}` で enumerate し、各 key について `grep -rn '<key>' docs/` で残存 live citation を一括検出する。`# wave` は unit of consistency。
 3. **Sentinel / Terminal marker の implementation 存在 verify**: docs に sentinel literal (`[xxx:completed]` 等) を書く前に必ず `grep -n '\[<sentinel>\]' plugins/rite/commands/` で実装側に存在するか確認する。旧 orchestrator 由来の用語 (`Workflow Termination block` 等) は特に高 risk。
 4. **`fully removed` 系 claim の path 分解**: 「fully removed」claim は (a) fix-side (b) review-side 等の経路ごとに分解し、各経路の現状を `grep -rn` で個別 verify する。1 経路 only の removal は `2 経路 + 各経路の #N status` table 形式で明示。
+   - scope 曖昧表現の実測: `auto_demote_low` を doc が「LOW or MEDIUM」と書いたが、実装の降格対象は `severity == LOW` のみで、MEDIUM × current-pr は reviewer 直接 assign の別経路だった(2 経路の混合記述)。mechanism の scope を書くときは実装の判定式(例: `if [ "$severity" = "LOW" ]`)を 1 行 grep し、経路ごとに分離して inline evidence を残す。
 5. **Heading slug 再計算 verify**: 手書きで anchor (`#xxx`) を書く PR では GitHub slug 算法 (`lowercase + 非英数除去 + space→hyphen`) で再計算し本文の anchor と一致するか verify する。typo は silent failure。
 6. **JA/EN pair grep**: 片方 fix の際は対応する日英ペアを `grep -rn` で再走査し parity drift を防ぐ。fix の日英ペア同時適用 verification が verification protocol に必要。
 7. **同 file 内の関連 prose grep**: fix 適用時に同 file 内の関連 prose を `grep` 検索し self-contradiction を防ぐ (cycle 7→8 で CONFIGURATION.md L548 を修正後の記述に書き直したが他 5 箇所が live モデル残置した self-contradiction を一括補修した教訓)。
 8. **Docs vs Template SoT grep** (cycle 10 F-01): docs を更新する際、対応する template (`templates/config/rite-config.yml` 等、配布物の SoT) も grep で確認する。docs と template の SoT drift は配布物としての挙動に影響する。
 9. **SPEC 全文 1 度通読**: SPEC は section ごとに独立した記述が散らばっており、削除済機能の言及が複数 section (tree / Phase / Project Types / sub-skill table) に分散する場合、全文 1 度通読が必要 (cycle 12 F-02/F-03 で section ごとに散在する Project Types / /rite:init Phase 2 Detection を一括 retired 化した教訓)。
+10. **依存要件記述の呼び出し名 verify**: 「ツール X を入れれば機能 Y が有効化」と書く前に、実コードがそのツール名を literal に呼ぶか grep で確認する。実例: README が「`brew install coreutils` で `gdate` が入り陳腐化検出が有効化」と書いたが、`wiki-lint-stale.sh` は `gdate` を呼ばず `date -d` (GNU 拡張) のみ使う (事前検査と本走査の 2 箇所)。coreutils formula は `g` 接頭辞付きツールを足すだけで `date` は BSD のままなので、有効化には `gnubin` を `PATH` 先頭へ追加して `date` を GNU 版に解決させる必要がある。
 
 ### Root cause summary
 
@@ -94,11 +96,11 @@ documentation review の verification protocol が **「内的整合 (CHANGELOG 
 
 ### Successful application — prose 散文括弧書きの正確性 review
 
-0 findings / 1 cycle の PR で本 protocol の **prose 散文 ↔ helper 実装出力語彙の cross-check** 側面を successful preventive application として実測。`commands/init.md` の NO_RITE_HOOKS routing 行の括弧書き `(already clean)` → `(no rite hooks removed)` という 1 行文言修正レビューで、両 reviewer (prompt-engineer / code-quality) が (1) 説明対象 helper `settings-local-rite-hook-cleanup.sh:15` の実出力語彙 `nothing removed` を SoT として括弧書きの正確性を裏取り (mv 失敗サブケースで `already clean` が不正確になる nuance を実装側で確認)、(2) 同 doc 内の対称注記行 (`no output (...)` 形式、line 650/756) への伝播漏れを `grep "clean)"` で機械検証 (0 件 = 旧語彙残存なし) し、0 findings で確認。**散文括弧書きの正確性 review は、説明対象実装の出力語彙・コメントを implementation grep の SoT に含める**という protocol step の小規模 application であり、同時に [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の「同 doc 内対称注記行の grep verify」と pair で機能した。
+0 findings / 1 cycle。`commands/init.md` の NO_RITE_HOOKS routing 行の括弧書き `(already clean)` → `(no rite hooks removed)` のレビューで、説明対象 helper `settings-local-rite-hook-cleanup.sh:15` の実出力語彙 `nothing removed` を SoT に裏取りし（mv 失敗サブケースで `already clean` が不正確になる nuance）、同 doc 内の対称注記行（line 650/756）への旧語彙残存を `grep "clean)"` で 0 件確認した。説明対象実装の出力語彙・コメントも implementation grep の SoT に含める（[Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の同 doc 内対称注記行 grep と pair）。
 
 ### Successful application — Doc-Heavy mode 5 カテゴリ検証の全主張 grep verify + pre-existing i18n drift の revert-test routing
 
-`docs/SPEC.md` +4/-2 の Doc-Heavy PR（0 findings / 1 cycle）で本 protocol の **「prose が言及する実装主張を悉皆 grep verify する」中核** を successful preventive application として実測。tech-writer (Doc-Heavy mode) と code-quality (sole-reviewer guard co-reviewer) が、SPEC.md に追加した flow-state 権威スコープ再定義ノートの全実装主張を独立に grep/Read 裏取りし全件一致を確認した: (1) per-session 構造 `.rite/sessions/{session_id}.flow-state` を `flow-state.sh` の `SESSION_DIR` 定義で確認、(2) 「`commands/pr/merge.md` Step 1 is the first application of this boundary」を `merge.md` Step 1 の `gh pr view --json mergeable,mergeStateStatus,isDraft` 権威化実装で確認、(3) 相互参照リンク先 `docs/designs/clear-per-command-flow-state-decoupling.md` の実在を確認、(4) work-memory パス `.rite-work-memory/issue-{n}.md` を SPEC architecture table と照合、(5) 継続ループ系列挙 (`iterate.md` review↔fix / `stop-loop-continuation.sh` + handoff / `pr:review` / `pr:fix` / `resume.md`) の実在を確認。Doc-Heavy mode の 5 カテゴリ verification protocol は本 heuristic の「documentation ↔ implementation cross-reference 検証」を mode-gated に強制する構造であり、本 PR はその構造が clean PR で 1 cycle 収束を達成した positive evidence。
+`docs/SPEC.md` +4/-2 の Doc-Heavy PR（0 findings / 1 cycle）で、tech-writer と code-quality が flow-state 権威スコープ再定義ノートの全実装主張（per-session 構造の `SESSION_DIR` 定義 / `merge.md` Step 1 の `gh pr view --json mergeable,mergeStateStatus,isDraft` 権威化 / 参照先 design doc の実在 / work-memory パス / 継続ループ系列挙）を独立に grep/Read で裏取りし全件一致を確認した。Doc-Heavy mode の 5 カテゴリ検証は本 heuristic を mode-gated に強制する構造で、clean PR が 1 cycle 収束した positive evidence。
 
 加えて、両 reviewer が独立に **`docs/SPEC.ja.md` の per-session 構造への i18n parity drift (pre-existing)** を検出し、protocol step 6 (JA/EN pair grep) の観点で `grep "sessions/" docs/SPEC.ja.md` → 0 hits / legacy `.rite-flow-state` 全面記述を確認したうえで、**revert test により本 PR diff 由来でないと判定して blocking finding から除外し follow-up Issue へ routing** した。JA/EN parity drift が検出されても pre-existing なら current-pr blocker にせず follow-up 化する scope judgment が、本 protocol の grep verify と revert test の組み合わせで正しく機能した実例。
 
@@ -108,11 +110,23 @@ documentation review の verification protocol が **「内的整合 (CHANGELOG 
 
 ### Successful application — docstring contract 追記 PR の claim-実装整合全数検証
 
-コメント / docstring のみの +8/-0 docs PR（0 findings / 1 cycle）で、本 protocol が **script docstring に追記した契約 claim の層** にも適用されることを successful preventive application として実測。`review-findings-maps.sh` docstring への stdout contract 追記 (severity_map_json / scope_map_json は構築検証のみで stdout に emit しない) と TC-D 観測性制約注記 (in-process validation 変数は differential test では観測できない) について、4 reviewer (test / error-handling / performance / security) 全員が「追加コメントの主張と実装の整合」を Grep/Read/テスト実行 (review-findings-maps.test.sh 19/19 pass) で独立に全数検証し、claim-実装乖離ゼロを確認した。[Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の懸念 (claim 文言の片肺化・vacuous claim 化) も非該当と判定。推奨事項 3 件 (usage() の `--help` 時 stdout 出力と「stdout contract: なし」文言の境界注記余地 — 2 reviewer が独立言及 / 将来 stdout emit 契約変更時の test pin 整備方針の defer 妥当性) はいずれも本 PR スコープ外の任意改善として扱われた。コメント追加 only の PR でも「コメントが宣言する契約」は implementation grep verify の対象であり、本 protocol が prose / CHANGELOG / SPEC に加えて docstring contract 層でも 1 cycle 収束を支えることを示す positive evidence。
+コメント / docstring のみの +8/-0 docs PR（0 findings / 1 cycle）。`review-findings-maps.sh` docstring への stdout contract 追記（severity_map_json / scope_map_json は構築検証のみで stdout に emit しない）と TC-D 観測性制約注記を、4 reviewer が Grep/Read/テスト実行（review-findings-maps.test.sh 19/19 pass）で全数検証し乖離ゼロ。推奨 3 件（usage() の `--help` 時 stdout と「stdout contract: なし」の境界注記余地 / 将来の stdout emit 契約変更時の test pin 方針の defer）は本 PR スコープ外の任意改善。コメント追加 only の PR でも「コメントが宣言する契約」は implementation grep verify の対象（docstring contract 層への適用）。
 
 ### Successful application — 定量的棚卸し調査文書における全数値の grep 再実行検証
 
-0 findings / 1 cycle の棚卸し調査 PR で本 protocol の**「実装 grep 検証」を、実装の現状記述ではなく調査文書自身が主張する大規模定量値（`[CONTEXT]` marker 675箇所/55ファイルの棚卸し）に適用する**変種を successful preventive application として実測。tech-writer と code-quality の両 reviewer が独立に `grep -rn '\[CONTEXT\]' plugins/rite/` を再実行し、文書が主張する全数値（総ヒット数・ファイル数・種別内訳6区分の合計・上位15ファイルの個別件数・emit/consume内訳・参照ファイルの実在）を1件残らず突合、捏造・不整合ゼロを確認して1 cycle mergeableに到達した。教訓: 大規模な定量的棚卸しを含む調査文書は、（a）再現可能な grep コマンドを本文に明記し、（b）集計を漏れなく分割された内訳（合計と一致する区分）として提示すると、reviewer 側が実装 grep verify を機械的に反復実行でき、高い信頼性を伴う短サイクル収束を実現できる。本適用は「documentation ↔ implementation」ではなく「調査文書自身の定量claim ↔ grep実測」という cross-reference 対象のバリエーションだが、根底にある「prose の factual claim は必ず機械的に再実行可能な検証手段を伴わせる」原則は同一。
+0 findings / 1 cycle の棚卸し調査 PR で本 protocol の**「実装 grep 検証」を、実装の現状記述ではなく調査文書自身が主張する大規模定量値（`[CONTEXT]` marker 675箇所/55ファイルの棚卸し）に適用する**変種を successful preventive application として実測。tech-writer と code-quality の両 reviewer が独立に `grep -rn '\[CONTEXT\]' plugins/rite/` を再実行し、文書が主張する全数値（総ヒット数・ファイル数・種別内訳6区分の合計・上位15ファイルの個別件数・emit/consume内訳・参照ファイルの実在）を1件残らず突合、捏造・不整合ゼロを確認して1 cycle mergeableに到達した。教訓: 大規模な定量的棚卸しを含む調査文書は、（a）再現可能な grep コマンドを本文に明記し、（b）集計を漏れなく分割された内訳（合計と一致する区分）として提示すると、reviewer 側が実装 grep verify を機械的に反復実行でき、高い信頼性を伴う短サイクル収束を実現できる。根底の原則は「prose の factual claim は必ず機械的に再実行可能な検証手段を伴わせる」で、docstring 層と同一。
+
+### Successful application — doc の code-state claim(orphan / retired)を reviewer が独立 grep-confirm
+
+メトリクス記録 reference の注記強化 PR は、3 marker(`phase5_post_metrics` / `phase5_post_status_in_review` / `phase5_5_2_metrics`)が live writer/reader 不在・`PHASE_ENUM_V3` に非在・retired の orphan で、legacy `phase5_*` drift とは別語彙だと主張する doc-only PR だった。prompt-engineer / code-quality の 2 reviewer が orphan claim を独立に grep-confirm し、0 findings / 1 cycle で mergeable。書き手側の grep が抜けても review 側の grep が safety net になる。
+
+### 実例 — canonical reference の CLI / shell 挙動 claim は man / 実機で反証される(4 件)
+
+- `realpath -m` は missing components を許容するだけで symlink は既定で解決する(非解決は `-s`)。reference の「symlink 解決しない」を `man realpath` で訂正。
+- 「行頭 ``` 慣習なので false positive なし」は、`grep -rE '^[[:space:]]+```'` でインデント付き code fence の実在を示して反証。
+- `realpath --relative-to=wiki_root` は root 外で空文字列でなく `../../etc/passwd` 形の相対パスを返し、`*)` 分岐で `broken="false"` になる(GNU coreutils 9.x で実機確認)。
+- Edge Case 表の `realpath -m -s --relative-to=.rite/wiki ./pages/foo.md` の予測は、実機では `pages/heuristics/pages/foo.md`(`./` 相対は page_dir 起点)。
+prose だけの claim は Edge Case 表の予測まで連鎖して誤らせるため、CLI 挙動 / repo 状態の claim は man・runtime invoke・repo grep を伴わせる。
 
 ### Successful application — 「削除対象一覧」文書のドキュメント化石化検出 + 後方互換性を理由とした意図的な現状維持判断
 
@@ -127,6 +141,10 @@ cycle 2 / 0 findings 収束の PR で、本 protocol の **in-source 設計コ�
 ### Successful application — リリース CHANGELOG の実装・集合突合
 
 実行可能コードを変更しないリリース準備 PR でも、CHANGELOG の品質ゲートは文体確認ではなく、散文が名指しする helper・既定値・運用原則を実装で 1 件ずつ裏取りする作業になる。加えて、日英版はエントリ数だけでなく各行の PR 番号列の集合と順序を diff し、収録範囲は `git log <prev_tag>..develop` から抽出した PR 番号集合と CHANGELOG 記載集合の双方向差分で確定する。これにより、順序ドリフト、別変更への差し替え、記載漏れと未マージ記載を同時に機械検出できる。また、定型リリーススキルが rite の merge gate 外にある場合は、レビュ済み証明を生成する手順をスキル側に明示しないと、ドキュメントのみの PR でもマージは fail-loud に停止する。
+
+### Successful application — SoT の「漸進移行」Note は削除前に全 caller を実地検証する
+
+移行完了で陳腐化する SoT の「漸進移行」Note を削除するときは、「未移行 caller がある」という記述が実態と一致しなくなったことを、削除前に全 caller の実地確認で裏取りする（5 caller: separated 3 + pipe-stdin 2 の例）。factually-false な記述を残さず、かつ未移行 caller が残る状態で Note を消さないための fact-check。
 
 ### 追記: 散文だけを直した cycle でも実装の全経路を突き合わせる
 

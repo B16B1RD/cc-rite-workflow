@@ -38,9 +38,7 @@ hook が `"$plugin_root/scripts/<helper>.sh"` のように絶対パスで helper
 
 ### 失敗系の「呼ばれない」は不在で pin する
 
-受入条件の Then に「pr view が失敗したら helper は呼ばれない」が含まれるとき、既存テストが stderr の WARNING トークンしか見ていないことがある。失敗系フィクスチャは repo view や GraphQL も縮退させているのが普通で、hook が失敗後に照合ブロックへ進んでも helper に到達しない。そのため「失敗しても照合に進む」退行は WARNING が残る限り緑のままになる。失敗分岐の変数代入を書き換える変異を当てても検出されないことで実測された。
-
-pin の形は次のとおり。pr view だけ非 0 で終わり、repo view と GraphQL は happy と同じ正常応答を返すフィクスチャを sandbox プラグインルート付きで起動し、(1) WARNING トークンの存在を **到達 positive control** として確認し、(2) 記録ファイルの不在と「mismatch detected」の不在を本命として assert する。不在だけでは hook が早期に死んでも緑になるので、control が対になっていないと pin は成立しない。
+（→ negative-assertion-positive-control に統合: 到達 positive control と対の不在 assert。失敗分岐の変数代入変異と mismatch detected の不在も同ページ）
 
 ### 一般化
 

@@ -42,7 +42,7 @@ grep -nE '(^|[;&|[:space:]])git worktree remove' "$file"
 
 **検証手順**: 新しい検査 regex を書いたら、**抽出前（あるいは修正前）のコードに当てて一致件数を確認する**。本来なら N 件一致するはずの対象に 1 件しか当たらないなら、ゲートは対象を見ていない。観測された事例では行頭アンカー版が実際に 1 件しか拾えず、この確認で発覚した。
 
-**assert のチャネルも同じ問題を持つ**: `assert_not_contains` を stdout だけに当てても、対象の文字列が stderr にしか出ないなら構造的に常時 pass する false positive になる。「この assert はどの実装で落ちるか」を問うと同型の欠陥を検出できる。
+**assert のチャネルも同じ問題を持つ**（→ negative-assertion-vacuous-without-precondition-floor に統合: stdout だけの否定 assert は対象が stderr にだけ出ると常時 pass）。
 
 ## 関連ページ
 

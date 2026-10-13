@@ -137,6 +137,10 @@ caller 側の case routing だけでなく、**script 自身のすべての内�
 - **canonical fix**: exit code 契約を変える変更では、script のファイル名で repo 全体を grep し、ヒットした全 caller の `case` を同じ語彙に揃える。揃えないと判断した caller は理由を残す
 - **`*)` の役割との関係**: 上の「双方向契約」で置く `*)` は未知の code を silent OK にしないための保険であり、新しい code 固有の案内を届ける手段ではない。`*)` があるから追加漏れは安全、とは読まない
 
+### 集約 refactor では旧 `&&` 連鎖と helper 置換の rc 等価性を実機検証する
+
+旧短絡 AND 連鎖 (`[ -n ] && [ -s ] && head|sed`、空ファイルで rc=1) を helper (`if ...; then head|sed || true; fi`、no-op で rc=0) に置換する場合、helper の rc が後続から参照されないことと、`set -e` が if / `&&` の condition 位置で abort しないことを実機で確認し、挙動等価を示す。
+
 ### 実測 mutation 検証で確認された再現インスタンス
 
 判定 bash を `if/elif` の 2 値分岐から単一コマンド呼び出し + `$?` キャプチャ + `case` の 3 値以上分岐へ書き換えた事例で、複数レビュアーが隔離環境で実際に対象コマンドを実行し、各 exit code（正常/不一致/エラー）が期待した `case` の分岐へ正しく落ちることを実測で確認した。本パターンが定める「caller は case で語彙を保持する」contract の遵守を、実装レビューだけでなく mutation 実験（分岐の削除・退行）で検証する手法が有効であることの追加事例。

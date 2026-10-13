@@ -230,6 +230,14 @@ path traversal を含む不正な id で「印が作られないこと」を ass
 
 テストファイルへ変異を当てる実験は、`git checkout` で戻さず文字列置換で戻す。`git checkout` は未コミットの修正ごと巻き戻す。
 
+### 否定 assert の観測チャネルが対象の出る先と違うと常時 pass する
+
+`assert_not_contains` を stdout だけに当てても、対象の文字列が stderr にしか出ないなら構造的に常時 pass する false positive になる。「この assert はどの実装で落ちるか」を問い、対象が実際に出るチャネルを観測していることを陽性側で先に固定する。
+
+### 実例 12: 静的 denylist probe の haystack が空になる
+
+再混入を止める denylist probe の haystack を `grep -n 'sed -n' file` で作ると、(i) 式を継続行へ折り返すだけで走査対象から外れ、(ii) 0 件を返すと haystack が空になり assert が無言で vacuous pass する。haystack の非空を先に assert する。詳細は [portability-fix-questions-the-regex-feature-first](../heuristics/portability-fix-questions-the-regex-feature-first.md)。
+
 ### 入力の前提を固定する補強
 
 回復経路を試す前に、その経路が必要になる失敗直後の状態を fixture へ明示的に作る。正常走行の状態をそのまま流用すると、何もしない回復処理も通ってしまう。入口状態の成立と回復後の変化を別々に assert する。

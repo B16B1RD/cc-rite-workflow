@@ -43,7 +43,7 @@ generated: { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T10:20:00+09
 
 GNU 拡張の再混入を止めるために静的 denylist probe を書いたが、haystack を `grep -n 'sed -n' file` にしたため (i) 式を継続行へ折り返すだけで走査対象から外れ、(ii) 探し方が 0 件を返すと haystack が空になり assert が**無言で vacuous pass** した。対策は 3 つ:
 
-- haystack の非空を precondition として先に assert する
+- haystack の非空を precondition として先に assert する（→ negative-assertion-vacuous-without-precondition-floor に統合: 実例 12）
 - 走査軸を「実装の形」ではなく「コメント以外の本文全体」のように壊れにくいものにする
 - denylist の語彙を、宣言した規範（POSIX BRE のみ）に対して網羅する — `\b` `\|` だけ挙げて `\+` `\?` を漏らすと、最も自然な書き換え形が素通りする
 

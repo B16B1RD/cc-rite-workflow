@@ -24,13 +24,7 @@ README 等の依存要件で「ツール X（例: coreutils / gdate）を入れ�
 
 ## 詳細
 
-起点事例で README（英日）が「`brew install coreutils` で `gdate` が入り Wiki 陳腐化検出が有効化される」と記述した。しかし実スクリプト `plugins/rite/hooks/scripts/wiki-lint-stale.sh` は `gdate` を一切呼ばず `date -d`（GNU date 拡張）のみを呼んでいた（148 行の事前検査、189 行の本走査）。
-
-homebrew の coreutils formula は `g` 接頭辞付きツール（`gdate` 等）を追加するだけで、システムの `date` は BSD date のまま置き換わらない。したがって `brew install coreutils` を実行しても `date -d` は依然として失敗し、陳腐化検出は `stale_check_ok=skipped_no_gnu_date` 経路のままスキップされる。有効化するには coreutils の `gnubin` ディレクトリを `PATH` の先頭に追加し、`date` を GNU 版に解決させる必要がある。
-
-この drift は tech-writer の Doc-Heavy PR Mode（実装との整合性を検証する 5 カテゴリプロトコル）が cycle 1 で検出し、fix で「gnubin を PATH に追加して `date` を GNU 版に解決させる」記述へ修正、cycle 2 で mergeable に収束した。
-
-教訓: 「install X → enables Y」型の依存記述は、実コードがそのツール名を literal に呼んでいるか（`gdate` を呼ぶのか、`date` を呼ぶのか）を grep で確認してから書く。実装が別コマンド名を呼んでいれば、ツールの導入だけでは有効化されず、PATH 解決などの追加手順が必要になる。この裏取りは、より一般的な「ドキュメントの主張を実装と照合してから書く」原則（[カテゴリ列挙の圧縮はブロッキング/informational の分類を SoT で確認してから削る](./enumeration-compression-verify-blocking-classification.md)）の依存要件記述への適用である。
+（→ docs-review-implementation-grep-verification に統合: gdate ではなく `date -d` を呼ぶ実装、gnubin を PATH 先頭へ追加して有効化。裏取りは実コードの呼び出し名 grep）
 
 ## 関連ページ
 

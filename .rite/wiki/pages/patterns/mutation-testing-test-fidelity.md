@@ -290,10 +290,7 @@ expected_bytes=5  # "value" の byte 数
 
 ### 実装手順 (canonical)
 
-1. test 対象の実装行を `git stash` または `sed` で削除 / 改変する。
-2. 当該 test を再実行する。
-3. **FAIL すれば真正、PASS すれば dead code or identification power 0**。
-4. 復元して fix 方針を決める (dead code なら test を実装の真の動作に書き直す、identification power 0 なら fixture old/new value を分離)。
+（→ mutation-prove-new-pin に統合: 実装行を壊して FAIL なら真正、PASS なら dead code / 識別力 0 で書き直しか fixture 分離）
 
 ### 検出が困難な領域
 
@@ -474,12 +471,9 @@ Stop hook の loop-continuation を扱った PR で 2 つの mutation testing �
 
 #### 9-A: correctness invariant を導入する fix には回帰検出 test を同 PR で添える
 
-cycle 2 の bug fix が `consume-handoff` の fail-closed ordering (delete-then-return) という correctness invariant を導入したが、その invariant を守る回帰検出ネットが無かった (test gap)。これは「**fix が新たな test gap を残す**」pattern。cycle 3 で test-reviewer が MEDIUM (scope=follow-up) で指摘し、対応として:
+cycle 2 の bug fix が `consume-handoff` の fail-closed ordering (delete-then-return) という correctness invariant を導入したが、その invariant を守る回帰検出ネットが無かった (test gap)。cycle 3 で test-reviewer が MEDIUM (scope=follow-up) で指摘した。
 
-- 既存 TC の DAC-probe (chmod 0555 で `_atomic_write` を強制失敗) を流用し、書込失敗時の **値 withhold / handoff 残存 / rc≠0 / 診断 ERROR emit** を assert する TC-H6 を追加。
-- さらに **print-then-delete への mutation で TC-H6 が実際に FAIL する**ことを確認し、false-positive test でないことを保証した。
-
-教訓: **bug fix が correctness invariant を導入したら、同 PR 内で「その invariant を壊す mutation で FAIL する」test を必ず添える**。invariant 導入 commit と回帰検出 commit は不可分。invariant を導入したのに mutation-fail test を欠くと、後続改修で invariant が静かに巻き戻っても誰も気付かない。fail-closed ordering の本体は [[consume-operation-delete-then-return-fail-closed]] を参照。
+（→ mutation-prove-new-pin に統合: invariant 導入 fix は同 PR で、壊す変異で落ちる test を添える。DAC-probe 流用の TC-H6 と print-then-delete 変異もそこに記載）fail-closed ordering の本体は [[consume-operation-delete-then-return-fail-closed]] を参照。
 
 #### 9-B: bash positional 引数誤配置は test が常に PASS する silent false-positive
 
@@ -491,37 +485,7 @@ cycle 2 で test-reviewer が、TC の positional 引数誤配置 (`stop_payload
 
 `consume-handoff` の corrupt JSON 読取時 WARNING を `cmd_set` / `cmd_get` と対称化した PR は、適用 9 と同じ `flow-state.sh` consume-handoff 領域の直接 follow-up であり、**「対称化」(symmetrization) を謳う変更の test 真正性**を新しい軸として実測した。
 
-#### 失敗の構造 — 片側 pin は無条件 emit mutant を見逃す
-
-「対称化」とは「**corrupt 側では WARNING が発火し、happy-path 側では発火しない**」という双方向の invariant である。ところが cycle 1 時点の test は corrupt 側の発火 (TC-H7 相当) だけを assert しており、**happy-path 側の非発火を pin していなかった**。test reviewer が mutation testing で gap を実証:
-
-```bash
-# Mutation: 関数を「無条件 WARNING emit」に改変 (corrupt 判定を外す)
-# 期待: 対称性が壊れるので test が FAIL すべき
-# 実測: 既存 103 assert が全 PASS → coverage gap
-#   corrupt 側 assert は無条件 emit mutant でも当然 PASS し、
-#   happy-path 側の非発火を見る assert が無いため mutant を catch できない
-```
-
-→ corrupt 側だけの assert は、無条件 emit mutant に対し identification power 0。これは適用 5 Pattern 5-B (件数判定の片側 mutation 隠蔽) / 適用 7 (alternation の片側 positive coverage 欠落) と同型の **「対称性主張の片側のみ pin」coverage gap** で、対象を grep -c 閾値や regex branch から **動作の対称性 (発火 / 非発火)** へ一般化したもの。
-
-#### Fix 方針 — negative-assert で非発火側を pin し双方向 mutation で確認
-
-cycle 1 fix で happy-path (handoff キー欠落の正常系) で corrupt-read WARNING が**非発火**であることを pin する negative-assert (TC-H4) を追加し、TC-H7 (corrupt 側発火) と対にした。さらに**双方向 mutation で両 assert の identification power を実証**:
-
-| Mutation | 期待 | 検出する test |
-|----------|------|--------------|
-| 無条件 WARNING emit (corrupt 判定除去) | happy-path でも発火 → 非発火 assert が FAIL | TC-H4 (negative-assert) |
-| WARNING 行削除 | corrupt 側でも非発火 → 発火 assert が FAIL | TC-H7 (positive-assert) |
-
-両 mutation がそれぞれ別の test を FAIL させることで、対称性の両側が独立に pin されたことが保証される。
-
-#### Canonical 対策
-
-1. **対称化 claim は両側を独立 assert で pin する**: 「A 条件で発火 / B 条件で非発火」を謳う変更は、発火側 (positive-assert) だけでなく**非発火側 (negative-assert)** も必ず assert する。片側だけでは無条件 emit / 無条件 silent のいずれかの mutant が必ず通り抜ける。
-2. **positive / negative の grep regex は同一文言で対にする**: 両 assert が同じ canonical phrase を検査することで、文言 drift による片側の取りこぼしを防ぐ (発火側は「phrase が出る」、非発火側は「phrase が出ない」を pin)。
-3. **双方向 mutation で両 assert を検証する**: 「無条件 emit mutant → negative-assert が FAIL」「emit 削除 mutant → positive-assert が FAIL」の双方を実機で確認する。片方向の mutation だけでは対の片側が dead のまま残りうる。
-4. **sibling script を source する hook の mutant は hooks/ ディレクトリ内に配置する**: mutation 対象を `/tmp` にコピーすると sibling script (`*.sh`) の source 解決が相対 path で壊れる。`hooks/` ツリー内に mutant を置いて実環境の source 解決を再現する (適用 9-A の「実装本体を実環境で mutate」と同じ運用要件)。
+（→ mutation-before-pin-separates-necessity-from-efficacy に統合: 発火側・非発火側を別 assert で pin し、無条件 emit 変異と emit 削除変異の両方向で確認。文言を対にする規則と hooks/ 内に変異体を置く要件も記載）
 
 本 sub-pattern は [[asymmetric-fix-transcription]] (対称位置への fix 伝播漏れ) の **test 側双対**にあたる: 前者は「対称な実装サイトへ fix を伝播し忘れる」失敗、本適用は「対称な動作 invariant の片側を pin し忘れる」失敗。実装の対称化を謳ったら、その対称性を守る test も両側対称に置く。
 
@@ -529,12 +493,7 @@ cycle 1 fix で happy-path (handoff キー欠落の正常系) で corrupt-read W
 
 `nlines >= 25` のような閾値比較の off-by-one (`>=` ↔ `>` / 閾値 `25` ↔ `24`) は、fixture が閾値から離れた値 (本文 26 行以上) で overshoot していると、どの mutation も既存 TC を全 PASS のまますり抜ける。`bash-heaviness-check` の閾値事例では全 long-block fixture が `filler 26` 以上で、ちょうど 24 / 25 行の境界が未カバーだったため、cycle 1 では「境界値テスト欠落」が推奨に留まっていたが、cycle 2 で reviewer が mutation testing を実施して off-by-one が捕捉されないことを実証し MEDIUM に昇格した。
 
-canonical な解消手順:
-
-1. **測定対象シグナルを単独の結果決定要因にする**: 評価対象 (long-block) 以外のシグナル (python-inline) を第 2 シグナルに固定し、評価対象の発火有無のみが exit code を決める構成にする。これで閾値の `>=` 境界だけが TC の合否を分ける。
-2. **境界の両側を別 TC で pin する**: (a) 本文 24 行 (閾値未満) → 非検知 + ラベル非出力 / (b) 本文 25 行 (閾値ちょうど) → 検知 + `long-block(25)` のラベル付き値まで assert。後者は閾値だけでなく行カウントロジックの回帰も同時に pin する。
-3. **fixture の行数が SUT のカウント定義と一致することを確認する**: fence 行を含む / 含まない、heredoc body を数える / 数えない等のカウント定義差で 1 行ずれると境界 TC が無意味になるため、`filler N` の N を実機で逆算検証する。
-4. **commit 前に mutation で非 vacuous を実証する**: 隔離 worktree で `>= 25` → `>= 26` と `LINE_THRESHOLD 25 → 24` の両 mutation を適用し、それぞれ追加した境界 TC が FAIL することを確認してから commit する。
+（→ mutation-before-pin-separates-necessity-from-efficacy に統合: 測定対象を単独の決定要因にし、24 行 / 25 行の境界ペアと fixture のカウント定義検算で pin。commit 前に `>= 25`→`>= 26` と閾値 25→24 の両変異で境界 TC が落ちることを確認する）
 
 これは「detection 完全性 (off-by-one) を test で守る」適用であり、適用 7 (regex quantifier の semantic 境界) や適用 10 (対称化の双方向 pin) と同じ「片側だけ / 境界の外側だけ pin して中身が dead」失敗の数値閾値版にあたる。
 
@@ -794,6 +753,10 @@ settings.local.json コピー失敗の検証事例では、cycle 2 で追加し�
 
 教訓: mutation testing を実施する際、対象コードが本番の作業ブランチ（PR の diff 対象）そのものである場合、mutation の適用先を **実リポジトリの外（一時ディレクトリ等の隔離コピー）** に限定することで、reviewer の READ-ONLY 制約（working tree を変更しない）を守りながら実効性検証ができる。適用 5〜9 で確立された「mutation で実装を kill してテストが red になるか確認する」手法を、reviewer 自身が対象 PR の branch を直接操作できない制約下でも安全に実行するための具体的な実装パターン。
 
+### 補足: fix が足した分岐も mutation で守られているか確かめる
+
+cycle 1 の fix が足した分岐 (marker 正規化行、新設 WARNING 2 本、引数エラー腕の既定値報告) は、削除しても全テストが緑のまま残り、cycle 2 で 3 件の指摘として戻った。テストは正常系 fixture しか通さず fix の経路に入っていなかった。fix 直後に足した分岐へ fixture を足し、mutation を 1 回かけて落ちることを確かめる。
+
 ### 適用 30: 安全ゲートを剥がす mutation は producer 側 (recorder + guard) にも discriminating assert が無いと consumer 側だけでは無検知で通過する（cycle 2 の実測）
 
 当該 PR の cycle 2 で、新規追加した `session_worktree` type の manifest 記録ロジック（recorder + `{pr_merged}=true` guard）に対し、consumer 側（reap ロジック）の discriminating test は用意されていたが、**producer 側（recorder + guard 自体）** には対応するテストが存在しなかった。test reviewer が両方のブロック（sandbox-mask 分岐 / busy-failed 分岐）から `{pr_merged}=true` guard を剥がす mutation を適用したところ、既存テストスイートが無検知で通過することを実測した。
@@ -878,7 +841,7 @@ cycle 2 で新設した会計テストの初版は 42 assertions が緑だった
 
 ### 防御コードを追加したら、その防御自体に mutation を当てる
 
-「新規分岐には TC を付ける」規律が徹底されていても、新規に追加した **防御行**（1 行の無害化処理など）は分岐ではないため規律の網から漏れる。防御行 pin 欠落事例では他の全変更に pin がある中で防御行 1 行だけが空いており、4 名のレビュアー全員が対比でそこを指摘した。防御を足したら「消したらテストが赤くなるか」を必ず確認する。
+（→ defensive-code-needs-its-own-failure-path-test に統合: 分岐でない防御行も、消して赤くなるかを変異で確認）
 
 ### 生存した変異は理由を個別に説明できて初めて完了
 
@@ -922,6 +885,10 @@ section 限定の assert（`assert_grep_in_section` 系）を mutation で検証
 
 後者を kill と読むと「pin が効いている」という誤った確証を得る。mutation で pin 対象の記述だけを差し替えたつもりでも、見出し行を巻き込んで消していれば全 assert が後者で落ちる。**helper のメッセージ本文を読んで前者であることを確認する**まで kill と数えない。
 
+### 検出器 probe の assert に当てる変異の例
+
+検出器 regex の probe 用に足した assert は、変更を戻す変異（probe から改行を除く・見出し行の probe を外す・例外の握りつぶしを戻す）で落ちることを確かめる。落ちない assert は主張している挙動を固定していない。
+
 ### 両方向を測って初めて vacuous でないと言える
 
 clean tree での PASS と mutant での FAIL は、**それぞれ別の欠陥を排除する**ので両方要る。
@@ -957,7 +924,7 @@ base の取り込みで両側が同じテスト番号を追加したときは、
 
 ### `or` でつないだ判定は項ごとにテストを置く
 
-`a or b` の判定は、fixture がすべての項を同時に満たすと、片方の項を消す変異がスイートを通ったまま生き残る。たとえば、worktree の中かどうかを `tree == resolved or tree in resolved.parents` で判定する場合を考える。fixture の worktree がメインのチェックアウトの中にあり、しかも最上位へちょうど cd すると、どちらの項を残しても結果が同じになる。a だけが成り立つケース（状態ルートの外に置いた worktree の最上位）と、b だけが成り立つケース（worktree の下のサブディレクトリ）をそれぞれ置けば、両方の変異が 1 件ずつのテストで落ちる。
+（→ mutation-prove-new-pin に統合: 全項を同時に満たす fixture では項を消す変異が生存する。a だけ・b だけが成り立つ入力を 1 件ずつ置く。worktree 判定の例も記載）
 
 ## 関連ページ
 

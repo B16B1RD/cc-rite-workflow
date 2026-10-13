@@ -106,14 +106,7 @@ LLM reviewer は invariant の logical consistency を高速に reasoning でき
 
 ### Documentation factual claim 検証の実例（cycle 1-4）
 
-canonical reference 反証事例で reviewer が canonical reference (`broken-ref-resolution.md`) の factual claim を runtime / grep で 3 件反証:
-
-1. **`realpath -m` の symlink 挙動 (cycle 1 で訂正)**: reference が「`-m` で symlink 解決しない」と書いていたが、prompt-engineer reviewer が GNU coreutils 公式 man page (`man realpath`) で「`-m` は missing components を許容するのみ、symlink は default で resolve される。symlink 非解決には `-s` が必要」と確認。reference を訂正。
-2. **「実用上の影響はない」断定の反証 (cycle 1 で訂正)**: reference が「コードブロック内のリンクは行頭 ``` 慣習なので false positive 発生せず」と書いていたが、reviewer が `grep -rE '^[[:space:]]+\`\`\`' .rite/wiki-worktree/.rite/wiki/pages/` で **インデント付き code fence の実在** を立証。prose claim は repo 内検証で裏付ける必要がある (prose-only claim 禁止)。
-3. **`realpath --relative-to` 外側挙動の訂正 (cycle 4 で訂正)**: reference が「`realpath --relative-to=wiki_root` は wiki_root 外で空文字列を返す」と書いていたが、cycle 4 で実機検証 (GNU coreutils 9.x) し「実際は `../../etc/passwd` のような相対パスを返し、canonical bash の `*)` 分岐で `broken="false"` になる」と立証。reference を訂正。
-4. **Edge Case 表の factual error 訂正 (cycle 3 で訂正)**: cycle 1-2 で書かれた `realpath -m -s --relative-to=.rite/wiki ./pages/foo.md` の結果予測が cycle 3 reviewer の実機検証で `pages/heuristics/pages/foo.md` (`./` 相対は page_dir 起点で展開される) と立証され、Edge Case 注を訂正。
-
-**学習**: canonical reference 内の factual claim (CLI 挙動 / 実観測 / repo 状態) は **必ず実機検証を伴う**。prose-only で claim を出すと連鎖的に Edge Case 表の挙動予測を誤らせ、cycle 境界で reviewer による反証 → 再 fix → 再 review の循環を生む。reviewer は「prose 内の factual claim」を rhetorical claim として受け流さず、必ず repo 内 grep / `man` / runtime invoke で裏付ける discipline を持つ。
+（→ docs-review-implementation-grep-verification に統合: realpath の symlink / --relative-to 挙動など 4 件の実機反証例）
 
 ### Reviewer 評価の割れは coverage gap として runtime evidence で確証する（cycle 1）
 
@@ -134,15 +127,7 @@ cross-validation debate の pre-debate guard (CRITICAL 指摘は自動討論せ�
 
 ### 全 reviewer の実測検証規律が low-noise 収束を生む positive evidence
 
-security 修正 PR (制御文字 neutralize の C1 8-bit 対応) で 5 reviewer (security / error-handling / test / performance / tech-writer) × 2 cycles の全員が実測検証を実施した:
-
-- **security**: 256 バイト全数 sweep でバイトフィルタの置換範囲を網羅確認
-- **error-handling**: PIPESTATUS / pipefail 挙動の実証
-- **test**: 3 種 mutation test による pin の識別力実証
-- **performance**: µs 単位ベンチ
-- **tech-writer**: python3 による UTF-8 エンコード確認 (コードポイント範囲ラベルの検証)
-
-結果、hypothetical finding が 1 件も出ず実証ベースの指摘のみで構成され、唯一の指摘は cycle 1 の MEDIUM 1 件 (コメント内コードポイント範囲ラベルと実装バイト範囲の不整合) → cycle 2 で 0 findings mergeable の low-noise 2-cycle 収束。empirical verification discipline が全 reviewer に行き渡ると、reasoning ベースの憶測 finding によるノイズと cycle 浪費が構造的に消えることを示す positive evidence (本ページが規範とする検出規範の全員適用形)。
+security 修正 PR (制御文字 neutralize の C1 8-bit 対応) で 5 reviewer × 2 cycles の全員が検出規範（実測検証）を適用した: security = 256 バイト全数 sweep / error-handling = PIPESTATUS・pipefail 挙動の実証 / test = 3 種 mutation test による pin の識別力実証 / performance = µs 単位ベンチ / tech-writer = python3 による UTF-8 エンコード確認。hypothetical finding は 0 件で、唯一の指摘は cycle 1 の MEDIUM 1 件 (コメント内コードポイント範囲ラベルと実装バイト範囲の不整合) → cycle 2 で 0 findings の low-noise 2-cycle 収束（上記検出規範の全員適用形の positive evidence）。
 
 ### reviewer 間の矛盾は「どちらが正しいか」ではなく「何を測ったか」で解く
 

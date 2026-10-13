@@ -102,21 +102,13 @@ semantic name は canonical SoT への参照として機能し、`grep` で targ
 
 ### 3 箇所 explicit sync の契約
 
-Phase 5.1 / Phase 5.2 / Phase 5.0.c のように同一 semantic の記述が複数 site にまたがる場合は、explicit sync の契約を prose で明示する:
-
-> 本 `commit_msg` 文字列と直下の placeholder-residue gate は Phase 5.0.c canonical と Phase 5.1 / Phase 5.2 の同一文字列と 3 箇所 explicit sync を契約。変更時は 3 箇所同時更新必須。
-
-将来 `/rite:lint` で grep ベースの drift 検出を実装可能にする設計意図も含む。
+（→ canonical-source-declaration-for-multi-site-procedure に統合: 同一 semantic が複数 site にまたがる場合の explicit sync 契約 prose。canonical を置かず相互に同期契約を書く形を含む）
 
 ### 大量行挿入時のコメント内行番号参照 drift（cycle 5 の実測）
 
 大量行挿入事例の cycle 4 fix で Phase 1.3 ブロック (約 235 行) を init.md の Phase 1.2 と Phase 2 の間に挿入した結果、cycle 4 fix の F-02 修正コメント自身が「同一ファイル内 L555」を参照していたが、実際の対象行は L563 にずれた (8 行 drift)。cycle 5 review で F-02 として検出。
 
-本原則は DRIFT-CHECK ANCHOR コメントだけでなく、**fix コメント / 設計メモ / 概要説明など**「同一ファイル内の他箇所を参照するあらゆる散文」に拡張される:
-
-1. **参照は anchor / Phase 番号 / heading / function 名で書く**: drift 耐性が高い
-2. **大量行挿入を伴う PR では最終 commit 後に行番号参照を grep で走査**: `grep -nE 'L[0-9]+' <file>` で全件取り出して目視再確認
-3. **将来的に `/rite:lint` でコメント内行番号参照を検出する lint を追加する候補**: `L[0-9]+` を含むコメントは機械検証できないため、anchor / Phase 番号への置換を促す
+本原則は DRIFT-CHECK ANCHOR コメントだけでなく、**fix コメント / 設計メモ / 概要説明など**「同一ファイル内の他箇所を参照するあらゆる散文」に拡張される。参照は anchor / Phase 番号 / heading / function 名で書く（下の canonical 記法の階層）。大量行挿入を伴う PR では最終 commit 後に `grep -nE 'L[0-9]+' <file>` で全件走査して目視再確認し、将来的には `/rite:lint` でコメント内行番号参照を検出する lint を追加する候補（`L[0-9]+` を含むコメントは機械検証できず、anchor / Phase 番号への置換を促す）。
 
 ### code slice 参照による semantic identifier の canonical 実証（実測）
 
@@ -347,13 +339,7 @@ cycle 4 review で `(line ~N)` のような **approximation 接尾辞 `~` 付き
 
 partial 採用事例の cycle 1 fix で symbolic anchor 化を **partial** に適用したが、cycle 3 で peer 参照を新規追加する際に literal 行番号で記述した。結果として「既存 anchor は symbolic / 新規 anchor は hardcoded」の混在状態が成立し、cycle 3 で line drift が再発 (累積 N 回目の同型再発)。
 
-教訓:
-
-1. **partial adoption は中途半端な drift 防御**: 一部だけ symbolic anchor 化しても、新規追加サイトが line-number で書かれれば drift class は閉じない
-2. **新規参照追加時こそ canonical 確認が必要**: 既存方針 (line-number 禁止) を **新規** anchor も遵守しているか、追加 commit 前に grep で機械検証する
-3. **symbolic anchor 化 = 行番号 drift 経路の構造的閉塞**: cycle 3 fix で 6 ファイル全 line cite を symbolic name に置換することで「partial adoption の罠」を消去 → cycle 4 で 0 findings に収束
-
-cycle 1 → 3 の 2 度同型再発は、本ページの **canonical scope 拡張版** が必要だった signal: 「**既存 anchor 群への新規追加** は既存方針との conformance を新規 anchor 自身が満たす必要がある」という partial adoption の罠を明示化すべき。
+教訓: partial adoption（一部だけ symbolic anchor 化）では、新規追加サイトが line-number で書かれれば drift class は閉じない。新規参照の追加時こそ既存方針（line-number 禁止）への conformance を追加 commit 前に grep で機械検証する。cycle 3 fix で 6 ファイル全 line cite を symbolic name に置換して行番号 drift 経路を構造的に閉塞し、cycle 4 で 0 findings に収束した。cycle 1 → 3 の 2 度同型再発は、既存 anchor 群への新規追加も新規 anchor 自身が既存方針を満たす必要があるという canonical scope 拡張版が必要だった signal。
 
 ### reference 文書の NOTE 内 cross-file 行番号 citation の全件 stale 化（実測）
 

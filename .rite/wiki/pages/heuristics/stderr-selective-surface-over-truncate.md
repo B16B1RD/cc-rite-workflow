@@ -138,6 +138,8 @@ fi
 
 実装時は **対称 counterpart (review.md 6.2 = fix.md 4.5) が既に確立した stderr-capture + head -5 surface パターン**を Read してそれに揃える (独自実装の逸脱を避ける)。WM sync 委譲事例の cycle 2 fix は WM_UPDATE_FAILED routing と reason 語彙を一切変えず、trap に stderr tempfile を追加する形で「追加のみ」で適用した。
 
+逆方向の失敗: stdout=JSON / stderr=診断 / exit 0 を返す helper を `$(... 2>&1)` で capture して jq parse すると、stderr の診断行が JSON に混入し silent miscounting になる。status と stderr は `2>&1` で merge せず別 channel で capture する。同型の全 caller は同じリスクを持つため、見つけたら横断 investigate の対象にする。
+
 ### 同一 helper の別 caller で同 anti-pattern が再発する（実測）
 
 WM sync 委譲事例で確立した本拡張は、**直後の sibling 委譲 PR で同一 helper (`issue-comment-wm-sync.sh`) の別 caller (`archive-procedures.md` §3.5.1 の WM 完了情報追記委譲) が同じ `2>/dev/null` 破棄を再演**した。委譲 shim が helper status を制御フローに consume しつつ helper stderr を握り潰す構造で、prompt-engineer + error-handling の 2 reviewer が cycle 1 で独立検出 (MEDIUM)。cycle 1 fix で canonical caller `fix.md 4.5.2` / `review.md 6.2` の **tempfile capture + `*)` arm で `head -5` surface** パターンに揃え、status 行による非ブロッキング判定 (`append-eof` への委譲) は不変のまま「追加のみ」で修正した。
@@ -153,20 +155,7 @@ WM sync 委譲事例で確立した本拡張は、**直後の sibling 委譲 PR 
 git fetch --quiet --depth=1 origin "${BASELINE_COMMIT}" 2>/dev/null || true
 ```
 
-`2>/dev/null` により fetch 失敗の根本原因 (DNS 不通 / 認証エラー / `couldn't find remote ref` 等) が完全に握り潰され、後続の SKIP メッセージは「到達不能だった」という結果のみを報告していた。error-handling reviewer が「同リポジトリの `wiki-ingest-commit.sh` / `worktree-git.sh` に既に確立された stderr capture 規約に新規コードが従っていない」と HIGH で指摘し、cycle 1 fix で以下の canonical 形へ修正した:
-
-```bash
-# ✅ OK: canonical selective-surface パターンへ整合
-FETCH_ERR=$(mktemp)
-TMPFILES+=("$FETCH_ERR")
-git fetch --quiet --depth=1 origin "${BASELINE_COMMIT}" 2>"$FETCH_ERR" || true
-if ! git cat-file -e "${BASELINE_COMMIT}^{commit}" 2>/dev/null; then
-  echo "SKIP: baseline commit ... is not reachable even after 'git fetch ...'" >&2
-  if [ -s "$FETCH_ERR" ]; then
-    sed 's/^/  git: /' "$FETCH_ERR" >&2
-  fi
-fi
-```
+`2>/dev/null` により fetch 失敗の根本原因 (DNS 不通 / 認証エラー / `couldn't find remote ref` 等) が完全に握り潰され、後続の SKIP メッセージは「到達不能だった」という結果のみを報告していた。error-handling reviewer が「同リポジトリの `wiki-ingest-commit.sh` / `worktree-git.sh` に既に確立された stderr capture 規約に新規コードが従っていない」と HIGH で指摘し、cycle 1 fix で本ページ冒頭の canonical 形（`FETCH_ERR=$(mktemp)` + `TMPFILES+=("$FETCH_ERR")` + `2>"$FETCH_ERR"`、到達不能時のみ `sed 's/^/  git: /'` で surface）へ修正した。
 
 single-step の単純ケースのため per-step tempfile 分離や status/stderr 二重 capture までは不要で、「本文冒頭の Canonical pattern: selective surface」のみで十分だった。
 

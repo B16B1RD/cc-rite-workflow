@@ -34,6 +34,8 @@ command spec (`.md`) 内で gh CLI に渡す title / body をインライン展�
 
 3 段プロトコル分割には固有の落とし穴がある。**workdir が別プロセスを跨ぐと `trap ... EXIT` では救えない cross-process leak** が新たに発生するため、cleanup の責務境界を意識する必要がある。また inline → delegate refactor では旧 `trap ... EXIT` cleanup 契約を落とす退行が dominant failure mode として頻出する (本 PR cycle 1 で HIGH × 2、[[asymmetric-fix-transcription]] に詳細)。signal-specific trap (`EXIT`/`INT`/`TERM`/`HUP`) を再設置し inline `rm -rf` を撤去するのが canonical。
 
+委譲 refactor は「canonical に準拠」と注記しながら既存 sibling との自己不整合を足しやすい（cycle 2-3 の実測）: (a) markdown link を `../../references/` で書いた（`pr/*.md` は sibling `references/` 形が正。orphan-reference-check は inbound のみ検査するため broken outbound link が lint をすり抜ける）、(b) cleanup 関数名 `pr_workdir_cleanup` が canonical の `_rite_<scope>_<phase>_cleanup` 規約（同 dir 12 site すべて `_rite_*` prefix）に非準拠、(c) signal 表に 5 行目（inline-gh-create-title）を足したのに導入文の「4 シグナル」count を据え置いた。「canonical に準拠」と宣言する変更は、link path / 命名規約 / 件数表記まで既存 sibling を grep で突合してから書く。
+
 検出側 lint (`bash-heaviness-check.sh` の inline-gh-create-title signal) の awk 実装も、新規 signal 追加時の頻出カバレッジギャップを踏まえて設計する: (a) 検出 anchor (`create` 限定) を守る負例 TC、(b) backslash 行継続を含む複数行 form の取りこぼし防止 (block-level 継続トラッキング: `gh_create_active` を `\` 終端行で維持)、(c) 空 literal (`--title ""`) 誤検知の回避 (bracket expression を `[^$]` → `[^$"']` に拡張し空 title と `$var` を同時に除外)。body / title の error guard は対称化が原則 (片方だけ `[ ! -s ]` チェックがあると非対称な silent failure 経路になる)。awk state machine は実機 mutation testing (30+ targeted 入力) で「各 checklist 観点を正しい理由で検出する」ことを検証できる。
 
 ## 関連ページ

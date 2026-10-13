@@ -92,7 +92,7 @@ WARNING の文言を条件付き表現へ直しても、その文言が宣言す
 
 ### ファイル由来の文字列を診断へ載せるときは 3 点セット
 
-corrupt なファイル内容を診断へ補間する場合、**中和・clamp・アサーションの 3 点セット**が要る。実例では `.errors` の添付が (a) 丸ごと外す変異が全 PASS を素通りし、(b) ファイル内容を補間するため 20 万バイトが 1 行で stderr へ流出した。リポジトリに先例（`neutralize_ctrl` + `head -c 200` 等）があるなら踏襲する。
+（→ new-diagnostic-path-skips-existing-neutralize-convention に統合: 中和・clamp・assert の 3 点セットと `.errors` 添付 20 万バイト流出の実測）
 
 ### 既存ラベルの改名で原因を断定すると、断定の根拠が helper 実装に依存する
 

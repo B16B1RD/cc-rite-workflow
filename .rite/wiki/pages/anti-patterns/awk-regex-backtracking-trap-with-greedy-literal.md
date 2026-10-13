@@ -74,7 +74,7 @@ in_block && !/^[[:space:]]*#/ && /flow-state-update\.sh create/ { ... }
 
 教訓:
 
-- 同じ reviewer 構成でも cycle ごとに検出力が異なる。固定構成で安心せず、各 cycle で empirical mutation test を必須とする
+- 同じ reviewer 構成でも cycle ごとに検出力が異なる（上表）。（→ mutation-prove-new-pin に統合: 固定構成で安心せず毎 cycle 変異で empirical に確かめる）
 - 「cycle 1 fix が正しい」という前提で cycle 2 を進めると、cycle 1 fix が新たな silent miss を作っていた経路を見逃す
 - error-handling-reviewer は「awk fall-through で何が起きるか」の empirical 再現を実施しやすく、silent failure 検出に強い
 

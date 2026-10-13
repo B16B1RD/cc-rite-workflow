@@ -89,46 +89,11 @@ cycle 4 で確立された fix:
 
 ### Doc mechanism scope claim の grep verify
 
-「doc が記述するメカニズムの scope」が「実装の scope」より広い drift も本 heuristic の subset として捉える。scope 曖昧表現事例で `auto_demote_low` の scope を doc が「LOW or MEDIUM」と曖昧表現していたが、実装は `severity == LOW` のみが降格対象で、reviewer 直接 assign 経路で MEDIUM が flag されるのは別系統という 2 経路混合だった。
-
-| 観測 | doc 表記 | 実装事実 |
-|------|---------|----------|
-| `auto_demote_low` の対象 severity | "LOW or MEDIUM" (曖昧) | `severity == LOW` のみ |
-| MEDIUM × current-pr の降格経路 | 同 doc に混合記述 | reviewer 直接 assign (別経路) |
-
-#### 対策
-
-mechanism scope を doc に記述する際は、**実装側の判定式を直接 grep して inline evidence で残す**:
-
-```markdown
-# Bad (scope 曖昧)
-auto_demote_low は LOW or MEDIUM × current-pr の finding を nit-noted へ降格する。
-
-# Good (実装 grep evidence で 2 経路を分離記述)
-auto_demote_low は LOW × current-pr の finding を nit-noted へ降格する
-(実装: fix.md Phase 1.2.0 Priority 2 で `severity == "LOW"` のみが対象。
- grep evidence: `commands/pr/fix.md:XXX` の `if [ "$severity" = "LOW" ]`)。
-
-MEDIUM × current-pr は reviewer 直接 assign 経路 (本 mechanism と別系統)。
-```
-
-「LOW or MEDIUM」のような or 連結で scope を曖昧表現するのは、本 heuristic の「inheritance claim には grep verify」と同型の drift。実装の判定式を 1 行 grep で確認するコストは秒単位であり、doc 記述時に inline evidence として残せば後続 reviewer / 読者の誤読を decisive に防げる。
+（→ docs-review-implementation-grep-verification に統合: 実装の判定式を grep し scope を経路別に書く）
 
 ### Documentation の code-state claim は review 時にも grep verify する
 
-本 heuristic は「design 時に書き手が verify する」だけでなく、**review 時に reviewer が文書の code-state claim を grep verify する** review-side mirror としても機能する。positive evidence を実測済み。
-
-orphan marker 注記事例は `metrics-recording.md` の注記を強化し、3 marker (`phase5_post_metrics` / `phase5_post_status_in_review` / `phase5_5_2_metrics`) が **orphan (live writer/reader 不在・PHASE_ENUM_V3 に非在・pre-condition-gate.md で retired)** であり legacy `phase5_*` drift とは別語彙だと明示する doc-only PR。central factual claim が「これらの marker はコード上 orphan である」という code-state assertion であった。
-
-| 観測 | 内容 |
-|------|------|
-| 文書が主張した code-state | 3 marker は live writer/reader を持たない orphan、`PHASE_ENUM_V3` に存在しない |
-| reviewer の検証行動 | prompt-engineer / code-quality の 2 reviewer が **独立に grep-confirm** して orphan claim を裏取り |
-| 結果 | 0 findings / 全 severity 0 で 1 cycle mergeable |
-
-#### Lesson
-
-documentation が「X は orphan / no live reader / retired」のような code-state fact を主張するとき、reviewer は承認前にその claim を grep で裏取りする。書き手側の grep verify (本 page の主旨) が抜けても review-side grep verify が safety net として機能し、両者が揃うと doc-only PR でも 0 findings 1 cycle に到達できる。これは [empirical-reproduction-over-invariant-reasoning](empirical-reproduction-over-invariant-reasoning.md) (「invariant は logic 上成立」を信頼せず実測する) の documentation review への適用形でもある。
+（→ docs-review-implementation-grep-verification に統合: orphan claim を 2 reviewer が独立 grep-confirm）関連: [empirical-reproduction-over-invariant-reasoning](empirical-reproduction-over-invariant-reasoning.md)
 
 ### Cycle 4 spike pattern が示す cumulative-defense 教訓
 

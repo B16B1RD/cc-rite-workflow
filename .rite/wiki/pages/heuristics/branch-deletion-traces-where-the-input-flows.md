@@ -46,7 +46,7 @@ rail の subsequence 保存ガードには既存の除外前例があったが�
 
 ### 併走する観測: fix が足した分岐にも fixture を足す
 
-同 PR の cycle 1 で入れた修正（marker 正規化行、新設 WARNING 2 本、引数エラー腕の既定値報告）はいずれも削除しても全テストが緑のまま通る状態で残り、cycle 2 で 3 件の指摘として戻ってきた。テストは正常系 fixture しか通しておらず、fix が足した経路には一度も入っていなかった。**「テストは通った」と「fix が守られている」は別**で、後者は mutation を 1 回かければ即座に分かる。
+（→ mutation-testing-test-fidelity に統合: fix が足した分岐にも fixture を足し mutation で守られているか確認）
 
 ### テストが届かない fail-loud 分岐は、後段の fail-loud に委ねて削る
 

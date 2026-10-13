@@ -82,12 +82,7 @@ positive control は「除外側が全滅して否定が恒真になる」変異
 
 ### 関連する恒真化
 
-同じ PR で、否定ではないが同型の問題が別の pin にもあった。
-
-- **pin のラベルと検査対象がずれる**: 「生成行を pin した」と称しながら実際は**変数代入行**を検査していた。生成文を削除しても緑のまま
-- **canonical 完全一致 pin が非対称を正解として固定する**: drift 検出のために置いた完全一致 pin が、片側だけ更新された文言を canonical として固定し、**非対称そのものを検出不能にしていた**
-
-いずれも「pin が謳う保証」と「実際の検査対象」を 1 語ずつ照合すれば見つかる。
+（→ assert-label-overclaims-predicate-scope に統合: ラベルと検査対象のずれ（変数代入行）、canonical 完全一致 pin が非対称を固定する形）
 
 ### 恒真化させる条件は fixture の中身だけでなく上流の早期 exit ゲートにもある
 
@@ -99,7 +94,7 @@ positive control は「除外側が全滅して否定が恒真になる」変異
 
 ### 非 vacuity は mutation で実証できる
 
-positive control を置いても「その control が本当に検査対象を守っているか」は別問題である。実装側のガードを反転（`if _predicate ...` → `if false ...`）して suite を回し、**狙った assert だけが落ちる**ことを確認すれば非 vacuity が実証できる。実測では 49 件中 1 件だけが FAIL し、落ちたのが意図した absence assert であることを確認できた。mutation は作業ツリーの複製上で行い、確認後に復元する。
+（→ assert-label-overclaims-predicate-scope に統合: ガード反転で狙った assert だけが落ちるかを複製ツリーで確認、49 件中 1 件の実測）
 
 ### 追記: 「削除されること」のテストは、先に対象を置いてから通す
 

@@ -31,6 +31,8 @@ cycle 1 (7) → cycle 2 (3) → cycle 3 (2) → cycle 4 (0 = mergeable)
 
 全 findings 集計では `18 → 14 → 4 → 0` の shrinking-cycle pattern を示すが、CRITICAL+HIGH 級だけで見ると cycle 1-3 では「同型 anti-pattern が同章内で複数箇所違反」する self-violation cascade が連続再発した。cycle 4 で legacy field 自体の完全削除に転換し、即座に 0 findings に収束。
 
+なお drift の実態は、「禁止 phrase 列挙」を canonical (start-finalize.md の 4 phrase) と subset (他 7 file の 2-3 phrase) の 8 箇所で持ったことによる。Self-violation cascade × Recursive Recurrence in Fix Layer × Sentinel Visibility Rule × Self-meta drift (legacy `recommendation_issue_candidates` vs 新 `candidate_count` の semantic 不一致) の 4 軸が並行発火した。
+
 ### 戦略の対比
 
 | 戦略 | 動作 | 結果 |

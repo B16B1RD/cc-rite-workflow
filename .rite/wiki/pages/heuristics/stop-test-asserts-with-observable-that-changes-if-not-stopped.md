@@ -35,7 +35,7 @@ confidence: high
 
 ### 選言の各項も個別に固定する
 
-「空か `-`」のような選言の判定式は、fixture が片方の値しか使わないと、もう片方の項を落とす変異が生き残る。実データで多数派の値（null）を fixture に入れ、各項を個別に固定する。
+（→ guard-discriminating-power-requires-solo-firing-fixture に統合: 選言の各項を実データ多数派の値（null）の fixture で個別に固定）
 
 ## 関連ページ
 

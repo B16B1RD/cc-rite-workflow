@@ -65,13 +65,9 @@ cycle_count=$({ grep -oE 'cycle [0-9]+' "$start_md" || true; } | wc -l | tr -d '
 
 ### Cycle Degeneration として実測された経緯
 
-起点事例で同一 fingerprint が 3 cycle に渡って degenerate した:
+起点事例で同一 fingerprint が 3 cycle に渡って degenerate した。
 
-- **cycle 1**: 下限 assert を `grep -c` (line 単位) → `grep -oE | wc -l` (occurrence 単位) に変更、ただし `|| true` 防御を失った
-- **cycle 2**: 上限 🚨 を同パターンに変更、同じく `|| true` を持たない (修正スコープ漏れの完了でしたが pipefail 防御は未遂)
-- **cycle 3**: pipefail bug が CRITICAL として顕在化、5 件すべて `{ grep || true; } | wc -l` に修正
-
-これは [Asymmetric Fix Transcription](./asymmetric-fix-transcription.md) と Quality Signal 1 (fingerprint cycling) の典型例 — 「unit を変更したが defense (`|| true`) を移植し忘れる」cycle が 3 段で degenerate。
+（→ asymmetric-fix-transcription に統合: unit 変更で `|| true` を移植し忘れ 3 cycle で degenerate、cycle 3 で CRITICAL 顕在化）
 
 ### 検出と運用
 

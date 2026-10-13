@@ -58,9 +58,7 @@ verified:
 
 ### 既存術語の動詞を別意味に流用しない
 
-同じ契約を書く複数サイトでは、既存の術語を**別の意味で再利用**しても偽になる。`review-result-schema.md` の verification 節は「`verification` を設定しない」を未判定（キー欠落＝blocking）の術語として既に使っている。`Measurement-Blocked:` 補記が「`verification` オブジェクトを設定せず」と書くと、helper の実挙動（no-anchor 経路で `measured=false` を書いて non-blocking へ移送）と衝突する。3 値判定の入力集合を増やさないこと（検出 regex に本 marker を足さない）自体は正しいが、未判定と動詞を共有した瞬間、読者はキー欠落と読む。
-
-対策は新しい言い回しを発明せず、既存の最も限定的な面（「helper は本 marker を実測アンカーとして読まない。`Verification:` 欠落と同じ no-anchor 経路で `measured=false` になり、キー欠落にはしない」）へ揃える。確定文は契約テストで一意 pin できる。
+（→ existing-term-verb-not-repurposed-for-new-meaning に統合: 未判定の動詞を別意味に流用せず、helper 実挙動 (measured=false) の確定文へ揃え契約テストで pin）
 
 ### 判定範囲の説明は実装の条件式から書き起こす
 

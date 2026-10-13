@@ -226,6 +226,7 @@ cycle 1 (13) → cycle 2 (10) → cycle 3 (8) → cycle 4 (8) → cycle 5 (4)
 - **self-review のみでは収束しない可能性が高い**: 累積対策 N 回目は既存 convention の drift が溜まりやすく、self-review だけで catch できるのは local consistency 中心。architectural design の spread (3-site symmetry 等) は fresh reviewer / human 目でしか proactive に防げない
 - **Step 追加時の preamble / range 記述は手動 sync 対象**: "Step X-Y を実行" / "N-line block" のような数値記述は Step 追加のたびに手動更新が必要で自動 lint 対象外。review checklist に mandatory 化するか lint rule 追加を検討
 - **Drift 除去 ≠ architectural correctness**: cycle 2 fix で drift 6 件除去しても cycle 3 で HIGH architectural finding が追加検出される。「drift 除去」と「設計の正しさ」は直交軸で、前者の達成は後者を保証しない
+- **防御を追加した diff の中に、その防御が効かない縮退経路が残る**: 数値比較の fail-open に加え、同 cycle でテストスイート自身の自己切断（`set -euo pipefail` 下でコマンド置換内の grep 非マッチが errexit でスイートをプロセスごと中断）と、兄弟 WARNING の片肺 hedge が同時に出た。防御を足したら、その防御が効かない入力を 1 つ挙げる
 
 ### 9 回目対策の 3 cycle 収束軌跡 (2026-04-24)
 
@@ -815,11 +816,9 @@ cycle 8 の完全収束時には reviewer が **「真に finding がないと�
 
 ### N 回目のパッチは述語が proxy である信号
 
-5 サイクル回して blocking が `6 → 8 → 7 → 5 → 5` と横ばいのまま `max_review_cycles` の backstop で停止した PR。cycle 5 の blocking 5 件のうち 2 件は **cycle 4 の fix が直接生んだもの**、1 件は **cycle 4 が半分だけ塞いだ穴**だった。
+5 サイクル回して blocking が `6 → 8 → 7 → 5 → 5` と横ばいのまま `max_review_cycles` の backstop で停止した PR。cycle 5 の blocking 5 件のうち 2 件は cycle 4 の fix が直接生んだもの、1 件は半分だけ塞いだ穴だった。
 
-cycle 4 は「pin 書込失敗時に stale pin を残さない」ために `rm -f` + WARNING + marker を追加した。cycle 5 はそこへ (a) `rm -f` 自体の失敗サブ経路で WARNING が矛盾する、(b) 構造的に同型の「counter reset 失敗 → pin 更新ゲートを通らない」経路が未処理、を返した。
-
-ここで reset 失敗分岐に `rm -f` を複製するのが自然な反応だが、実際に効いたのは **ゲートの述語そのものの是正**だった。`cur_cc == 0` は「新しい run か」の proxy にすぎず、reset 失敗時に相関が切れる。`fresh || cur_cc == 0` の選言へ替えると経路 (b) はパッチ 1 行も足さずに消えた。詳細と判定手順は [同じ機構への N 回目のパッチは、その機構が依拠する述語が proxy である信号](../heuristics/nth-patch-signals-proxy-predicate.md) を参照。
+（→ nth-patch-signals-proxy-predicate に統合: 分岐を複製せずゲート述語 `cur_cc == 0` の proxy を選言へ是正）
 
 **あわせて観測された「収束しているのに閉じない」構造**:
 

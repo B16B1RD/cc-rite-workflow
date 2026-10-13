@@ -45,6 +45,8 @@ verified:
 - **wc -l 正規化の欠落**: `total=$(wc -l < file)` は BSD/macOS で先頭空白パディング付きになり、lint 側の count-line regex `findings: (\d+)` と不一致になる。兄弟の sentinel-contract-check.sh は `| tr -d '[:space:]'` で正規化済み、number-reference-check.sh は算術カウンタで回避済み — 新規スクリプトだけが罠を踏んだ。
 - **usage 契約と実装の矛盾ごと踏襲**: テンプレート元の bang-backtick-check.sh は「2 = Invocation error (bad args, missing files)」と宣言しながら missing file を WARNING + exit 0 で扱う矛盾を持っており、新規スクリプトはこの矛盾ごと複製した。修正済みの先例（sentinel-contract-check.sh の引数値ガード）が同ディレクトリに存在したのに参照しなかった。
 
+別の新規 helper（`wiki-backfill-skipped-frontmatter.sh`）では、継承すべき規約が 5 系統に整理できた: signal-specific trap での tempfile 回収 / branch-strategy 依存の tree 解決 / 制御文字無害化 / 委譲先の stderr 素通し / summary の不変条件。踏襲しないと個別バグではなく「既存規約との非対称」として MEDIUM 指摘が段階的に surface し、指摘数が cycle 1 で 5 件、cycle 2 で 2 件、cycle 3 で 0 件と 3 cycle かかって収束した。修正はすべて sibling パターンへの整合で解消した。
+
 **付随ヒューリスティック — sweep 検証は表現形式を跨ぐ**: sweep 系 PR の取り残しは「grep パターンの検出範囲外の表現形式」（markdown 表セル・説明 prose 等）に集中する。完了検証は変換パターン限定の grep だけでなく、対象文字列そのもの（例: `rite-backups`）でも掃くと表セルや prose の取り残しを拾える。実例: bash-defensive-patterns.md の code example は更新されたが直下の表セルが `/tmp/rite-backups/` のまま残り、機械 check（P2 regex は代入・redirect・-file 形式のみ）では検出されなかった。
 
 ### 参照先が「自分自身の系譜」の場合（cycle 1 実測）

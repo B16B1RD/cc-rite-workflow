@@ -64,9 +64,7 @@ skip ガード自体は正しい（効かない環境で FAIL させても意味
 
 ### 兄弟が pin されているほど穴は見つけにくい
 
-同 PR では、同一 helper 内の 3 つの失敗分岐のうち 2 つが pin 済みで、1 つが未 pin だった。**カバレッジの穴は「全部未 pin」より「大半が pin 済み」の方が発見しにくい** — テストファイルを読むと該当セクションが充実して見えるためである。
-
-発見は mutation でしか行えない（各分岐の WARNING を 1 つずつ削除してスイートが green のまま通るかを見る）。本ケースでは 2 reviewer が独立に同じ mutation を実行して同じ穴を報告した。
+（→ mutation-testing-measures-assertion-strength に統合: 大半が pin 済みだと未 pin 分岐の穴は見つけにくく、分岐ごとに WARNING を削除する mutation でしか発見できない）
 
 ### 権限に依存しない作り方へ移すと SKIP 分岐ごと消せる
 

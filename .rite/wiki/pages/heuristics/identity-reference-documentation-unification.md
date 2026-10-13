@@ -93,6 +93,7 @@ SKILL.md / reference document / PR body / 各 commands 内コメント等に cal
 → **Correct**:
 - 短期: drift 検出時は**全箇所を単一コミットで一括同期**する (cycle 2 で create が追加されたら SKILL.md / workflow-identity.md / PR body の全 enumeration を同じコミットで更新)
 - 長期: `grep -l <reference-marker> plugins/rite/commands/**/*.md` ベースで自動抽出する pattern に置き換える (drift-resistant)
+- 値一覧が不要な箇所（例: 削除しない理由を述べるだけのコメント）は値を列挙せず総称で書く。列挙する場合は書き手ごとの値を併記する。詳細は [複数の書き手が更新する記録の説明](./multi-writer-record-docs-describe-union-and-unnest-enumerations.md)
 
 #### 6. YAML frontmatter description と本文階層 drift
 
@@ -148,7 +149,7 @@ i18n 拡張適用事例 (`pr/ready.md` Phase 2.1 説明文の英語ベース統�
 
 本 PR で identity 文脈の用語統一 (`context 残量 / 効率 / 最適化 / 圧迫`) を行った際、identity 文脈**外**で使われている同じ用語 (例: `sub-issue-link-handler.md` の「LLM 冗長性説明」、`review-context-optimization.md` の「diff passing optimization」) は reviewer が未指摘だったため**触らなかった**。これは AC-10 Non-regression の尊重として正しい判断。
 
-→ **Correct**: scope を広げる前に revert test を実施する。「本 PR を revert したらこの drift は消えるか」を問い、No ならば pre-existing / scope 外として扱う。
+→ **Correct**: scope を広げる前に revert test を実施する（本 PR を revert してもこの drift が残るなら pre-existing / scope 外。判断の実例は [identifier-rename-three-tier-pattern-enumeration](./identifier-rename-three-tier-pattern-enumeration.md) 参照）。
 
 ## 関連ページ
 

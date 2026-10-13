@@ -58,7 +58,7 @@ flock 不在環境の degrade 分岐（`command -v flock` ガード）を検証�
 
 ### 検出方法
 
-修正後に必ず「実装破壊 mutation（ガード除去等）でテストが FAIL するか」を隔離 worktree で検証してから commit する（[mutation testing の empirical 検証](../patterns/mutation-testing-test-fidelity.md)）。起点事例では commit 前の mutation 検証で新 TC-9 が正確に 2 assert FAIL することを確認した。precedent（issue-claim TC-16）はエラーメッセージ grep を使わず肯定結果（`claimed`）を assert しており、スタブ方式だけでなく**判別メカニズムまで**先行事例に揃えることが重要だった。
+commit 前の実装破壊 mutation 検証は[mutation testing の empirical 検証](../patterns/mutation-testing-test-fidelity.md)に従う。起点事例ではその検証で新 TC-9 が正確に 2 assert FAIL することを確認した。precedent（issue-claim TC-16）はエラーメッセージ grep を使わず肯定結果（`claimed`）を assert しており、スタブ方式だけでなく**判別メカニズムまで**先行事例に揃えることが重要だった。
 
 ## 関連ページ
 

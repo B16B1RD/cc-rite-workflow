@@ -59,7 +59,7 @@ if ! [[ "$x" =~ ^[0-9]+$ ]] || [ "$x" -eq 0 ]; then use_default; else carry_forw
 
 ### 関連する観測
 
-この指摘が出た cycle の 3 件はいずれも「**防御機構を追加した diff の中に、その防御が効かない縮退経路が残る**」型だった。数値比較の fail-open のほかに、テストスイート自身の自己切断（`set -euo pipefail` 下でコマンド置換内の grep 非マッチが errexit でスイートをプロセスごと中断）と、兄弟 WARNING の片肺 hedge が同時に出ている。防御を足したら、その防御が効かない入力を 1 つ挙げてみる価値がある。
+（→ fix-induced-drift-in-cumulative-defense に統合: 防御追加 diff 内に効かない縮退経路が残る型。同 cycle の他 2 件は同ページに記載）
 
 ## 関連ページ
 

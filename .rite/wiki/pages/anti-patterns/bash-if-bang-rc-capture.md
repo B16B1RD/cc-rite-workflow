@@ -113,15 +113,9 @@ production の sentinel emit failure 経路で operator に false `rc=0` を表�
 
 ### 姉妹型: `set -e` 下の裸 `$?` 読み `var=$(cmd); rc=$?` は rc 行に到達しない
 
-`if !` 反転とは別の同族罠として、`set -euo pipefail` 下で `var=$(失敗コマンド); rc=$?` と書くと、**代入コマンド自体が errexit を発火してスクリプト（またはループ）全体が abort し、`rc=$?` 行は dead code になる**。errexit 事例の Gate 3（`_st_out=$(git status ...); _st_rc=$?`）では、この形が「status rc≠0 → conservative skip」分岐を実質到達不能にしており、broken worktree 入力（このゲートが守るべきまさにその入力）で reap ループごと停止していた。正しい形は既存 canonical fix と同型:
+（→ bare-statement-under-set-e-dead-code-rc-branch に統合: 裸 `var=$(cmd); rc=$?` は rc 行未到達、Gate 3 の reap ループ停止例）
 
-```bash
-# ✅ OK: 代入の失敗を || で吸収して rc を捕捉（set -e 下でも abort しない）
-rc=0
-var=$(cmd) || rc=$?
-```
-
-`if !` 型（rc が常に 0 になる）と裸 `$?` 型（rc 行に到達せず abort する）は症状が異なるが、いずれも「`rc=0; var=$(cmd) || rc=$?` 形式」が共通の canonical fix である。
+`if !` 型（rc が常に 0 になる）と裸 `$?` 型（rc 行に到達せず abort する）は症状が異なるが、いずれも `rc=0; var=$(cmd) || rc=$?` 形式が共通の canonical fix である。
 
 ### 検出時の判別子は「then 節で `$?` を読んでいるか」— grep だけでは過検出になる
 
