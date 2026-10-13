@@ -438,12 +438,19 @@ class WorkflowContracts(unittest.TestCase):
         code_sub = extra_code.replace("{plugin_root}", str(plugin)).replace("{reviewer_type}", "error-handling").replace("{review_paths}", "gone.md")
         result = subprocess.run(["bash", "-c", code_sub], cwd=str(self.fixture / "sub"), capture_output=True, text=True, timeout=20)
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn(bash_ref, result.stdout)
+        # A gitlink whose commit is not in the object store is still an entry of HEAD's tree: a missing directory stops.
+        self.run_command(["git", "-C", str(self.fixture), "update-index", "--add", "--cacheinfo", "160000," + "1" * 40 + ",subm"])
+        self.run_command(committed + ["commit", "-q", "-m", "gitlink"])
+        result = run_extra(plugin, "error-handling", "subm")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("in HEAD but missing from the work tree", result.stderr)
         # A glob is a literal name, not a pathspec: it matches nothing.
         result = run_extra(plugin, "error-handling", "go*.md")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("neither in the work tree nor in HEAD history", result.stderr)
-        # Paths must be repository-root-relative: an absolute path or one that leaves the repository is refused even when the file exists.
-        for outside in [str(self.fixture / "hooks/x.sh"), "/tmp/rite-cycle-scope-files-1.txt", "../other/f.md", "hooks/../hooks/x.sh", "..", "docs/.."]:
+        # Paths must be repository-root-relative: an absolute path or one with a '..' segment is refused even when the file exists; so is any non-normalized form.
+        for outside in [str(self.fixture / "hooks/x.sh"), "/tmp/rite-cycle-scope-files-1.txt", "../other/f.md", "hooks/../hooks/x.sh", "..", "docs/..", "hooks//x.sh", "hooks/./x.sh", "./hooks/x.sh", "hooks/"]:
             result = run_extra(plugin, "error-handling", outside)
             self.assertNotEqual(result.returncode, 0, outside)
             self.assertEqual(result.stdout, "", outside)
@@ -460,7 +467,6 @@ class WorkflowContracts(unittest.TestCase):
             self.assertEqual(result.returncode, 0, name + result.stderr)
             self.assertIn(bash_ref, result.stdout, name)
         # Paths resolve from the repository root, whatever the current directory is.
-        (self.fixture / "sub").mkdir(exist_ok=True)
         code = extra_code.replace("{plugin_root}", str(plugin)).replace("{reviewer_type}", "error-handling").replace("{review_paths}", "with-fence.md")
         result = subprocess.run(["bash", "-c", code], cwd=str(self.fixture / "sub"), capture_output=True, text=True, timeout=20)
         self.assertEqual(result.returncode, 0, result.stderr)

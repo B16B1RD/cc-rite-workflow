@@ -605,9 +605,10 @@ case "$reviewer_type" in
     for changed in "${changed_list[@]}"; do
       # 全要素の存在を確かめる。repo root からの相対パスだけを受け付け、作業ツリーに無いのは
       # 「HEAD に無く、履歴にある」（コミット済みの削除）パスだけ許す。HEAD にあるのに無いパスは止める
-      # （絶対パスと .. は repo の外や別名のファイルを読んでしまい、git も repo 内パスとして解決するので、先に形で拒否する）
+      # （形の揺れは判定を食い違わせるので先に拒否する。.. は repo の外を読み、絶対パスは $repo_top//abs を読み、
+      #   // や /./ は HEAD の tree 参照と rev-list の pathspec で正規化の有無が違う）
       case "$changed" in
-        /*|..|../*|*/..|*/../*) usage_error "--paths elements must be repository-root-relative paths without '..': $changed" ;;
+        /*|.|./*|..|../*|*/.|*/..|*/./*|*/../*|*//*|*/) usage_error "--paths elements must be normalized repository-root-relative paths (no leading '/', '.', '..' segments, '//' or trailing '/'): $changed" ;;
       esac
       if [ ! -e "$repo_top/$changed" ]; then
         if git -C "$repo_top" rev-parse --verify -q "HEAD:$changed" >/dev/null 2>&1; then
