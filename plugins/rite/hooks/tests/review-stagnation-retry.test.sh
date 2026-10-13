@@ -1151,7 +1151,7 @@ for label, entries, stops in [
         if entries is not None:
             (f.root / '.rite/fix-cycle-state').mkdir(parents=True, exist_ok=True)
             dump(f.root / '.rite/fix-cycle-state/71.json', dict(cycles=entries))
-        f.cycle(roots=('a',))
+        f.cycle(roots=['a'])
         (f.root / 'source.txt').write_text('moved head\n')
         f.commit()
         output = gate(f)

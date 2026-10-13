@@ -799,7 +799,7 @@ for label, entries, expected in [
         if entries is not None:
             (f.root / '.rite/fix-cycle-state').mkdir(parents=True, exist_ok=True)
             dump(f.root / '.rite/fix-cycle-state/71.json', dict(cycles=entries))
-        f.cycle(roots=('a',))
+        f.cycle(roots=['a'])
         check((f.decision() == 'stop') == (expected == 'stop'), 'T-17: cap with descending run, ' + label + ' -> ' + expected)
         if expected == 'stop':
             check(f.state()['stop_reason'] == 'circuit-breaker:max-cycles', 'T-17: ' + label + ' stops on the cap')
