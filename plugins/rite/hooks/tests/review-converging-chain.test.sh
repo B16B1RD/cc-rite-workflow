@@ -3,7 +3,7 @@
 #
 # 書き手 (fix-step skip-cycle-state / pr-review-step attribution-write) から読み手
 # (attribution-gate / review-converging.sh) までを、手書き JSON ではなく実際の書き込みでつなぐ。
-# あわせて review-stagnation.py の converging() が helper の失敗・無出力を「延長しない」側へ倒すことを確かめる。
+# あわせて review-stagnation.py の converging() が helper の失敗・無出力・reason 欠落・想定外 verdict を「延長しない」側へ倒すことを確かめる。
 
 set -uo pipefail
 
@@ -101,5 +101,11 @@ has "T-12: WARNING を stderr に出す" "WARNING: convergence check printed no 
 printf '#!/bin/bash\necho "[CONTEXT] REVIEW_CONVERGING=maybe; reason=x"\n' > "$STUB/review-converging.sh"
 OUT=$(run_converging)
 has "T-13: 想定外の verdict は延長せず helper_bad_verdict" "RESULT .*False.*helper_bad_verdict"
+printf '#!/bin/bash\necho "[CONTEXT] REVIEW_CONVERGING=yes"\n' > "$STUB/review-converging.sh"
+OUT=$(run_converging)
+has "T-14: reason 部が丸ごと無い yes は延長せず helper_no_reason" "RESULT .*False.*helper_no_reason"
+printf '#!/bin/bash\necho "[CONTEXT] REVIEW_CONVERGING=; reason=x"\n' > "$STUB/review-converging.sh"
+OUT=$(run_converging)
+has "T-15: verdict が空なら延長せず helper_no_marker" "RESULT .*False.*helper_no_marker"
 
 print_summary "review-converging-chain"

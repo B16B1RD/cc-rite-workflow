@@ -374,7 +374,7 @@ try:
     broken['review_run'].pop('trend', None)
     f.state_path.write_text(json.dumps(broken))
     failed = f.run(['bash', str(plugin / 'scripts/iterate-step.sh'), 'stagnation-route'], ok=False)
-    check(failed.returncode != 0 and 'ERROR' in failed.stderr, 'T-22: a stop without a saved trend fails loudly:\n' + failed.stdout + failed.stderr)
+    check(failed.returncode != 0 and 'review_run.trend' in failed.stderr, 'T-22: a stop without a saved trend fails loudly:\n' + failed.stdout + failed.stderr)
     f.state_path.write_text(saved)
     f.plan()
     retry(f)
