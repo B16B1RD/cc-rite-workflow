@@ -20,6 +20,7 @@ if [ ! -f "$SCRIPT" ]; then
   exit 1
 fi
 
+LOCKED=""
 SANDBOX="$(make_plain_sandbox)"
 cleanup() {
   [ -z "${LOCKED:-}" ] || { chmod -R 755 "$LOCKED" 2>/dev/null; rm -rf "$LOCKED"; }

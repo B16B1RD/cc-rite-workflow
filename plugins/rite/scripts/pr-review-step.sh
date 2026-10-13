@@ -33,7 +33,7 @@
 #   bash pr-review-step.sh wiki-apply-check --keywords KEYWORDS
 #   bash pr-review-step.sh shared-principles
 #   bash pr-review-step.sh prose-principles --reviewer-type REVIEWER_TYPE
-#   bash pr-review-step.sh extra-references --reviewer-type REVIEWER_TYPE --paths CHANGED_PATHS
+#   bash pr-review-step.sh extra-references --reviewer-type REVIEWER_TYPE --paths REVIEW_PATHS
 #   bash pr-review-step.sh spawn-at
 #   bash pr-review-step.sh rejected-ledger --owner-repo OWNER_REPO --pr PR_NUMBER
 #   bash pr-review-step.sh tmp-dir
@@ -594,19 +594,26 @@ case "$reviewer_type" in
   error-handling)
     # 変更ファイルが bash を含むときだけ渡す（約 30KB。bash の無いレビューでは読ませない）。
     # 判定は file 単位: .sh / .bash の変更、または bash / sh / shell の fenced block を持つ .md の変更
-    # 入力はカンマ区切りの 1 行。改行・空要素・前後の空白は変換ミスなので、黙って false にせず止める
+    # 入力はカンマ区切りの 1 行。制御文字・空白・引用符・空要素は変換ミスなので、黙って false にせず止める
     case "$changed_paths" in
-      *$'\n'*|,*|*,|*,,*|' '*|*' '|*', '*|*' ,'*) usage_error "--paths must be one comma-separated line without empty or space-padded elements: $changed_paths" ;;
+      *[[:cntrl:]]*|*' '*|*\"*|*\'*|,*|*,|*,,*) usage_error "--paths must be one comma-separated line of plain paths (no control characters, spaces, quotes or empty elements): $changed_paths" ;;
     esac
+    repo_top=$(git rev-parse --show-toplevel) || { echo "[review:error] cannot resolve the repository root" >&2; exit 1; }
     bash_changed=false
     IFS=, read -ra changed_list <<< "$changed_paths"
     for changed in "${changed_list[@]}"; do
       case "$changed" in
         *.sh|*.bash) bash_changed=true ;;
         *.md)
-          [ -f "$changed" ] || continue   # 削除された .md は fence を持てない
+          if [ ! -f "$repo_top/$changed" ]; then
+            # 作業ツリーに無く HEAD にもあれば、渡されたパスか cwd が誤り。どちらにも無ければ削除済みで fence を持てない
+            if git -C "$repo_top" cat-file -e "HEAD:$changed" 2>/dev/null; then
+              echo "[review:error] changed file is in HEAD but not in the work tree: $changed" >&2; exit 1
+            fi
+            continue
+          fi
           fence_rc=0
-          grep -Eq '^[[:space:]]*(`{3,}|~{3,})[[:space:]]*(bash|sh|shell)([[:space:]]|$)' "$changed" || fence_rc=$?
+          grep -Eiq '^[[:space:]]*(`{3,}|~{3,})[[:space:]]*(bash|sh|shell)([[:space:]]|$)' "$repo_top/$changed" || fence_rc=$?
           case "$fence_rc" in
             0) bash_changed=true ;;
             1) ;;

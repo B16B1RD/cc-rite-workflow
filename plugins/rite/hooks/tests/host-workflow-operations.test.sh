@@ -391,10 +391,35 @@ class WorkflowContracts(unittest.TestCase):
             result = run_extra(plugin, reviewer_type, "hooks/x.sh")
             self.assertNotIn(bash_ref, result.stdout, reviewer_type)
         # A list that is not one comma-separated line stops instead of silently reading as "no bash".
-        for malformed in ["a.txt\nx.sh", "a.txt, x.sh", "a.txt,,x.sh", ",x.sh", "x.sh,", " x.sh"]:
+        for malformed in ["a.txt\nx.sh", "a.txt, x.sh", "a.txt,,x.sh", ",x.sh", "x.sh,", " x.sh", "x.sh ", "x.sh ,a.txt", "a.txt,x.sh\r", "a.txt,x.sh\t", "x.sh a.txt", "'x.sh'"]:
             result = run_extra(plugin, "error-handling", malformed)
             self.assertNotEqual(result.returncode, 0, repr(malformed))
             self.assertEqual(result.stdout, "", repr(malformed))
+        # A .md that cannot be scanned stops instead of reading as "no bash".
+        locked = self.fixture / "locked.md"
+        locked.write_text("```bash\necho x\n```\n", encoding="utf-8")
+        locked.chmod(0)
+        try:
+            if not os.access(locked, os.R_OK):  # root bypasses file modes
+                result = run_extra(plugin, "error-handling", "docs/a.txt,locked.md")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("cannot scan", result.stderr)
+        finally:
+            locked.chmod(0o600)
+        # Fence language is matched case-insensitively.
+        (self.fixture / "upper.md").write_text("```Bash\necho x\n```\n", encoding="utf-8")
+        result = run_extra(plugin, "error-handling", "upper.md")
+        self.assertIn(bash_ref, result.stdout)
+        # A path in HEAD but not in the work tree (wrong cwd or path) stops; one in neither place is a deletion.
+        (self.fixture / "gone.md").write_text("text\n", encoding="utf-8")
+        self.run_command(["git", "-C", str(self.fixture), "add", "gone.md"])
+        self.run_command(["git", "-C", str(self.fixture), "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "add"])
+        (self.fixture / "gone.md").unlink()
+        result = run_extra(plugin, "error-handling", "gone.md")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("in HEAD but not in the work tree", result.stderr)
+        self.assertEqual(result.stdout, "")
         # A missing changed-path list stops instead of silently dropping the bash rules.
         result = run_extra(plugin, "error-handling", "")
         self.assertNotEqual(result.returncode, 0)
@@ -490,7 +515,7 @@ class WorkflowContracts(unittest.TestCase):
             self.assertIn(sentence, load_part)
         pr_review_lines = pr_review.splitlines()
         step5 = next(line for line in pr_review_lines if line.startswith("5. **追加読取元を確定する**"))
-        self.assertTrue(step5.endswith("対応表は helper が持つ（文書整合の規則は全 reviewer、固有の規則は prompt-engineer / tech-writer / test、error-handling は変更ファイルが bash を含むときに限る）。`{review_paths}` はステップ 1.2 の変更ファイル一覧（`REVIEW_CYCLE_SCOPE == incremental` のときは `{cycle_scope_files}` が指すファイルの各行）を、空白も改行も入れずカンマで連結した 1 行（`{changed_paths}` とは別物）。形が違うと helper が止まる。helper が file 単位で判定し、`.sh` / `.bash` の変更、または bash / sh / shell の fenced block を持つ `.md` の変更なら渡す（diff の行位置には依らない）。named / 独立子とも同じ全文読取義務を渡す。"))
+        self.assertTrue(step5.endswith("対応表は helper が持つ（文書整合の規則は全 reviewer、固有の規則は prompt-engineer / tech-writer / test、error-handling は変更ファイルが bash を含むときに限る）。`{review_paths}` はステップ 1.2 の変更ファイル一覧（`REVIEW_CYCLE_SCOPE == incremental` のときは `{cycle_scope_files}` が指すファイルの各行）を、空白も改行も入れずカンマで連結した 1 行（wiki-apply 用の、存在するパスだけの一覧 `{changed_paths}` とは別物）。error-handling では、形が違う（空白・引用符・制御文字・空要素）か、HEAD にあるのに作業ツリーに無いパスがあると helper が止まる。helper が file 単位で判定し、`.sh` / `.bash` の変更、または bash / sh / shell の fenced block を持つ `.md` の変更なら渡す（diff の行位置には依らない）。named / 独立子とも同じ全文読取義務を渡す。"))
         self.assertNotIn("のときだけ", step5)
         dispatch = next(line for line in pr_review_lines if line.startswith("**並列（MUST）**"))
         self.assertTrue(dispatch.endswith("tech-writer には `{prose_reviewer_principles}` も渡す。全 reviewer に `{additional_reviewer_references}` も渡す。"))
