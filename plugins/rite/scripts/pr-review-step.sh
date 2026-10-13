@@ -594,24 +594,26 @@ case "$reviewer_type" in
   error-handling)
     # 変更ファイルが bash を含むときだけ渡す（約 30KB。bash の無いレビューでは読ませない）。
     # 判定は file 単位: .sh / .bash の変更、または bash / sh / shell の fenced block を持つ .md の変更
-    # 入力はカンマ区切りの 1 行。制御文字・空白・引用符・空要素は変換ミスなので、黙って false にせず止める
+    # 入力はカンマ区切りの 1 行。制御文字・空要素・要素の前後の空白は変換ミスなので、黙って false にせず止める
+    # （名前の内側の空白や引用符は正規のファイル名として許す）
     case "$changed_paths" in
-      *[[:cntrl:]]*|*' '*|*\"*|*\'*|,*|*,|*,,*) usage_error "--paths must be one comma-separated line of plain paths (no control characters, spaces, quotes or empty elements): $changed_paths" ;;
+      *[[:cntrl:]]*|,*|*,|*,,*|' '*|*' '|*' ,'*|*', '*) usage_error "--paths must be one comma-separated line without control characters, empty elements or space-padded elements: $changed_paths" ;;
     esac
     repo_top=$(git rev-parse --show-toplevel) || { echo "[review:error] cannot resolve the repository root" >&2; exit 1; }
     bash_changed=false
     IFS=, read -ra changed_list <<< "$changed_paths"
     for changed in "${changed_list[@]}"; do
+      # 全要素の存在を確かめる。作業ツリーに無いのは、履歴上で削除されたパスだけ許す
+      # （別の checkout・絶対パス・cwd 相対・一覧ファイルのパス・存在しない要素はここで止まる）
+      if [ ! -e "$repo_top/$changed" ]; then
+        if [ -n "$(git --literal-pathspecs -C "$repo_top" rev-list -1 HEAD -- "$changed")" ]; then
+          continue   # 削除済み。fence を持てない
+        fi
+        echo "[review:error] changed path is neither in the work tree nor in HEAD history: $changed" >&2; exit 1
+      fi
       case "$changed" in
         *.sh|*.bash) bash_changed=true ;;
         *.md)
-          if [ ! -f "$repo_top/$changed" ]; then
-            # 作業ツリーに無く HEAD にもあれば、渡されたパスか cwd が誤り。どちらにも無ければ削除済みで fence を持てない
-            if git -C "$repo_top" cat-file -e "HEAD:$changed" 2>/dev/null; then
-              echo "[review:error] changed file is in HEAD but not in the work tree: $changed" >&2; exit 1
-            fi
-            continue
-          fi
           fence_rc=0
           grep -Eiq '^[[:space:]]*(`{3,}|~{3,})[[:space:]]*(bash|sh|shell)([[:space:]]|$)' "$repo_top/$changed" || fence_rc=$?
           case "$fence_rc" in

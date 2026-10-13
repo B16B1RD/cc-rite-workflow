@@ -274,7 +274,7 @@ fi
 
 # 改名は元パスと新パスの 2 つとして数える。--name-only は検出した改名の移動先しか出さないため、
 # rename 検出が有効だと PR 自身の変更 (commit ごと) と起点からの差分 (範囲全体) の積から元パスが落ちる。
-diff_names=$(git diff --no-renames --name-only "${base_sha}..HEAD" 2>"$probe_err") || {
+diff_names=$(git -c core.quotePath=false diff --no-renames --name-only "${base_sha}..HEAD" 2>"$probe_err") || {
   echo "WARNING: review-cycle-scope: 差分を取得できません (${base_sha}..HEAD)" >&2
   head -3 "$probe_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   emit_full diff_failed
@@ -296,10 +296,10 @@ fi
 # 自動 merge されたファイルも返すので使わない) に限り、その積を fix diff とする。
 # merge の second parent 側から入った変更は base の取り込みとして除く。
 own_names=$( {
-  git log --no-renames --first-parent --no-merges --name-only --format= "${base_sha}..HEAD" || exit 1
+  git -c core.quotePath=false log --no-renames --first-parent --no-merges --name-only --format= "${base_sha}..HEAD" || exit 1
   merges=$(git rev-list --first-parent --merges "${base_sha}..HEAD") || exit 1
   for merge in $merges; do
-    git show --no-renames --remerge-diff --name-only --format= "$merge" || exit 1
+    git -c core.quotePath=false show --no-renames --remerge-diff --name-only --format= "$merge" || exit 1
   done
 } 2>"$probe_err") || {
   echo "WARNING: review-cycle-scope: PR 自身の変更を取得できません (${base_sha}..HEAD)" >&2
