@@ -603,11 +603,23 @@ case "$reviewer_type" in
     bash_changed=false
     IFS=, read -ra changed_list <<< "$changed_paths"
     for changed in "${changed_list[@]}"; do
-      # 全要素の存在を確かめる。作業ツリーに無いのは、履歴上で削除されたパスだけ許す
-      # （別の checkout・絶対パス・cwd 相対・一覧ファイルのパス・存在しない要素はここで止まる）
+      # 全要素の存在を確かめる。repo root からの相対パスだけを受け付け、作業ツリーに無いのは
+      # 「HEAD に無く、履歴にある」（コミット済みの削除）パスだけ許す。HEAD にあるのに無いパスは止める
+      # （絶対パスと .. は git が repo 内パスとして解決してしまうので、先に形で拒否する）
+      case "$changed" in
+        /*|..|../*|*/..|*/../*) usage_error "--paths elements must be repository-root-relative paths without '..': $changed" ;;
+      esac
       if [ ! -e "$repo_top/$changed" ]; then
-        if [ -n "$(git --literal-pathspecs -C "$repo_top" rev-list -1 HEAD -- "$changed")" ]; then
-          continue   # 削除済み。fence を持てない
+        if git -C "$repo_top" cat-file -e "HEAD:$changed" 2>/dev/null; then
+          echo "[review:error] changed path is in HEAD but missing from the work tree: $changed" >&2; exit 1
+        fi
+        history_rc=0
+        history=$(git --literal-pathspecs -C "$repo_top" rev-list -1 HEAD -- "$changed") || history_rc=$?
+        if [ "$history_rc" -ne 0 ]; then
+          echo "[review:error] cannot read the git history for: $changed" >&2; exit 1
+        fi
+        if [ -n "$history" ]; then
+          continue   # コミット済みの削除。fence を持てない
         fi
         echo "[review:error] changed path is neither in the work tree nor in HEAD history: $changed" >&2; exit 1
       fi
