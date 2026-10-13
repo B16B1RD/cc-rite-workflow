@@ -265,13 +265,10 @@ documentation file.
 
 11. **Fidelity rules catalog**: When the diff touches prose, tables, references,
     enumerations, counts, or verification scripts, or states a universal,
-    negative, or counted claim, `Read` the matching sections of
-    `{plugin_root}/references/doc-fidelity-sot.md` (文書整合・SoT 規則). When the claim rests on an Issue
-    acceptance criterion, also `Read`
-    `{plugin_root}/skills/issue-create/references/ac-authoring.md`.
-    `{plugin_root}` is the directory derived from this file's absolute path, as
-    defined in Mutation experiments above; do not resolve these two files by
-    relative path from the working directory.
+    negative, or counted claim, apply the matching sections of the fidelity rules
+    (文書整合・SoT 規則; Issue acceptance-criterion format when the claim rests on one)
+    that the prompt supplies under 追加で読む規則. If the prompt has no such section
+    or a supplied file cannot be read, report that and stop the whole review (not just this item) instead of judging from memory.
 
 Report a current-PR finding only when the changed explanation, command, citation,
 or sample fails one of these checks and the resulting contradiction,

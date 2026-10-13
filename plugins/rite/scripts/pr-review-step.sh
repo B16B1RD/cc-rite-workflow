@@ -33,6 +33,7 @@
 #   bash pr-review-step.sh wiki-apply-check --keywords KEYWORDS
 #   bash pr-review-step.sh shared-principles
 #   bash pr-review-step.sh prose-principles --reviewer-type REVIEWER_TYPE
+#   bash pr-review-step.sh extra-references --reviewer-type REVIEWER_TYPE
 #   bash pr-review-step.sh spawn-at
 #   bash pr-review-step.sh rejected-ledger --owner-repo OWNER_REPO --pr PR_NUMBER
 #   bash pr-review-step.sh tmp-dir
@@ -573,6 +574,35 @@ if [ ! -f "$prose_reference" ] || [ ! -r "$prose_reference" ] || [ ! -s "$prose_
   exit 1
 fi
 printf '[CONTEXT] PROSE_REVIEWER_PRINCIPLES=%s\n' "$prose_reference"
+}
+
+# --- extra-references ------------------------------------------------------------
+# reviewer ごとに追加で全文を読ませる references。配布物内の相対位置で持ち、絶対パスにして渡す
+step_extra_references() {
+# 文書整合の規則は全 reviewer 共通。reviewer 固有の分を前に足す
+fidelity_refs="references/doc-fidelity-sot.md skills/issue-create/references/ac-authoring.md"
+case "$reviewer_type" in
+  *[!a-z-]*) echo "[review:error] invalid reviewer type: $reviewer_type" >&2; exit 1 ;;
+esac
+if [ ! -f "$plugin_root/agents/${reviewer_type}-reviewer.md" ]; then
+  echo "[review:error] unknown reviewer type: $reviewer_type" >&2
+  exit 1
+fi
+case "$reviewer_type" in
+  prompt-engineer|tech-writer) extra_relpaths="references/skill-prose-writing.md $fidelity_refs" ;;
+  test) extra_relpaths="references/test-pin-mutation-principles.md $fidelity_refs" ;;
+  *) extra_relpaths="$fidelity_refs" ;;
+esac
+extra_list=""
+for extra_rel in $extra_relpaths; do
+  extra_path="$plugin_root/$extra_rel"
+  if [ ! -f "$extra_path" ] || [ ! -r "$extra_path" ] || [ ! -s "$extra_path" ]; then
+    echo "[review:error] additional reviewer reference cannot be read: $extra_path" >&2
+    exit 1
+  fi
+  extra_list="${extra_list:+$extra_list; }$extra_path"
+done
+printf '[CONTEXT] ADDITIONAL_REVIEWER_REFERENCES=%s\n' "$extra_list"
 }
 
 # --- spawn-at --------------------------------------------------------------------
@@ -1511,6 +1541,7 @@ case "$subcommand" in
   wiki-apply-check) require keywords; step_wiki_apply_check ;;
   shared-principles) step_shared_principles ;;
   prose-principles) require reviewer_type; step_prose_principles ;;
+  extra-references) require reviewer_type; step_extra_references ;;
   spawn-at) step_spawn_at ;;
   rejected-ledger) require pr_number owner_repo; step_rejected_ledger ;;
   tmp-dir) step_tmp_dir ;;

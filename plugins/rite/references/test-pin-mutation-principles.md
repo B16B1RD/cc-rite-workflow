@@ -3,7 +3,7 @@
 テスト（特に bash テスト・散文契約の静的 pin）を**書く側**と**レビューする側**が共通で読む規則集。
 各行は「条件 → 期待」の形で書く。判定の軸は 1 つ: **その実装が壊れる最も起こりやすい形で、このテストは落ちるか**。
 
-呼び出し元： `skills/issue-implement/SKILL.md`（テスト規律の節）、`agents/test-reviewer.md`（エッジケース確認の手順）。
+呼び出し元： `skills/issue-implement/SKILL.md`（テスト規律の節）、`agents/test-reviewer.md`（pr-review が追加で読む規則として絶対パスで渡す）。
 節構成と配線の契約テスト： `hooks/tests/test-pin-mutation-principles-contract.test.sh`。
 
 用語： **pin** = 挙動・文言・件数を固定するテスト assert。**positive control** = 検査が空振りしていないことを示す、必ず成立する対照入力。

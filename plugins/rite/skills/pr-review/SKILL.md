@@ -950,7 +950,11 @@ rationale: references/design-rationale.md#shared-principles-hybrid
  ```bash
  bash {plugin_root}/scripts/pr-review-step.sh prose-principles --reviewer-type "{reviewer_type}"
  ```
-**並列（MUST）**: 利用可能な子枠内で同じ組の Task を 1 メッセージで invoke する。全名簿が枠を超える場合は組に分け、完了した枠を解放して次の組を実行する。全組回収まで統合・修正へ進まない（失敗した Task の retry は 4.4 に従う）。各 agent に diff / 変更ファイル / `{issue_spec}` / `{shared_reviewer_principles}` を渡す。tech-writer には `{prose_reviewer_principles}` も渡す。
+5. **追加読取元を確定する**: 全 reviewer で次を実行し、`ADDITIONAL_REVIEWER_REFERENCES=` の絶対パス列（`; ` 区切り）を保持する。出力が無い、または非ゼロなら `[review:error]` で停止し、名簿を減らさない。対応表は helper が持つ（文書整合の規則は全 reviewer、固有の規則は prompt-engineer / tech-writer / test）。named / 独立子とも同じ全文読取義務を渡す。
+ ```bash
+ bash {plugin_root}/scripts/pr-review-step.sh extra-references --reviewer-type "{reviewer_type}"
+ ```
+**並列（MUST）**: 利用可能な子枠内で同じ組の Task を 1 メッセージで invoke する。全名簿が枠を超える場合は組に分け、完了した枠を解放して次の組を実行する。全組回収まで統合・修正へ進まない（失敗した Task の retry は 4.4 に従う）。各 agent に diff / 変更ファイル / `{issue_spec}` / `{shared_reviewer_principles}` を渡す。tech-writer には `{prose_reviewer_principles}` も渡す。全 reviewer に `{additional_reviewer_references}` も渡す。
 
 
 **Error handling:**
@@ -965,7 +969,7 @@ If the following issues occur with the sub-agent approach:
 
 ### 4.3.1 Task Tool Sub-Agent Invocation
 
-ホストに named Agent/Task が無い場合は [Host workflow operations](../../references/host-workflow-operations.md#独立-reviewer) の絶対パスと読取義務の明示による独立子を使う。これは未登録 named agent の無条件 fallback ではない。起動前に選定名簿を固定し、実際の親/子 ID・開始/終了時刻・raw 完了出力を保持する。必要な独立性または並列性を作れなければ `[review:error]`。placeholder は named 経路と同じく 4.5 のまま渡す（`{shared_reviewer_principles}` も named 経路と同じ絶対パス行）。tech-writer の `{prose_reviewer_principles}` も named 経路と同じ絶対パス・全文読取義務・先頭行の申告で渡す。独立子には加えて `agents/{reviewer_type}-reviewer.md` の絶対パスを同じ読取義務・読取完了申告の対象として渡す（named 経路は profile を system prompt で受け取る）。
+ホストに named Agent/Task が無い場合は [Host workflow operations](../../references/host-workflow-operations.md#独立-reviewer) の絶対パスと読取義務の明示による独立子を使う。これは未登録 named agent の無条件 fallback ではない。起動前に選定名簿を固定し、実際の親/子 ID・開始/終了時刻・raw 完了出力を保持する。必要な独立性または並列性を作れなければ `[review:error]`。placeholder は named 経路と同じく 4.5 のまま渡す（`{shared_reviewer_principles}` も named 経路と同じ絶対パス行）。tech-writer の `{prose_reviewer_principles}` と、全 reviewer の `{additional_reviewer_references}` も named 経路と同じ絶対パス・全文読取義務・先頭行の申告で渡す。独立子には加えて `agents/{reviewer_type}-reviewer.md` の絶対パスを同じ読取義務・読取完了申告の対象として渡す（named 経路は profile を system prompt で受け取る）。
 
 **⚠️ IMPORTANT — Named Subagent Invocation**: `rite:{reviewer_type}-reviewer` で **named subagent** として呼ぶ。
 rationale: references/design-rationale.md#named-subagent-and-foreground
@@ -1016,7 +1020,7 @@ Retry procedure when a completion notification fails or is missing. 4.4 と 5.1.
 | Timeout | Yes (up to 1 time) | Re-execute with the same prompt |
 | Network error | Yes (up to 1 time) | Re-execute with the same prompt |
 | Invalid output format | Yes (up to 1 time) | Re-execute with "output in the exact format" appended to the prompt |
-| Missing read declaration | Yes (up to 1 time) | Re-execute with the read obligation of `{shared_reviewer_principles}` restated |
+| Missing read declaration | Yes (up to 1 time) | Re-execute with the read obligation of every missing path restated (`{shared_reviewer_principles}`, `{prose_reviewer_principles}`, `{additional_reviewer_references}`) |
 | Skill file load failure | No | Fall back to the built-in pattern table (ステップ 2.2) for reviewer selection |
 | subagent resolution failure | No | Fail immediately. Display the scoped name used (`rite:{reviewer_type}-reviewer`) and the error message. Mark the reviewer as "incomplete", retain other results, and return `[review:error]`. Do NOT silently fall back to `general-purpose` or reduce the selected roster. |
 
@@ -1073,6 +1077,7 @@ Determine the error type from the completion notification (failure payload or ab
 | `{change_intelligence_summary}` | Change Intelligence Summary from ステップ 1.2.6 | One-paragraph summary of change type, file classification, and focus area |
 | `{shared_reviewer_principles}` | ステップ 4.3 step 3 の `SHARED_REVIEWER_PRINCIPLES=`（`_reviewer-base.md` の絶対パス） | **全文 inline しない**。絶対パスを埋めた次の指示を渡す: 「共通レビュー原則は `{絶対パス}` にある。着手前に Read tool で先頭から末尾まで全文読むこと（1 回で読み切れなければ offset / limit で分割して末尾まで読む）。raw 出力の先頭行に `読取完了: {絶対パス}` と書くこと」。独立子は profile の絶対パスも `; ` 区切りで同じ行に並べる。named / 独立子の両経路で同じ。4.5 テンプレートと 4.5.1 検証テンプレートの双方の出現箇所に適用する |
 | `{prose_reviewer_principles}` | ステップ 4.3 step 4 の `PROSE_REVIEWER_PRINCIPLES=`（`references/prose-reasoning.md` の絶対パス） | **tech-writer だけ**: 「文書の論証と読み手の負担の規則は `{絶対パス}` にある。着手前に Read tool で先頭から末尾まで全文読むこと（必要なら offset / limit で分割する）。読めなければ失敗を報告して停止し、記憶や外部取得で代用しない。raw 出力の先頭行の `読取完了:` に、この絶対パスを共通原則のパスと `; ` 区切りで追記すること」を渡す。独立子は profile も同じ行に列挙する。他の reviewer は空文字列にし、「文書の論証と読み手の負担」セクションごと省略する。通常・light・incremental・verification の全組合せで 4.5 の通常テンプレートを通して渡す。全文 inline しない。既存の mandate・共通原則・採否ゲートを置換しない |
+| `{additional_reviewer_references}` | ステップ 4.3 step 5 の `ADDITIONAL_REVIEWER_REFERENCES=`（`scripts/pr-review-step.sh extra-references` が返す絶対パス列） | **全 reviewer**: 「追加で読む規則は `{絶対パス列}` にある。着手前に Read tool で各ファイルを先頭から末尾まで全文読むこと（必要なら offset / limit で分割する）。読めなければ失敗を報告して停止し、記憶や外部取得で代用しない。raw 出力の先頭行の `読取完了:` に、これらの絶対パスを他の読取パスと `; ` 区切りで追記すること」を渡す。独立子は profile も同じ行に列挙する。出力が無いときは step 5 で停止しており、空文字列で起動しない。通常・light・incremental・verification の全組合せで 4.5 の通常テンプレートを通して渡す。全文 inline しない |
 | `{change_summary}` | Scale information from ステップ 1.2.1 | Used only for large diffs. Change summary table |
 | `{doc_heavy_pr}` | ステップ 1.2.7 result | Boolean flag (`true` / `false`). Inject only when reviewer is `tech-writer`. If `false` or reviewer != tech-writer, set to empty string |
 | `{doc_heavy_mode_instructions}` | `agents/tech-writer-reviewer.md` `## Doc-Heavy PR Mode (Conditional)` section | **Conditional extraction**: Only populated when `reviewer_type == tech-writer` AND `{doc_heavy_pr} == true`. Extract the entire section from `## Doc-Heavy PR Mode (Conditional)` heading down to (but excluding) the next `##` heading. Otherwise set to empty string |
@@ -1300,7 +1305,7 @@ rationale: references/design-rationale.md#verification-post-condition-notes
 - `prompt` 内容: ステップ 4.5.1 verification テンプレート + ステップ 4.5 full テンプレート（元レビューと同じ 2 テンプレート concat）に、以下の strict 要件を追加:
  - 「`### 修正検証結果` heading と判定テーブル (`| # | 重要度 | ファイル:行 | 内容 | 判定 | 備考 |`) を **必ず**出力すること」
  - 「ステップ 4.5.1 verification テンプレートの Part 1 (前回指摘の修正検証) を skip せずに実行すること」
-- 入力データ (`{previous_findings_table}` / `{fix_change_map}` / `{incremental_diff}` / `{change_intelligence_summary}`): ステップ 1.2.4.1 / 4.5.1 で取得済みのものを再供給
+- 入力データ (`{previous_findings_table}` / `{fix_change_map}` / `{incremental_diff}` / `{change_intelligence_summary}`) と読取 placeholder (`{shared_reviewer_principles}` / `{prose_reviewer_principles}` / `{additional_reviewer_references}`): ステップ 1.2.4.1 / 4.5.1 / 4.3 で取得済みのものを再供給
 - **結果 merge 戦略**: retry 結果は元 reviewer の output を **置き換える** (append ではない)。元 output は破棄し、retry output のみを ステップ 5.1 結果集合に使用する
  - **Note**: retry prompt は full + verification 両 template を concat して再送している (上記 `prompt` 内容参照) ため、retry output は元 output の全指摘 (verification mode 由来 + full mode 由来) を**包含する**。元 output 内の非 verification finding が retry 置き換えで消失することはない。
 - retry 実行後、`verification_post_condition_retry_count[{reviewer_type}]` を +1 し、もう一度判定条件を評価する。retry 後も欠落していれば `error` に昇格する
@@ -1745,7 +1750,7 @@ bash {plugin_root}/scripts/pr-review-step.sh measured-gate --input {review_tmp_d
 
 | 観測 | LLM action |
 |---|---|
-| `[CONTEXT] MEASURED_GATE_FAILED=1; reason=verification_preset_by_caller` / `scope_enum_violation` / `anchor_undetermined` (helper 非ゼロ終了) | **同 cycle 内で契約違反を修復する。** preset は step 1 の JSON を作り直す。scope 違反または `anchor_undetermined` は診断の対象 finding IDs のみ **Reviewer reject + reroll** とし、当該 reviewer に先頭行の読取完了申告も含めて再生成させる。他 finding は保持する。アンカーは `Verification: repro <cmd> => <観測>` または `Verification: failing_test <path> => <失敗出力>`、raw pipe は `¦` と案内する。回収結果で manifest（`agent_id` / `output_file`）を更新し、5.1 の回収完了ゲート（読取完了申告の照合を含む）→ 5.1.0.L → 5.1.0.AC を再実行し、作り直した出力から推奨事項を抽出し直してから step 1 の JSON を作り直し step 2 を再実行する。`measured_gate_retry_count` が `1` なら `[review:error]` で停止する。`/rite:fix` に形式修正を渡さず、review cycle を増やさない |
+| `[CONTEXT] MEASURED_GATE_FAILED=1; reason=verification_preset_by_caller` / `scope_enum_violation` / `anchor_undetermined` (helper 非ゼロ終了) | **同 cycle 内で契約違反を修復する。** preset は step 1 の JSON を作り直す。scope 違反または `anchor_undetermined` は診断の対象 finding IDs のみ **Reviewer reject + reroll** とし、当該 reviewer を元 prompt（`{shared_reviewer_principles}` / `{prose_reviewer_principles}` / `{additional_reviewer_references}` を含む）+ 診断（対象 finding IDs と正規形アンカーの案内）で再生成させ、先頭行の読取完了申告も含める。他 finding は保持する。アンカーは `Verification: repro <cmd> => <観測>` または `Verification: failing_test <path> => <失敗出力>`、raw pipe は `¦` と案内する。回収結果で manifest（`agent_id` / `output_file`）を更新し、5.1 の回収完了ゲート（読取完了申告の照合を含む）→ 5.1.0.L → 5.1.0.AC を再実行し、作り直した出力から推奨事項を抽出し直してから step 1 の JSON を作り直し step 2 を再実行する。`measured_gate_retry_count` が `1` なら `[review:error]` で停止する。`/rite:fix` に形式修正を渡さず、review cycle を増やさない |
 | `[CONTEXT] MEASURED_GATE_FAILED=1; reason=...` (上記 3 種以外。`jq_missing` / `input_missing` / `input_unreadable` / `json_invalid` / `findings_not_array` / `non_blocking_not_array` / `jq_transform_failed` / `stats_read_failed` / `mktemp_failure` / `write_failure` / `mv_failure` / `signal_aborted`) | **`[review:error]` を stdout に出力して停止する。LLM 分類へ fallback してはならない** — fallback は本ゲートが閉じた不発の再生産になる。helper が ERROR 行の直後に外部コマンドの stderr 先頭 5 行を転記するので、原因はそこを見る |
 | marker が一切出ずに helper が非ゼロ終了した (exit 2 = 引数欠落 / 未知フラグ) | 同上 — `[review:error]` を stdout に出力して停止する |
 | `[CONTEXT] MEASURED_GATE=applied; blocking={n}; demoted={d}; non_blocking_total={t}; assessment={a}` (helper rc=0) | ゲート適用成功。`total_findings = {n}`、`non_blocking_count = {t}`、`overall_assessment = {a}` として 5.3.1 以降へ進む (**再分類しない**)。下記 2 種の観測 marker が併記されていても分類は変えず、会話コンテキストに残して続行する |

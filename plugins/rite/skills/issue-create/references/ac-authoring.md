@@ -1,6 +1,6 @@
 # 受入条件（AC）の書き方と検証
 
-> **SoT scope**：Issue 本文の受入条件を書くときの規則。consumer は `skills/issue-create/SKILL.md` の本文生成と `agents/_reviewer-base.md` の Documentation Fidelity Gate（主張の根拠が AC のとき、「書くとき」節を点検に使う）。構造検査（AC 件数・T-xx 対応）は `templates/issue/default.md` の Output Validation Checklist が担い、本 reference は AC の**中身が検証可能か**だけを見る。
+> **SoT scope**：Issue 本文の受入条件を書くときの規則。consumer は `skills/issue-create/SKILL.md` の本文生成と `agents/_reviewer-base.md` の Documentation Fidelity Gate（pr-review が全 reviewer へ絶対パスで渡す。主張の根拠が AC のとき、「書くとき」節を点検に使う）。構造検査（AC 件数・T-xx 対応）は `templates/issue/default.md` の Output Validation Checklist が担い、本 reference は AC の**中身が検証可能か**だけを見る。
 
 ## 書くとき
 
