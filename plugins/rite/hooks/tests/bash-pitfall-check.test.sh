@@ -159,9 +159,11 @@ assert "missing --target exits 2" "2" "$(run --quiet --target plugins/rite/hooks
 if [ "$(id -u)" -eq 0 ]; then
   skip "unlistable directory exits 2 (running as root: chmod 000 does not deny access)"
 else
-  mkdir -p "$SANDBOX/plugins/rite/hooks/locked"; chmod 000 "$SANDBOX/plugins/rite/hooks/locked"
-  assert "unlistable directory exits 2 (not scanned != clean)" "2" "$(run --quiet --all)"
-  chmod 755 "$SANDBOX/plugins/rite/hooks/locked"; rmdir "$SANDBOX/plugins/rite/hooks/locked"
+  LOCKED="$(make_plain_sandbox)"
+  mkdir -p "$LOCKED/plugins/rite/hooks/locked" "$LOCKED/plugins/rite/scripts"; chmod 000 "$LOCKED/plugins/rite/hooks/locked"
+  assert "unlistable directory exits 2 (not scanned != clean)" "2" \
+    "$(bash "$SCRIPT" --repo-root "$LOCKED" --quiet --all >/dev/null 2>&1; echo $?)"
+  chmod 755 "$LOCKED/plugins/rite/hooks/locked"; rm -rf "$LOCKED"
 fi
 EMPTY="$(make_plain_sandbox)"
 assert "--all without plugins/rite exits 2" "2" "$(bash "$SCRIPT" --repo-root "$EMPTY" --quiet --all >/dev/null 2>&1; echo $?)"
