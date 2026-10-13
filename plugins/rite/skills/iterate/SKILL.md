@@ -36,7 +36,7 @@ argument-hint: "<pr_number>"
 **サーキットブレーカーの発火条件は 2 つ**:
 
 - **収束トレンドの発散**（主経路）: 永続レビュー JSON の per-cycle blocking 件数から `hooks/scripts/review-trend-divergence.sh` が発散を機械判定する。「直近 2 値がともに過去の最良水準を超え、かつ下降中でもない」を発散とし、**収束中のループは本判定では殺されない**（cycle 数上限は別条件として下記 2. のとおり働く）
-- **`safety.max_review_cycles`（既定 15）到達**（保険）: 発散判定をすり抜ける非収束を受け止める backstop。`cc >= max_cycles` は trend の verdict とは**独立した発火条件**。**ただし上限到達時も、直近 3 cycle の blocking 件数が狭義単調減少し、かつ計測済みの最新 cycle の fix 由来の新規指摘（`findings_new_from_fix`）が 0 なら停止しない**（`hooks/scripts/review-converging.sh` が判定し、条件の SoT はそのヘッダ。足踏み・反転・未計測・判定不能は従来どおり上限で止まる）
+- **`safety.max_review_cycles`（既定 15）到達**（保険）: 発散判定をすり抜ける非収束を受け止める backstop。`cc >= max_cycles` は trend の verdict とは**独立した発火条件**。**ただし上限到達時も、収束中と判定された run は停止しない**（`hooks/scripts/review-converging.sh` が判定し、条件の SoT はそのヘッダ。それ以外は従来どおり上限で止まる）
 rationale: references/rationale.md#circuit-breaker-conditions
 
 ブレーカー発火は review⇄fix ループの停止 signal である。`review_run` がある現在の run は counter・根因観測・見直し履歴・停止理由を保持して終了する。同じ run の再起動で履歴を消さない。review / fix は invoke しない。以下に残る counter reset と fresh entry の手順は `review_run` がない legacy state に限る。
@@ -76,7 +76,7 @@ rationale: references/rationale.md#circuit-breaker-conditions
 | `{cb_reason}` | 停止理由の**生値**（`max-cycles` / `divergence` / `stagnation`）。供給元は ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `CB_REASON=`（`max-cycles` / `divergence`）と、`review_run` がある run の停止を記録した ステップ 3 の規則（既存 breaker の停止はその値、それ以外の停滞判定 `stop` は `stagnation`）の 2 つ（同節「`{resume_routes}`」参照）。`review_run` が停止済みのとき flow-state の `stop_reason` は run 側の値（`stagnation:non-convergent` / `stagnation:scope-insoluble` 等）に置き換わる。ステップ 6 共有前段が flow-state へ書く `--stop-reason "circuit-breaker:{cb_reason}"` と `{resume_routes}` の分岐で使う（人間向けの文面は `{fire_reason_line}` が担う） |
 | `{trend}` | ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `TREND=`（カンマ区切りの per-cycle blocking 件数）。停止通知では `→` 区切りへ整形して表示する。空のときの扱いは ステップ 6.2「発火理由の文面」を参照 |
 | `{trend_reason}` | ステップ 1 の `[CONTEXT] ITERATE_CB=` marker の `TREND_REASON=`（helper が返した判定不能の理由。ステップ 6.2「発火理由の文面」の `max-cycles` 分岐と推移行の差し替えで使う） |
-| `{converging_reason}` | ステップ 1 の `ITERATE_CB=fire` marker の `CONVERGING_REASON=`（上限到達時に延長しなかった理由。`CB_REASON=max-cycles` のときだけ値を持つ） |
+| `{converging_reason}` | 上限到達時に延長しなかった理由。ステップ 1 の `ITERATE_CB=fire` marker の `CONVERGING_REASON=`、または `review_run` がある run ではステップ 3 の `ITERATE_STAGNATION=stop` marker の `CONVERGING_REASON=`。`CB_REASON=max-cycles` のときだけ値を持つ。どちらの marker にも無いときは「不明」と書く |
 | `{cycle_count}` | flow-state `cycle_count` field（review-start で増加。`review_run` がある同一 run では完了・停止・recoverでも保持。以下の 0 リセット手順は legacy state 専用） |
 | `{resume_routes}` | ステップ 6.2 停止通知の「再開方法」の行。ステップ 3 の `[CONTEXT] ITERATE_STAGNATION=` marker と `{cb_reason}` から 同節「`{resume_routes}`」表で決める（marker 不在の行も同表が持つ） |
 | `{state_root}` | ステップ 6 共有前段の `[CONTEXT] STATE_ROOT=` marker の値（`hooks/state-path-resolve.sh` の解決結果。未解決時は sentinel `unresolved`）。ステップ 6.2 注意行 (b) の手動リセットコマンドでのみ使い、値が得られないときは同節の pre-fill 表に従って解決手順へ置き換える |
@@ -278,7 +278,7 @@ bash {plugin_root}/scripts/iterate-step.sh lost-repair --repair {repair} --cycle
 
 `RETRY_HOLD=1`（`ok` 分岐）は、`review-retry` が発行した未決着の再試行権により、発行した cycle に限って発散判定を保留したことを示す。分岐は通常の `ok` と同じく review を invoke する。`max-cycles` と lost 修復ゲートは保留しない。決着は再試行の review の観測が行う（[review-stagnation.md](../../references/review-stagnation.md)）。
 
-`CONVERGING_REASON` は `fire` 分岐だけに載り、上限到達時に延長しなかった理由（`review-converging.sh` の reason。`CB_REASON=divergence` では空）。
+`CONVERGING_REASON` は `fire` 分岐だけに載り、上限到達時に延長しなかった理由（`review-converging.sh` の reason。`CB_REASON=divergence` では空）。`CAP_EXTENDED=1` は `ok` 分岐に載り、上限に達したが収束中として停止を見送った cycle を示す診断値で、分岐には使わない。
 
 `TREND_VERDICT` は**両分岐に載る**トレンド判定の診断値。`ok`（収束中・下降中）/ `fire`（発散）/ `insufficient`（データ不足・データ異常で判定不能）/ `unavailable`（helper 自体を実行できなかった）を取る。`insufficient` / `unavailable` は発火しない側へ倒れ、`max_review_cycles` が従来どおり backstop として働く。**`fire` 分岐にも載せる**のは、`CB_REASON=max-cycles` で停止したときに発散判定が下りていたのか未実施だったのかをステップ 6.2 が読み分ける必要があるため（下記 `TREND_REASON` と組で使う）。
 
@@ -843,7 +843,7 @@ rationale: references/rationale.md#notice-trend-and-notes
 | `max-cycles` | `fire` | `review⇄fix cycle が上限 {max_review_cycles} に到達（収束トレンドの発散も同時に検出。延長なし: {converging_reason}）` |
 | `max-cycles` | `insufficient` / `unavailable` | `review⇄fix cycle が上限 {max_review_cycles} に到達（発散判定は未実施 — {trend_reason}。延長なし: {converging_reason}）` |
 
-`{converging_reason}` は同 marker の `CONVERGING_REASON=` をそのままリテラル置換する。`not_descending` / `fix_introduced_findings` / `need_3_cycles` は延長条件を満たさなかった正当な停止、`helper_failed` / `helper_no_marker` / `fix_state_*` / `state_root_unresolved` / `trend_*` は延長を判定できなかったデータ異常なので、停止通知の末尾に「延長を判定できなかった理由は WARNING を確認」と1行添える。
+`{converging_reason}` は供給元 marker の値をそのままリテラル置換する。`not_descending` / `fix_introduced_findings` / `need_3_cycles` / `trend_need_3_cycles` は延長条件を満たさなかった正当な停止、`helper_failed` / `helper_no_marker` / `fix_state_*` / `state_root_unresolved` / `trend_*` は延長を判定できなかったデータ異常なので、停止通知の末尾に「延長を判定できなかった理由は WARNING を確認」と1行添える。
 
 `{trend_reason}` はステップ 1 の `TREND_REASON=` marker の値をそのままリテラル置換する（`need_3_cycles` / `no_results_file` / `helper_unavailable` 等。値の一覧はステップ 1 の `TREND_REASON` 説明を参照）。
 

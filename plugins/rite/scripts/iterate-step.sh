@@ -574,7 +574,15 @@ stagnation_state=$(bash "$plugin_root"/hooks/flow-state.sh get --jq-filter .) ||
 if printf '%s' "$stagnation_state" | jq -e '.review_run != null' >/dev/null; then
   stagnation_action=$(printf '%s' "$stagnation_state" | jq -er '.review_run.current_decision.action') || exit 1
   case "$stagnation_action" in
-    continue|replan|stop) marker_emit ITERATE_STAGNATION "$stagnation_action" ;;
+    continue|replan) marker_emit ITERATE_STAGNATION "$stagnation_action" ;;
+    stop)
+      # 上限停止を observe 側で下した run は、延長しなかった理由を停止通知へ渡す
+      stagnation_converging=$(printf '%s' "$stagnation_state" | jq -r '.review_run.current_decision.converging_reason // ""') || exit 1
+      if [ -n "$stagnation_converging" ]; then
+        marker_emit ITERATE_STAGNATION stop "CONVERGING_REASON=$stagnation_converging"
+      else
+        marker_emit ITERATE_STAGNATION stop
+      fi ;;
     *) echo 'ERROR: invalid stagnation decision' >&2; exit 1 ;;
   esac
 else

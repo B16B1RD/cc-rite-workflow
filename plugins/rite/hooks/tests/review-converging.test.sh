@@ -2,7 +2,7 @@
 # review-converging.test.sh
 #
 # 上限 (safety.max_review_cycles) 到達時に止めない「収束中」判定の境界を固定する。
-# 収束中 = 直近 3 値が狭義単調減少 かつ 最新 cycle の findings_new_from_fix が 0。
+# 収束中 = 直近 3 値が狭義単調減少 かつ 計測済みの最新 fix cycle の findings_new_from_fix が 0（条件の SoT は review-converging.sh のヘッダ）。
 # 収束中は yes (上限で止めない)、非収束・判定不能は no (従来どおり上限で止める)。
 
 set -uo pipefail

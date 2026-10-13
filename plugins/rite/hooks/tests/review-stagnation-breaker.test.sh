@@ -789,6 +789,8 @@ for label, entries, expected in [
         ('unmeasured initial value', [dict(findings_new_from_fix=0)], 'stop'),
         ('stale measurement', [dict(findings_total=1, findings_new_from_fix=0), dict(findings_new_from_fix=0),
                                dict(findings_new_from_fix=0)], 'stop'),
+        ('one unmeasured entry after the measurement', [dict(findings_total=1, findings_new_from_fix=0),
+                                                        dict(findings_new_from_fix=0)], 'stop'),
         ('no fix-cycle-state', None, 'stop')]:
     f = Fixture()
     try:
@@ -805,6 +807,11 @@ for label, entries, expected in [
         check((f.decision() == 'stop') == (expected == 'stop'), 'T-17: cap with descending run, ' + label + ' -> ' + expected)
         if expected == 'stop':
             check(f.state()['stop_reason'] == 'circuit-breaker:max-cycles', 'T-17: ' + label + ' stops on the cap')
+            why = {'fix-introduced findings': 'fix_introduced_findings', 'unmeasured initial value': 'fix_state_unmeasured',
+                   'stale measurement': 'fix_state_stale', 'one unmeasured entry after the measurement': 'fix_state_stale',
+                   'no fix-cycle-state': 'fix_state_missing'}[label]
+            check(f.state()['review_run']['current_decision'].get('converging_reason') == why,
+                  'T-17: ' + label + ' records why the cap was not extended: ' + why)
         else:
             check(f.state().get('stop_reason') != 'circuit-breaker:max-cycles', 'T-17: ' + label + ' is not stopped by the cap')
             # 延長は降下が続く間だけ: 次の cycle で足踏み (3,2,1,1) すれば上限で止まる

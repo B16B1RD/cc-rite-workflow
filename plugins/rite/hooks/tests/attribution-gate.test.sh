@@ -48,4 +48,8 @@ for bad in '{"cycles":"abc"}' '{"cycles":{}}' '{"cycles":null}'; do
   out_has "T-05: cycles が配列でなければエラー ($bad)" "ERROR"
 done
 
+: > "$TEST_DIR/.rite/fix-cycle-state/9.json"
+OUT=$(gate)
+out_has "T-06: 0 バイトの state は黙って skip せずエラーにする" "ERROR"
+
 print_summary "attribution-gate"

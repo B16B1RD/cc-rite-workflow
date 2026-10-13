@@ -1182,5 +1182,46 @@ for label, entries, stops in [
     finally:
         f.close()
 
+# T-23b: cycle-gate が判定不能な入力を「延長しない」理由として載せる (trend 不足 / helper 失敗 / verdict 無し)
+import shutil
+copied = Path(tempfile.mkdtemp()) / 'rite'
+shutil.copytree(plugin, copied)
+def stub_gate(fixture):
+    return fixture.run(['bash', str(copied / 'scripts/iterate-step.sh'), 'cycle-gate',
+                        '--pr', '71', '--issue', '42', '--branch', 'fix/issue-42']).stdout
+for label, cap, helper_body, reason in [
+        ('too few cycles', 2, None, 'trend_need_3_cycles'),
+        ('helper fails', 3, 'exit 2', 'helper_failed'),
+        ('helper prints no verdict', 3, 'exit 0', 'helper_no_marker')]:
+    f = Fixture()
+    try:
+        (f.root / 'rite-config.yml').write_text('safety:\n  max_review_cycles: %d\n' % cap)
+        (f.root / '.git/info/exclude').write_text('.rite/\nrite-config.yml\n')
+        stub = copied / 'hooks/scripts/review-converging.sh'
+        if helper_body is None:
+            stub.write_text((plugin / 'hooks/scripts/review-converging.sh').read_text())
+        else:
+            stub.write_text('#!/bin/bash\n' + helper_body + '\n')
+        series = [('a', 'b', 'c'), ('a', 'b'), ['a']][:cap]
+        for roots in series[:-1]:
+            f.cycle(roots=roots)
+            f.fix()
+            time.sleep(1.1)
+        (f.root / '.rite/fix-cycle-state').mkdir(parents=True, exist_ok=True)
+        dump(f.root / '.rite/fix-cycle-state/71.json', dict(cycles=[dict(findings_total=1, findings_new_from_fix=0)]))
+        f.cycle(roots=series[-1])
+        (f.root / 'source.txt').write_text('moved head\n')
+        f.commit()
+        cb = marker(stub_gate(f), 'ITERATE_CB')
+        check('ITERATE_CB=fire;' in cb and 'CB_REASON=max-cycles' in cb and 'CONVERGING_REASON=' + reason in cb,
+              'T-23b: ' + label + ' reports ' + reason + ':\n' + cb)
+        if cap == 2:
+            # observe 側で上限停止した run は、停止通知用に延長しなかった理由を stagnation-route が渡す
+            route = marker(f.run(['bash', str(plugin / 'scripts/iterate-step.sh'), 'stagnation-route']).stdout, 'ITERATE_STAGNATION')
+            check('ITERATE_STAGNATION=stop' in route and 'CONVERGING_REASON=need_3_cycles' in route,
+                  'T-23b: stagnation-route carries why the cap was not extended:\n' + route)
+    finally:
+        f.close()
+
 print('PASS: review stagnation retry: ' + str(stagnation_fixture.checks) + ' assertions; real clocks, receipts, repairs and retained stops')
 PYTEST

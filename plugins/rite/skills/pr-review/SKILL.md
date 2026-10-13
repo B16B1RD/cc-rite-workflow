@@ -1899,8 +1899,8 @@ bash {plugin_root}/hooks/flow-state.sh review-abandon --reason "base conflict: r
 
 ### 5.3.8 Fix-Introduced Finding Attribution
 
-fix 後の再レビュー（verification がある、または fix-cycle-state の最新 entry が未計測の場合）では各指摘を 3 分類する。
-**Step 1**: 適用可否:
+fix 後の再レビューでは各指摘を 3 分類する。
+**Step 1**: 適用可否（gate が `FINDING_ATTRIBUTION skip` を出したときは Step 2-4 を実行しない。計測済みの entry を上書きしないため）:
 
 ```bash
 bash {plugin_root}/scripts/pr-review-step.sh attribution-gate --pr {pr_number}

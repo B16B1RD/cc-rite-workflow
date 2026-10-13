@@ -838,6 +838,8 @@ def observe(state, args, directory):
         return state
     if breaker:
         decision = dict(action="stop", reasons=[breaker])
+        if breaker == "max-cycles":
+            decision["converging_reason"] = run.pop("converging_reason", "")
         entry["decision"] = decision.copy()
         run.update(status="stopped", stop_reason="circuit-breaker:" + breaker, current_decision=decision)
         state.update(active=False, stop_reason=run["stop_reason"], updated_at=cycle.now())
@@ -917,23 +919,33 @@ def existing_breaker(state, run):
     # A completed mergeable review proceeds to the unchanged quality gates.
     if state["review_cycle"]["verdict"] == "mergeable":
         return None
-    if state["cycle_count"] >= review_cycle_cap() and not converging(state, marker):
-        return "max-cycles"
+    if state["cycle_count"] >= review_cycle_cap():
+        extended, reason = converging(state, marker)
+        if not extended:
+            run["converging_reason"] = reason
+            return "max-cycles"
     return "divergence" if marker["TREND_DIVERGENCE"] == "fire" else None
 
 
 def converging(state, marker):
-    """True when the run descends for two cycles with no fix-introduced findings (cap is not applied)."""
+    """(extended, reason): extended is True when review-converging.sh says yes (cap is not applied; the condition is in its header).
+
+    The condition itself lives in the helper header; reason is its reason= value, or a helper_* value when it could not run.
+    """
     helper = Path(__file__).resolve().parent.parent / "review-converging.sh"
     result = subprocess.run(["bash", str(helper), "--pr", str(state["pr_number"]),
-                             "--trend", marker["trend"]], capture_output=True, text=True)
+                             "--trend", marker["trend"], "--max-trailing", "0"], capture_output=True, text=True)
     if result.stderr:
         sys.stderr.write(result.stderr)
     if result.returncode != 0:
         # iterate-step.sh と同じく、判定できないときは上限で止める側へ倒す（理由は stderr に残す）
         sys.stderr.write("WARNING: convergence check could not run (rc=%d); stopping at the cycle cap\n" % result.returncode)
-        return False
-    return "REVIEW_CONVERGING=yes" in result.stdout
+        return False, "helper_failed"
+    found = re.search(r"^\[CONTEXT\] REVIEW_CONVERGING=(yes|no); reason=([A-Za-z0-9_]+)", result.stdout, re.M)
+    if not found:
+        sys.stderr.write("WARNING: convergence check printed no verdict; stopping at the cycle cap\n")
+        return False, "helper_no_marker"
+    return found[1] == "yes", found[2]
 
 
 def review_cycle_cap():

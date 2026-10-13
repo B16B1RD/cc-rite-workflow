@@ -184,7 +184,7 @@ env['GH_STATES'] = '7=OPEN'
 
 # A triage PR-origin adoption is fixed in the same PR (verdict fix, nothing held) on a review
 # inside /rite:iterate (--fix-loop yes) until the cycle reaches safety.max_review_cycles
-# (default 15), where its fix could not be re-reviewed and it is held. In a standalone review
+# (default 15), where its fix may not be re-reviewed and it is held. In a standalone review
 # (--fix-loop no, or no flag) nothing would read the registration: held.
 # A sweep PR-origin adoption stays held. An unknown-origin adoption is held in triage as well.
 plain_review = review.read_text()
