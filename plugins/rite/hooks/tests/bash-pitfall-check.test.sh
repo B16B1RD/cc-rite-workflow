@@ -86,9 +86,9 @@ check "sed -i with an empty suffix argument" sed-ok-empty 0 ""
 check "sed without -i" sed-ok-stdout 0 ""
 
 # --- pipestatus-subst ---------------------------------------------------------
-fixture ps-ng 'v=$(a | b)' "[ \"\${$PS[0]}\" -eq 0 ]"
-fixture ps-ng-sameline "v=\$(a | b); [ \"\${$PS[0]}\" -eq 0 ]"
-fixture ps-ok 'a | b' "[ \"\${$PS[0]}\" -eq 0 ]"
+fixture ps-ng 'v=$(a | b)' "[ \"\${${PS}[0]}\" -eq 0 ]"
+fixture ps-ng-sameline "v=\$(a | b); [ \"\${${PS}[0]}\" -eq 0 ]"
+fixture ps-ok 'a | b' "[ \"\${${PS}[0]}\" -eq 0 ]"
 check "PIPESTATUS read after a pipeline inside \$( )" ps-ng 1 pipestatus-subst
 check "PIPESTATUS read on the same line after \$( )" ps-ng-sameline 1 pipestatus-subst
 check "PIPESTATUS read after a plain pipeline" ps-ok 0 ""
