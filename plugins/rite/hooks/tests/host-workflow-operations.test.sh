@@ -371,7 +371,7 @@ class WorkflowContracts(unittest.TestCase):
             result = run_extra(plugin, reviewer_type)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout.strip(), "[CONTEXT] ADDITIONAL_REVIEWER_REFERENCES=" + "; ".join(str(plugin / rel) for rel in rels))
-        # Every selectable reviewer type is covered, and a mistyped one stops instead of returning an empty list.
+        # Every selectable reviewer type is covered, and a mistyped one stops instead of silently getting only the shared fidelity list.
         registry = sorted(path.name[:-len("-reviewer.md")] for path in (plugin / "agents").glob("*-reviewer.md"))
         self.assertEqual(registry, sorted(expected_extra))
         result = run_extra(plugin, "tech-writter")
