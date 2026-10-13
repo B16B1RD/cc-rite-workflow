@@ -315,7 +315,7 @@ Each row is a condition and the form that avoids it. Forms marked **lint** are d
 |-----------|----------------|
 | `out=$(cmd); rc=$?` aborts at the assignment under `set -e`, so the `rc` branch is dead code (also in test code) | `rc=0; out=$(cmd) \|\| rc=$?`, or bracket the call with `set +e` / `set -e` |
 | `if ! cmd; then rc=$?` — `$?` is the negated status, always 0 (**lint**: `if-bang-rc`) | `rc=0; cmd \|\| rc=$?`, or read `$?` in the `else` of a positive `if cmd` |
-| `git diff --quiet`, `grep`, `diff` return 0 / 1 / ≥2; folding them with `if !` turns a real error (≥2) into the "differs / no match" branch | Capture `rc` and branch on 0, 1 and ≥2 separately |
+| `git diff --quiet`, `grep`, `diff` return 0 / 1 / ≥2; folding them with a negated `if` turns a real error (≥2) into the "differs / no match" branch | Capture `rc` and branch on 0, 1 and ≥2 separately |
 | `grep -v ... > f \|\| true` and `grep ... \|\| true` treat no-match (1) and I/O error (≥2) alike; a destructive branch chosen on "no match" runs on an error | Capture `rc`; stop at `rc >= 2` before any destructive step. Do not wrap a `grep` whose no-match is itself the bug |
 | `local v=$(cmd)` masks the failure while top-level `v=$(cmd)` aborts; a guard written after the top-level form is dead code. "A simple assignment is exempt from `set -e`" is false for a command substitution | `local v; v=$(cmd) \|\| v=""` (symmetric), then validate `v` |
 | `v=$(cmd) \|\| v=""` overwrites a diagnostic the command already wrote to stdout (for example a parser's JSON error) | No fallback on the capture: `if v=$(cmd); then ...; else` show `v` as the reason |
@@ -433,6 +433,6 @@ Before adding Bash code to a command template, verify:
 - [ ] Pipelines with early-termination (`head`, `grep -m`, `grep -q`) use here-string `<<<` instead of `echo`/`printf` pipe
 - [ ] A command producer (`jq` / `git` / `sed` …) feeding `grep -q` is captured first (`out=$(cmd) && grep -q x <<< "$out"`), so its failure still makes the condition false
 - [ ] `awk` readers fed by a pipe drain their input instead of `exit` at the end marker
-- [ ] Exit status is read through `cmd || rc=$?` (with `rc=0` before), never `$?` inside `if !` and never `out=$(cmd); rc=$?` under `set -e`
+- [ ] Exit status is read through `cmd || rc=$?` (with `rc=0` before), never `$?` inside a negated `if` condition and never `out=$(cmd); rc=$?` under `set -e`
 - [ ] Failure causes are told apart (no-match vs error, not-found vs transient); the diagnostic is not discarded by `2>/dev/null` or a `|| x=""` fallback
 - [ ] `mktemp` / `trap` / fixture cleanup follow "Pitfalls by Theme"; `/rite:lint` reports no `bash-pitfall` finding

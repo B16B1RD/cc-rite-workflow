@@ -150,7 +150,7 @@ Detects bash forms that fail without a message and whose shape a line-level patt
 | Rule | Form | Why it is always wrong | Fix |
 |------|------|------------------------|-----|
 | `grep-c-echo-fallback` | zero-fallback (`echo` / `printf`) inside a `grep -c` substitution | `grep -c` prints `0` itself, so the capture becomes two lines | fallback outside the substitution, or `\|\| true` with `${cnt:-0}` |
-| `if-bang-rc` | `$?` read in the `then` body of `if ! cmd` (first four lines, stops at `fi` / `else` / `elif` / nested `if`) | `!` negates the status, so `$?` is always 0 | `rc=0; cmd \|\| rc=$?`, or read it in the `else` of a positive `if` |
+| `if-bang-rc` | `$?` read in the `then` body of an `if` whose condition is negated with `!` (first four lines, stops at `fi` / `else` / `elif` / nested `if`) | the negation flips the status, so `$?` is always 0 | `rc=0; cmd \|\| rc=$?`, or read it in the `else` of a positive `if` |
 | `nested-mktemp-cd` | `cd "$(mktemp ...)"` | a failed `mktemp` makes it `cd ""`, a successful no-op in bash; the cwd becomes the target of a later `rm -rf` | create the directory in its own step and stop on failure |
 | `sed-inplace-gnu` | `sed -i` followed directly by an expression | BSD sed reads the expression as the suffix and fails | `-i.bak`, or write a temp file and `mv` |
 | `pipestatus-subst` | `PIPESTATUS` read on the line after (or after the closing paren of) `v=$(a \| b)` | the array is set in the substitution's subshell only | capture the status inside the substitution, or split the pipeline |
