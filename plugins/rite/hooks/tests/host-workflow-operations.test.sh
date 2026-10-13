@@ -371,19 +371,19 @@ class WorkflowContracts(unittest.TestCase):
             result = run_extra(plugin, reviewer_type)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout.strip(), "[CONTEXT] ADDITIONAL_REVIEWER_REFERENCES=" + "; ".join(str(plugin / rel) for rel in rels))
-        # Every selectable reviewer type is covered, and a mistyped one stops instead of reading as "no extra reading".
+        # Every selectable reviewer type is covered, and a mistyped one stops instead of returning an empty list.
         registry = sorted(path.name[:-len("-reviewer.md")] for path in (plugin / "agents").glob("*-reviewer.md"))
         self.assertEqual(registry, sorted(expected_extra))
         result = run_extra(plugin, "tech-writter")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("[review:error] unknown reviewer type", result.stderr)
+        self.assertEqual(result.stdout, "")
         # A type name that is not a plain reviewer name must not reach the profile lookup.
         for bad_type in ["../agents/test", "Test", "test_x", "test "]:
             result = run_extra(plugin, bad_type)
             self.assertNotEqual(result.returncode, 0, bad_type)
             self.assertIn("[review:error] invalid reviewer type", result.stderr, bad_type)
             self.assertEqual(result.stdout, "", bad_type)
-        self.assertEqual(result.stdout, "")
         # A missing, empty or non-file entry at any position stops the step instead of launching with a partial list.
         for reviewer_type in ["test", "tech-writer"]:
             rels = expected_extra[reviewer_type]
