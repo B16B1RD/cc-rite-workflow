@@ -19,6 +19,7 @@ A collection of defensive Bash patterns to prevent recurring syntax errors in ri
 - [Pattern 4: Directory Pre-creation](#pattern-4-directory-pre-creation)
 - [Pattern 5: SIGPIPE Prevention in Pipelines](#pattern-5-sigpipe-prevention-in-pipelines)
 - [Other Bash Pitfalls](#other-bash-pitfalls)
+- [Pitfalls by Theme](#pitfalls-by-theme)
 - [Quick Checklist for Template Authors](#quick-checklist-for-template-authors)
 
 ---
@@ -304,6 +305,121 @@ upstream がファイルを直接読む `awk ... "$file"` の `exit` は pipe �
 
 ---
 
+## Pitfalls by Theme
+
+Each row is a condition and the form that avoids it. Forms marked **lint** are detected by `hooks/scripts/bash-pitfall-check.sh` (`/rite:lint`); the rest need a reviewer's judgment. Rows cover the bash, awk, sed, grep and jq forms the plugin uses.
+
+### Exit status, `set -e`, `pipefail`
+
+| Situation | Defensive form |
+|-----------|----------------|
+| `out=$(cmd); rc=$?` aborts at the assignment under `set -e`, so the `rc` branch is dead code (also in test code) | `rc=0; out=$(cmd) \|\| rc=$?`, or bracket the call with `set +e` / `set -e` |
+| `if ! cmd; then rc=$?` — `$?` is the negated status, always 0 (**lint**: `if-bang-rc`) | `rc=0; cmd \|\| rc=$?`, or read `$?` in the `else` of a positive `if cmd` |
+| `git diff --quiet`, `grep`, `diff` return 0 / 1 / ≥2; folding them with `if !` turns a real error (≥2) into the "differs / no match" branch | Capture `rc` and branch on 0, 1 and ≥2 separately |
+| `grep -v ... > f \|\| true` and `grep ... \|\| true` treat no-match (1) and I/O error (≥2) alike; a destructive branch chosen on "no match" runs on an error | Capture `rc`; stop at `rc >= 2` before any destructive step. Do not wrap a `grep` whose no-match is itself the bug |
+| `local v=$(cmd)` masks the failure while top-level `v=$(cmd)` aborts; a guard written after the top-level form is dead code. "A simple assignment is exempt from `set -e`" is false for a command substitution | `local v; v=$(cmd) \|\| v=""` (symmetric), then validate `v` |
+| `v=$(cmd) \|\| v=""` overwrites a diagnostic the command already wrote to stdout (for example a parser's JSON error) | No fallback on the capture: `if v=$(cmd); then ...; else` show `v` as the reason |
+| `exit` inside a helper called as `$(helper)` stops the substitution, not the caller | After the assignment check `rc`, then emptiness, then `${v:?}`. A substitution embedded in a condition (`[ "$(cmd)" = x ]`) discards its status: assign first |
+| `[ "$x" -eq 0 ]` on a non-numeric `$x` returns 2, so a fail-closed intent falls into the `else` | Validate numeric (`[[ "$x" =~ ^[0-9]+$ ]]`) before comparing |
+| `v=$(a \| b); ... ${PIPESTATUS[0]}` — the array is set in the substitution's subshell (**lint**: `pipestatus-subst`) | `v=$(a) \|\| fallback` with parameter expansion, or capture the status inside the substitution |
+| `v=$(fn \| tr ...)` without `pipefail` loses `fn`'s `return 1`; the script continues on the opt-out default | Declare `pipefail`, or capture `fn` first and filter the variable |
+| `set -euo pipefail` with `v=$(a \| grep x \| head)` aborts on no-match; `v=$(cmd \| jq ... 2>/dev/null)` aborts on invalid JSON and makes the later FAIL branch dead | `mapfile -t arr < <(grep x f \|\| true)` for lists; `if ! v=$(cmd \| jq ...); then <named reason>` for judged values |
+| `( subshell )` returning non-zero under `set -e` stops the script before the status is read | `rc=0; ( ... ) \|\| rc=$?` |
+| `cat > f <<EOF` writes a newline even when every expansion is empty, so `[ ! -s f ]` is never true | Guard the exit status of the command that produced the content. Delete a guard that no input can trigger instead of keeping it |
+| `gen > target` truncates `target` before `gen` fails; a success marker whose value comes from the substitution then claims success with empty content | Generate to a temp file, move on success; derive the marker only after the generator's status is checked |
+| `cmd1 \| cmd2 \| cmd3` where later stages may never start | Initialise per-stage status variables with a non-numeric sentinel (`n/a`), not `0` |
+| A `case` arm list whose initial value lies outside the allowed values falls through silently; `*) continue` hides enum drift in LLM-generated values | Initial value inside the allowed set, or `*) fail-loud`. A value carried in a marker that may be empty collapses to "unset": substitute a sentinel (`unresolved`) and reject it at the consumer |
+| Signal and `EXIT` traps both call the same cleanup, so output-bearing checks run twice | Clear the "needs cleanup" flag before running the check |
+| A signal test passes only when the sender (self / external) and receiver state (running / waiting on a child) match production | Use a background victim plus a marker file, and measure |
+| A script with its own exit-code contract is tested with "non-zero" | Assert the exact code (`2`), so a crash (1, 127, 141) is not read as the contract |
+| An exit-code branch described in prose as "other" absorbs the named codes | Write the branches as a table: `0` / `1` / `2` / other → fail loud. Enumerate every path that can produce each code, with broken inputs |
+| A new exit code is added | Carry its meaning to every surface that prints it (hook stdout, branch tables); guarantee only what the new code means |
+
+### Extracting or delegating a bash block
+
+| Situation | Defensive form |
+|-----------|----------------|
+| Moving inline bash into a helper adds argument validation; an input that used to be supported (an empty value) now fails with no marker | Decide the consumer's handling of the new usage error before adding the validation |
+| A non-blocking helper returns `rc=0` and reports partial failure by marker only; the caller tests `rc` and treats leftovers as done | The caller reads the marker. Do not add `\|\| return 2` inside a function whose contract is "failure is a marker": the dispatcher drops `rc` and recreates the trap |
+| Appending `echo marker` as the last line of a moved block turns the last command's failure into a successful empty value | Keep the status-bearing command last, or capture its status before the `echo` |
+| After delegating to a helper, "helper could not be resolved" (`rc=127`) dominates failures | List it first among the diagnosed causes; keep the meaning of the failure-time default unchanged |
+| A new path or value placeholder in a skill body is shell-expanded in one place and consumed literally (by `Write`) in another | Ask once per new placeholder which of the two applies; quote path placeholders and check option-name pairing |
+| A new placeholder collides with an existing shell variable (`$owner_repo` vs `{owner_repo}`) | Grep the whole tree before introducing it. `VAR={placeholder}` literal substitutions must be quoted. Replace placeholders with `sed` only in the `{var}` form |
+| A command is copied from another call site | Copy the sibling's diagnostic handling too; do not copy its `\|\| true`. New code fails loudly where the sibling swallows |
+
+### Reporting a failure
+
+| Situation | Defensive form |
+|-----------|----------------|
+| One diagnosis covers failures with different causes (not-found vs transient, content missing vs re-read failed) | Classify by cause; give each cause its own recovery hint. Do not reuse the hint of another path |
+| Within one exit code, the reason is read from structured stdout | Match the reason exactly; unknown, missing or repeated markers fail fast |
+| `2>/dev/null` on a command whose stderr is the root cause (for example `gh`) | Capture to a temp file, show a selected line in the reason. One stderr file per step in a multi-step git flow |
+| `$(cmd 2>&1)` where the helper writes a token on stdout and diagnostics on stderr: the token no longer matches any `case` arm and the sentinel is silently never emitted | Capture stdout and stderr separately and document the helper's output contract |
+| A recovery hint printed after a long diagnostic is cut by the caller's `head -5` | Put the one line a person must act on first |
+| A refactor adds `2>/dev/null` | Look for it in the diff and justify each one |
+| Discarding diagnostics with `cmd 2>/dev/null` also hides the redirect's own failure (disk full) | `{ cmd; } 2>/dev/null` when the diagnostic is truly disposable |
+| A fallback hides a failure that looks like success (`git rev-parse HEAD \|\| echo unknown`) | Print a WARNING in the fallback branch |
+| A best-effort loop continues past failures | Count each failure so that "summary total == items processed" holds; pass the delegate's stderr through |
+
+### awk, sed, grep and regular expressions
+
+| Situation | Defensive form |
+|-----------|----------------|
+| awk `exit` still runs the `END` rule; a body `print` plus an `END` fallback prints twice | Put the single `print` in `END` |
+| awk `> file` mixed with `close(file)` re-truncates on the next write | Do not `close()` a file written with `>` mid-run |
+| CRLF input: awk's default `FS` leaves the `\r`, so `NF == 0` fails on empty lines | Strip `\r` once where the input is captured |
+| `{m,n}` interval in an awk regex is ignored by mawk and the range silently widens | Alternation: `(##\|###\|####)` |
+| `[^#].*X` (negated class, greedy, literal) misses `X` at the line start | Filter comments first (`!/^[[:space:]]*#/`), match `X` separately; POSIX ERE has no lookahead |
+| awk `-v` and a regex: `\.` becomes any character, `\[` needs `\\[` | Pass through `ENVIRON`, or use `[.]` / `[[]` |
+| `out = out c` one byte at a time is quadratic on mawk | Decide and `printf` in place |
+| ERE `?` on a multibyte character applies to its last byte under `LC_ALL=C` | Group the character: `(値)?`. Wrap variables followed by a multibyte character in `${VAR}` (a non-UTF-8 locale otherwise reads the bytes into the name and trips `set -u`) |
+| `sed -i 'expr'` (**lint**: `sed-inplace-gnu`); `sed '20i\text'` one-liner; BRE `\?` / `\+` | `-i.bak` or temp file + `mv`; `awk 'NR==20 {...}'`; `sed -E` with `?` / `+` |
+| `paste -sd ' '` without an operand on BSD | `paste -sd ' ' -` |
+| `grep -oE '(^\|[^A-Za-z])D-[0-9]+'` returns the boundary character with the match | Add a stage that extracts only the token |
+| `git log --grep=12` matches `123`; a short number hides behind a longer one | Express the word boundary with several `--grep` options (OR) and re-test in the consumer |
+| `grep -E` with a literal `\|` in the pattern reads it as alternation, so the assertion is trivially true | `grep -F` for fixed strings |
+| `grep -n` after a filter breaks line numbers | Number lines in one awk |
+| A regex anchored at the line start misses `if cmd`, `x \|\| cmd`, `v=$(cmd)` | Use a command boundary: `(^\|[;&\|[:space:]])cmd`; restrict static checks to fenced bash blocks so prose quoting a recovery command is not matched |
+| Extracting headings or blocks from Markdown | Drop fenced lines first; update the fence state before evaluating the terminator; close a fence only with the same character and at least the same length; wrap a document that contains triple-backtick fences in four backticks; check the fence count is even before committing |
+| A block checked with a fixed "+N lines" window | Track the block end with an awk state machine; flush on state change so several blocks are not concatenated |
+| An awk range (`/start/,/end/`) whose body can contain a heading of the same form | Make the end condition the section-heading form and advance past the start line with `next` |
+| A table row selected with `NF == N` when the last column may contain `\|` | `NF >= N` |
+| Japanese text compared or trimmed in awk under `LC_ALL=C`, where `[[:space:]]` matches ASCII only | Trim full-width spaces explicitly, repeating until the length stops changing; pin `LC_ALL=C` on the line that declares the comparison |
+| A detector regex tested only on the form that motivated it | Keep a known-bad and a known-good fixture; probe in the reader's context (trailing newline, flags, multi-line shape) |
+| Several spellings of one rule (`cycle N`, `cycle-N`) | Enumerate them with several greps before editing; give detectors an alternation for all of them |
+| A detector exit code covers regeneration-fixable violations and malformed input | Return different codes (1 vs 2) and branch the caller |
+
+### Temp files, `trap`, test fixtures
+
+| Situation | Defensive form |
+|-----------|----------------|
+| `cd "$(mktemp -d)"` (**lint**: `nested-mktemp-cd`) | Create, check, then `cd` as separate steps; register the `trap` after the assignment |
+| A temp file is created before the `trap` that removes it | Register the `trap` first; where that is impossible use a scoped mini-trap and remember that `trap -` clears the other traps |
+| A temp file handed to a downstream step and the variable emptied | Add the hand-off variable to the cleanup |
+| `mkdir -p` creates a directory in a flow | Pair it with `rmdir <dir> 2>/dev/null \|\| true` in cleanup |
+| A fixture helper called as `$(helper)` pushes onto a cleanup array | The push happens in the subshell; register in the parent shell. A function that restores `trap` via `eval` inside `$()` fires the `EXIT` trap when the subshell ends and removes the parent's fixture directory |
+| A temp file created inside `$()` | `EXIT` does not cover it; delete it on every failure path and test that none remain |
+| A leak test counts files in the shared temp directory | Compare the path set before and after (`comm -13`); the count delta is wrong under parallel runs |
+| `mktemp` templates | Reuse the template shape of neighbouring code; avoid `mktemp -p` (not portable) |
+| A library function documents that errexit or a trap belongs to the caller | Save and restore with `$-`, `trap -p` and `eval`, and pin it with a test |
+| Cleanup assertions in tests | Match against the last `EXIT` registration, and register a fixture directory right after creating it |
+| `sha1sum`, `readlink -f`, `date -I` differ between GNU and BSD | `command -v` chain with a fallback |
+| A script sources siblings relative to its own path | Resolve `_SCRIPT_DIR` with `cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd` before any `cd` |
+
+### jq and JSON
+
+| Situation | Defensive form |
+|-----------|----------------|
+| `has("k")` is true when the value is `null` | Classify the three shapes (missing, null, value) by `type` and do not write `null` |
+| `.[]?` swallows a type error, so malformed input yields "0 violations" | Test the exit code: `if ! v=$(jq ...)`, and pin the branch with a `jq` shim |
+| A `select(...)` assignment that matches nothing succeeds silently | Count matches (`[.[] \| select(...)] \| length`) and fail on 0 when a match is required |
+| `@tsv` read with `IFS=$'\t' read` shifts fields left over an empty middle field (tab is IFS whitespace) | Use `\x1f` as the separator |
+| A judgment mechanism is replaced (`jq` for `grep`, for example) | Enumerate the old mechanism's implicit failure conditions (empty input, status) and compare measured exit codes before switching |
+| A new consumer reads a persisted array | Take the meaning of the collection from the writer's definition, not the field name |
+| The `gh api graphql` variable is an opaque string (ID, cursor) | `-f`, not `-F` (which converts the type); every `gh` command in a skill body carries `-R {owner_repo}` |
+
+---
+
 ## Quick Checklist for Template Authors
 
 Before adding Bash code to a command template, verify:
@@ -317,3 +433,6 @@ Before adding Bash code to a command template, verify:
 - [ ] Pipelines with early-termination (`head`, `grep -m`, `grep -q`) use here-string `<<<` instead of `echo`/`printf` pipe
 - [ ] A command producer (`jq` / `git` / `sed` …) feeding `grep -q` is captured first (`out=$(cmd) && grep -q x <<< "$out"`), so its failure still makes the condition false
 - [ ] `awk` readers fed by a pipe drain their input instead of `exit` at the end marker
+- [ ] Exit status is read through `cmd || rc=$?` (with `rc=0` before), never `$?` inside `if !` and never `out=$(cmd); rc=$?` under `set -e`
+- [ ] Failure causes are told apart (no-match vs error, not-found vs transient); the diagnostic is not discarded by `2>/dev/null` or a `|| x=""` fallback
+- [ ] `mktemp` / `trap` / fixture cleanup follow "Pitfalls by Theme"; `/rite:lint` reports no `bash-pitfall` finding

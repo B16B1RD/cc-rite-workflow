@@ -176,8 +176,9 @@ migrate_file() {
   # 完全 silent にすると failed_files の root cause がユーザに見えず再 migration 時に再現できない。
   local _jq_err
   _jq_err=$(mktemp 2>/dev/null) || _jq_err=""
-  if ! jq "$MIGRATE_FILTER" "$file" > "$tmp" 2>"${_jq_err:-/dev/null}"; then
-    local _jq_rc=$?
+  local _jq_rc=0
+  jq "$MIGRATE_FILTER" "$file" > "$tmp" 2>"${_jq_err:-/dev/null}" || _jq_rc=$?
+  if [ "$_jq_rc" -ne 0 ]; then
     echo "[rite] ERROR: jq migration filter failed for $file (rc=$_jq_rc)" >&2
     [ -n "$_jq_err" ] && [ -s "$_jq_err" ] && head -3 "$_jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     [ -n "$_jq_err" ] && rm -f "$_jq_err"
