@@ -48,7 +48,7 @@ verdict() { echo "[CONTEXT] REVIEW_CONVERGING=$1; reason=$2"; exit 0; }
 case "$trend" in *[,]) echo "WARNING: trend が不正です ('$trend')。収束中とは判定せず上限で止めます" >&2; verdict no trend_malformed ;; esac
 IFS=, read -r -a series <<< "$trend"
 n=${#series[@]}
-# 空列は for に渡さない (bash 4.4 未満（macOS 標準の 3.2 を含む）+ set -u で空配列の展開が unbound になる)
+# 空列は for に渡さない: bash 4.4 未満では set -u 下で空配列の展開が unbound になる (macOS 標準の 3.2 も該当)
 [ "$n" -ge 1 ] || verdict no need_3_cycles
 for v in "${series[@]}"; do
   case "$v" in ''|*[!0-9]*|[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]*) echo "WARNING: trend が不正です ('$trend')。収束中とは判定せず上限で止めます" >&2; verdict no trend_malformed ;; esac
