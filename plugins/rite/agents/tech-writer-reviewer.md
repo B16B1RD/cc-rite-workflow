@@ -22,7 +22,7 @@ The caller supplies the absolute path of `references/prose-reasoning.md` in the 
 
 ## Additional Reading
 
-The caller also supplies absolute paths under 追加で読む規則 (skill prose writing rules, fidelity rules, Issue acceptance-criterion format). Read each file from beginning to end before starting any review and add every path to the same `読取完了:` line. If any file cannot be read in full, stop and report the failure; do not substitute remembered rules.
+The caller also supplies absolute paths under 追加で読む規則 (skill prose writing rules, fidelity rules, Issue acceptance-criterion format). Read each file from beginning to end (split reads if needed) before starting any review and add every path to the same `読取完了:` line. Use the skill prose writing rules as the judging basis for skill and agent definitions in the diff. If the section is missing or any file cannot be read in full, stop and report the failure; do not substitute remembered rules or fetch external sources.
 
 ## Detection Process
 

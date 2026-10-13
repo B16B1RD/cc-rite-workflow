@@ -239,7 +239,7 @@ class WorkflowContracts(unittest.TestCase):
                        "4.5 テンプレートと 4.5.1 検証テンプレートの双方の出現箇所",
                        "named 経路と同じく `_reviewer-base.md` の絶対パス行（読取義務付き）で渡す",
                        "その他の placeholder（差分・仕様・CI 状態・Wiki 等）は 4.5 のまま渡す",
-                       "その 1 パスの申告を同じ規則で確認する"]:
+                       "`_reviewer-base.md` は同じ絶対パス行で受け取って読む"]:
             self.assertIn(clause, handoff_part)
         self.assertIn("`_reviewer-base.md` はどの経路でも prompt へ全文 inline せず", handoff_part)
         self.assertIn("起動上限にも近づく", handoff_part)
@@ -359,53 +359,103 @@ class WorkflowContracts(unittest.TestCase):
             code = extra_code.replace("{plugin_root}", str(plugin_root)).replace("{reviewer_type}", reviewer_type)
             return subprocess.run(["bash", "-c", code], cwd=str(self.fixture), capture_output=True, text=True, timeout=20)
 
+        fidelity = ["references/doc-fidelity-sot.md", "skills/issue-create/references/ac-authoring.md"]
         expected_extra = {
-            "test": ["references/test-pin-mutation-principles.md"],
-            "prompt-engineer": ["references/skill-prose-writing.md", "references/doc-fidelity-sot.md",
-                                "skills/issue-create/references/ac-authoring.md"],
-            "tech-writer": ["references/skill-prose-writing.md", "references/doc-fidelity-sot.md",
-                            "skills/issue-create/references/ac-authoring.md"],
+            "test": ["references/test-pin-mutation-principles.md"] + fidelity,
+            "prompt-engineer": ["references/skill-prose-writing.md"] + fidelity,
+            "tech-writer": ["references/skill-prose-writing.md"] + fidelity,
         }
+        for reviewer_type in ["security", "application", "code-quality", "devops", "dependencies", "error-handling", "acceptance"]:
+            expected_extra[reviewer_type] = list(fidelity)
         for reviewer_type, rels in expected_extra.items():
             result = run_extra(plugin, reviewer_type)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout.strip(), "[CONTEXT] ADDITIONAL_REVIEWER_REFERENCES=" + "; ".join(str(plugin / rel) for rel in rels))
-        # Reviewers outside the table receive nothing, so their prompt does not change.
-        for reviewer_type in ["security", "application", "code-quality", "devops", "dependencies", "error-handling", "acceptance"]:
-            result = run_extra(plugin, reviewer_type)
+        # Every selectable reviewer type is covered, and a mistyped one stops instead of reading as "no extra reading".
+        registry = re.findall(r"`([a-z-]+)-reviewer\.md`", pr_review)
+        self.assertEqual(sorted(set(registry)), sorted(expected_extra))
+        result = run_extra(plugin, "tech-writter")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("[review:error]", result.stderr)
+        self.assertEqual(result.stdout, "")
+        # A missing, empty or non-file entry at any position stops the step instead of launching with a partial list.
+        for reviewer_type in ["test", "tech-writer"]:
+            rels = expected_extra[reviewer_type]
+            for broken_index in range(len(rels)):
+                for kind in ["missing", "empty", "directory"] + ([] if os.geteuid() == 0 else ["unreadable"]):
+                    fixture_root = self.fixture / ("extra-%s-%d-%s" % (reviewer_type, broken_index, kind))
+                    (fixture_root / "scripts").mkdir(parents=True)
+                    (fixture_root / "hooks").mkdir(parents=True)
+                    shutil.copy2(plugin / "scripts/pr-review-step.sh", fixture_root / "scripts/pr-review-step.sh")
+                    shutil.copy2(plugin / "hooks/control-char-neutralize.sh", fixture_root / "hooks/control-char-neutralize.sh")
+                    for index, rel in enumerate(rels):
+                        target = fixture_root / rel
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        if index != broken_index:
+                            target.write_text("reference\n", encoding="utf-8")
+                        elif kind == "empty":
+                            target.write_text("", encoding="utf-8")
+                        elif kind == "directory":
+                            target.mkdir()
+                        elif kind == "unreadable":
+                            target.write_text("reference\n", encoding="utf-8")
+                            target.chmod(0)
+                    label = "%s %s %s" % (reviewer_type, rels[broken_index], kind)
+                    result = run_extra(fixture_root, reviewer_type)
+                    self.assertNotEqual(result.returncode, 0, label)
+                    self.assertIn("[review:error]", result.stderr, label)
+                    self.assertIn(str(fixture_root / rels[broken_index]), result.stderr, label)
+                    self.assertNotIn("ADDITIONAL_REVIEWER_REFERENCES=", result.stdout, label)
+            complete = self.fixture / ("extra-ok-" + reviewer_type)
+            (complete / "scripts").mkdir(parents=True)
+            (complete / "hooks").mkdir(parents=True)
+            shutil.copy2(plugin / "scripts/pr-review-step.sh", complete / "scripts/pr-review-step.sh")
+            shutil.copy2(plugin / "hooks/control-char-neutralize.sh", complete / "hooks/control-char-neutralize.sh")
+            for rel in rels:
+                (complete / rel).parent.mkdir(parents=True, exist_ok=True)
+                (complete / rel).write_text("reference\n", encoding="utf-8")
+            result = run_extra(complete, reviewer_type)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(result.stdout, "", reviewer_type)
-        # A missing or unreadable file stops the step instead of launching with a partial list.
-        for reviewer_type, rels in expected_extra.items():
-            partial = self.fixture / ("extra-" + reviewer_type)
-            for rel in rels[:-1]:
-                (partial / rel).parent.mkdir(parents=True, exist_ok=True)
-                (partial / rel).write_text("reference\n", encoding="utf-8")
-            (partial / "scripts").mkdir(parents=True, exist_ok=True)
-            (partial / "hooks").mkdir(parents=True, exist_ok=True)
-            shutil.copy2(plugin / "scripts/pr-review-step.sh", partial / "scripts/pr-review-step.sh")
-            shutil.copy2(plugin / "hooks/control-char-neutralize.sh", partial / "hooks/control-char-neutralize.sh")
-            result = run_extra(partial, reviewer_type)
-            self.assertNotEqual(result.returncode, 0, reviewer_type)
-            self.assertIn("[review:error]", result.stderr, reviewer_type)
-            self.assertNotIn("ADDITIONAL_REVIEWER_REFERENCES=", result.stdout, reviewer_type)
+            self.assertIn("ADDITIONAL_REVIEWER_REFERENCES=", result.stdout)
         extra_row = next(line for line in pr_review.splitlines() if line.startswith("| `{additional_reviewer_references}` |"))
-        for clause in ["出力がある reviewer だけ", "全文読む", "読めなければ", "`読取完了:`", "; ", "セクションごと省略", "通常・light・incremental・verification", "全文 inline しない"]:
+        for clause in ["全文読む", "読めなければ", "`読取完了:`", "; ", "セクションごと省略", "通常・light・incremental・verification", "全文 inline しない"]:
             self.assertIn(clause, extra_row)
         self.assertEqual(prompt.count("{additional_reviewer_references}"), 1)
         extra_section = re.search(r"(?ms)^## 追加で読む規則.*?(?=^## )", prompt).group()
+        self.assertIn("{additional_reviewer_references}", extra_section)
         self.assertIn("セクション全体を省略", extra_section)
         self.assertIn("追加読取元を確定する", load_part)
+        self.assertIn("ADDITIONAL_REVIEWER_REFERENCES=", load_part)
+        self.assertIn("extra-references", load_part)
         self.assertIn("{additional_reviewer_references}", entry_part)
-        self.assertIn("extra-references", handoff_part)
+        retry_row = next(line for line in pr_review.splitlines() if line.startswith("| Missing read declaration |"))
+        for token in ["{shared_reviewer_principles}", "{prose_reviewer_principles}", "{additional_reviewer_references}", "every missing path"]:
+            self.assertIn(token, retry_row)
+        for clause in ["全 reviewer は、`pr-review-step.sh extra-references` が返す絶対パス",
+                       "渡した全パスを同じ行へ申告する", "申告しない、または 1 件でも欠けるときは未読とみなす"]:
+            self.assertIn(clause, handoff_part)
         # Profiles point at the supplied section; no relative or borrowed plugin-root path to these references remains.
-        for rel in ["agents/_reviewer-base.md", "agents/test-reviewer.md", "agents/prompt-engineer-reviewer.md", "agents/tech-writer-reviewer.md"]:
+        names = ["skill-prose-writing.md", "doc-fidelity-sot.md", "ac-authoring.md", "test-pin-mutation-principles.md"]
+        for profile_path in sorted((plugin / "agents").glob("*.md")):
+            profile_text = profile_path.read_text(encoding="utf-8")
+            for name in names:
+                self.assertNotIn(name, profile_text, profile_path.name + " " + name)
+        base_text = (plugin / "agents/_reviewer-base.md").read_text(encoding="utf-8")
+        item11 = re.search(r"(?ms)^11\. \*\*Fidelity rules catalog\*\*.*?(?=^Report a current-PR finding)", base_text).group()
+        self.assertIn("追加で読む規則", item11)
+        self.assertIn("report that and stop", item11)
+        self.assertNotIn("{plugin_root}", item11)
+        test_text = (plugin / "agents/test-reviewer.md").read_text(encoding="utf-8")
+        self.assertIn("追加で読む規則", test_text)
+        self.assertNotIn("trailing `agents/_reviewer-base.md`", test_text)
+        DECL = {"agents/prompt-engineer-reviewer.md": "first `読取完了:` line",
+                "agents/tech-writer-reviewer.md": "add every path to the same `読取完了:` line"}
+        for rel in DECL:
             profile_text = (plugin / rel).read_text(encoding="utf-8")
-            for name in ["skill-prose-writing.md", "doc-fidelity-sot.md", "ac-authoring.md", "test-pin-mutation-principles.md"]:
-                self.assertNotIn(name, profile_text, rel + " " + name)
-            self.assertIn("追加で読む規則", profile_text, rel)
-        for rel in ["agents/prompt-engineer-reviewer.md", "agents/tech-writer-reviewer.md"]:
-            self.assertIn("`読取完了:`", (plugin / rel).read_text(encoding="utf-8"), rel)
+            section = re.search(r"(?ms)^## Additional Reading\n(.*?)(?=^## )", profile_text)
+            self.assertIsNotNone(section, rel)
+            for clause in ["追加で読む規則", "beginning to end", DECL[rel], "stop and report the failure", "do not substitute remembered rules"]:
+                self.assertIn(clause, section.group(1), rel + " " + clause)
         profile = (plugin / "agents/tech-writer-reviewer.md").read_text(encoding="utf-8")
         self.assertIn("Before starting any review, read that file from beginning to end", profile)
         self.assertIn("raw output’s first `読取完了:`", profile)

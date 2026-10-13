@@ -950,7 +950,7 @@ rationale: references/design-rationale.md#shared-principles-hybrid
  ```bash
  bash {plugin_root}/scripts/pr-review-step.sh prose-principles --reviewer-type "{reviewer_type}"
  ```
-5. **追加読取元を確定する**: 全 reviewer で次を実行し、`ADDITIONAL_REVIEWER_REFERENCES=` の絶対パス列（`; ` 区切り）を保持する。出力が無い reviewer は追加読取なし。非ゼロなら `[review:error]` で停止し、名簿を減らさない。対象 reviewer は helper の対応表が決める（prompt-engineer / tech-writer / test）。named / 独立子とも同じ全文読取義務を渡す。
+5. **追加読取元を確定する**: 全 reviewer で次を実行し、`ADDITIONAL_REVIEWER_REFERENCES=` の絶対パス列（`; ` 区切り）を保持する。出力が無い reviewer は追加読取なし。非ゼロなら `[review:error]` で停止し、名簿を減らさない。対応表は helper が持つ（文書整合の規則は全 reviewer、固有の規則は prompt-engineer / tech-writer / test）。named / 独立子とも同じ全文読取義務を渡す。
  ```bash
  bash {plugin_root}/scripts/pr-review-step.sh extra-references --reviewer-type "{reviewer_type}"
  ```
@@ -1020,7 +1020,7 @@ Retry procedure when a completion notification fails or is missing. 4.4 と 5.1.
 | Timeout | Yes (up to 1 time) | Re-execute with the same prompt |
 | Network error | Yes (up to 1 time) | Re-execute with the same prompt |
 | Invalid output format | Yes (up to 1 time) | Re-execute with "output in the exact format" appended to the prompt |
-| Missing read declaration | Yes (up to 1 time) | Re-execute with the read obligation of `{shared_reviewer_principles}` restated |
+| Missing read declaration | Yes (up to 1 time) | Re-execute with the read obligation of every missing path restated (`{shared_reviewer_principles}`, `{prose_reviewer_principles}`, `{additional_reviewer_references}`) |
 | Skill file load failure | No | Fall back to the built-in pattern table (ステップ 2.2) for reviewer selection |
 | subagent resolution failure | No | Fail immediately. Display the scoped name used (`rite:{reviewer_type}-reviewer`) and the error message. Mark the reviewer as "incomplete", retain other results, and return `[review:error]`. Do NOT silently fall back to `general-purpose` or reduce the selected roster. |
 

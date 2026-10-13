@@ -1,6 +1,6 @@
 # 文書整合・SoT 規則（Documentation Fidelity Gate の個別条件）
 
-> **SoT scope**：`agents/_reviewer-base.md` の Documentation Fidelity Gate が参照する、個別の検出条件と是正条件の一覧。reviewer は項目 11 の発火時に該当節を Read し、発見は `Likelihood-Evidence` に「どの記述が」「どの実装・SoT と」食い違うかを書く。帰結クラスとアンカー適格性は `agents/_reviewer-base.md` の「手順書・仕様書ドメイン Finding Gate」で判定し、字面整合だけの不一致を blocking にしない。発火条件は同ファイル Documentation Fidelity Gate の項目 11 を正とする。
+> **SoT scope**：`agents/_reviewer-base.md` の Documentation Fidelity Gate が参照する、個別の検出条件と是正条件の一覧。pr-review は全 reviewer へ絶対パスで渡す。reviewer は項目 11 の発火時に該当節を適用し、発見は `Likelihood-Evidence` に「どの記述が」「どの実装・SoT と」食い違うかを書く。帰結クラスとアンカー適格性は `agents/_reviewer-base.md` の「手順書・仕様書ドメイン Finding Gate」で判定し、字面整合だけの不一致を blocking にしない。発火条件は同ファイル Documentation Fidelity Gate の項目 11 を正とする。
 
 共通の型：**主張を書き換える・実装を動かす・列挙を増減する、のいずれかをしたら、同じ主張を持つ全 site を数え、実装の実値と突き合わせる**。名前の類似や記憶は根拠にならない。
 

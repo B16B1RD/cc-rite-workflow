@@ -267,8 +267,8 @@ documentation file.
     enumerations, counts, or verification scripts, or states a universal,
     negative, or counted claim, apply the matching sections of the fidelity rules
     (文書整合・SoT 規則; Issue acceptance-criterion format when the claim rests on one)
-    that the prompt supplies under 追加で読む規則. A reviewer whose prompt has no such
-    section skips this item.
+    that the prompt supplies under 追加で読む規則. If the prompt has no such section
+    or a supplied file cannot be read, report that and stop instead of judging from memory.
 
 Report a current-PR finding only when the changed explanation, command, citation,
 or sample fails one of these checks and the resulting contradiction,
