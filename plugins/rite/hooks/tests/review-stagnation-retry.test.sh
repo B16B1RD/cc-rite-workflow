@@ -1139,6 +1139,8 @@ for label, entries, stops in [
         ('measured clean', [dict(findings_total=1, findings_new_from_fix=0)], False),
         ('fix-introduced findings', [dict(findings_total=1, findings_new_from_fix=2)], True),
         ('unmeasured initial value', [dict(findings_new_from_fix=0)], True),
+        ('stale measurement', [dict(findings_total=1, findings_new_from_fix=0), dict(findings_new_from_fix=0),
+                               dict(findings_new_from_fix=0)], True),
         ('no fix-cycle-state', None, True)]:
     f = Fixture()
     try:
@@ -1152,19 +1154,31 @@ for label, entries, stops in [
             (f.root / '.rite/fix-cycle-state').mkdir(parents=True, exist_ok=True)
             dump(f.root / '.rite/fix-cycle-state/71.json', dict(cycles=entries))
         f.cycle(roots=['a'])
-        (f.root / 'source.txt').write_text('moved head\n')
-        f.commit()
+        if stops:
+            (f.root / 'source.txt').write_text('moved head\n')
+            f.commit()
+        else:
+            f.fix()
         output = gate(f)
         cb = marker(output, 'ITERATE_CB')
         if stops:
             check('ITERATE_CB=fire;' in cb and 'CB_REASON=max-cycles' in cb, 'T-23: ' + label + ' stops on the cap:\n' + output)
             check('CONVERGING_REASON=' + {'fix-introduced findings': 'fix_introduced_findings',
                                           'unmeasured initial value': 'fix_state_unmeasured',
+                                          'stale measurement': 'fix_state_stale',
                                           'no fix-cycle-state': 'fix_state_missing'}[label] in cb,
                   'T-23: ' + label + ' reports why it was not extended:\n' + cb)
         else:
-            check(cb.startswith('[CONTEXT] ITERATE_CB=ok;') and 'TREND=3,2,1;' in cb,
+            check(cb.startswith('[CONTEXT] ITERATE_CB=ok;') and 'TREND=3,2,1;' in cb and 'CAP_EXTENDED=1' in cb,
                   'T-23: ' + label + ' is not stopped by the cap:\n' + output)
+            # 延長は降下が続く間だけ: 次の cycle で足踏み (3,2,1,1) すれば上限で止まる
+            time.sleep(1.1)
+            f.cycle(roots=['a'])
+            (f.root / 'source.txt').write_text('moved head again\n')
+            f.commit()
+            cb = marker(gate(f), 'ITERATE_CB')
+            check('ITERATE_CB=fire;' in cb and 'CB_REASON=max-cycles' in cb and 'CONVERGING_REASON=not_descending' in cb,
+                  'T-23: the extension ends once the descent stalls:\n' + cb)
     finally:
         f.close()
 

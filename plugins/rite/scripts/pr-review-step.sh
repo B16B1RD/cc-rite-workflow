@@ -44,7 +44,7 @@
 #   bash pr-review-step.sh number-ref-diff --base BASE_BRANCH
 #   bash pr-review-step.sh spawn-timings-check --file SPAWN_FILE
 #   bash pr-review-step.sh measured-gate --pr PR_NUMBER --input INPUT
-#   bash pr-review-step.sh attribution-gate
+#   bash pr-review-step.sh attribution-gate --pr PR_NUMBER
 #   bash pr-review-step.sh attribution-files --base BASE_BRANCH
 #   bash pr-review-step.sh attribution-write --pr PR_NUMBER --total TOTAL --fix-introduced FIX_INTRODUCED --critical CRITICAL --high HIGH --medium MEDIUM --low-medium LOW_MEDIUM --low LOW
 #   bash pr-review-step.sh cycle-id --pr PR_NUMBER
@@ -887,8 +887,8 @@ exit "$_gate_rc"
 
 # --- attribution-gate ------------------------------------------------------------
 step_attribution_gate() {
-# fix 後の再レビューかは fix-cycle-state に fix 由来の cycle 記録があるかで決める
-# （fix が cycle を追加してから review が帰属を書く。state が無い = 初回 review）。
+# fix 後の再レビューかは fix-cycle-state の最新 entry が未計測かで決める
+# （fix が cycle を追加し、次の review が帰属を書く。state が無い = 初回 review）。
 _gate_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh 2>/dev/null) || _gate_root=""
 [ -n "$_gate_root" ] || { echo "ERROR: state root unresolved; attribution gate cannot decide" >&2; exit 1; }
 gate_state="$_gate_root/.rite/fix-cycle-state/${pr_number}.json"
@@ -896,12 +896,14 @@ if [ ! -f "$gate_state" ]; then
  echo "[CONTEXT] FINDING_ATTRIBUTION skip (first review, no fix-cycle-state)"
  exit 0
 fi
-gate_cycles=$(jq -er '.cycles | length' "$gate_state" 2>/dev/null) || {
+# 最新 entry が未計測（findings_total 無し）= fix の直後の review。計測済み、または entry 無しは
+# 前 run の残りか初回 review なので帰属の対象にしない。
+gate_pending=$(jq -r 'if (.cycles | type) == "array" then ((.cycles | length) > 0 and (.cycles[-1] | has("findings_total") | not)) else error("cycles is not an array") end' "$gate_state" 2>/dev/null) || {
  echo "ERROR: fix-cycle-state を読めません ($gate_state)" >&2
  exit 1
 }
-if [ "$gate_cycles" -lt 1 ]; then
- echo "[CONTEXT] FINDING_ATTRIBUTION skip (first review, no fix cycles)"
+if [ "$gate_pending" != true ]; then
+ echo "[CONTEXT] FINDING_ATTRIBUTION skip (no unmeasured fix cycle)"
  exit 0
 fi
 }

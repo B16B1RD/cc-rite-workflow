@@ -453,19 +453,28 @@ retry_pending=$(printf '%s' "$review_state" | jq -r '
      and (.cycle_count // 0) == ($run.retry.stop_context.cycle_count // -1))') || exit 1
 cb_reason=""
 retry_hold=0
-# 上限に達しても、直近 2 cycle 連続で blocking が減り fix 由来の新規指摘 が 0 の run は止めない
-# （判定は review-converging.sh に閉じる。判定不能は上限で止める側）。
+# 上限到達時の延長可否は review-converging.sh が決める（条件の定義はそのヘッダが SoT。判定不能は上限で止める側）。
 at_cap=0
+cap_extended=0
 converging_reason=""
 if [ "$cc" -ge "$max_cycles" ] 2>/dev/null; then
   at_cap=1
-  converging_out=$(bash "$plugin_root"/hooks/scripts/review-converging.sh --pr "$pr_number" --trend "$trend_series"); converging_rc=$?
-  if [ "$converging_rc" -ne 0 ]; then
-    echo "WARNING: 収束中の判定を実行できませんでした（rc=${converging_rc}）。上限で停止します" >&2
-    converging_reason=helper_failed
+  if [ "$trend_verdict" != ok ] && [ "$trend_verdict" != fire ]; then
+    # 件数列を復元できていない。helper を呼んでも need_3_cycles が本当の原因を隠すので、trend 側の理由を引き継ぐ
+    converging_reason="trend_${trend_reason:-undecided}"
   else
-    converging_reason=$(printf '%s\n' "$converging_out" | marker_get REVIEW_CONVERGING --field reason)
-    [ "$(printf '%s\n' "$converging_out" | marker_get REVIEW_CONVERGING)" = yes ] && at_cap=0
+    converging_out=$(bash "$plugin_root"/hooks/scripts/review-converging.sh --pr "$pr_number" --trend "$trend_series"); converging_rc=$?
+    converging_verdict=$(printf '%s\n' "$converging_out" | marker_get REVIEW_CONVERGING)
+    if [ "$converging_rc" -ne 0 ]; then
+      echo "WARNING: 収束中の判定を実行できませんでした（rc=${converging_rc}）。上限で停止します" >&2
+      converging_reason=helper_failed
+    elif [ -z "$converging_verdict" ]; then
+      echo "WARNING: 収束中の判定が marker を出しませんでした。上限で停止します" >&2
+      converging_reason=helper_no_marker
+    else
+      converging_reason=$(printf '%s\n' "$converging_out" | marker_get REVIEW_CONVERGING --field reason)
+      [ "$converging_verdict" = yes ] && { at_cap=0; cap_extended=1; }
+    fi
   fi
 fi
 if [ "$at_cap" -eq 1 ]; then
@@ -544,7 +553,8 @@ else
     "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=$inc_status"
   marker_emit ITERATE_CB ok "cycle=$new_cc" "max=$max_cycles" \
     "TREND=$trend_series" "TREND_VERDICT=$trend_verdict" "TREND_REASON=$trend_reason" \
-    "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=$inc_status" "RETRY_HOLD=$retry_hold"
+    "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=$inc_status" "RETRY_HOLD=$retry_hold" \
+    "CAP_EXTENDED=$cap_extended"
 fi
 }
 

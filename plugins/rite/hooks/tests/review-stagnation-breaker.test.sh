@@ -787,6 +787,8 @@ for label, entries, expected in [
         ('measured clean', [dict(findings_total=1, findings_new_from_fix=0)], 'go on'),
         ('fix-introduced findings', [dict(findings_total=1, findings_new_from_fix=1)], 'stop'),
         ('unmeasured initial value', [dict(findings_new_from_fix=0)], 'stop'),
+        ('stale measurement', [dict(findings_total=1, findings_new_from_fix=0), dict(findings_new_from_fix=0),
+                               dict(findings_new_from_fix=0)], 'stop'),
         ('no fix-cycle-state', None, 'stop')]:
     f = Fixture()
     try:
@@ -805,6 +807,10 @@ for label, entries, expected in [
             check(f.state()['stop_reason'] == 'circuit-breaker:max-cycles', 'T-17: ' + label + ' stops on the cap')
         else:
             check(f.state().get('stop_reason') != 'circuit-breaker:max-cycles', 'T-17: ' + label + ' is not stopped by the cap')
+            # 延長は降下が続く間だけ: 次の cycle で足踏み (3,2,1,1) すれば上限で止まる
+            f.fix()
+            f.cycle(roots=['a'])
+            check(f.state()['stop_reason'] == 'circuit-breaker:max-cycles', 'T-17: the extension ends once the descent stalls')
     finally:
         f.close()
 

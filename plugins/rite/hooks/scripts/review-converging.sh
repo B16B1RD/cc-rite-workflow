@@ -14,7 +14,8 @@
 # 判定 (定数。config キーにしない):
 #   yes  ⇔ 直近 3 値が狭義単調減少 (c[n-2] > c[n-1] > c[n]) かつ
 #          fix-cycle-state の「計測済み」最新 cycle (findings_total を持つ entry) の
-#          findings_new_from_fix が 0。fix が cycle を追加した直後の初期値 0 は未計測なので読まない
+#          findings_new_from_fix が 0。fix が cycle を追加した直後の初期値 0 は未計測なので読まない。
+#          計測済み entry より後ろに未計測 entry が 2 件以上ある (帰属が抜けた) ときも読まない
 #   no   それ以外 (計測済み entry が無い = fix_state_unmeasured を含む)。判定できない入力 (列不足 / state 不在 / 値が非整数) も no に倒す —
 #        no は従来どおり上限で止まる側であり、silent にはせず reason= に理由を載せる。
 #   狭義単調減少は非負整数列では有限回で終わるため、延長に別の上限は要らない。
@@ -61,6 +62,11 @@ fi
 measured=$(jq -r '[.cycles[]? | select(has("findings_total"))] | length' "$fix_state" 2>/dev/null)
 case "$measured" in ''|*[!0-9]*) echo "WARNING: fix-cycle-state を読めません ($fix_state)。収束中とは判定せず上限で止めます" >&2; verdict no fix_state_unreadable ;; esac
 [ "$measured" -ge 1 ] || { echo "WARNING: fix-cycle-state に計測済みの cycle がありません ($fix_state)。収束中とは判定せず上限で止めます" >&2; verdict no fix_state_unmeasured; }
+# 計測済み entry より後ろの未計測 entry は、直近の fix が追加した 1 件までが正常 (review 完了直後は 0 件、
+# fix 直後は 1 件)。それを超えるなら計測が抜けており、古い値で延長しない。
+trailing=$(jq -r '.cycles as $c | ([range(0; $c | length) | select($c[.] | has("findings_total"))] | max) as $i | ($c | length) - 1 - $i' "$fix_state" 2>/dev/null)
+case "$trailing" in ''|*[!0-9]*) echo "WARNING: fix-cycle-state を読めません ($fix_state)。収束中とは判定せず上限で止めます" >&2; verdict no fix_state_unreadable ;; esac
+[ "$trailing" -le 1 ] || { echo "WARNING: 最新の計測済み cycle より後ろに未計測の cycle が ${trailing} 件あります ($fix_state)。帰属の書き込みが抜けた可能性があり、収束中とは判定せず上限で止めます" >&2; verdict no fix_state_stale; }
 new_from_fix=$(jq -r '[.cycles[] | select(has("findings_total"))][-1].findings_new_from_fix | select(type == "number" and . >= 0 and floor == .)' "$fix_state" 2>/dev/null)
 case "$new_from_fix" in ''|*[!0-9]*) echo "WARNING: findings_new_from_fix を読み出せません ($fix_state)。収束中とは判定せず上限で止めます" >&2; verdict no fix_state_unreadable ;; esac
 [ "$new_from_fix" -eq 0 ] || verdict no fix_introduced_findings

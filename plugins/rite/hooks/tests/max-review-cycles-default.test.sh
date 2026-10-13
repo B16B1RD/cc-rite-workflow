@@ -11,8 +11,7 @@
 #   2. 記述の一致 (T-04) / 契約の不変 (T-05) — 既定値は 8 ファイルに複製されており、
 #      1 箇所でも取り残されると読者が「その経路は別の値」と誤読する。cycle-scope-contract.test.sh
 #      と同じ static-contract 方式で grep-pin する。
-#       で fix-relaxation-rules.md と review-trend-divergence.sh の散文も
-#      T-04 の sweep と positive pin に追加した。
+#      fix-relaxation-rules.md と review-trend-divergence.sh の散文も T-04 の sweep と positive pin の対象。
 
 set -uo pipefail
 
@@ -229,8 +228,8 @@ assert_grep "T-04m: CONFIGURATION.md が既定値の複製箇所を drift 源と
 # 英文の `at the default of N` と日本語の `（既定 N）` は、5 へ差し戻しても negative パターンに
 # 掛からず全件 green で通るため、既存 T-04a/e/g/h と同じ positive count pin で押さえる。
 # 本 pin だけ `grep -o | wc -l` で**出現数**を数える。CONFIGURATION.md の safety 表と backstop 節は
-# 1 段落 = 1 行の markdown で、同一行に `the default of 15` が 2 つ同居するため、行数を数える
-# `grep -c` では 4 出現を 2 と数えてしまう。`at` を含めず `the default of N` で数えるのは、
+# 1 段落 = 1 行の markdown で、同一行に `the default of 15` が複数同居しうるため、行数を数える
+# `grep -c` では出現数にならない。`at` を含めず `the default of N` で数えるのは、
 # 下限制約の記述 (`the default of 15 satisfies that lower bound`) と引き上げ根拠の記述
 # (`Whether the default of 15 is right`) も既定値を述べる箇所として同じ網に入れるため。
 assert "T-04n: CONFIGURATION.md の英文既定値 2 箇所が $DEFAULT_CYCLES" \

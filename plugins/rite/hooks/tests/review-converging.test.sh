@@ -40,7 +40,7 @@ out_has "T-01b: 長い列でも直近 3 値で判定し yes" "REVIEW_CONVERGING=
 
 echo "=== T-02: 非収束は上限で止める ==="
 OUT=$(verdict "9,6,3" "$(fix_state 0 1)")
-out_has "T-02a: fix 由来の新規指摘 が 1 件でも no" "REVIEW_CONVERGING=no; reason=fix_introduced_findings"
+out_has "T-02a: fix 由来の新規指摘が 1 件でも no" "REVIEW_CONVERGING=no; reason=fix_introduced_findings"
 OUT=$(verdict "9,6,6" "$(fix_state 0)")
 out_has "T-02b: 直近で足踏みなら no" "reason=not_descending"
 OUT=$(verdict "9,3,6" "$(fix_state 0)")

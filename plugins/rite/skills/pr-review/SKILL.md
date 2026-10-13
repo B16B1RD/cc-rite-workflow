@@ -1899,7 +1899,7 @@ bash {plugin_root}/hooks/flow-state.sh review-abandon --reason "base conflict: r
 
 ### 5.3.8 Fix-Introduced Finding Attribution
 
-fix 後の再レビュー（verification または fix-cycle-state に fix cycle 記録がある場合）では各指摘を 3 分類する。
+fix 後の再レビュー（verification がある、または fix-cycle-state の最新 entry が未計測の場合）では各指摘を 3 分類する。
 **Step 1**: 適用可否:
 
 ```bash

@@ -15,9 +15,8 @@ counter reset・fresh run の説明は `review_run` がない legacy state に�
 helper のテストが持つ。
 
 `cc >= max_cycles` を先に評価するのは、両立時にどちらを `CB_REASON` として報告するかを決めるため
-だけであり、上限判定が trend の verdict を見ない点は変えない（収束中の判定が見るのは件数列だけ）。backstop は、直近 2 cycle 連続で blocking が減少し fix 由来の新規指摘 が 0 の run には適用しない
-（`review-converging.sh`。狭義単調減少は有限回で終わるため延長に別の上限は要らない）。それ以外の
-16 cycle 以上を要する run は従来どおりこの経路で停止する。引き上げ前の 5 では 6 cycle 以上を要する収束中の run を殺して
+だけであり、上限判定が trend の verdict を見ない点は変えない。上限到達時の延長（直近 3 cycle の件数が狭義単調減少し、計測済みの最新 cycle の fix 由来の新規指摘が 0）は
+`review-converging.sh` が判定し、条件の SoT はそのヘッダである。狭義単調減少は有限回で終わるため延長に別の上限は要らない。それ以外の run は従来どおりこの経路で停止する。引き上げ前の 5 では 6 cycle 以上を要する収束中の run を殺して
 いた — backtest の `12,5,3,2,2` がその形で、cycle 5 時点でも blocking が 2 件残っている。
 
 既定値を 15 へ引き上げた実測起点は run `8,5,4,6,3` で、収束トレンド判定が**判定の下りた head では
@@ -383,7 +382,7 @@ cycle になるので、counter と発散判定はそのまま続く。
 
 origin=pr の判定は、逸脱の `file:line` が `origin/{PR の baseRefName}...HEAD` の追加行と重なることで機械的に行う（設定済みの `branch.base` が `baseRefName` と食い違えば拒否する）
 （`lib/diff-hunks.sh`）。重ならない逸脱（base 由来や PR 外の欠陥）と、
-blocking が残っている review、`safety.max_review_cycles` に達した cycle（修正を再レビューできない）は
+blocking が残っている review、`safety.max_review_cycles` に達した cycle（修正を再レビューできないことがある）は
 拒否し、従来の `purpose_unaligned` 停止に落とす。この review context の `D-NN` を fix の計画が処置した後の記録も
 拒否する。fix が commit せずに戻ると HEAD は変わらず、同じ commit を再び fix へ渡すと cycle を進めないまま
 空転する（PR 内推奨を同じレビュー済み commit につき一度だけ渡すのと同じ終端）。記録は完了記録（`completed_context` / `deferred_context`）

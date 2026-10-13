@@ -652,7 +652,7 @@ def deviate(state, args, directory):
     require(receipt is not None, "saved review receipt missing")
     require(not any(f.get("scope") in ("current-pr", "follow-up") for f in receipt[1]["findings"]),
             "the review still has blocking findings; fix them through the ordinary fix path")
-    # The fix of this cycle could not be re-reviewed: the next review may trip max-cycles.
+    # The fix of this cycle may not be re-reviewed: the next review may trip max-cycles.
     require(state["cycle_count"] < review_cycle_cap(),
             "the review is at safety.max_review_cycles; its fix may not be re-reviewed")
     require(pr_added(state, record["file"], line, end),
@@ -927,9 +927,12 @@ def converging(state, marker):
     helper = Path(__file__).resolve().parent.parent / "review-converging.sh"
     result = subprocess.run(["bash", str(helper), "--pr", str(state["pr_number"]),
                              "--trend", marker["trend"]], capture_output=True, text=True)
-    require(result.returncode == 0, "convergence check could not run: " + result.stderr.strip())
     if result.stderr:
         sys.stderr.write(result.stderr)
+    if result.returncode != 0:
+        # iterate-step.sh と同じく、判定できないときは上限で止める側へ倒す（理由は stderr に残す）
+        sys.stderr.write("WARNING: convergence check could not run (rc=%d); stopping at the cycle cap\n" % result.returncode)
+        return False
     return "REVIEW_CONVERGING=yes" in result.stdout
 
 

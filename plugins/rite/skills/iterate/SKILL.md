@@ -36,7 +36,7 @@ argument-hint: "<pr_number>"
 **サーキットブレーカーの発火条件は 2 つ**:
 
 - **収束トレンドの発散**（主経路）: 永続レビュー JSON の per-cycle blocking 件数から `hooks/scripts/review-trend-divergence.sh` が発散を機械判定する。「直近 2 値がともに過去の最良水準を超え、かつ下降中でもない」を発散とし、**収束中のループは本判定では殺されない**（cycle 数上限は別条件として下記 2. のとおり働く）
-- **`safety.max_review_cycles`（既定 15）到達**（保険）: 発散判定をすり抜ける非収束を受け止める backstop。`cc >= max_cycles` は trend の verdict と**独立した発火条件**（収束中の判定は件数列だけを見る）。**ただし上限到達時も、直近 2 cycle 連続で blocking が減少し、かつ最新 cycle の fix 由来の新規指摘（`findings_new_from_fix`）が 0 なら停止しない**（`hooks/scripts/review-converging.sh` が判定。16 cycle 以上を要しても下降中の run は止まらず、判定不能・下降停止は従来どおり上限で止まる）
+- **`safety.max_review_cycles`（既定 15）到達**（保険）: 発散判定をすり抜ける非収束を受け止める backstop。`cc >= max_cycles` は trend の verdict とは**独立した発火条件**。**ただし上限到達時も、直近 3 cycle の blocking 件数が狭義単調減少し、かつ計測済みの最新 cycle の fix 由来の新規指摘（`findings_new_from_fix`）が 0 なら停止しない**（`hooks/scripts/review-converging.sh` が判定し、条件の SoT はそのヘッダ。足踏み・反転・未計測・判定不能は従来どおり上限で止まる）
 rationale: references/rationale.md#circuit-breaker-conditions
 
 ブレーカー発火は review⇄fix ループの停止 signal である。`review_run` がある現在の run は counter・根因観測・見直し履歴・停止理由を保持して終了する。同じ run の再起動で履歴を消さない。review / fix は invoke しない。以下に残る counter reset と fresh entry の手順は `review_run` がない legacy state に限る。
@@ -71,11 +71,12 @@ rationale: references/rationale.md#circuit-breaker-conditions
 | `{pr_number}` | 引数 |
 | `{issue_number}` | flow-state `issue_number` field |
 | `{branch_name}` | flow-state `branch` field |
-| `{max_review_cycles}` | `safety.max_review_cycles` in `rite-config.yml`（既定 15、無効値は既定へフォールバック）。**発散判定をすり抜けた非収束を受け止める backstop**（上限到達時も下降中の run は停止しない。ステップ 1 の発火条件を参照） |
+| `{max_review_cycles}` | `safety.max_review_cycles` in `rite-config.yml`（既定 15、無効値は既定へフォールバック）。**発散判定をすり抜けた非収束を受け止める backstop**（上限到達時の延長はステップ 1 の発火条件を参照） |
 | `{fire_reason_line}` | ステップ 6.1 / 6.2 の「理由」行。ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `CB_REASON=` から ステップ 6.2「発火理由の文面」表で決める |
 | `{cb_reason}` | 停止理由の**生値**（`max-cycles` / `divergence` / `stagnation`）。供給元は ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `CB_REASON=`（`max-cycles` / `divergence`）と、`review_run` がある run の停止を記録した ステップ 3 の規則（既存 breaker の停止はその値、それ以外の停滞判定 `stop` は `stagnation`）の 2 つ（同節「`{resume_routes}`」参照）。`review_run` が停止済みのとき flow-state の `stop_reason` は run 側の値（`stagnation:non-convergent` / `stagnation:scope-insoluble` 等）に置き換わる。ステップ 6 共有前段が flow-state へ書く `--stop-reason "circuit-breaker:{cb_reason}"` と `{resume_routes}` の分岐で使う（人間向けの文面は `{fire_reason_line}` が担う） |
 | `{trend}` | ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `TREND=`（カンマ区切りの per-cycle blocking 件数）。停止通知では `→` 区切りへ整形して表示する。空のときの扱いは ステップ 6.2「発火理由の文面」を参照 |
 | `{trend_reason}` | ステップ 1 の `[CONTEXT] ITERATE_CB=` marker の `TREND_REASON=`（helper が返した判定不能の理由。ステップ 6.2「発火理由の文面」の `max-cycles` 分岐と推移行の差し替えで使う） |
+| `{converging_reason}` | ステップ 1 の `ITERATE_CB=fire` marker の `CONVERGING_REASON=`（上限到達時に延長しなかった理由。`CB_REASON=max-cycles` のときだけ値を持つ） |
 | `{cycle_count}` | flow-state `cycle_count` field（review-start で増加。`review_run` がある同一 run では完了・停止・recoverでも保持。以下の 0 リセット手順は legacy state 専用） |
 | `{resume_routes}` | ステップ 6.2 停止通知の「再開方法」の行。ステップ 3 の `[CONTEXT] ITERATE_STAGNATION=` marker と `{cb_reason}` から 同節「`{resume_routes}`」表で決める（marker 不在の行も同表が持つ） |
 | `{state_root}` | ステップ 6 共有前段の `[CONTEXT] STATE_ROOT=` marker の値（`hooks/state-path-resolve.sh` の解決結果。未解決時は sentinel `unresolved`）。ステップ 6.2 注意行 (b) の手動リセットコマンドでのみ使い、値が得られないときは同節の pre-fill 表に従って解決手順へ置き換える |
@@ -169,7 +170,7 @@ rationale: references/rationale.md#reset-refire-run-since
 | `failed-refire` | reset が失敗し counter が**上限以上**のまま残存（`cycle_count >= max_review_cycles`）。ステップ 1 で即座にブレーカーが再発火する。WARNING と flow-state.sh の診断（helper が出力していれば）は emit 済み。停止通知の注意行は本値ではなく **`REFIRE=1`** が条件（reset を試行しない resume 経路でも即再発火しうるため） |
 | `failed-stale` | **stale counter 除去**（`0 < cycle_count < max_review_cycles`。run バッチの Issue 間リーク等）の reset が失敗し counter が残存。上限未満なので即座には再発火せず、残 cycle が目減りした状態でループが回る。ステップ 6 の停止通知に注意行は**含めない**（含めると真の非収束停止に「review は 1 cycle も回っていません」という偽の説明が付く） |
 
-`REFIRE` は**この起動でステップ 1 が review を回さずに fire するか**の述語で、ステップ 6.2 の注意行 (a) の条件そのもの:
+`REFIRE` は**この起動でステップ 1 が review を回さずに fire しうるか**の述語（counter が上限以上。延長条件を満たす run はステップ 1 が review を回す）で、ステップ 6.2 の注意行 (a) の条件の一部:
 
 `RUN_SINCE` は run 開始点 pin の記録結果。**pin が無い / 古いと発散判定は run 境界を確定できず判定を降ろす**（helper の `run_boundary_unresolved`）。`unresolved-root` / `write-failed` は**停止側**（判定を降ろす）。`write-failed-pin-retained` だけが**誤発火側**。`RESET=failed-stale` / `failed-refire` は本記録側の縮退を生まない（ゲートが `fresh || cur_cc == 0` の選言）。`ok-empty` は pin 不在と同じ扱いで、実在数が counter を超えた時点で判定が降りる:
 
@@ -195,7 +196,7 @@ rationale: references/rationale.md#reset-refire-run-since
 | `REFIRE` | 意味 |
 |---|---|
 | `0` | 起動時点の counter が上限未満、または reset に成功して 0 に戻った。ステップ 1 は review を回してから進む |
-| `1` | counter が上限以上のまま残っている。**ステップ 1 はこの起動で review を 1 回も回さずに fire する**（未完了の `review_cycle` は再開を優先し、発火しない） |
+| `1` | counter が上限以上のまま残っている。**延長条件を満たさなければステップ 1 はこの起動で review を 1 回も回さずに fire する**（未完了の `review_cycle` は再開を優先し、発火しない。延長条件を満たせば review が回り、後で別の理由で fire しうる） |
 
 ## ステップ 0.7: 止まった NB digest sweep の再開
 
@@ -220,7 +221,7 @@ bash {plugin_root}/scripts/iterate-step.sh nb-sweep-resume --pr {pr_number}
 
 1. **lost 修復ゲート** — helper の `lost=` が `0` より大きい（完了済み cycle に対して JSON 不足 = 増分）、または `cc>=1` かつ raw `lost=` 欠落かつ reason が `no_results_file` / `results_dir_missing` / `no_file_after_pin`（`_undecidable` は `lost=` を出さない）。次 cycle を始めず (a)/(b) へ。`cc=0` と `helper_unavailable` は発火させない
 2. **収束トレンドの発散**（主経路）— `hooks/scripts/review-trend-divergence.sh` が永続レビュー JSON から現 run の per-cycle blocking 列を復元し発散と判定した場合。`cycle_count` が上限未満でも発火する
-3. **`max_review_cycles` 到達**（保険）— 発散判定をすり抜けた非収束を受け止める backstop（16 cycle 以上を要しても、直近 2 cycle 連続で blocking が減少し fix 由来の新規指摘 が 0 の run は止めない）
+3. **`max_review_cycles` 到達**（保険）— 発散判定をすり抜けた非収束を受け止める backstop（上限到達時の延長は `review-converging.sh`）
 rationale: references/rationale.md#lost-repair-gate
 
 `max_review_cycles` は marker 依存を避けるため config から再読込する（無効値はステップ 0.6 で検証済みのため silent。config 不在は試したパス付き WARNING + 既定値、読めない config は ERROR で marker を出さずに停止）:
@@ -273,7 +274,7 @@ bash {plugin_root}/scripts/iterate-step.sh lost-repair --repair {repair} --cycle
 | `CB_REASON` | 意味 |
 |---|---|
 | `divergence` | 収束トレンドが発散と判定された（`cycle_count < max_review_cycles` でも発火する）。無駄な cycle を早期に切る主経路 |
-| `max-cycles` | `cycle_count >= max_review_cycles`。発散判定をすり抜けた非収束を受け止める保険（下降中で fix 由来の新規指摘 が 0 の run は対象外。両方成立する場合もこちらを理由として報告する） |
+| `max-cycles` | `cycle_count >= max_review_cycles`。発散判定をすり抜けた非収束を受け止める保険（延長条件を満たす run は対象外。両方成立する場合もこちらを理由として報告する） |
 
 `RETRY_HOLD=1`（`ok` 分岐）は、`review-retry` が発行した未決着の再試行権により、発行した cycle に限って発散判定を保留したことを示す。分岐は通常の `ok` と同じく review を invoke する。`max-cycles` と lost 修復ゲートは保留しない。決着は再試行の review の観測が行う（[review-stagnation.md](../../references/review-stagnation.md)）。
 
@@ -477,7 +478,7 @@ args: "{pr_number}"
 | `[fix:cancelled-by-user]` | ループ終了（ステップ 4 と同じ） |
 | `[fix:error]` / sentinel 不在 | ステップ 4 と同じく `iterate-step.sh stagnation-route` のあと 1 回だけ再試行。再失敗なら停止 |
 
-登録に回数の上限は無い。修正後の再レビューで ADOPT・`origin=pr` になった根因も同じく登録され、本ステップが再び fix へ渡す。`safety.max_review_cycles` に達した cycle だけは登録せず（修正を再レビューできない）、採否保留で止まる。
+登録に回数の上限は無い。修正後の再レビューで ADOPT・`origin=pr` になった根因も同じく登録され、本ステップが再び fix へ渡す。`safety.max_review_cycles` に達した cycle だけは登録せず（修正を再レビューできないことがある。延長中の run も同じ）、採否保留で止まる。
 rationale: references/rationale.md#pr-recommendation-fix
 
 MUST NOT: mergeable の後に手で commit する（fix の検証記録が無い HEAD では次のレビューを開始できない）。
@@ -838,9 +839,11 @@ rationale: references/rationale.md#notice-trend-and-notes
 |---|---|---|
 | `stagnation` | 任意 | `方針見直し後も同じ根因が再発し進展がない、または範囲内代替で解決できない（詳細は review_run.current_decision.reasons）` |
 | `divergence` | （必ず `fire`） | `review⇄fix ループの収束トレンドが発散（直近サイクルで過去の最良水準へ戻れず、下降もしていない）` |
-| `max-cycles` | `ok` | `review⇄fix cycle が上限 {max_review_cycles} に到達（発散判定は実行され、発散ではないと結論）` |
-| `max-cycles` | `fire` | `review⇄fix cycle が上限 {max_review_cycles} に到達（収束トレンドの発散も同時に検出）` |
-| `max-cycles` | `insufficient` / `unavailable` | `review⇄fix cycle が上限 {max_review_cycles} に到達（発散判定は未実施 — {trend_reason}）` |
+| `max-cycles` | `ok` | `review⇄fix cycle が上限 {max_review_cycles} に到達（発散判定は実行され、発散ではないと結論。延長なし: {converging_reason}）` |
+| `max-cycles` | `fire` | `review⇄fix cycle が上限 {max_review_cycles} に到達（収束トレンドの発散も同時に検出。延長なし: {converging_reason}）` |
+| `max-cycles` | `insufficient` / `unavailable` | `review⇄fix cycle が上限 {max_review_cycles} に到達（発散判定は未実施 — {trend_reason}。延長なし: {converging_reason}）` |
+
+`{converging_reason}` は同 marker の `CONVERGING_REASON=` をそのままリテラル置換する。`not_descending` / `fix_introduced_findings` / `need_3_cycles` は延長条件を満たさなかった正当な停止、`helper_failed` / `helper_no_marker` / `fix_state_*` / `state_root_unresolved` / `trend_*` は延長を判定できなかったデータ異常なので、停止通知の末尾に「延長を判定できなかった理由は WARNING を確認」と1行添える。
 
 `{trend_reason}` はステップ 1 の `TREND_REASON=` marker の値をそのままリテラル置換する（`need_3_cycles` / `no_results_file` / `helper_unavailable` 等。値の一覧はステップ 1 の `TREND_REASON` 説明を参照）。
 
@@ -860,13 +863,13 @@ rationale: references/rationale.md#notice-trend-and-notes
 
 ステップ 0.6 / ステップ 1 の `[CONTEXT]` marker と **ステップ 6 共有前段**の WARNING を観測している場合、下記の条件で各行を `{action_items}` へ反映する。(a) は末尾へ追加する。(b) / (c) は対応する raw WARNING の項目を詳細な復旧項目で置換し、raw 項目が無い場合だけ末尾へ追加する。raw WARNING と詳細な復旧項目を両方残してはならない。「理由」行の直後には追加しない。3 ステップすべてを観測対象に含める — (b) は共有前段の atomic set 失敗 WARNING、(c) の `HANDOFF_CLEAR` はステップ 1。marker 値の読み取りは `marker_get`（[`lib/context-marker.sh`](../../hooks/scripts/lib/context-marker.sh)）の契約に従う。**marker 値の照合**は `;` 区切りの `KEY=VALUE` 単位の**完全一致**（部分一致は禁止）。追加行と差し替え行の `{plugin_root}` / `{pr_number}` / `{max_review_cycles}` / `{session_id}` / `{state_root}` はリテラル置換する（値が得られない側は (b) の pre-fill 表で解決手順へ置き換える）。**置換の対象は (b) が人間へ渡すすべての実行可能テキスト**に及ぶ。人間の端末で live なシェル変数を前提にした記法（`$root` 等）は、同じ案内文の中で代入している箇所以外では使わない。
 
-**(a) `REFIRE=1`**（この起動では review を 1 回も回さずに発火した。前回の最終 cycle 途中で中断した場合の正常な発火と、counter リセット失敗による再発火の**両方**を含む — marker だけでは区別できない）:
+**(a) `REFIRE=1` かつ ステップ 1 の fire marker の `cycle=` がステップ 0.6 の `ITERATE_CYCLE=` と等しい**（この起動では counter が進まず、review を 1 回も回さずに発火した。`cycle=` が進んでいれば review は回っているので追加しない。前回の最終 cycle 途中で中断した場合の正常な発火と、counter リセット失敗による再発火の**両方**を含む — marker だけでは区別できない）:
 
 ```
 - 注意: 起動時点で cycle counter が上限に達していたため、この起動では review を 1 回も回さずに発火しました（未完了の `review_cycle` がある場合はこの経路へ入らず再開します）。ステップ 0.6 / ステップ 1 / ステップ 6 共有前段に WARNING が出ている場合は、その直後の flow-state.sh の診断を確認してください
 ```
 
-`REFIRE=0` では**追加しない**。`RESET` の値は本条件に使わない — 即再発火の判定には `REFIRE` を使う。
+`REFIRE=0`、または fire marker の `cycle=` が `ITERATE_CYCLE=` より進んでいるときは**追加しない**。`RESET` の値は本条件に使わない — 即再発火の判定には `REFIRE` を使う。
 
 **(b) 共有前段の atomic set 失敗**（ステップ 6 共有前段の atomic set に失敗し、counter のリセットと `stop_reason` の永続化がどちらも行われなかった）:
 
