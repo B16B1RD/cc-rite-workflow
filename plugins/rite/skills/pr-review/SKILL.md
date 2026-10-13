@@ -950,9 +950,9 @@ rationale: references/design-rationale.md#shared-principles-hybrid
  ```bash
  bash {plugin_root}/scripts/pr-review-step.sh prose-principles --reviewer-type "{reviewer_type}"
  ```
-5. **追加読取元を確定する**: 全 reviewer で次を実行し、`ADDITIONAL_REVIEWER_REFERENCES=` の絶対パス列（`; ` 区切り）を保持する。出力が無い、または非ゼロなら `[review:error]` で停止し、名簿を減らさない。対応表は helper が持つ（文書整合の規則は全 reviewer、固有の規則は prompt-engineer / tech-writer / test、error-handling は bash を含む diff に限る）。`{bash_diff}` は、変更ファイルに `.sh` / `.bash` がある、または差分の追加行に bash / sh の fenced block があれば `true`、それ以外は `false`。named / 独立子とも同じ全文読取義務を渡す。
+5. **追加読取元を確定する**: 全 reviewer で次を実行し、`ADDITIONAL_REVIEWER_REFERENCES=` の絶対パス列（`; ` 区切り）を保持する。出力が無い、または非ゼロなら `[review:error]` で停止し、名簿を減らさない。対応表は helper が持つ（文書整合の規則は全 reviewer、固有の規則は prompt-engineer / tech-writer / test、error-handling は変更ファイルが bash を含むときに限る）。`{changed_paths}` はステップ 1.2 の変更ファイル一覧（`REVIEW_CYCLE_SCOPE == incremental` のときは `{cycle_scope_files}`）のカンマ区切り。helper が file 単位で判定し、`.sh` / `.bash` の変更、または bash / sh の fenced block を持つ `.md` の変更なら渡す（diff の行位置には依らない）。named / 独立子とも同じ全文読取義務を渡す。
  ```bash
- bash {plugin_root}/scripts/pr-review-step.sh extra-references --reviewer-type "{reviewer_type}" --bash-diff "{bash_diff}"
+ bash {plugin_root}/scripts/pr-review-step.sh extra-references --reviewer-type "{reviewer_type}" --paths "{changed_paths}"
  ```
 **並列（MUST）**: 利用可能な子枠内で同じ組の Task を 1 メッセージで invoke する。全名簿が枠を超える場合は組に分け、完了した枠を解放して次の組を実行する。全組回収まで統合・修正へ進まない（失敗した Task の retry は 4.4 に従う）。各 agent に diff / 変更ファイル / `{issue_spec}` / `{shared_reviewer_principles}` を渡す。tech-writer には `{prose_reviewer_principles}` も渡す。全 reviewer に `{additional_reviewer_references}` も渡す。
 

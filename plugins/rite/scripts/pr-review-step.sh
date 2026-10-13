@@ -33,7 +33,7 @@
 #   bash pr-review-step.sh wiki-apply-check --keywords KEYWORDS
 #   bash pr-review-step.sh shared-principles
 #   bash pr-review-step.sh prose-principles --reviewer-type REVIEWER_TYPE
-#   bash pr-review-step.sh extra-references --reviewer-type REVIEWER_TYPE --bash-diff true|false
+#   bash pr-review-step.sh extra-references --reviewer-type REVIEWER_TYPE --paths CHANGED_PATHS
 #   bash pr-review-step.sh spawn-at
 #   bash pr-review-step.sh rejected-ledger --owner-repo OWNER_REPO --pr PR_NUMBER
 #   bash pr-review-step.sh tmp-dir
@@ -592,8 +592,17 @@ case "$reviewer_type" in
   prompt-engineer|tech-writer) extra_relpaths="references/skill-prose-writing.md $fidelity_refs" ;;
   test) extra_relpaths="references/test-pin-mutation-principles.md $fidelity_refs" ;;
   error-handling)
-    # bash の diff のときだけ渡す（約 30KB。bash の無いレビューでは読ませない）
-    if [ "$bash_diff" = true ]; then
+    # 変更ファイルが bash を含むときだけ渡す（約 30KB。bash の無いレビューでは読ませない）。
+    # 判定は file 単位: .sh / .bash の変更、または bash / sh の fenced block を持つ .md の変更
+    bash_changed=false
+    IFS=, read -ra changed_list <<< "$changed_paths"
+    for changed in "${changed_list[@]}"; do
+      case "$changed" in
+        *.sh|*.bash) bash_changed=true ;;
+        *.md) if [ -f "$changed" ] && grep -Eq '^[[:space:]]*(`{3,}|~{3,})[[:space:]]*(bash|sh|shell)([[:space:]]|$)' "$changed"; then bash_changed=true; fi ;;
+      esac
+    done
+    if [ "$bash_changed" = true ]; then
       extra_relpaths="references/bash-defensive-patterns.md $fidelity_refs"
     else
       extra_relpaths="$fidelity_refs"
@@ -1359,7 +1368,6 @@ base_branch=""
 selection=""
 keywords=""
 changed_paths=""
-bash_diff=""
 orig_br=""
 orig_sc=""
 orig_blh=""
@@ -1418,7 +1426,6 @@ while [ "$#" -gt 0 ]; do
     --selection) selection=$2 ;;
     --keywords) keywords=$2 ;;
     --paths) changed_paths=$2 ;;
-    --bash-diff) bash_diff=$2 ;;
     --orig-br) orig_br=$2 ;;
     --orig-sc) orig_sc=$2 ;;
     --orig-blh) orig_blh=$2 ;;
@@ -1470,10 +1477,6 @@ case "$subcommand" in
   fingerprints-load|fingerprint-check) ;;
   *) case "$pr_number" in ''|*[!0-9]*) [ -z "$pr_number" ] || usage_error "--pr must be a number: $pr_number" ;; esac ;;
 esac
-case "$bash_diff" in
-  ''|true|false) ;;
-  *) usage_error "--bash-diff must be true or false: $bash_diff" ;;
-esac
 case "$result" in
   ''|mergeable|fix-needed|ac-unverified) ;;
   *) usage_error "--result must be mergeable, fix-needed or ac-unverified: $result" ;;
@@ -1494,7 +1497,6 @@ require() {
       selection) opt=--selection ;;
       keywords) opt=--keywords ;;
       changed_paths) opt=--paths ;;
-      bash_diff) opt=--bash-diff ;;
       orig_br) opt=--orig-br ;;
       orig_sc) opt=--orig-sc ;;
       orig_blh) opt=--orig-blh ;;
@@ -1552,7 +1554,7 @@ case "$subcommand" in
   wiki-apply-check) require keywords; step_wiki_apply_check ;;
   shared-principles) step_shared_principles ;;
   prose-principles) require reviewer_type; step_prose_principles ;;
-  extra-references) require reviewer_type bash_diff; step_extra_references ;;
+  extra-references) require reviewer_type changed_paths; step_extra_references ;;
   spawn-at) step_spawn_at ;;
   rejected-ledger) require pr_number owner_repo; step_rejected_ledger ;;
   tmp-dir) step_tmp_dir ;;

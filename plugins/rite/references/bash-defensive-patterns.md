@@ -358,7 +358,7 @@ Each row is a condition and the form that avoids it. Forms marked **lint** are d
 | `$(cmd 2>&1)` where the helper writes a token on stdout and diagnostics on stderr: the token no longer matches any `case` arm and the sentinel is silently never emitted | Capture stdout and stderr separately and document the helper's output contract |
 | A recovery hint printed after a long diagnostic is cut by the caller's `head -5` | Put the one line a person must act on first |
 | A refactor adds `2>/dev/null` | Look for it in the diff and justify each one |
-| `cmd 2>/dev/null` still prints a failing redirection's own error, while `{ cmd; } 2>/dev/null` hides that too | Use the brace group only when every diagnostic, redirection errors included, is disposable; otherwise capture (previous row) |
+| A redirection written before `2>/dev/null` that fails still prints its error (`cmd >/bad/x 2>/dev/null`); one written after is hidden; `{ cmd; } 2>/dev/null` hides both | Use the brace group only when every diagnostic, redirection errors included, is disposable; otherwise capture (previous row) |
 | A fallback hides a failure that looks like success (`git rev-parse HEAD \|\| echo unknown`) | Print a WARNING in the fallback branch |
 | A best-effort loop continues past failures | Count each failure so that "summary total == items processed" holds; pass the delegate's stderr through |
 

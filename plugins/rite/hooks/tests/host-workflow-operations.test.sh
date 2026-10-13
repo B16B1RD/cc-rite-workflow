@@ -355,8 +355,8 @@ class WorkflowContracts(unittest.TestCase):
         # Additional reading: one placeholder, a per-reviewer path list, and the same declaration check.
         extra_code = "\n".join(line[1:] if line.startswith(" ") else line for line in blocks[2].splitlines())
 
-        def run_extra(plugin_root, reviewer_type, bash_diff="false"):
-            code = extra_code.replace("{plugin_root}", str(plugin_root)).replace("{reviewer_type}", reviewer_type).replace("{bash_diff}", bash_diff)
+        def run_extra(plugin_root, reviewer_type, changed_paths="docs/a.txt"):
+            code = extra_code.replace("{plugin_root}", str(plugin_root)).replace("{reviewer_type}", reviewer_type).replace("{changed_paths}", changed_paths)
             return subprocess.run(["bash", "-c", code], cwd=str(self.fixture), capture_output=True, text=True, timeout=20)
 
         fidelity = ["references/doc-fidelity-sot.md", "skills/issue-create/references/ac-authoring.md"]
@@ -371,15 +371,24 @@ class WorkflowContracts(unittest.TestCase):
             result = run_extra(plugin, reviewer_type)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout.strip(), "[CONTEXT] ADDITIONAL_REVIEWER_REFERENCES=" + "; ".join(str(plugin / rel) for rel in rels))
-        # The bash rules reach error-handling only for a bash diff; no other reviewer or diff gets them.
+        # The bash rules reach error-handling only when a changed file is bash; no other reviewer or change set gets them.
         bash_ref = "references/bash-defensive-patterns.md"
-        result = run_extra(plugin, "error-handling", "true")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), "[CONTEXT] ADDITIONAL_REVIEWER_REFERENCES=" + "; ".join(str(plugin / rel) for rel in [bash_ref] + fidelity))
+        (self.fixture / "with-fence.md").write_text("text\n\n    ```bash\n    echo x\n    ```\n", encoding="utf-8")
+        (self.fixture / "tilde-sh.md").write_text("~~~sh\necho x\n~~~\n", encoding="utf-8")
+        (self.fixture / "no-fence.md").write_text("text\n```json\n{}\n```\n", encoding="utf-8")
+        with_bash = [bash_ref] + fidelity
+        for changed in ["a.txt,hooks/x.sh", "run.bash", "with-fence.md", "docs/a.txt,tilde-sh.md"]:
+            result = run_extra(plugin, "error-handling", changed)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), "[CONTEXT] ADDITIONAL_REVIEWER_REFERENCES=" + "; ".join(str(plugin / rel) for rel in with_bash), changed)
+        for changed in ["docs/a.txt", "no-fence.md", "missing.md"]:
+            result = run_extra(plugin, "error-handling", changed)
+            self.assertEqual(result.stdout.strip(), "[CONTEXT] ADDITIONAL_REVIEWER_REFERENCES=" + "; ".join(str(plugin / rel) for rel in fidelity), changed)
         for reviewer_type in ["security", "test", "devops"]:
-            result = run_extra(plugin, reviewer_type, "true")
+            result = run_extra(plugin, reviewer_type, "hooks/x.sh")
             self.assertNotIn(bash_ref, result.stdout, reviewer_type)
-        result = run_extra(plugin, "error-handling", "maybe")
+        # A missing changed-path list stops instead of silently dropping the bash rules.
+        result = run_extra(plugin, "error-handling", "")
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(result.stdout, "")
         # Every selectable reviewer type is covered, and a mistyped one stops instead of silently getting only the shared fidelity list.
@@ -473,7 +482,7 @@ class WorkflowContracts(unittest.TestCase):
             self.assertIn(sentence, load_part)
         pr_review_lines = pr_review.splitlines()
         step5 = next(line for line in pr_review_lines if line.startswith("5. **追加読取元を確定する**"))
-        self.assertTrue(step5.endswith("対応表は helper が持つ（文書整合の規則は全 reviewer、固有の規則は prompt-engineer / tech-writer / test、error-handling は bash を含む diff に限る）。`{bash_diff}` は、変更ファイルに `.sh` / `.bash` がある、または差分の追加行に bash / sh の fenced block があれば `true`、それ以外は `false`。named / 独立子とも同じ全文読取義務を渡す。"))
+        self.assertTrue(step5.endswith("対応表は helper が持つ（文書整合の規則は全 reviewer、固有の規則は prompt-engineer / tech-writer / test、error-handling は変更ファイルが bash を含むときに限る）。`{changed_paths}` はステップ 1.2 の変更ファイル一覧（`REVIEW_CYCLE_SCOPE == incremental` のときは `{cycle_scope_files}`）のカンマ区切り。helper が file 単位で判定し、`.sh` / `.bash` の変更、または bash / sh の fenced block を持つ `.md` の変更なら渡す（diff の行位置には依らない）。named / 独立子とも同じ全文読取義務を渡す。"))
         self.assertNotIn("のときだけ", step5)
         dispatch = next(line for line in pr_review_lines if line.startswith("**並列（MUST）**"))
         self.assertTrue(dispatch.endswith("tech-writer には `{prose_reviewer_principles}` も渡す。全 reviewer に `{additional_reviewer_references}` も渡す。"))

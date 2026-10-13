@@ -68,6 +68,8 @@ fixture bang-ok-other-first 'if ! cmd; then' '  other' '  rc=$?' 'fi'
 check "comment line between then and \$? does not disarm" bang-ng-comment 1 if-bang-rc
 check "then on its own line" bang-ng-then-line 1 if-bang-rc
 check "\$? after another command belongs to that command" bang-ok-other-first 0 ""
+fixture bang-ok-oneline-other 'if ! cmd; then other; rc=$?; fi'
+check "one-line then with another command first" bang-ok-oneline-other 0 ""
 check "\$? on the same line as if ! ... then" bang-ng-oneline 1 if-bang-rc
 check "status read in the else branch of a positive if" bang-ok-else 0 ""
 check "status captured with || rc=\$?" bang-ok-or 0 ""
@@ -138,6 +140,11 @@ two_out="$(out --target plugins/rite/skills/demo/two.md)"
 [[ "$two_out" == *"two.md:9:"* ]] && pass "line number of the second block is its file line (9)" || fail "wrong line in second block — got: $two_out"
 printf '```bash\n%s\n```\n' "$bad" > "$SANDBOX/plugins/rite/skills/demo/a:b.md"
 assert "path containing a colon is scanned without a crash (exit 1)" "1" "$(run --quiet --target plugins/rite/skills/demo/a:b.md)"
+# an indented fence-looking line inside a top-level block (4+ columns deeper) does not close it; one with an info string does not either
+printf '```bash\nawk %s\n    ```\n%s\n```\n' "'" "$bad" > "$SANDBOX/plugins/rite/skills/demo/deep-literal.md"
+assert "indented fence literal does not close the block (exit 1)" "1" "$(run --quiet --target plugins/rite/skills/demo/deep-literal.md)"
+printf '```bash\n```json\n%s\n```\n' "$bad" > "$SANDBOX/plugins/rite/skills/demo/inner-info.md"
+assert "inner fence with an info string does not close the block (exit 1)" "1" "$(run --quiet --target plugins/rite/skills/demo/inner-info.md)"
 printf 'x\n' > "$SANDBOX/plugins/rite/skills/demo/other.bash"
 assert "unsupported file type exits 2" "2" "$(run --quiet --target plugins/rite/skills/demo/other.bash)"
 printf '```bash\n%s\n' "$bad" > "$SANDBOX/plugins/rite/skills/demo/unbalanced.md"
@@ -149,6 +156,13 @@ assert "--help exits 0" "0" "$(bash "$SCRIPT" --help >/dev/null 2>&1; echo $?)"
 assert "no targets exits 2" "2" "$(run --quiet)"
 assert "unknown argument exits 2" "2" "$(run --bogus)"
 assert "missing --target exits 2" "2" "$(run --quiet --target plugins/rite/hooks/scripts/none.sh)"
+if [ "$(id -u)" -eq 0 ]; then
+  skip "unlistable directory exits 2 (running as root: chmod 000 does not deny access)"
+else
+  mkdir -p "$SANDBOX/plugins/rite/hooks/locked"; chmod 000 "$SANDBOX/plugins/rite/hooks/locked"
+  assert "unlistable directory exits 2 (not scanned != clean)" "2" "$(run --quiet --all)"
+  chmod 755 "$SANDBOX/plugins/rite/hooks/locked"; rmdir "$SANDBOX/plugins/rite/hooks/locked"
+fi
 EMPTY="$(make_plain_sandbox)"
 assert "--all without plugins/rite exits 2" "2" "$(bash "$SCRIPT" --repo-root "$EMPTY" --quiet --all >/dev/null 2>&1; echo $?)"
 assert "--all --skip-if-no-target without plugins/rite exits 0" "0" \

@@ -16,7 +16,7 @@
 #
 # Usage: bash-pitfall-check.sh --all [--repo-root DIR] [--quiet] [--skip-if-no-target]
 #        bash-pitfall-check.sh --target FILE [--target FILE ...] [--repo-root DIR] [--quiet]
-# Exit: 0 clean, 1 findings, 2 invocation error or a file that could not be scanned.
+# Exit: 0 clean, 1 findings, 2 invocation error or a file or directory that could not be scanned.
 set -uo pipefail
 
 if ! command -v python3 >/dev/null 2>&1; then
@@ -53,9 +53,9 @@ if use_all:
         if skip:
             print("Total bash-pitfall findings: 0", file=sys.stderr); sys.exit(0)
         print(f"ERROR: --all requested but plugins/rite does not exist under {root}", file=sys.stderr); sys.exit(2)
-    walk_errors = []
+    walk_errors = {}
     def walk(top):
-        return os.walk(top, onerror=lambda e: walk_errors.append(e))
+        return os.walk(top, onerror=lambda e: walk_errors.setdefault(e.filename, e))
     for base in ("hooks", "scripts"):
         if not os.path.isdir(os.path.join(plugin, base)): continue
         for d, dirs, files in walk(os.path.join(plugin, base)):
@@ -64,7 +64,7 @@ if use_all:
     for d, dirs, files in walk(plugin):
         dirs.sort()
         targets += [os.path.relpath(os.path.join(d, f), root) for f in sorted(files) if f.endswith(".md")]
-    for e in walk_errors:
+    for e in walk_errors.values():
         print(f"WARNING: cannot list {e.filename}: {e.strerror} — not scanned", file=sys.stderr)
 
 # `tok` = one shell word fragment of a grep invocation (no `;` `)` `|` unless quoted)
@@ -73,7 +73,6 @@ GREP_C = re.compile(r"grep(?: +%s*)? +(?:-[A-Za-z]*c[A-Za-z]*|--count) %s*\|\| *
 MKTEMP_CD = re.compile(r"""\bcd\s+(?:--\s+)?["']?\$\(\s*mktemp\b""")
 SED_I = re.compile(r"""\bsed\s+(?:-[A-Za-z]+\s+)*(?:-i|--in-place)(?![.\w=])""")
 IF_BANG = re.compile(r"^\s*(?:if|elif)\s+!\s")
-BLOCK_END = re.compile(r"^\s*(?:fi|else|elif|if)\b")
 PIPE_SUBST = re.compile(r"=\$\([^)]*\|")
 IGNORE = "drift-check-ignore"
 
