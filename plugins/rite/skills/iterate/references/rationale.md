@@ -15,16 +15,16 @@ counter reset・fresh run の説明は `review_run` がない legacy state に�
 helper のテストが持つ。
 
 `cc >= max_cycles` を先に評価するのは、両立時にどちらを `CB_REASON` として報告するかを決めるため
-だけであり、独立性そのものは変えない。backstop を残す以上、16 cycle 以上を要する収束中の run は
-既定値のままでもこの経路で停止する。引き上げ前の 5 では 6 cycle 以上を要する収束中の run を殺して
+だけであり、上限判定が trend の verdict を見ない点は変えない。上限到達時の延長は
+`review-converging.sh` が判定し、条件の SoT はそのヘッダである。狭義単調減少は有限回で終わるため延長に別の上限は要らない。それ以外の run は従来どおりこの経路で停止する。引き上げ前の 5 では 6 cycle 以上を要する収束中の run を殺して
 いた — backtest の `12,5,3,2,2` がその形で、cycle 5 時点でも blocking が 2 件残っている。
 
 既定値を 15 へ引き上げた実測起点は run `8,5,4,6,3` で、収束トレンド判定が**判定の下りた head では
 一度も発散と判定しなかった**にもかかわらず、cycle 5 完了時点（`cycle_count == 5`、cycle 6 のループ
 頭）で backstop が発火した。この実測では判定は現 run の結果が 3 件揃うまで降りる — どの reason で
 降りるかは results dir と run 開始点 pin の状態で分かれるため、内訳は本体ステップ 1 の
-`TREND_REASON` 説明を参照。`10,9,8,7,6` は「漸減が続くが 0 に達しない」escape 節の対象で、本経路へ
-委ねること自体が設計どおりの帰着であり過剰発火例ではない。既定 15 は「引き上げ前の 5 が
+`TREND_REASON` 説明を参照。`10,9,8,7,6` は「漸減が続くが 0 に達しない」escape 節の対象で、本判定をすり抜けて
+上限判定へ渡ること自体が設計どおりの帰着であり過剰発火例ではない（上限到達時の延長は `review-converging.sh` が判定する）。既定 15 は「引き上げ前の 5 が
 実測で不足したことへの暫定対応」で、最適値は運用データで再評価する。
 
 cycle 数上限は努力と無駄を区別できない — 健全に収束中のループも残り数件のところで予算切れになり、
@@ -382,7 +382,7 @@ cycle になるので、counter と発散判定はそのまま続く。
 
 origin=pr の判定は、逸脱の `file:line` が `origin/{PR の baseRefName}...HEAD` の追加行と重なることで機械的に行う（設定済みの `branch.base` が `baseRefName` と食い違えば拒否する）
 （`lib/diff-hunks.sh`）。重ならない逸脱（base 由来や PR 外の欠陥）と、
-blocking が残っている review、`safety.max_review_cycles` に達した cycle（修正を再レビューできない）は
+blocking が残っている review、`safety.max_review_cycles` に達した cycle（修正を再レビューできないことがある）は
 拒否し、従来の `purpose_unaligned` 停止に落とす。この review context の `D-NN` を fix の計画が処置した後の記録も
 拒否する。fix が commit せずに戻ると HEAD は変わらず、同じ commit を再び fix へ渡すと cycle を進めないまま
 空転する（PR 内推奨を同じレビュー済み commit につき一度だけ渡すのと同じ終端）。記録は完了記録（`completed_context` / `deferred_context`）

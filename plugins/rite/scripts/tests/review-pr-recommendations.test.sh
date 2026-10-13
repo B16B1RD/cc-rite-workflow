@@ -51,7 +51,7 @@ check "the default max_review_cycles closes it" '[ $RC -eq 0 ] && [ "$OUT" = "[C
 printf 'safety:\n  max_review_cycles: 2\n' > "$REPO/rite-config.yml"
 review "$WORK/r2.json" 2 c1
 run capacity --input "$WORK/r2.json"
-check "a cycle at safety.max_review_cycles is cycle_cap (its fix could not be re-reviewed)" '[ "$OUT" = "[CONTEXT] PR_RECOMMENDATIONS_CAPACITY=cycle_cap" ]'
+check "a cycle at safety.max_review_cycles is cycle_cap (its fix may not be re-reviewed)" '[ "$OUT" = "[CONTEXT] PR_RECOMMENDATIONS_CAPACITY=cycle_cap" ]'
 run capacity --input "$WORK/r1.json"
 check "a cycle below the configured max is open" '[ "$OUT" = "[CONTEXT] PR_RECOMMENDATIONS_CAPACITY=open" ]'
 rm -f "$REPO/rite-config.yml"

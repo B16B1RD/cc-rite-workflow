@@ -11,8 +11,7 @@
 #   2. 記述の一致 (T-04) / 契約の不変 (T-05) — 既定値は 8 ファイルに複製されており、
 #      1 箇所でも取り残されると読者が「その経路は別の値」と誤読する。cycle-scope-contract.test.sh
 #      と同じ static-contract 方式で grep-pin する。
-#       で fix-relaxation-rules.md と review-trend-divergence.sh の散文も
-#      T-04 の sweep と positive pin に追加した。
+#      fix-relaxation-rules.md と review-trend-divergence.sh の散文も T-04 の sweep と positive pin の対象。
 
 set -uo pipefail
 
@@ -32,7 +31,6 @@ FIX_RELAXATION="$PLUGIN_ROOT/skills/fix/references/fix-relaxation-rules.md"
 TREND_HELPER="$PLUGIN_ROOT/hooks/scripts/review-trend-divergence.sh"
 
 DEFAULT_CYCLES=15
-BACKSTOP_CYCLE=$((DEFAULT_CYCLES + 1))
 
 TEST_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEST_DIR"' EXIT
@@ -216,8 +214,10 @@ assert_grep "T-04i: CONFIGURATION.md の loop head 数が $DEFAULT_CYCLES から
   "default budget of $DEFAULT_CYCLES that leaves twelve loop heads"
 assert_grep "T-04j: CONFIGURATION.md の backstop 到達 cycle が 16" "$CONFIG_DOC" \
   'backstop takes over at the head of cycle 16'
-assert_grep "T-04k: iterate/SKILL.md が「16 cycle 以上」で記述されている" "$ITERATE" \
-  '16 cycle 以上'
+assert_grep "T-04k: iterate/SKILL.md が上限到達時の収束中の扱い (review-converging.sh) を述べる" "$ITERATE" \
+  'review-converging\.sh'
+assert_not_grep "T-04k2: iterate/SKILL.md に変更前の「収束中でも停止する」記述が残っていない" "$ITERATE" \
+  '収束中の run は既定値のままでも本経路で停止する'
 # トレンド判定が発火しうる下限 (4 以上) を満たす値であることの明記 (§4.4 MUST)
 assert_grep "T-04l: CONFIGURATION.md が下限 4 制約と既定値の関係を明記" "$CONFIG_DOC" \
   "is 4 or more.*default of $DEFAULT_CYCLES satisfies that lower bound"
@@ -228,24 +228,22 @@ assert_grep "T-04m: CONFIGURATION.md が既定値の複製箇所を drift 源と
 # 英文の `at the default of N` と日本語の `（既定 N）` は、5 へ差し戻しても negative パターンに
 # 掛からず全件 green で通るため、既存 T-04a/e/g/h と同じ positive count pin で押さえる。
 # 本 pin だけ `grep -o | wc -l` で**出現数**を数える。CONFIGURATION.md の safety 表と backstop 節は
-# 1 段落 = 1 行の markdown で、同一行に `the default of 15` が 2 つ同居するため、行数を数える
-# `grep -c` では 4 出現を 2 と数えてしまう。`at` を含めず `the default of N` で数えるのは、
+# 1 段落 = 1 行の markdown で、同一行に `the default of 15` が複数同居しうるため、行数を数える
+# `grep -c` では出現数にならない。`at` を含めず `the default of N` で数えるのは、
 # 下限制約の記述 (`the default of 15 satisfies that lower bound`) と引き上げ根拠の記述
 # (`Whether the default of 15 is right`) も既定値を述べる箇所として同じ網に入れるため。
-assert "T-04n: CONFIGURATION.md の英文既定値 4 箇所が $DEFAULT_CYCLES" \
-  "4" "$(grep -o "the default of $DEFAULT_CYCLES" "$CONFIG_DOC" | wc -l | tr -d '[:space:]')"
+assert "T-04n: CONFIGURATION.md の英文既定値 2 箇所が $DEFAULT_CYCLES" \
+  "2" "$(grep -o "the default of $DEFAULT_CYCLES" "$CONFIG_DOC" | wc -l | tr -d '[:space:]')"
 # `${DEFAULT_CYCLES}` をブレースで囲む。直後が多バイト文字 `）` のため、素の `$DEFAULT_CYCLES` だと
 # 非 UTF-8 ロケールで後続バイトが変数名に畳み込まれ set -u を踏む (flow-state.test.sh TC-8b-h)。
 assert "T-04o: iterate/SKILL.md の散文既定値 3 箇所が $DEFAULT_CYCLES" \
   "3" "$(grep -c "（既定 ${DEFAULT_CYCLES}）" "$ITERATE")"
-assert "T-04p: SPEC.md の英文既定値 1 箇所が $DEFAULT_CYCLES" \
-  "1" "$(grep -c "at the default of $DEFAULT_CYCLES" "$SPEC_DOC")"
-assert "T-04q: fix relaxation rules の既定値 3 箇所が $DEFAULT_CYCLES" \
-  "3" "$(grep -o "既定 $DEFAULT_CYCLES" "$FIX_RELAXATION" | wc -l | tr -d '[:space:]')"
-assert_grep "T-04r: fix relaxation rules の既定値と導出 cycle が同期" "$FIX_RELAXATION" \
-  "既定 $DEFAULT_CYCLES では $BACKSTOP_CYCLE cycle 以上"
-assert_grep "T-04s: trend helper header の既定値と導出 cycle が同期" "$TREND_HELPER" \
-  "既定 $DEFAULT_CYCLES では $BACKSTOP_CYCLE cycle 以上"
+assert_grep "T-04p: SPEC.md が上限到達時の収束中の扱いを述べる" "$SPEC_DOC" \
+  "is not stopped at the limit"
+assert_not_grep "T-04p2: SPEC.md に変更前の「収束中の run も停止する」記述が残っていない" "$SPEC_DOC" \
+  "also stops a converging run"
+assert "T-04q: fix relaxation rules の既定値 2 箇所が $DEFAULT_CYCLES" \
+  "2" "$(grep -o "既定 $DEFAULT_CYCLES" "$FIX_RELAXATION" | wc -l | tr -d '[:space:]')"
 
 echo "=== T-05: backstop の発火条件と sentinel が不変 (AC-5) ==="
 # 既定値の引き上げは backstop を撤廃しない (D-01 / MUST NOT)。

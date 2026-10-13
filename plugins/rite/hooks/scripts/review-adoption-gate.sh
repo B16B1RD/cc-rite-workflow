@@ -14,7 +14,7 @@
 #           reads) and `review-pr-recommendations.sh capacity` is open. Nothing is written
 #           outside the PR; the caller registers it as an in-PR recommendation for the same PR's
 #           fix. Nothing reads the registration in a standalone review, and at
-#           safety.max_review_cycles the fix could not be re-reviewed, so both hold the candidate.
+#           safety.max_review_cycles the fix may not be re-reviewed, so both hold the candidate.
 #   hold    anything else: pr_blocking decisions (RECONCILE, ADOPT pr/unknown, DIAGNOSE
 #           pr/unknown, LINK pr/unknown outside followup) and DIAGNOSE without investigation.
 # A missing record file, an unreadable context, or a helper ERROR holds every candidate.

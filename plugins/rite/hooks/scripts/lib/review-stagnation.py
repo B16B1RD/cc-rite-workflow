@@ -652,9 +652,9 @@ def deviate(state, args, directory):
     require(receipt is not None, "saved review receipt missing")
     require(not any(f.get("scope") in ("current-pr", "follow-up") for f in receipt[1]["findings"]),
             "the review still has blocking findings; fix them through the ordinary fix path")
-    # The fix of this cycle could not be re-reviewed: the next review would trip max-cycles.
+    # The fix of this cycle may not be re-reviewed: the next review may trip max-cycles.
     require(state["cycle_count"] < review_cycle_cap(),
-            "the review is at safety.max_review_cycles; its fix could not be re-reviewed")
+            "the review is at safety.max_review_cycles; its fix may not be re-reviewed")
     require(pr_added(state, record["file"], line, end),
             "deviation does not point at a line this PR added")
     # A fix that disposed this review's deviations without a new commit returns to
@@ -829,7 +829,7 @@ def observe(state, args, directory):
     # existing_breaker re-reads every saved receipt and checks the observation
     # series for gaps before it decides anything, so it runs on every path. Only
     # which stop is recorded depends on the grant.
-    breaker = existing_breaker(state, run)
+    breaker, converging_reason = existing_breaker(state, run)
     concluded = conclude_retry(run, receipt[1])
     if concluded:
         entry["decision"] = concluded.copy()
@@ -838,6 +838,8 @@ def observe(state, args, directory):
         return state
     if breaker:
         decision = dict(action="stop", reasons=[breaker])
+        if breaker == "max-cycles":
+            decision["converging_reason"] = converging_reason
         entry["decision"] = decision.copy()
         run.update(status="stopped", stop_reason="circuit-breaker:" + breaker, current_decision=decision)
         state.update(active=False, stop_reason=run["stop_reason"], updated_at=cycle.now())
@@ -886,7 +888,11 @@ def observe(state, args, directory):
 
 
 def existing_breaker(state, run):
-    """Validate all receipts, then reuse the established trend policy on this run only."""
+    """Validate all receipts, then reuse the established trend policy on this run only.
+
+    Returns (breaker, converging_reason): breaker is "max-cycles" / "divergence" / None;
+    converging_reason is why the cap was not extended (only set with "max-cycles").
+    """
     records = run["observations"]
     expected = list(range(run["first_cycle"], state["cycle_count"] + 1))
     require([item["input"]["review_context"]["cycle_count"] for item in records] == expected,
@@ -916,10 +922,39 @@ def existing_breaker(state, run):
     run["trend"] = marker
     # A completed mergeable review proceeds to the unchanged quality gates.
     if state["review_cycle"]["verdict"] == "mergeable":
-        return None
+        return None, ""
     if state["cycle_count"] >= review_cycle_cap():
-        return "max-cycles"
-    return "divergence" if marker["TREND_DIVERGENCE"] == "fire" else None
+        extended, reason = converging(state, marker)
+        if not extended:
+            return "max-cycles", reason
+    return ("divergence" if marker["TREND_DIVERGENCE"] == "fire" else None), ""
+
+
+def converging(state, marker):
+    """(extended, reason): extended is True when review-converging.sh says yes (cap is not applied; the condition is in its header).
+
+    The condition itself lives in the helper header; reason is its reason= value, or a helper_* value when it could not run.
+    """
+    helper = Path(__file__).resolve().parent.parent / "review-converging.sh"
+    result = subprocess.run(["bash", str(helper), "--pr", str(state["pr_number"]),
+                             "--trend", marker["trend"], "--max-trailing", "0"], capture_output=True, text=True)
+    if result.stderr:
+        sys.stderr.write(result.stderr)
+    if result.returncode != 0:
+        # iterate-step.sh と同じく、判定できないときは上限で止める側へ倒す（理由は stderr に残す）
+        sys.stderr.write("WARNING: convergence check could not run (rc=%d); stopping at the cycle cap\n" % result.returncode)
+        return False, "helper_failed"
+    found = re.search(r"^\[CONTEXT\] REVIEW_CONVERGING=([^;\n]*)(?:; reason=([A-Za-z0-9_]*))?", result.stdout, re.M)
+    if not found or not found[1]:
+        sys.stderr.write("WARNING: convergence check printed no verdict; stopping at the cycle cap\n")
+        return False, "helper_no_marker"
+    if found[1] not in ("yes", "no"):
+        sys.stderr.write("WARNING: convergence check printed an unexpected verdict (%s); stopping at the cycle cap\n" % found[1])
+        return False, "helper_bad_verdict"
+    if not found[2]:
+        sys.stderr.write("WARNING: convergence check printed no reason; stopping at the cycle cap\n")
+        return False, "helper_no_reason"
+    return found[1] == "yes", found[2]
 
 
 def review_cycle_cap():

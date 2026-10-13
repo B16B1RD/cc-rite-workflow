@@ -138,7 +138,7 @@ case "$cur_phase" in
   review|fix) cb_mode_init=resume ;;
   *)          cb_mode_init=fresh ;;
 esac
-# **この起動でステップ 1 が review を回さずに fire するか**（上限以上なら fire）。ステップ 6.2 の
+# **この起動でステップ 1 が review を回さずに fire しうるか**（上限以上なら fire しうる。収束中の run はステップ 1 の判定で止まらない）。ステップ 6.2 の
 # 注意行 (a) の付加条件をこの述語が決める。ここでは reset 試行**前**の値で暫定的に立て、
 # reset に成功したら下の分岐で 0 に落とす（実効 counter に合わせる）。
 cb_will_refire=0
@@ -453,7 +453,39 @@ retry_pending=$(printf '%s' "$review_state" | jq -r '
      and (.cycle_count // 0) == ($run.retry.stop_context.cycle_count // -1))') || exit 1
 cb_reason=""
 retry_hold=0
+# 上限到達時の延長可否は review-converging.sh が決める（条件の定義はそのヘッダが SoT。判定不能は上限で止める側）。
+at_cap=0
+cap_extended=0
+converging_reason=""
 if [ "$cc" -ge "$max_cycles" ] 2>/dev/null; then
+  at_cap=1
+  if [ "$trend_verdict" != ok ] && [ "$trend_verdict" != fire ]; then
+    # 件数列を復元できていない。helper を呼んでも need_3_cycles が本当の原因を隠すので、trend 側の理由を引き継ぐ
+    converging_reason="trend_${trend_reason:-undecided}"
+  else
+    converging_out=$(bash "$plugin_root"/hooks/scripts/review-converging.sh --pr "$pr_number" --trend "$trend_series"); converging_rc=$?
+    converging_verdict=$(printf '%s\n' "$converging_out" | marker_get REVIEW_CONVERGING)
+    if [ "$converging_rc" -ne 0 ]; then
+      echo "WARNING: 収束中の判定を実行できませんでした（rc=${converging_rc}）。上限で停止します" >&2
+      converging_reason=helper_failed
+    elif [ -z "$converging_verdict" ]; then
+      echo "WARNING: 収束中の判定が marker を出しませんでした。上限で停止します" >&2
+      converging_reason=helper_no_marker
+    elif [ "$converging_verdict" != yes ] && [ "$converging_verdict" != no ]; then
+      echo "WARNING: 収束中の判定が想定外の verdict を出しました（${converging_verdict}）。上限で停止します" >&2
+      converging_reason=helper_bad_verdict
+    else
+      converging_reason=$(printf '%s\n' "$converging_out" | marker_get REVIEW_CONVERGING --field reason)
+      if [ -z "$converging_reason" ]; then
+        echo "WARNING: 収束中の判定が reason を出しませんでした。上限で停止します" >&2
+        converging_reason=helper_no_reason
+      elif [ "$converging_verdict" = yes ]; then
+        at_cap=0; cap_extended=1
+      fi
+    fi
+  fi
+fi
+if [ "$at_cap" -eq 1 ]; then
   cb_reason=max-cycles
 elif [ "$trend_verdict" = fire ] && [ "$retry_pending" = true ]; then
   retry_hold=1
@@ -519,6 +551,7 @@ elif [ -n "$cb_reason" ]; then
     "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=none"
   marker_emit ITERATE_CB fire "cycle=$cc" "max=$max_cycles" "CB_REASON=$cb_reason" \
     "TREND=$trend_series" "TREND_VERDICT=$trend_verdict" "TREND_REASON=$trend_reason" \
+    "CONVERGING_REASON=$converging_reason" \
     "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "HANDOFF_CLEAR=$handoff_clear"
 else
   # 名簿を確定してから review-start が一度だけ counter を進める。
@@ -528,7 +561,8 @@ else
     "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=$inc_status"
   marker_emit ITERATE_CB ok "cycle=$new_cc" "max=$max_cycles" \
     "TREND=$trend_series" "TREND_VERDICT=$trend_verdict" "TREND_REASON=$trend_reason" \
-    "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=$inc_status" "RETRY_HOLD=$retry_hold"
+    "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=$inc_status" "RETRY_HOLD=$retry_hold" \
+    "CAP_EXTENDED=$cap_extended"
 fi
 }
 
@@ -548,7 +582,15 @@ stagnation_state=$(bash "$plugin_root"/hooks/flow-state.sh get --jq-filter .) ||
 if printf '%s' "$stagnation_state" | jq -e '.review_run != null' >/dev/null; then
   stagnation_action=$(printf '%s' "$stagnation_state" | jq -er '.review_run.current_decision.action') || exit 1
   case "$stagnation_action" in
-    continue|replan|stop) marker_emit ITERATE_STAGNATION "$stagnation_action" ;;
+    continue|replan) marker_emit ITERATE_STAGNATION "$stagnation_action" ;;
+    stop)
+      # 停止通知の推移は observe が判定に使った列（最新 review を含む）を載せる。ステップ 1 の ok marker の値は 1 cycle 古い。
+      # 上限停止を observe 側で下した run は、延長しなかった理由も渡す
+      stagnation_trend=$(printf '%s' "$stagnation_state" | jq -r '.review_run.trend | if type == "object" then "\(.trend // "")|\(.TREND_DIVERGENCE // "")|\(.reason // "")" else error("review_run.trend is not an object") end') || { echo 'ERROR: review_run.trend を読めません' >&2; exit 1; }
+      stagnation_converging=$(printf '%s' "$stagnation_state" | jq -r '.review_run.current_decision.converging_reason // ""') || exit 1
+      stagnation_fields=("TREND=${stagnation_trend%%|*}" "TREND_VERDICT=$(printf '%s' "$stagnation_trend" | cut -d'|' -f2)" "TREND_REASON=${stagnation_trend##*|}")
+      [ -z "$stagnation_converging" ] || stagnation_fields+=("CONVERGING_REASON=$stagnation_converging")
+      marker_emit ITERATE_STAGNATION stop "${stagnation_fields[@]}" ;;
     *) echo 'ERROR: invalid stagnation decision' >&2; exit 1 ;;
   esac
 else

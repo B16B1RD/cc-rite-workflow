@@ -365,6 +365,17 @@ try:
         time.sleep(1.1)
     f.cycle(roots=('input defect', 'second defect', 'third defect'), seconds=1801)
     check(f.state()['stop_reason'] == 'circuit-breaker:divergence', 'T-22: fixture reached divergence stop')
+    # divergence 停止でも停止通知用の推移は observe の列で載り、上限の理由は付かない
+    route = marker(f.run(['bash', str(plugin / 'scripts/iterate-step.sh'), 'stagnation-route']).stdout, 'ITERATE_STAGNATION')
+    check('ITERATE_STAGNATION=stop' in route and 'TREND=1,2,3;' in route and 'TREND_VERDICT=fire' in route
+          and 'CONVERGING_REASON' not in route, 'T-22: a divergence stop carries the observed trend without a cap reason:\n' + route)
+    saved = f.state_path.read_text()
+    broken = json.loads(saved)
+    broken['review_run'].pop('trend', None)
+    f.state_path.write_text(json.dumps(broken))
+    failed = f.run(['bash', str(plugin / 'scripts/iterate-step.sh'), 'stagnation-route'], ok=False)
+    check(failed.returncode != 0 and 'review_run.trend' in failed.stderr, 'T-22: a stop without a saved trend fails loudly:\n' + failed.stdout + failed.stderr)
+    f.state_path.write_text(saved)
     f.plan()
     retry(f)
     f.fix()
@@ -1132,6 +1143,102 @@ try:
     check(refused.returncode != 0 and HINT not in refused.stderr, 'T-SC11: a stopped run is not pointed at reconcile')
 finally:
     f.close()
+
+# T-23: at the cycle cap iterate's cycle gate lets a descending run with no fix-introduced findings
+# go on, and stops every other run on the cap.
+for label, entries, stops in [
+        ('measured clean', [dict(findings_total=1, findings_new_from_fix=0)], False),
+        ('fix-introduced findings', [dict(findings_total=1, findings_new_from_fix=2)], True),
+        ('unmeasured initial value', [dict(findings_new_from_fix=0)], True),
+        ('stale measurement', [dict(findings_total=1, findings_new_from_fix=0), dict(findings_new_from_fix=0),
+                               dict(findings_new_from_fix=0)], True),
+        ('no fix-cycle-state', None, True)]:
+    f = Fixture()
+    try:
+        (f.root / 'rite-config.yml').write_text('safety:\n  max_review_cycles: 3\n')
+        (f.root / '.git/info/exclude').write_text('.rite/\nrite-config.yml\n')
+        for roots in (('a', 'b', 'c'), ('a', 'b')):
+            f.cycle(roots=roots)
+            f.fix()
+            time.sleep(1.1)
+        if entries is not None:
+            (f.root / '.rite/fix-cycle-state').mkdir(parents=True, exist_ok=True)
+            dump(f.root / '.rite/fix-cycle-state/71.json', dict(cycles=entries))
+        f.cycle(roots=['a'])
+        if stops:
+            (f.root / 'source.txt').write_text('moved head\n')
+            f.commit()
+        else:
+            f.fix()
+            # 本番の形: fix が未計測の entry を 1 件足した直後に cycle-gate が走る (trailing=1)
+            added = json.loads((f.root / '.rite/fix-cycle-state/71.json').read_text())
+            added['cycles'].append(dict(findings_new_from_fix=0))
+            dump(f.root / '.rite/fix-cycle-state/71.json', added)
+        output = gate(f)
+        cb = marker(output, 'ITERATE_CB')
+        if stops:
+            check('ITERATE_CB=fire;' in cb and 'CB_REASON=max-cycles' in cb, 'T-23: ' + label + ' stops on the cap:\n' + output)
+            check('CONVERGING_REASON=' + {'fix-introduced findings': 'fix_introduced_findings',
+                                          'unmeasured initial value': 'fix_state_unmeasured',
+                                          'stale measurement': 'fix_state_stale',
+                                          'no fix-cycle-state': 'fix_state_missing'}[label] in cb,
+                  'T-23: ' + label + ' reports why it was not extended:\n' + cb)
+        else:
+            check(cb.startswith('[CONTEXT] ITERATE_CB=ok;') and 'TREND=3,2,1;' in cb and 'CAP_EXTENDED=1' in cb,
+                  'T-23: ' + label + ' is not stopped by the cap:\n' + output)
+            # 延長は降下が続く間だけ: 次の cycle で足踏み (3,2,1,1) すれば上限で止まる
+            time.sleep(1.1)
+            f.cycle(roots=['a'])
+            (f.root / 'source.txt').write_text('moved head again\n')
+            f.commit()
+            cb = marker(gate(f), 'ITERATE_CB')
+            check('ITERATE_CB=fire;' in cb and 'CB_REASON=max-cycles' in cb and 'CONVERGING_REASON=not_descending' in cb,
+                  'T-23: the extension ends once the descent stalls:\n' + cb)
+    finally:
+        f.close()
+
+# T-23b: cycle-gate が判定不能な入力を「延長しない」理由として載せる (trend 不足 / helper 失敗 / verdict 無し / reason 無し / 想定外 verdict)
+import shutil
+copied = Path(tempfile.mkdtemp()) / 'rite'
+shutil.copytree(plugin, copied)
+def stub_gate(fixture):
+    return fixture.run(['bash', str(copied / 'scripts/iterate-step.sh'), 'cycle-gate',
+                        '--pr', '71', '--issue', '42', '--branch', 'fix/issue-42']).stdout
+for label, cap, helper_body, reason in [
+        ('too few cycles', 2, None, 'trend_need_3_cycles'),
+        ('helper fails', 3, 'exit 2', 'helper_failed'),
+        ('helper prints no verdict', 3, 'exit 0', 'helper_no_marker'),
+        ('helper prints yes without reason', 3, 'echo "[CONTEXT] REVIEW_CONVERGING=yes"', 'helper_no_reason'),
+        ('helper prints an unknown verdict', 3, 'echo "[CONTEXT] REVIEW_CONVERGING=maybe; reason=descending_without_fix_regressions"', 'helper_bad_verdict')]:
+    f = Fixture()
+    try:
+        (f.root / 'rite-config.yml').write_text('safety:\n  max_review_cycles: %d\n' % cap)
+        (f.root / '.git/info/exclude').write_text('.rite/\nrite-config.yml\n')
+        stub = copied / 'hooks/scripts/review-converging.sh'
+        if helper_body is None:
+            stub.write_text((plugin / 'hooks/scripts/review-converging.sh').read_text())
+        else:
+            stub.write_text('#!/bin/bash\n' + helper_body + '\n')
+        series = [('a', 'b', 'c'), ('a', 'b'), ['a']][:cap]
+        for roots in series[:-1]:
+            f.cycle(roots=roots)
+            f.fix()
+            time.sleep(1.1)
+        (f.root / '.rite/fix-cycle-state').mkdir(parents=True, exist_ok=True)
+        dump(f.root / '.rite/fix-cycle-state/71.json', dict(cycles=[dict(findings_total=1, findings_new_from_fix=0)]))
+        f.cycle(roots=series[-1])
+        (f.root / 'source.txt').write_text('moved head\n')
+        f.commit()
+        cb = marker(stub_gate(f), 'ITERATE_CB')
+        check('ITERATE_CB=fire;' in cb and 'CB_REASON=max-cycles' in cb and 'CONVERGING_REASON=' + reason in cb,
+              'T-23b: ' + label + ' reports ' + reason + ':\n' + cb)
+        if cap == 2:
+            # observe 側で上限停止した run は、停止通知用に延長しなかった理由を stagnation-route が渡す
+            route = marker(f.run(['bash', str(plugin / 'scripts/iterate-step.sh'), 'stagnation-route']).stdout, 'ITERATE_STAGNATION')
+            check('ITERATE_STAGNATION=stop' in route and 'CONVERGING_REASON=need_3_cycles' in route and 'TREND=3,2;' in route and 'TREND_VERDICT=insufficient' in route and 'TREND_REASON=need_3_cycles' in route,
+                  'T-23b: stagnation-route carries why the cap was not extended:\n' + route)
+    finally:
+        f.close()
 
 print('PASS: review stagnation retry: ' + str(stagnation_fixture.checks) + ' assertions; real clocks, receipts, repairs and retained stops')
 PYTEST
