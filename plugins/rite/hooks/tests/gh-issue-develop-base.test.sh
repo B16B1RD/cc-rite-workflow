@@ -65,11 +65,10 @@ fi
 
 # TC-2b: 復旧案内 (recover スキル) の gh issue develop が走査対象に含まれる
 if [ "$scan_ok" -eq 1 ]; then
-  if printf '%s' "$scan_out" | grep -q 'skills/recover/SKILL\.md'; then
-    pass "TC-2b recover スキルの gh issue develop 記述を検出"
-  else
-    fail "TC-2b recover スキルの gh issue develop 記述が検出されない"
-  fi
+  case "$scan_out" in
+    *skills/recover/SKILL.md*) pass "TC-2b recover スキルの gh issue develop 記述を検出" ;;
+    *) fail "TC-2b recover スキルの gh issue develop 記述が検出されない" ;;
+  esac
 fi
 
 # TC-3: 同じ scan_dir / filter_violations が fixture の違反行を検出する
