@@ -430,23 +430,29 @@ class WorkflowContracts(unittest.TestCase):
             self.assertIn("in HEAD but missing from the work tree", result.stderr, uncommitted)
         self.run_command(["git", "-C", str(self.fixture), "rm", "-q", "--cached", "gone.md"])
         self.run_command(committed + ["commit", "-q", "-m", "delete"])
-        for deleted in ["gone.md", "go*.md"]:
-            result = run_extra(plugin, "error-handling", deleted if deleted == "gone.md" else "docs/a.txt")
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertNotIn(bash_ref, result.stdout)
+        result = run_extra(plugin, "error-handling", "gone.md")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn(bash_ref, result.stdout)
+        # The same committed deletion is still recognised from a subdirectory (rev-list runs at the repository root).
+        (self.fixture / "sub").mkdir(exist_ok=True)
+        code_sub = extra_code.replace("{plugin_root}", str(plugin)).replace("{reviewer_type}", "error-handling").replace("{review_paths}", "gone.md")
+        result = subprocess.run(["bash", "-c", code_sub], cwd=str(self.fixture / "sub"), capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # A glob is a literal name, not a pathspec: it matches nothing.
         result = run_extra(plugin, "error-handling", "go*.md")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("neither in the work tree nor in HEAD history", result.stderr)
         # Paths must be repository-root-relative: an absolute path or one that leaves the repository is refused even when the file exists.
-        for outside in [str(self.fixture / "hooks/x.sh"), "../other/f.md", "hooks/../hooks/x.sh", "..", "docs/.."]:
+        for outside in [str(self.fixture / "hooks/x.sh"), "/tmp/rite-cycle-scope-files-1.txt", "../other/f.md", "hooks/../hooks/x.sh", "..", "docs/.."]:
             result = run_extra(plugin, "error-handling", outside)
             self.assertNotEqual(result.returncode, 0, outside)
             self.assertEqual(result.stdout, "", outside)
             self.assertIn("repository-root-relative", result.stderr, outside)
-        for absent in ["missing.md", "nowhere.txt", "hooks/x.sh,never-added.sh", "/tmp/rite-cycle-scope-files-1.txt"]:
+        for absent in ["missing.md", "nowhere.txt", "hooks/x.sh,never-added.sh"]:
             result = run_extra(plugin, "error-handling", absent)
             self.assertNotEqual(result.returncode, 0, absent)
             self.assertEqual(result.stdout, "", absent)
+            self.assertIn("neither in the work tree nor in HEAD history", result.stderr, absent)
         # Names with an inner space, quote or non-ASCII character are ordinary paths.
         for name in ["My Notes.md", "it's.md", "メモ.md"]:
             (self.fixture / name).write_text("```bash\necho x\n```\n", encoding="utf-8")
@@ -563,7 +569,7 @@ class WorkflowContracts(unittest.TestCase):
             self.assertIn(sentence, load_part)
         pr_review_lines = pr_review.splitlines()
         step5 = next(line for line in pr_review_lines if line.startswith("5. **追加読取元を確定する**"))
-        self.assertTrue(step5.endswith("対応表は helper が持つ（文書整合の規則は全 reviewer、固有の規則は prompt-engineer / tech-writer / test、error-handling は変更ファイルが bash を含むときに限る）。`{review_paths}` はステップ 1.2 の変更ファイル一覧（`REVIEW_CYCLE_SCOPE == incremental` のときは `{cycle_scope_files}` が指すファイルの各行）を、カンマで連結した 1 行（区切りに空白も改行も足さない）（wiki-apply 用の、存在するパスだけの一覧 `{changed_paths}` とは別物）。各要素は repo root からの相対パス（名前の内側の空白と引用符は許す。shell に渡すときは `\"`・`$`・backtick を含む名前をエスケープする）。error-handling では、形が違う（制御文字・空要素・要素の前後の空白・絶対パス・`..`）か、作業ツリーに無くコミット済みの削除でもないパス（HEAD にあるのに無い、どこにも無い）があると helper が止まる。helper が file 単位で判定し、`.sh` / `.bash` の変更、または bash / sh / shell の fenced block を持つ `.md` の変更なら渡す（diff の行位置には依らない）。named / 独立子とも同じ全文読取義務を渡す。"))
+        self.assertTrue(step5.endswith("対応表は helper が持つ（文書整合の規則は全 reviewer、固有の規則は prompt-engineer / tech-writer / test、error-handling は変更ファイルが bash を含むときに限る）。`{review_paths}` はステップ 1.2 の変更ファイル一覧（`REVIEW_CYCLE_SCOPE == incremental` のときは `{cycle_scope_files}` が指すファイルの各行）を、カンマで連結した 1 行（区切りに空白も改行も足さない）（wiki-apply 用の、存在するパスだけの一覧 `{changed_paths}` とは別物）。各要素は repo root からの相対パス（名前の内側の空白と引用符は許す。shell に渡すときは `\"`・`\\`・`$`・backtick を含む名前をエスケープする）。error-handling では、形が違う（制御文字・空要素・要素の前後の空白・絶対パス・`..`）か、作業ツリーに無くコミット済みの削除でもないパス（HEAD にあるのに無い、どこにも無い）があると helper が止まる。helper が file 単位で判定し、`.sh` / `.bash` の変更、または bash / sh / shell の fenced block を持つ `.md` の変更なら渡す（diff の行位置には依らない）。named / 独立子とも同じ全文読取義務を渡す。"))
         self.assertNotIn("のときだけ", step5)
         dispatch = next(line for line in pr_review_lines if line.startswith("**並列（MUST）**"))
         self.assertTrue(dispatch.endswith("tech-writer には `{prose_reviewer_principles}` も渡す。全 reviewer に `{additional_reviewer_references}` も渡す。"))

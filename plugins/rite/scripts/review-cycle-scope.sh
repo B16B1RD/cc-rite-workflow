@@ -272,7 +272,8 @@ if ! git cat-file -e "${base_sha}^{commit}" 2>"$probe_err"; then
   emit_full commit_sha_unreachable
 fi
 
-# 一覧は pr-review-step.sh extra-references へそのまま渡るので、非 ASCII のパスを引用符付き表記にしない (core.quotePath=false)
+# 非 ASCII のパスを 8 進エスケープ（引用符付き表記）にしない (core.quotePath=false)。一覧は pr-review-step.sh extra-references へ渡る
+# （`"` や `\` を含む名前は引き続き引用されるので、その場合は helper が止まる）
 # 改名は元パスと新パスの 2 つとして数える。--name-only は検出した改名の移動先しか出さないため、
 # rename 検出が有効だと PR 自身の変更 (commit ごと) と起点からの差分 (範囲全体) の積から元パスが落ちる。
 diff_names=$(git -c core.quotePath=false diff --no-renames --name-only "${base_sha}..HEAD" 2>"$probe_err") || {

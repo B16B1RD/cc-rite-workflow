@@ -605,12 +605,12 @@ case "$reviewer_type" in
     for changed in "${changed_list[@]}"; do
       # 全要素の存在を確かめる。repo root からの相対パスだけを受け付け、作業ツリーに無いのは
       # 「HEAD に無く、履歴にある」（コミット済みの削除）パスだけ許す。HEAD にあるのに無いパスは止める
-      # （絶対パスと .. は git が repo 内パスとして解決してしまうので、先に形で拒否する）
+      # （絶対パスと .. は repo の外や別名のファイルを読んでしまい、git も repo 内パスとして解決するので、先に形で拒否する）
       case "$changed" in
         /*|..|../*|*/..|*/../*) usage_error "--paths elements must be repository-root-relative paths without '..': $changed" ;;
       esac
       if [ ! -e "$repo_top/$changed" ]; then
-        if git -C "$repo_top" cat-file -e "HEAD:$changed" 2>/dev/null; then
+        if git -C "$repo_top" rev-parse --verify -q "HEAD:$changed" >/dev/null 2>&1; then
           echo "[review:error] changed path is in HEAD but missing from the work tree: $changed" >&2; exit 1
         fi
         history_rc=0
