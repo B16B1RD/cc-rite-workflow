@@ -52,8 +52,10 @@ done
 OUT=$(gate)
 out_has "T-06: 0 バイトの state は黙って skip せずエラーにする" "ERROR"
 
-echo '{"cycles":[null]}' > "$TEST_DIR/.rite/fix-cycle-state/9.json"
-OUT=$(gate)
-out_has "T-07: 最新 entry が object でなければ進まず skip する (null を計測済み object に変えない)" "FINDING_ATTRIBUTION skip"
+for bad in '{"cycles":[null]}' '{"cycles":[{"findings_total":1},"x"]}' '{"cycles":[1]}'; do
+  echo "$bad" > "$TEST_DIR/.rite/fix-cycle-state/9.json"
+  OUT=$(gate)
+  out_has "T-07: 最新 entry が object でなければエラー ($bad)" "ERROR"
+done
 
 print_summary "attribution-gate"

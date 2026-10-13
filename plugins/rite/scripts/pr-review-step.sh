@@ -897,8 +897,8 @@ if [ ! -f "$gate_state" ]; then
  exit 0
 fi
 # 最新 entry が未計測（findings_total 無し）= fix の直後の review。計測済み、または entry 無しは
-# 前 run の残りか初回 review なので帰属の対象にしない。
-gate_pending=$(jq -r 'if (.cycles | type) == "array" then ((.cycles | length) > 0 and (.cycles[-1] | type) == "object" and (.cycles[-1] | has("findings_total") | not)) else error("cycles is not an array") end' "$gate_state") || {
+# 前 run の残りか初回 review なので帰属の対象にしない。cycles が配列でない / 最新 entry が object でないのは破損なので ERROR。
+gate_pending=$(jq -r 'if (.cycles | type) != "array" then error("cycles is not an array") elif (.cycles | length) == 0 then false elif (.cycles[-1] | type) != "object" then error("latest cycle entry is not an object") else (.cycles[-1] | has("findings_total") | not) end' "$gate_state") || {
  echo "ERROR: fix-cycle-state を読めません ($gate_state)" >&2
  exit 1
 }

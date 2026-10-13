@@ -888,7 +888,11 @@ def observe(state, args, directory):
 
 
 def existing_breaker(state, run):
-    """Validate all receipts, then reuse the established trend policy on this run only."""
+    """Validate all receipts, then reuse the established trend policy on this run only.
+
+    Returns (breaker, converging_reason): breaker is "max-cycles" / "divergence" / None;
+    converging_reason is why the cap was not extended (only set with "max-cycles").
+    """
     records = run["observations"]
     expected = list(range(run["first_cycle"], state["cycle_count"] + 1))
     require([item["input"]["review_context"]["cycle_count"] for item in records] == expected,

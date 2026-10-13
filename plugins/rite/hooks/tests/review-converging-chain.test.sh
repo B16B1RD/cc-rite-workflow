@@ -59,7 +59,13 @@ OUT=$(converging 9,6,3)
 has "T-08: 書かれた fix 由来 1 件で延長しない" "reason=fix_introduced_findings"
 
 OUT=$(converging 9,6,3 2); rc=$?
+assert "T-08b: rc は 2" "2" "$rc"
 has "T-08b: --max-trailing は 0 か 1 のみ (2 は呼び出しエラー)" "ERROR"
+
+trailing_comma="9,6,3,"; OUT=$(converging "$trailing_comma")
+has "T-08c: 末尾カンマの trend は延長しない" "reason=trend_malformed"
+OUT=$(converging 9999999999999999,5,1)
+has "T-08d: 16 桁以上の値は不正" "reason=trend_malformed"
 
 # python 側: helper が失敗・無出力でも延長せず理由を返す (fail-open に倒さない)
 STUB="$TEST_DIR/stub"

@@ -465,6 +465,10 @@ if [ "$cc" -ge "$max_cycles" ] 2>/dev/null; then
   else
     converging_out=$(bash "$plugin_root"/hooks/scripts/review-converging.sh --pr "$pr_number" --trend "$trend_series"); converging_rc=$?
     converging_verdict=$(printf '%s\n' "$converging_out" | marker_get REVIEW_CONVERGING)
+    if [ "$converging_rc" -eq 0 ] && [ -n "$converging_verdict" ] && [ "$converging_verdict" != yes ] && [ "$converging_verdict" != no ]; then
+      echo "WARNING: 収束中の判定が想定外の verdict を出しました（${converging_verdict}）。上限で停止します" >&2
+      converging_verdict=""
+    fi
     if [ "$converging_rc" -ne 0 ]; then
       echo "WARNING: 収束中の判定を実行できませんでした（rc=${converging_rc}）。上限で停止します" >&2
       converging_reason=helper_failed
@@ -475,7 +479,7 @@ if [ "$cc" -ge "$max_cycles" ] 2>/dev/null; then
       converging_reason=$(printf '%s\n' "$converging_out" | marker_get REVIEW_CONVERGING --field reason)
       if [ -z "$converging_reason" ]; then
         echo "WARNING: 収束中の判定が reason を出しませんでした。上限で停止します" >&2
-        converging_reason=helper_no_marker
+        converging_reason=helper_no_reason
       elif [ "$converging_verdict" = yes ]; then
         at_cap=0; cap_extended=1
       fi
@@ -582,9 +586,12 @@ if printf '%s' "$stagnation_state" | jq -e '.review_run != null' >/dev/null; the
     continue|replan) marker_emit ITERATE_STAGNATION "$stagnation_action" ;;
     stop)
       # 上限停止を observe 側で下した run は、延長しなかった理由を停止通知へ渡す
+      # 停止通知の推移は observe が判定に使った列（最新 review を含む）を載せる。ステップ 1 の ok marker の値は 1 cycle 古い
       stagnation_converging=$(printf '%s' "$stagnation_state" | jq -r '.review_run.current_decision.converging_reason // ""') || exit 1
       if [ -n "$stagnation_converging" ]; then
-        marker_emit ITERATE_STAGNATION stop "CONVERGING_REASON=$stagnation_converging"
+        stagnation_trend=$(printf '%s' "$stagnation_state" | jq -r '.review_run.trend | "\(.trend // "")|\(.TREND_DIVERGENCE // "")|\(.reason // "")"') || exit 1
+        marker_emit ITERATE_STAGNATION stop "CONVERGING_REASON=$stagnation_converging" \
+          "TREND=${stagnation_trend%%|*}" "TREND_VERDICT=$(printf '%s' "$stagnation_trend" | cut -d'|' -f2)" "TREND_REASON=${stagnation_trend##*|}"
       else
         marker_emit ITERATE_STAGNATION stop
       fi ;;

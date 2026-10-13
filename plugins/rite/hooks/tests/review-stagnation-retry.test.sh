@@ -1196,7 +1196,9 @@ def stub_gate(fixture):
 for label, cap, helper_body, reason in [
         ('too few cycles', 2, None, 'trend_need_3_cycles'),
         ('helper fails', 3, 'exit 2', 'helper_failed'),
-        ('helper prints no verdict', 3, 'exit 0', 'helper_no_marker')]:
+        ('helper prints no verdict', 3, 'exit 0', 'helper_no_marker'),
+        ('helper prints yes without reason', 3, 'echo "[CONTEXT] REVIEW_CONVERGING=yes"', 'helper_no_reason'),
+        ('helper prints an unknown verdict', 3, 'echo "[CONTEXT] REVIEW_CONVERGING=maybe; reason=descending_without_fix_regressions"', 'helper_no_marker')]:
     f = Fixture()
     try:
         (f.root / 'rite-config.yml').write_text('safety:\n  max_review_cycles: %d\n' % cap)
@@ -1222,7 +1224,7 @@ for label, cap, helper_body, reason in [
         if cap == 2:
             # observe 側で上限停止した run は、停止通知用に延長しなかった理由を stagnation-route が渡す
             route = marker(f.run(['bash', str(plugin / 'scripts/iterate-step.sh'), 'stagnation-route']).stdout, 'ITERATE_STAGNATION')
-            check('ITERATE_STAGNATION=stop' in route and 'CONVERGING_REASON=need_3_cycles' in route,
+            check('ITERATE_STAGNATION=stop' in route and 'CONVERGING_REASON=need_3_cycles' in route and 'TREND=3,2;' in route and 'TREND_VERDICT=insufficient' in route,
                   'T-23b: stagnation-route carries why the cap was not extended:\n' + route)
     finally:
         f.close()

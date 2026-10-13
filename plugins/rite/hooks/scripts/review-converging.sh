@@ -11,7 +11,7 @@
 # Usage:
 #   bash review-converging.sh --pr N --trend c1,c2,...,cn [--fix-state PATH] [--max-trailing 0|1]
 #
-# 判定 (定数。config キーにしない):
+# 判定 (定数。config キーにしない。trend の値は 16 桁以上・末尾カンマ・空要素を不正とし、bash の 64bit 比較を超える入力を弾く):
 #   yes  ⇔ 直近 3 値が狭義単調減少 (c[n-2] > c[n-1] > c[n]) かつ
 #          fix-cycle-state の「計測済み」最新 cycle (findings_total を持つ entry) の
 #          findings_new_from_fix が 0。fix が cycle を追加した直後の初期値 0 は未計測なので読まない。
@@ -45,6 +45,7 @@ command -v jq >/dev/null 2>&1 || { echo "ERROR: jq が見つかりません" >&2
 
 verdict() { echo "[CONTEXT] REVIEW_CONVERGING=$1; reason=$2"; exit 0; }
 
+case "$trend" in *[,]) echo "WARNING: trend が不正です ('$trend')。収束中とは判定せず上限で止めます" >&2; verdict no trend_malformed ;; esac
 IFS=, read -r -a series <<< "$trend"
 n=${#series[@]}
 [ "$n" -ge 3 ] || verdict no need_3_cycles
