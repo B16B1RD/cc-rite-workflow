@@ -33,7 +33,7 @@
 #   bash pr-review-step.sh wiki-apply-check --keywords KEYWORDS
 #   bash pr-review-step.sh shared-principles
 #   bash pr-review-step.sh prose-principles --reviewer-type REVIEWER_TYPE
-#   bash pr-review-step.sh extra-references --reviewer-type REVIEWER_TYPE
+#   bash pr-review-step.sh extra-references --reviewer-type REVIEWER_TYPE --paths REVIEW_PATHS
 #   bash pr-review-step.sh spawn-at
 #   bash pr-review-step.sh rejected-ledger --owner-repo OWNER_REPO --pr PR_NUMBER
 #   bash pr-review-step.sh tmp-dir
@@ -591,6 +591,56 @@ fi
 case "$reviewer_type" in
   prompt-engineer|tech-writer) extra_relpaths="references/skill-prose-writing.md $fidelity_refs" ;;
   test) extra_relpaths="references/test-pin-mutation-principles.md $fidelity_refs" ;;
+  error-handling)
+    # 変更ファイルが bash を含むときだけ渡す（約 30KB。bash の無いレビューでは読ませない）。
+    # 判定は file 単位: .sh / .bash の変更、または bash / sh / shell の fenced block を持つ .md の変更
+    # 入力はカンマ区切りの 1 行。制御文字・空要素・要素の前後の空白は変換ミスなので、黙って false にせず止める
+    # （名前の内側の空白や引用符は正規のファイル名として許す）
+    case "$changed_paths" in
+      *[[:cntrl:]]*|,*|*,|*,,*|' '*|*' '|*' ,'*|*', '*) usage_error "--paths must be one comma-separated line without control characters, empty elements or space-padded elements: $changed_paths" ;;
+    esac
+    repo_top=$(git rev-parse --show-toplevel) || { echo "[review:error] cannot resolve the repository root" >&2; exit 1; }
+    bash_changed=false
+    IFS=, read -ra changed_list <<< "$changed_paths"
+    for changed in "${changed_list[@]}"; do
+      # 全要素の存在を確かめる。repo root からの相対パスだけを受け付け、作業ツリーに無いのは
+      # 「HEAD に無く、履歴にある」（コミット済みの削除）パスだけ許す。HEAD にあるのに無いパスは止める
+      # （形の揺れは判定を食い違わせるので先に拒否する。.. は repo の外を読み、絶対パスは $repo_top//abs を読み、
+      #   // や /./ は HEAD の tree 参照と rev-list の pathspec で正規化の有無が違う）
+      case "$changed" in
+        /*|.|./*|..|../*|*/.|*/..|*/./*|*/../*|*//*|*/) usage_error "--paths elements must be normalized repository-root-relative paths (no leading '/', no '.' or '..' segments, no '//', no trailing '/'): $changed" ;;
+      esac
+      if [ ! -e "$repo_top/$changed" ]; then
+        if git -C "$repo_top" rev-parse --verify -q "HEAD:$changed" >/dev/null 2>&1; then
+          echo "[review:error] changed path is in HEAD but missing from the work tree: $changed" >&2; exit 1
+        fi
+        history_rc=0
+        history=$(git --literal-pathspecs -C "$repo_top" rev-list -1 HEAD -- "$changed") || history_rc=$?
+        if [ "$history_rc" -ne 0 ]; then
+          echo "[review:error] cannot read the git history for: $changed" >&2; exit 1
+        fi
+        if [ -n "$history" ]; then
+          continue   # コミット済みの削除。fence を持てない
+        fi
+        echo "[review:error] changed path is neither in the work tree nor in HEAD history: $changed" >&2; exit 1
+      fi
+      case "$changed" in
+        *.sh|*.bash) bash_changed=true ;;
+        *.md)
+          fence_rc=0
+          grep -Eiq '^[[:space:]]*(`{3,}|~{3,})[[:space:]]*(bash|sh|shell)([[:space:]]|$)' "$repo_top/$changed" || fence_rc=$?
+          case "$fence_rc" in
+            0) bash_changed=true ;;
+            1) ;;
+            *) echo "[review:error] cannot scan changed file for bash fences: $changed" >&2; exit 1 ;;
+          esac ;;
+      esac
+    done
+    if [ "$bash_changed" = true ]; then
+      extra_relpaths="references/bash-defensive-patterns.md $fidelity_refs"
+    else
+      extra_relpaths="$fidelity_refs"
+    fi ;;
   *) extra_relpaths="$fidelity_refs" ;;
 esac
 extra_list=""
@@ -1538,7 +1588,7 @@ case "$subcommand" in
   wiki-apply-check) require keywords; step_wiki_apply_check ;;
   shared-principles) step_shared_principles ;;
   prose-principles) require reviewer_type; step_prose_principles ;;
-  extra-references) require reviewer_type; step_extra_references ;;
+  extra-references) require reviewer_type changed_paths; step_extra_references ;;
   spawn-at) step_spawn_at ;;
   rejected-ledger) require pr_number owner_repo; step_rejected_ledger ;;
   tmp-dir) step_tmp_dir ;;

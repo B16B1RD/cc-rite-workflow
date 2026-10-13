@@ -19,6 +19,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 
 plugin = pathlib.Path(sys.argv[1]).resolve()
@@ -355,9 +356,13 @@ class WorkflowContracts(unittest.TestCase):
         # Additional reading: one placeholder, a per-reviewer path list, and the same declaration check.
         extra_code = "\n".join(line[1:] if line.startswith(" ") else line for line in blocks[2].splitlines())
 
-        def run_extra(plugin_root, reviewer_type):
-            code = extra_code.replace("{plugin_root}", str(plugin_root)).replace("{reviewer_type}", reviewer_type)
+        def run_extra(plugin_root, reviewer_type, changed_paths="docs/a.txt"):
+            code = extra_code.replace("{plugin_root}", str(plugin_root)).replace("{reviewer_type}", reviewer_type).replace("{review_paths}", changed_paths)
             return subprocess.run(["bash", "-c", code], cwd=str(self.fixture), capture_output=True, text=True, timeout=20)
+
+        for name in ["docs/a.txt", "a.txt", "hooks/x.sh", "run.bash"]:
+            (self.fixture / name).parent.mkdir(parents=True, exist_ok=True)
+            (self.fixture / name).write_text("x\n", encoding="utf-8")
 
         fidelity = ["references/doc-fidelity-sot.md", "skills/issue-create/references/ac-authoring.md"]
         expected_extra = {
@@ -371,6 +376,114 @@ class WorkflowContracts(unittest.TestCase):
             result = run_extra(plugin, reviewer_type)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout.strip(), "[CONTEXT] ADDITIONAL_REVIEWER_REFERENCES=" + "; ".join(str(plugin / rel) for rel in rels))
+        # The bash rules reach error-handling only when a changed file is bash; no other reviewer or change set gets them.
+        bash_ref = "references/bash-defensive-patterns.md"
+        (self.fixture / "with-fence.md").write_text("text\n\n    ```bash\n    echo x\n    ```\n", encoding="utf-8")
+        (self.fixture / "tilde-sh.md").write_text("~~~sh\necho x\n~~~\n", encoding="utf-8")
+        (self.fixture / "no-fence.md").write_text("text\n```json\n{}\n```\n", encoding="utf-8")
+        with_bash = [bash_ref] + fidelity
+        (self.fixture / "shell.md").write_text("```shell\necho x\n```\n", encoding="utf-8")
+        for changed in ["hooks/x.sh,docs/a.txt", "a.txt,hooks/x.sh", "run.bash", "with-fence.md", "docs/a.txt,tilde-sh.md", "shell.md,docs/a.txt"]:
+            result = run_extra(plugin, "error-handling", changed)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), "[CONTEXT] ADDITIONAL_REVIEWER_REFERENCES=" + "; ".join(str(plugin / rel) for rel in with_bash), changed)
+        for changed in ["docs/a.txt", "no-fence.md"]:
+            result = run_extra(plugin, "error-handling", changed)
+            self.assertEqual(result.returncode, 0, changed + result.stderr)
+            self.assertEqual(result.stderr, "", changed)
+            self.assertEqual(result.stdout.strip(), "[CONTEXT] ADDITIONAL_REVIEWER_REFERENCES=" + "; ".join(str(plugin / rel) for rel in fidelity), changed)
+        for reviewer_type in ["security", "test", "devops"]:
+            result = run_extra(plugin, reviewer_type, "hooks/x.sh")
+            self.assertNotIn(bash_ref, result.stdout, reviewer_type)
+        # A list that is not one comma-separated line stops instead of silently reading as "no bash".
+        for malformed in ["a.txt\nhooks/x.sh", "a.txt, hooks/x.sh", "a.txt,,hooks/x.sh", ",hooks/x.sh", "hooks/x.sh,", " hooks/x.sh", "hooks/x.sh ", "hooks/x.sh ,a.txt", "a.txt,hooks/x.sh\r", "a.txt,hooks/x.sh\t"]:
+            result = run_extra(plugin, "error-handling", malformed)
+            self.assertNotEqual(result.returncode, 0, repr(malformed))
+            self.assertEqual(result.stdout, "", repr(malformed))
+            self.assertIn("--paths must be", result.stderr, repr(malformed))
+        # A .md that cannot be scanned stops instead of reading as "no bash".
+        locked = self.fixture / "locked.md"
+        locked.write_text("```bash\necho x\n```\n", encoding="utf-8")
+        locked.chmod(0)
+        try:
+            if not os.access(locked, os.R_OK):  # root bypasses file modes
+                result = run_extra(plugin, "error-handling", "docs/a.txt,locked.md")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("cannot scan", result.stderr)
+        finally:
+            locked.chmod(0o600)
+        # Fence language is matched case-insensitively.
+        (self.fixture / "upper.md").write_text("```Bash\necho x\n```\n", encoding="utf-8")
+        result = run_extra(plugin, "error-handling", "upper.md")
+        self.assertIn(bash_ref, result.stdout)
+        # Every element must exist: a deletion committed in HEAD's history is skipped; everything else that is missing stops.
+        (self.fixture / "gone.md").write_text("```bash\necho x\n```\n", encoding="utf-8")
+        committed = ["git", "-C", str(self.fixture), "-c", "user.email=t@t", "-c", "user.name=t"]
+        self.run_command(["git", "-C", str(self.fixture), "add", "gone.md", "hooks/x.sh"])
+        self.run_command(committed + ["commit", "-q", "-m", "add"])
+        (self.fixture / "gone.md").unlink()
+        for uncommitted in ["gone.md", "docs/a.txt,gone.md"]:
+            result = run_extra(plugin, "error-handling", uncommitted)
+            self.assertNotEqual(result.returncode, 0, uncommitted)
+            self.assertEqual(result.stdout, "", uncommitted)
+            self.assertIn("in HEAD but missing from the work tree", result.stderr, uncommitted)
+        self.run_command(["git", "-C", str(self.fixture), "rm", "-q", "--cached", "gone.md"])
+        self.run_command(committed + ["commit", "-q", "-m", "delete"])
+        result = run_extra(plugin, "error-handling", "gone.md")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn(bash_ref, result.stdout)
+        # The same committed deletion is still recognised from a subdirectory (rev-list runs at the repository root).
+        (self.fixture / "sub").mkdir(exist_ok=True)
+        code_sub = extra_code.replace("{plugin_root}", str(plugin)).replace("{reviewer_type}", "error-handling").replace("{review_paths}", "gone.md")
+        result = subprocess.run(["bash", "-c", code_sub], cwd=str(self.fixture / "sub"), capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn(bash_ref, result.stdout)
+        # A gitlink whose commit is not in the object store is still an entry of HEAD's tree: its missing work-tree path stops.
+        self.run_command(["git", "-C", str(self.fixture), "update-index", "--add", "--cacheinfo", "160000," + "1" * 40 + ",subm"])
+        self.run_command(committed + ["commit", "-q", "-m", "gitlink"])
+        result = run_extra(plugin, "error-handling", "subm")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("in HEAD but missing from the work tree", result.stderr)
+        # A glob is a literal name, not a pathspec: it matches nothing.
+        result = run_extra(plugin, "error-handling", "go*.md")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("neither in the work tree nor in HEAD history", result.stderr)
+        # Paths must be repository-root-relative: an absolute path or one with a '..' segment is refused even when the file exists; so is any non-normalized form.
+        for outside in [str(self.fixture / "hooks/x.sh"), "/tmp/rite-cycle-scope-files-1.txt", "../other/f.md", "hooks/../hooks/x.sh", "..", "docs/..", "hooks//x.sh", "hooks/./x.sh", "./hooks/x.sh", "hooks/", ".", "hooks/."]:
+            result = run_extra(plugin, "error-handling", outside)
+            self.assertNotEqual(result.returncode, 0, outside)
+            self.assertEqual(result.stdout, "", outside)
+            self.assertIn("repository-root-relative", result.stderr, outside)
+        for absent in ["missing.md", "nowhere.txt", "hooks/x.sh,never-added.sh"]:
+            result = run_extra(plugin, "error-handling", absent)
+            self.assertNotEqual(result.returncode, 0, absent)
+            self.assertEqual(result.stdout, "", absent)
+            self.assertIn("neither in the work tree nor in HEAD history", result.stderr, absent)
+        # Names with an inner space, quote or non-ASCII character are ordinary paths.
+        for name in ["My Notes.md", "it's.md", "メモ.md"]:
+            (self.fixture / name).write_text("```bash\necho x\n```\n", encoding="utf-8")
+            result = run_extra(plugin, "error-handling", "docs/a.txt," + name)
+            self.assertEqual(result.returncode, 0, name + result.stderr)
+            self.assertIn(bash_ref, result.stdout, name)
+        # Paths resolve from the repository root, whatever the current directory is.
+        code = extra_code.replace("{plugin_root}", str(plugin)).replace("{reviewer_type}", "error-handling").replace("{review_paths}", "with-fence.md")
+        result = subprocess.run(["bash", "-c", code], cwd=str(self.fixture / "sub"), capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(bash_ref, result.stdout)
+        # Outside any repository the step stops.
+        outside = pathlib.Path(tempfile.mkdtemp())
+        try:
+            result = subprocess.run(["bash", "-c", code], cwd=str(outside), capture_output=True, text=True, timeout=20)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, "")
+            self.assertIn("repository root", result.stderr)
+        finally:
+            shutil.rmtree(outside)
+        # A missing changed-path list stops instead of silently dropping the bash rules.
+        result = run_extra(plugin, "error-handling", "")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "")
         # Every selectable reviewer type is covered, and a mistyped one stops instead of silently getting only the shared fidelity list.
         registry = sorted(path.name[:-len("-reviewer.md")] for path in (plugin / "agents").glob("*-reviewer.md"))
         self.assertEqual(registry, sorted(expected_extra))
@@ -462,7 +575,7 @@ class WorkflowContracts(unittest.TestCase):
             self.assertIn(sentence, load_part)
         pr_review_lines = pr_review.splitlines()
         step5 = next(line for line in pr_review_lines if line.startswith("5. **追加読取元を確定する**"))
-        self.assertTrue(step5.endswith("対応表は helper が持つ（文書整合の規則は全 reviewer、固有の規則は prompt-engineer / tech-writer / test）。named / 独立子とも同じ全文読取義務を渡す。"))
+        self.assertTrue(step5.endswith("対応表は helper が持つ（文書整合の規則は全 reviewer、固有の規則は prompt-engineer / tech-writer / test、error-handling は変更ファイルが bash を含むときに限る）。`{review_paths}` はステップ 1.2 の変更ファイル一覧（`REVIEW_CYCLE_SCOPE == incremental` のときは `{cycle_scope_files}` が指すファイルの各行）を、カンマで連結した 1 行（区切りに空白も改行も足さない）（wiki-apply 用の、存在するパスだけの一覧 `{changed_paths}` とは別物）。各要素は repo root からの相対パス（名前の内側の空白と引用符は許す。shell に渡すときは `\"`・`\\`・`$`・backtick を含む名前をエスケープする）。error-handling では、形が違う（制御文字・空要素・要素の前後の空白・絶対パス・正規化されていない形: `.`・`..`・`//`・末尾 `/`）か、作業ツリーに無くコミット済みの削除でもないパス（HEAD にあるのに無い、どこにも無い）があると helper が止まる。helper が file 単位で判定し、`.sh` / `.bash` の変更、または bash / sh / shell の fenced block を持つ `.md` の変更なら渡す（diff の行位置には依らない）。named / 独立子とも同じ全文読取義務を渡す。"))
         self.assertNotIn("のときだけ", step5)
         dispatch = next(line for line in pr_review_lines if line.startswith("**並列（MUST）**"))
         self.assertTrue(dispatch.endswith("tech-writer には `{prose_reviewer_principles}` も渡す。全 reviewer に `{additional_reviewer_references}` も渡す。"))

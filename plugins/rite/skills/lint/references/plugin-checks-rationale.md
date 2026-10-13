@@ -142,3 +142,19 @@ Scan scope is the whole shell surface under `plugins/rite/hooks/` and `plugins/r
 ## Distribution docs-link check (distribution-docs-link-check.sh)
 
 Detects markdown links under `plugins/rite/**/*.md` whose destination resolves outside the plugin root. The marketplace package is `plugins/rite` only; a relative hop into development-repo `docs/` (or any other sibling) 404s at the install destination. Inline `[text](url)` / `![alt](url)` only. http(s) / mailto / fragment-only destinations and `{placeholder}` template hrefs are skipped. Fenced code is skipped so examples do not become findings. `tests/` trees are out of scope (fixtures). Unscannable files (unreadable or unbalanced fences) exit 2 rather than a clean bill.
+
+## Bash pitfall check (bash-pitfall-check.sh)
+
+Detects bash forms that fail without a message and whose shape a line-level pattern can recognise. Each rule maps to a row of `references/bash-defensive-patterns.md`; the detector never judges intent, so it lists only forms that are wrong in every context.
+
+| Rule | Form | Why it is always wrong | Fix |
+|------|------|------------------------|-----|
+| `grep-c-echo-fallback` | zero-fallback (`echo` / `printf`) inside a `grep -c` substitution | `grep -c` prints `0` itself, so the capture becomes two lines | fallback outside the substitution, or `\|\| true` with `${cnt:-0}` |
+| `if-bang-rc` | `$?` in the first statement of the `then` body of an `if` whose condition is negated by the bang operator (comment and blank lines are skipped; later statements read their own predecessor's status and are not judged) | the negation flips the status, so `$?` is always 0 | `rc=0; cmd \|\| rc=$?`, or read it in the `else` of a positive `if` |
+| `nested-mktemp-cd` | `cd "$(mktemp ...)"` | a failed `mktemp` makes it `cd ""`, a successful no-op in bash; the cwd becomes the target of a later `rm -rf` | create the directory in its own step and stop on failure |
+| `sed-inplace-gnu` | `sed -i` without an attached suffix (including `-i ''`) | GNU takes the suffix attached (`-i.bak`) and BSD takes it as a separate argument, so each rejects the other's form | `-i.bak` (accepted by both), or write a temp file and `mv` |
+| `pipestatus-subst` | `PIPESTATUS` read on the line after (or after the closing paren of) `v=$(a \| b)` | after the assignment the array holds the substitution's own status, not the pipeline stages' | capture the status inside the substitution, or split the pipeline |
+
+Scan scope: `plugins/rite/hooks/**/*.sh` and `plugins/rite/scripts/**/*.sh` excluding `tests/` (fixtures embed the forms deliberately), plus fenced code blocks of `plugins/rite/**/*.md`. Fences may be indented (list items); a closing fence may sit at most three columns deeper than its opener. Prose outside a fence and `#` comment lines are skipped. Exclusion marker: `drift-check-ignore` on the finding line or the line above. A directory that cannot be listed, a file that cannot be read, an unbalanced fence and an unsupported extension each exit 2, not a clean bill; findings still win the exit code when both occur (same contract as `dollar-zero-check.sh`).
+
+Not detected by design: forms that need the surrounding code to judge, such as `awk -v name="$x"` (safe for values without a backslash; over a hundred sites carry it), `mktemp ... || x=""` stderr slots, and `local v=$(cmd)` (the status is masked but the form is ubiquitous). Those stay in the reviewer-facing table of `references/bash-defensive-patterns.md`. A rule is added here only when the form is wrong in every context and the tree scans clean at the time of adding.

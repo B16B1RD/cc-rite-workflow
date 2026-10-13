@@ -950,9 +950,9 @@ rationale: references/design-rationale.md#shared-principles-hybrid
  ```bash
  bash {plugin_root}/scripts/pr-review-step.sh prose-principles --reviewer-type "{reviewer_type}"
  ```
-5. **追加読取元を確定する**: 全 reviewer で次を実行し、`ADDITIONAL_REVIEWER_REFERENCES=` の絶対パス列（`; ` 区切り）を保持する。出力が無い、または非ゼロなら `[review:error]` で停止し、名簿を減らさない。対応表は helper が持つ（文書整合の規則は全 reviewer、固有の規則は prompt-engineer / tech-writer / test）。named / 独立子とも同じ全文読取義務を渡す。
+5. **追加読取元を確定する**: 全 reviewer で次を実行し、`ADDITIONAL_REVIEWER_REFERENCES=` の絶対パス列（`; ` 区切り）を保持する。出力が無い、または非ゼロなら `[review:error]` で停止し、名簿を減らさない。対応表は helper が持つ（文書整合の規則は全 reviewer、固有の規則は prompt-engineer / tech-writer / test、error-handling は変更ファイルが bash を含むときに限る）。`{review_paths}` はステップ 1.2 の変更ファイル一覧（`REVIEW_CYCLE_SCOPE == incremental` のときは `{cycle_scope_files}` が指すファイルの各行）を、カンマで連結した 1 行（区切りに空白も改行も足さない）（wiki-apply 用の、存在するパスだけの一覧 `{changed_paths}` とは別物）。各要素は repo root からの相対パス（名前の内側の空白と引用符は許す。shell に渡すときは `"`・`\`・`$`・backtick を含む名前をエスケープする）。error-handling では、形が違う（制御文字・空要素・要素の前後の空白・絶対パス・正規化されていない形: `.`・`..`・`//`・末尾 `/`）か、作業ツリーに無くコミット済みの削除でもないパス（HEAD にあるのに無い、どこにも無い）があると helper が止まる。helper が file 単位で判定し、`.sh` / `.bash` の変更、または bash / sh / shell の fenced block を持つ `.md` の変更なら渡す（diff の行位置には依らない）。named / 独立子とも同じ全文読取義務を渡す。
  ```bash
- bash {plugin_root}/scripts/pr-review-step.sh extra-references --reviewer-type "{reviewer_type}"
+ bash {plugin_root}/scripts/pr-review-step.sh extra-references --reviewer-type "{reviewer_type}" --paths "{review_paths}"
  ```
 **並列（MUST）**: 利用可能な子枠内で同じ組の Task を 1 メッセージで invoke する。全名簿が枠を超える場合は組に分け、完了した枠を解放して次の組を実行する。全組回収まで統合・修正へ進まない（失敗した Task の retry は 4.4 に従う）。各 agent に diff / 変更ファイル / `{issue_spec}` / `{shared_reviewer_principles}` を渡す。tech-writer には `{prose_reviewer_principles}` も渡す。全 reviewer に `{additional_reviewer_references}` も渡す。
 
