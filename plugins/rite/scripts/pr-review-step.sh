@@ -582,7 +582,7 @@ step_extra_references() {
 # 文書整合の規則は全 reviewer 共通。reviewer 固有の分を前に足す
 fidelity_refs="references/doc-fidelity-sot.md skills/issue-create/references/ac-authoring.md"
 case "$reviewer_type" in
-  ""|*[!a-z-]*) echo "[review:error] invalid reviewer type: $reviewer_type" >&2; exit 1 ;;
+  *[!a-z-]*) echo "[review:error] invalid reviewer type: $reviewer_type" >&2; exit 1 ;;
 esac
 if [ ! -f "$plugin_root/agents/${reviewer_type}-reviewer.md" ]; then
   echo "[review:error] unknown reviewer type: $reviewer_type" >&2
