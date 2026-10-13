@@ -66,6 +66,8 @@ trailing_comma="9,6,3,"; OUT=$(converging "$trailing_comma")
 has "T-08c: 末尾カンマの trend は延長しない" "reason=trend_malformed"
 OUT=$(converging 9999999999999999,5,1)
 has "T-08d: 16 桁以上の値は不正" "reason=trend_malformed"
+OUT=$(converging abc,1)
+has "T-08e: 要素数が足りなくても不正値は trend_malformed" "reason=trend_malformed"
 
 # python 側: helper が失敗・無出力でも延長せず理由を返す (fail-open に倒さない)
 STUB="$TEST_DIR/stub"

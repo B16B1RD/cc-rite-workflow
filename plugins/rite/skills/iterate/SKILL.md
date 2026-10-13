@@ -75,7 +75,7 @@ rationale: references/rationale.md#circuit-breaker-conditions
 | `{fire_reason_line}` | ステップ 6.1 / 6.2 の「理由」行。ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `CB_REASON=`（ステップ 3 経由の停止では `{cb_reason}`）から ステップ 6.2「発火理由の文面」表で決める |
 | `{cb_reason}` | 停止理由の**生値**（`max-cycles` / `divergence` / `stagnation`）。供給元は ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `CB_REASON=`（`max-cycles` / `divergence`）と、`review_run` がある run の停止を記録した ステップ 3 の規則（既存 breaker の停止はその値、それ以外の停滞判定 `stop` は `stagnation`）の 2 つ（同節「`{resume_routes}`」参照）。`review_run` が停止済みのとき flow-state の `stop_reason` は run 側の値（`stagnation:non-convergent` / `stagnation:scope-insoluble` 等）に置き換わる。ステップ 6 共有前段が flow-state へ書く `--stop-reason "circuit-breaker:{cb_reason}"` と `{resume_routes}` の分岐で使う（人間向けの文面は `{fire_reason_line}` が担う） |
 | `{trend}` | ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `TREND=`（ステップ 3 経由の停止ではステップ 3 の `ITERATE_STAGNATION=stop` marker の `TREND=`。カンマ区切りの per-cycle blocking 件数）。停止通知では `→` 区切りへ整形して表示する。空のときの扱いは ステップ 6.2「発火理由の文面」を参照 |
-| `{trend_reason}` | ステップ 1 の `[CONTEXT] ITERATE_CB=` marker の `TREND_REASON=`（helper が返した判定不能の理由。ステップ 6.2「発火理由の文面」の `max-cycles` 分岐と推移行の差し替えで使う） |
+| `{trend_reason}` | ステップ 1 の `[CONTEXT] ITERATE_CB=` marker の `TREND_REASON=`（ステップ 3 経由の停止ではステップ 3 の `ITERATE_STAGNATION=stop` marker の `TREND_REASON=`。helper が返した判定不能の理由。ステップ 6.2「発火理由の文面」の `max-cycles` 分岐と推移行の差し替えで使う） |
 | `{converging_reason}` | 上限到達時に延長しなかった理由。ステップ 1 の `ITERATE_CB=fire` marker の `CONVERGING_REASON=`、または `review_run` がある run ではステップ 3 の `ITERATE_STAGNATION=stop` marker の `CONVERGING_REASON=`。`CB_REASON=max-cycles` のときだけ値を持つ（`divergence` では使わない）。`max-cycles` でどちらの marker にも無い、または空のときは「不明」と書き、データ異常として扱う |
 | `{cycle_count}` | flow-state `cycle_count` field（review-start で増加。`review_run` がある同一 run では完了・停止・recoverでも保持。以下の 0 リセット手順は legacy state 専用） |
 | `{resume_routes}` | ステップ 6.2 停止通知の「再開方法」の行。ステップ 3 の `[CONTEXT] ITERATE_STAGNATION=` marker と `{cb_reason}` から 同節「`{resume_routes}`」表で決める（marker 不在の行も同表が持つ） |
@@ -348,7 +348,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 ## ステップ 3: /rite:fix を invoke
 
-先に保存された停滞判定を読む。未完了レビューはステップ 1 の同 cycle 再開が先、証跡・保存・権限エラーは既存エラー経路が先である。`stop` なら `{cb_reason}=stagnation` としてステップ 6 へ進む（上限停止を observe が下した run では marker に `CONVERGING_REASON=` が付く）。`replan` は fix の一括計画で範囲内代替を保存し、通常の scope gate へ戻る。
+先に保存された停滞判定を読む。未完了レビューはステップ 1 の同 cycle 再開が先、証跡・保存・権限エラーは既存エラー経路が先である。`stop` なら `{cb_reason}=stagnation` としてステップ 6 へ進む（`stop` の marker には observe が判定に使った `TREND=` / `TREND_VERDICT=` / `TREND_REASON=` が常に付き、上限停止なら `CONVERGING_REASON=` も付く）。`replan` は fix の一括計画で範囲内代替を保存し、通常の scope gate へ戻る。
 
 ```bash
 bash {plugin_root}/scripts/iterate-step.sh stagnation-route

@@ -365,6 +365,10 @@ try:
         time.sleep(1.1)
     f.cycle(roots=('input defect', 'second defect', 'third defect'), seconds=1801)
     check(f.state()['stop_reason'] == 'circuit-breaker:divergence', 'T-22: fixture reached divergence stop')
+    # divergence 停止でも停止通知用の推移は observe の列で載り、上限の理由は付かない
+    route = marker(f.run(['bash', str(plugin / 'scripts/iterate-step.sh'), 'stagnation-route']).stdout, 'ITERATE_STAGNATION')
+    check('ITERATE_STAGNATION=stop' in route and 'TREND=1,2,3;' in route and 'TREND_VERDICT=fire' in route
+          and 'CONVERGING_REASON' not in route, 'T-22: a divergence stop carries the observed trend without a cap reason:\n' + route)
     f.plan()
     retry(f)
     f.fix()
@@ -1198,7 +1202,7 @@ for label, cap, helper_body, reason in [
         ('helper fails', 3, 'exit 2', 'helper_failed'),
         ('helper prints no verdict', 3, 'exit 0', 'helper_no_marker'),
         ('helper prints yes without reason', 3, 'echo "[CONTEXT] REVIEW_CONVERGING=yes"', 'helper_no_reason'),
-        ('helper prints an unknown verdict', 3, 'echo "[CONTEXT] REVIEW_CONVERGING=maybe; reason=descending_without_fix_regressions"', 'helper_no_marker')]:
+        ('helper prints an unknown verdict', 3, 'echo "[CONTEXT] REVIEW_CONVERGING=maybe; reason=descending_without_fix_regressions"', 'helper_bad_verdict')]:
     f = Fixture()
     try:
         (f.root / 'rite-config.yml').write_text('safety:\n  max_review_cycles: %d\n' % cap)
@@ -1224,7 +1228,7 @@ for label, cap, helper_body, reason in [
         if cap == 2:
             # observe 側で上限停止した run は、停止通知用に延長しなかった理由を stagnation-route が渡す
             route = marker(f.run(['bash', str(plugin / 'scripts/iterate-step.sh'), 'stagnation-route']).stdout, 'ITERATE_STAGNATION')
-            check('ITERATE_STAGNATION=stop' in route and 'CONVERGING_REASON=need_3_cycles' in route and 'TREND=3,2;' in route and 'TREND_VERDICT=insufficient' in route,
+            check('ITERATE_STAGNATION=stop' in route and 'CONVERGING_REASON=need_3_cycles' in route and 'TREND=3,2;' in route and 'TREND_VERDICT=insufficient' in route and 'TREND_REASON=need_3_cycles' in route,
                   'T-23b: stagnation-route carries why the cap was not extended:\n' + route)
     finally:
         f.close()

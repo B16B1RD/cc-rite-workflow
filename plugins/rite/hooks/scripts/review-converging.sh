@@ -48,10 +48,11 @@ verdict() { echo "[CONTEXT] REVIEW_CONVERGING=$1; reason=$2"; exit 0; }
 case "$trend" in *[,]) echo "WARNING: trend が不正です ('$trend')。収束中とは判定せず上限で止めます" >&2; verdict no trend_malformed ;; esac
 IFS=, read -r -a series <<< "$trend"
 n=${#series[@]}
-[ "$n" -ge 3 ] || verdict no need_3_cycles
+[ "$n" -ge 1 ] || verdict no need_3_cycles
 for v in "${series[@]}"; do
   case "$v" in ''|*[!0-9]*|[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]*) echo "WARNING: trend が不正です ('$trend')。収束中とは判定せず上限で止めます" >&2; verdict no trend_malformed ;; esac
 done
+[ "$n" -ge 3 ] || verdict no need_3_cycles
 a=${series[n-3]}; b=${series[n-2]}; c=${series[n-1]}
 { [ "$a" -gt "$b" ] && [ "$b" -gt "$c" ]; } || verdict no not_descending
 

@@ -2,7 +2,7 @@
 # attribution-gate.test.sh
 #
 # fix 後の再レビューかを fix-cycle-state の最新 entry が未計測か (findings_total 無し) で判定する
-# (flow-state の loop_count には依存しない)。state 無し・entry 無し・最新が計測済みは skip し、未計測なら進む。
+# (flow-state の loop_count には依存しない)。cycles が配列でない / 最新 entry が object でない破損 state は ERROR。state 無し・entry 無し・最新が計測済みは skip し、未計測なら進む。
 
 set -uo pipefail
 
