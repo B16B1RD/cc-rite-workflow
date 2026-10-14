@@ -1,5 +1,8 @@
 # Directory Update Log
 
+## 2026-10-15
+* **Promotion**: [候補の出典](raw/reviews/20261014T150735Z-pr-3891.md) — unresolved <!-- rite-promotion: {"candidate": "8905b6376db948109c5f33fe78acaeb72f6ee58d6e3f5ad5195d0d02dbffc344", "raw": "raw/reviews/20261014T150735Z-pr-3891.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
+
 ## 2026-10-14
 * **Skip**: [20261014T101054Z-pr-3886.md](raw/reviews/20261014T101054Z-pr-3886.md) — 差分スコープでも reviewer が変異を再実測したという観察だけで、新しい経験則を含まない
 * **Skip**: [20261014T140600Z-pr-3888.md](raw/reviews/20261014T140600Z-pr-3888.md) — 一般化の後に収束したという観察だけで、同じ PR の他の raw に記録した経験則を超える内容を含まない
