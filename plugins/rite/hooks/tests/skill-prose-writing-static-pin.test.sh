@@ -6,7 +6,7 @@
 #   - the 9 section headings stay as written, in order, with no heading-level skips
 #   - the entry points (skill-diet-method.md, docs/SPEC.md) keep pointing at it
 #   - the `${var:-}` rule keeps its trap-cleanup exclusion
-#   - the rows added or extended in §5 and §8 match whole lines within their own section
+#   - the rows pinned in §5 and §8 match whole lines within their own section
 # A negative control feeds the heading-skip detector a synthetic skip to prove it is live.
 #
 # When this test fails:
