@@ -109,7 +109,8 @@ if [ -z "$PATHS" ]; then
   # copy is followed by one more record holding the old path, which is skipped (only the new side is
   # recorded). paths: is comma-separated and blob: is one path per line, so a name with a comma or a
   # newline cannot be recorded and stops the capture instead of being split. Untracked directories are
-  # listed file by file, because only a file has a blob to record.
+  # listed file by file, because only a file has a blob to record. A directory holding its own .git (a
+  # nested repository or linked worktree) still comes back as one entry, and hashing it stops the capture.
   status_list=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-apply-status-XXXXXX") || { echo "ERROR: mktemp に失敗しました" >&2; exit 1; }
   trap 'rm -f "$status_list"' EXIT
   git -C "$WT" status --porcelain -z --untracked-files=all > "$status_list" || { echo "ERROR: git status を読めません" >&2; exit 1; }
