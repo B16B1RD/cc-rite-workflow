@@ -61,6 +61,8 @@
 * **lint:clean** — contradictions=0, stale=77, orphans=0, missing_concept=0, unregistered_raw=855, broken_refs=0 / WIKI_CONTRADICTION_CHECK=complete; changed=0; screened=0; candidates=0; excluded=0; compared=0; carried=0; resolved=0 — 対象なし（取り込んだ raw は昇格候補のみで変更ページなし、記録済みの未解消の矛盾 0 件）
 * **lint:clean** — contradictions=0, stale=77, orphans=0, missing_concept=0, unregistered_raw=866, broken_refs=0
   * 矛盾検査: WIKI_CONTRADICTION_CHECK=complete; changed=0; screened=0; candidates=0; excluded=0; compared=0; carried=0; resolved=0 — 対象なし（今回の取り込みは昇格候補のみでページの追加・更新なし）
+* **lint:clean** — contradictions=0, stale=77, orphans=0, missing_concept=0, unregistered_raw=877, broken_refs=0
+  * 矛盾検査: WIKI_CONTRADICTION_CHECK=complete; changed=0; screened=0; candidates=0; excluded=0; compared=0; carried=0; resolved=0 — 対象なし（今回の取り込みは昇格候補のみでページの追加・更新なし）
 
 ## 2026-10-14
 * **Skip**: [20261014T101054Z-pr-3886.md](raw/reviews/20261014T101054Z-pr-3886.md) — 差分スコープでも reviewer が変異を再実測したという観察だけで、新しい経験則を含まない
