@@ -77,12 +77,30 @@ echo "=== T-06: anchor_undetermined は reviewer 再生成へ同 cycle 内で差
 routing_file=$(mktemp)
 trap 'rm -f "$routing_file"' EXIT
 grep '^| .*reason=verification_preset_by_caller.*anchor_undetermined' "$PR_REVIEW" > "$routing_file" || true
-assert_grep "routing targets only diagnostic finding IDs" "$routing_file" \
-  '診断の対象 finding IDs のみ'
+assert "routing row is extracted exactly once" "1" "$(wc -l < "$routing_file" | tr -d ' ')"
+assert_grep "routing rerolls only reviewers that emitted the diagnostic finding IDs" "$routing_file" \
+  '診断の対象 finding IDs を出した reviewer のみ'
 assert_grep "routing uses reviewer reject and reroll" "$routing_file" \
   'Reviewer reject \+ reroll'
-assert_grep "routing preserves other findings" "$routing_file" \
-  '他 finding は保持する'
+# 作り直した出力の統合方法は丸ごと置き換えの 1 つだけで、5.1.1.1 の retry と同じ方式であること。
+# 置き換え・破棄・他 reviewer 保持の 3 文を、直前の文末から連続した文全体で固定し、文の極性反転や頭・間への例外の挿入も落とす。
+replace_sentences='含める。作り直した出力は当該 reviewer の元の出力を丸ごと置き換える（5.1.1.1 の結果 merge 戦略と同じ。元 prompt を送り直すので元の出力と同じ範囲を対象にする）。元の出力を破棄し、作り直した出力のみを使う。他 reviewer の出力は保持する。'
+if grep -qF -- "$replace_sentences" "$routing_file"; then
+  pass "routing replaces the original output, discards it, and keeps other reviewers' outputs"
+else
+  fail "routing replaces the original output, discards it, and keeps other reviewers' outputs (sentences not found in routing row)"
+fi
+# 相反文のうち 保持・差し替え・両方・元の出力 の語を含むものを数で拒否する（語を避けた言い換えまでは拒否しない）。
+assert "routing row has exactly one 保持 token" "1" "$(grep -o '保持' "$routing_file" | wc -l | tr -d ' ')"
+assert "routing row has no 差し替え token" "0" "$(grep -o '差し替え' "$routing_file" | wc -l | tr -d ' ')"
+assert_not_grep "routing row has no 両方 token" "$routing_file" '両方'
+assert "routing row has exactly three 元の出力 tokens" "3" "$(grep -o '元の出力' "$routing_file" | wc -l | tr -d ' ')"
+assert_grep "routing reruns the normal path from the collection gate to 5.3.0 for the rerolled output" "$routing_file" \
+  '5\.1 の回収完了ゲート（読取完了申告の照合を含む）から 5\.3\.0 までの通常経路の各段（5\.1 のゲート通過後の収集、5\.1\.0\.L、5\.1\.0\.AC を含む）を、作り直した出力に対して通常どおりの条件で再実行し'
+assert_not_grep "reviewer prompt does not regenerate only the target findings" "$PROMPT_GEN" \
+  '対象 finding のみ再生成|対象 finding の再生成'
+assert_grep "5.1.1.1 merge strategy is still replace" "$PR_REVIEW" \
+  'retry 結果は元 reviewer の output を \*\*置き換える\*\* \(append ではない\)'
 assert_grep "routing retries JSON generation and helper in the same cycle" "$routing_file" \
   '同 cycle 内.*step 1 の JSON を作り直し step 2 を再実行する'
 assert_grep "routing does not hand format repair to fix or increment the review cycle" "$routing_file" \
