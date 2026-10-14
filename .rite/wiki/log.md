@@ -280,6 +280,7 @@
 * **lint:warning** — contradictions=0, stale=77, orphans=0, missing_concept=1, unregistered_raw=807, broken_refs=0; WIKI_CONTRADICTION_CHECK=complete; changed=0, screened=0, candidates=0, excluded=0, compared=0, carried=0, resolved=0; elapsed_seconds=0, read_bytes=0; 理由: 対象なし（rite の昇格候補のみを保存し、ページ本文の変更なし）。
 * **lint:warning** — contradictions=0, stale=77, orphans=0, missing_concept=1, unregistered_raw=812, broken_refs=0 / WIKI_CONTRADICTION_CHECK=complete; changed=0; screened=0; candidates=0; excluded=0; compared=0; carried=0; resolved=0 — 対象なし（今回の取り込みは昇格候補のみで変更ページなし、記録済みの未解消の矛盾 0 件）
 * **lint:clean** — contradictions=0, stale=77, orphans=0, missing_concept=0, unregistered_raw=813, broken_refs=0 / WIKI_CONTRADICTION_CHECK=complete; changed=0; screened=0; candidates=0; excluded=0; compared=0; carried=0; resolved=0 — 対象なし（取り込み直した raw は昇格候補のみで変更ページなし、記録済みの未解消の矛盾 0 件）
+* **lint:clean** — contradictions=0, stale=77, orphans=0, missing_concept=0, unregistered_raw=837, broken_refs=0 (WIKI_CONTRADICTION_CHECK=complete; changed=0; screened=0; candidates=0; excluded=0; compared=0; carried=0; resolved=0; 対象なし: 今回の取り込みで追加・更新したページなし)
 
 ## 2026-10-11
 * **Promotion**: [候補の出典](raw/reviews/20261010T210103Z-pr-3772.md) — skipped <!-- rite-promotion: {"candidate": "", "raw": "raw/reviews/20261010T210103Z-pr-3772.md", "reason": "追加試験の回帰検出と既存の受入条件未検証を再確認した記録。初回レビューと修正記録の候補を超える新しい経験則はない。", "status": "skipped"} -->
