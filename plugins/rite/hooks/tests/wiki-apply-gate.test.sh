@@ -1783,8 +1783,8 @@ recapture_case() {
     symlink) ln -sfn rite-config.yml "$r/LINK"; git -C "$r" add LINK ;;
     # git が引用符で囲んで表示する名前（非 ASCII・引用符・タブ）の追加・削除・改名
     quoted)
-      printf 'a\n' > "$r/日本語.txt"; printf 'b\n' > "$r/q\"uote"; printf 'c\n' > "$r/tab	name"
-      git -C "$r" add 日本語.txt 'q"uote' 'tab	name'
+      printf 'a\n' > "$r/日本語.txt"; printf 'b\n' > "$r/q\"uote"; printf 'c\n' > "$r/"$'tab\tname'
+      git -C "$r" add 日本語.txt 'q"uote' $'tab\tname'
       git -C "$r" rm -q 旧.txt
       git -C "$r" mv KEEP 改名.txt ;;
     # 取り込みとは別に、gitignore されていない未追跡のディレクトリとファイルが作業ツリーにある
@@ -1810,7 +1810,7 @@ recapture_case() {
     # 改名元は記録せず改名先だけ、削除は blob の値 - で記録する
     local got want
     got=$(grep '^paths: ' "$mem" | tail -1 | sed 's/^paths: //' | tr ',' '\n' | LC_ALL=C sort)
-    want=$(printf '%s\n' 日本語.txt 'q"uote' 'tab	name' 改名.txt 旧.txt | LC_ALL=C sort)
+    want=$(printf '%s\n' 日本語.txt 'q"uote' $'tab\tname' 改名.txt 旧.txt | LC_ALL=C sort)
     if [ "$got" = "$want" ] && grep -qx 'blob: 旧.txt=-' "$mem" && ! grep -q '^blob: KEEP=' "$mem"; then
       pass "$change: the re-capture records the intake paths with their raw names"
     else
