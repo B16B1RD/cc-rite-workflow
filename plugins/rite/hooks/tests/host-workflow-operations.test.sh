@@ -666,17 +666,26 @@ class WorkflowContracts(unittest.TestCase):
         self.assertIn("読取完了申告の照合", likelihood_retry)
         measured_reroll = next(line for line in pr_review.splitlines()
                               if line.startswith("| `[CONTEXT] MEASURED_GATE_FAILED=1; reason=verification_preset_by_caller`"))
+        acceptance_reroll = next(line for line in pr_review.splitlines()
+                                 if line.startswith("| rc=1 + `reason=unmet_finding_not_blocking`"))
+        reroll_rule = next(line for line in pr_review.splitlines()
+                           if line.startswith("**reroll 後の再実行**"))
         self.assertIn("update manifest", likelihood_retry)
-        self.assertIn("を更新し", measured_reroll)
+        self.assertIn("を更新し", reroll_rule)
         for line, following in [(likelihood_retry, "and rerun this helper"),
-                                (measured_reroll, "step 1 の JSON を作り直し step 2")]:
+                                (reroll_rule, "推奨事項を抽出し直す")]:
             with self.subTest(route=following):
                 for clause in ["manifest", "agent_id", "output_file", "読取完了申告の照合", "5.1 の回収完了ゲート"]:
                     self.assertIn(clause, line)
                 self.assertLess(line.index("manifest"), line.index("5.1 の回収完了ゲート"))
                 self.assertLess(line.index("5.1 の回収完了ゲート"), line.index(following))
-        for marker in ["| rc=1 + `reason ∈ {table_missing,", "retry の回収結果で manifest を更新し",
-                       "| rc=1 + `reason=unmet_finding_not_blocking`"]:
+        # Both reroll rows rerun the collection gate through the one shared rule,
+        # and do not restate it.
+        for line in [measured_reroll, acceptance_reroll]:
+            with self.subTest(reroll=line[:60]):
+                self.assertIn("「reroll 後の再実行」に従って統合・再実行してから", line)
+                self.assertNotIn("回収完了ゲート", line)
+        for marker in ["| rc=1 + `reason ∈ {table_missing,", "retry の回収結果で manifest を更新し"]:
             line = next(line for line in pr_review.splitlines() if line.startswith(marker))
             self.assertIn("5.1 の回収完了ゲート", line, marker)
         # Every line that reruns the collection gate replaces a reviewer output, so it
@@ -688,8 +697,7 @@ class WorkflowContracts(unittest.TestCase):
                         if "回収完了ゲート" in line and ("再実行" in line or "rerun" in line)
                         and line != likelihood_retry]
         for marker in ["| rc=1 + `reason ∈ {table_missing,", "retry の回収結果で manifest を更新し",
-                       "| `[CONTEXT] MEASURED_GATE_FAILED=1; reason=verification_preset_by_caller`",
-                       "| rc=1 + `reason=unmet_finding_not_blocking`"]:
+                       "**reroll 後の再実行**"]:
             self.assertTrue(any(line.startswith(marker) for line in regenerating), marker)
         for line in regenerating:
             with self.subTest(regenerated_by=line[:60]):
@@ -700,13 +708,16 @@ class WorkflowContracts(unittest.TestCase):
         retry_row = next(line for line in regenerating if line.startswith("retry の回収結果で manifest を更新し"))
         self.assertIn("推奨事項を抽出し直す", retry_row)
         self.assertLess(retry_row.index("5.1.0.L"), retry_row.index("推奨事項を抽出し直す"))
-        # The measured-gate row rebuilds the JSON only after the regenerated output
-        # passed every output check and its recommendations were extracted again.
-        order = ["5.1 の回収完了ゲート", "5.1.0.L", "5.1.0.AC", "推奨事項を抽出し直し", "step 1 の JSON を作り直し step 2"]
+        # The shared rule extracts recommendations again only after the regenerated
+        # output passed every output check, and the measured-gate row rebuilds the
+        # JSON only after applying that rule.
+        order = ["5.1 の回収完了ゲート", "5.1.0.L", "5.1.0.AC", "推奨事項を抽出し直す"]
         for clause in order:
-            self.assertIn(clause, measured_reroll)
-        positions = [measured_reroll.index(clause) for clause in order]
+            self.assertIn(clause, reroll_rule)
+        positions = [reroll_rule.index(clause) for clause in order]
         self.assertEqual(positions, sorted(positions), order)
+        self.assertLess(measured_reroll.index("「reroll 後の再実行」"),
+                        measured_reroll.index("step 1 の JSON を作り直し step 2"))
         # Both review templates tell the reviewer where READ-ONLY Enforcement lives
         # with the same sentence; the base is read from its path, not injected.
         rules = []

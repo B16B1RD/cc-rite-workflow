@@ -119,7 +119,7 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
 [CONTEXT] MEASURED_GATE_FAILED=1; reason=anchor_undetermined; count=N; findings=F-xx,...
 ```
 
-入力 JSON は byte-identical に保持し、`MEASURED_GATE=applied` や gate record を生成しない。`MEASURED_UNDETERMINED_ON_ANCHOR` は出力しない。caller は対象 finding IDs を出した reviewer を Reviewer reject + reroll し（作り直した出力の扱いは pr-review SKILL.md 5.3.0.M step 3 が正本）、同 cycle 内で再実行する（既存の再試行上限は 1 回）。書式は `Verification: repro <cmd> => <観測>` / `Verification: failing_test <path> => <失敗出力>`、raw pipe は `¦` で代替表記する。
+入力 JSON は byte-identical に保持し、`MEASURED_GATE=applied` や gate record を生成しない。`MEASURED_UNDETERMINED_ON_ANCHOR` は出力しない。caller は対象 finding IDs を出した reviewer を Reviewer reject + reroll し（作り直した出力の扱いは pr-review SKILL.md 5.3.0.M の「reroll 後の再実行」が正本）、同 cycle 内で再実行する（既存の再試行上限は 1 回）。書式は `Verification: repro <cmd> => <観測>` / `Verification: failing_test <path> => <失敗出力>`、raw pipe は `¦` で代替表記する。
 
 成功時、marker はあるが full regex が no-match で、同一セグメント内の矢印を検出しない gated finding は WARNING + `MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseable` で報告する。既存 `true` の保持は降格を意味しない。アンカー文字列そのものがない正常な非実測 finding は WARNING を出さない。
 
