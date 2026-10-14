@@ -57,6 +57,7 @@ cycle 数が増えても挙動は一切変わらない（cycle 3 と cycle 5 に
 | `empty_diff` | `git diff {sha}..HEAD` は成功したが差分ゼロ行 | 前回起点から新規 commit が無く、審査対象も解消検証の材料も空になる |
 | `base_only_diff` | 差分はあるが、すべて base の取り込みで入ったもの | PR 自身の変更が無く、fix diff が空になる |
 | `scope_files_unwritable` | fix diff の一覧を `files=` のパスへ書き出せない | caller が審査対象の一覧を読めない |
+| `scope_path_unrepresentable` | 差分のパス名が制御文字（タブ・改行など）を含む | 1 行 1 パスの一覧にも、一覧を受け取る extra-references の入力にも載らず、その名前を審査対象から落とす |
 | `run_pin_unresolved` | state root を解決できず run 開始点 pin の在否を確認できない | 前 run の JSON を現 run と誤認しうる |
 | `run_pin_unreadable` | run 開始点 pin は存在するが読めない | 同上（不在と読取失敗を区別しないと、この経路だけが狭い側へ倒れる） |
 | `foreign_run_json` | 候補 prev JSON の `review_context.run_id` が session の live `review_run.run_id` と違う | 他 run の結果を現 run の前回として差分に使うと、未審査の新 run を狭いスコープで通す |

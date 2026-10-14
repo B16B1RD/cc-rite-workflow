@@ -665,6 +665,57 @@ else
   fail "--all should scan CHANGELOG, got rc=$rc: $out"
 fi
 
+# --all reads the tracked list NUL-separated, so a name that git would quote
+# (tab, double quote, newline, non-ASCII, backslash) and a name with a space are
+# scanned under their raw names
+odd_names=($'docs/tab\there.md' 'docs/q"uote.md' $'docs/new\nline.md' 'docs/日本語.md' 'docs/sp ace.md' 'docs/back\nslash.md')
+odd_n=2410
+for odd in "${odd_names[@]}"; do
+  printf 'odd name (#%s)\n' "$odd_n" > "$sb/$odd"
+  odd_n=$((odd_n + 1))
+done
+odd_total_before=$(run_all "$sb" --quiet 2>&1 | sed -n 's/^Total number-ref findings: //p')
+commit_all "$sb" odd-names
+rc=0; out=$(run_all "$sb" --quiet 2>&1) || rc=$?
+# one finding per odd file: a newline in a name must not count its finding twice
+odd_total_after=$(printf '%s\n' "$out" | sed -n 's/^Total number-ref findings: //p')
+if [ -n "$odd_total_before" ] && [ "$((odd_total_after - odd_total_before))" -eq "${#odd_names[@]}" ]; then
+  pass "--all counts one finding per odd-named file"
+else
+  fail "--all total went from $odd_total_before to $odd_total_after for ${#odd_names[@]} odd-named files"
+fi
+odd_n=2410
+for odd in "${odd_names[@]}"; do
+  if [ "$rc" -eq 1 ] && [[ "$out" == *"$odd:1: odd name (#$odd_n)"* ]]; then
+    pass "--all scans the raw name: $(printf '%q' "$odd")"
+  else
+    fail "--all should report $(printf '%q' "$odd") under its raw name, got rc=$rc: $out"
+  fi
+  odd_n=$((odd_n + 1))
+done
+if [[ "$out" == *"docs/new.md:1: new tracked (#2200)"* ]]; then
+  pass "--all still reports a plain name next to the odd names"
+else
+  fail "--all lost the plain name docs/new.md: $out"
+fi
+git -C "$sb" rm -q -- "${odd_names[@]}" && git -C "$sb" commit -qm odd-names-gone \
+  || fail "odd-name fixture cleanup failed (later cases run on a polluted tree)"
+
+# a scanner failure exits mid-loop; the tracked-file list under TMPDIR is still removed
+printf 'unreadable (#2420)\n' > "$sb/docs/unreadable.md"
+commit_all "$sb" unreadable
+chmod 000 "$sb/docs/unreadable.md"
+list_tmp=$(mktemp -d) && cleanup_dirs+=("$list_tmp") || { echo "ERROR: list tmp" >&2; exit 1; }
+rc=0; out=$(TMPDIR="$list_tmp" run_all "$sb" --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] && [[ "$out" == *"scanner failed"* ]] && [ -z "$(ls -A "$list_tmp")" ]; then
+  pass "--all removes its tracked-file list when a scanner failure exits mid-loop"
+else
+  fail "scanner failure rc=$rc left=$(ls -A "$list_tmp") out=$out"
+fi
+chmod 644 "$sb/docs/unreadable.md"
+git -C "$sb" rm -q -- docs/unreadable.md && git -C "$sb" commit -qm unreadable-gone \
+  || fail "unreadable fixture cleanup failed (later cases run on a polluted tree)"
+
 # --quiet suppresses Scanning but not the summary
 rc=0; err=$(run_all "$sb" --quiet 2>&1 >/dev/null) || rc=$?
 if printf '%s' "$err" | grep -c >/dev/null 'Total number-ref findings:' \

@@ -66,6 +66,8 @@
 #                           /rite:fix の accept-only cycle で base_sha == HEAD となり必ず成立する)
 #   base_only_diff        — 差分はあるが、すべて base の取り込みで入ったもの (PR 自身の変更なし)
 #   scope_files_unwritable— fix diff の一覧を files= のパスへ書き出せない
+#   scope_path_unrepresentable — 差分のパス名が制御文字 (タブ・改行など) を含み、1 行 1 パスの一覧にも
+#                           一覧を受け取る extra-references の入力にも載らない
 #   run_pin_unresolved    — state root を解決できず run 開始点 pin の在否を確認できない
 #   run_pin_unreadable    — run 開始点 pin は存在するが読めない
 #   foreign_run_json      — 候補 prev JSON の review_context.run_id が live run と違う
@@ -272,15 +274,38 @@ if ! git cat-file -e "${base_sha}^{commit}" 2>"$probe_err"; then
   emit_full commit_sha_unreachable
 fi
 
-# 非 ASCII のパスを 8 進エスケープ（引用符付き表記）にしない (core.quotePath=false)。一覧は pr-review-step.sh extra-references へ渡る
-# （`"`・`\`・制御文字を含む名前は引き続き引用されるので、その場合は error-handling の helper が止まる）
+# パスの一覧は -z の NUL 区切りで読み、git が引用符で囲む名前（`"`・`\`・非 ASCII）も生の名前で扱う。
+# 一覧は 1 行 1 パスで書き出され pr-review-step.sh extra-references へ渡るため、制御文字（タブ・改行など）を
+# 含む名前はどちらにも載らない。その名前があれば差分スコープを宣言せず full へ倒す。
 # 改名は元パスと新パスの 2 つとして数える。--name-only は検出した改名の移動先しか出さないため、
 # rename 検出が有効だと PR 自身の変更 (commit ごと) と起点からの差分 (範囲全体) の積から元パスが落ちる。
-diff_names=$(git -c core.quotePath=false diff --no-renames --name-only "${base_sha}..HEAD" 2>"$probe_err") || {
-  echo "WARNING: review-cycle-scope: 差分を取得できません (${base_sha}..HEAD)" >&2
-  head -3 "$probe_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-  emit_full diff_failed
+UNREPRESENTABLE_RC=3
+nul_names_to_lines() {
+  local name rc=0
+  while IFS= read -r -d '' name; do
+    case "$name" in
+      *[[:cntrl:]]*) printf '%q\n' "$name" >> "$unrepresentable_names"; rc=$UNREPRESENTABLE_RC ;;
+      *) printf '%s\n' "$name" ;;
+    esac
+  done
+  return "$rc"
 }
+rite_tempfile_new unrepresentable_names "rcs-ctl-names" || emit_full diff_failed
+# 制御文字を含む名前を見つけた取得では、その名前を挙げて full へ倒す。それ以外の失敗は取得の失敗として扱う
+unrepresentable_or_failed() {
+  local rc="$1" failed_reason="$2" message="$3"
+  if [ "$rc" -eq "$UNREPRESENTABLE_RC" ]; then
+    echo "WARNING: review-cycle-scope: 制御文字を含むパス名があり、1 行 1 パスの一覧で表せません" >&2
+    sed 's/^/  /' "$unrepresentable_names" >&2
+    emit_full scope_path_unrepresentable
+  fi
+  echo "WARNING: review-cycle-scope: $message" >&2
+  head -3 "$probe_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  emit_full "$failed_reason"
+}
+names_rc=0
+diff_names=$(git diff --no-renames --name-only -z "${base_sha}..HEAD" 2>"$probe_err" | nul_names_to_lines) || names_rc=$?
+[ "$names_rc" -eq 0 ] || unrepresentable_or_failed "$names_rc" diff_failed "差分を取得できません (${base_sha}..HEAD)"
 
 # rc=0 かつ出力ゼロ行 = 前回レビュー起点から新規 commit が無い。`/rite:fix` の accept-only cycle
 # (commit も push もせず fingerprint 永続化のみ) で `base_sha == HEAD` となり必ず成立する。
@@ -298,16 +323,12 @@ fi
 # 自動 merge されたファイルも返すので使わない) に限り、その積を fix diff とする。
 # merge の second parent 側から入った変更は base の取り込みとして除く。
 own_names=$( {
-  git -c core.quotePath=false log --no-renames --first-parent --no-merges --name-only --format= "${base_sha}..HEAD" || exit 1
+  git log --no-renames --first-parent --no-merges --name-only -z --format= "${base_sha}..HEAD" | nul_names_to_lines || exit $?
   merges=$(git rev-list --first-parent --merges "${base_sha}..HEAD") || exit 1
   for merge in $merges; do
-    git -c core.quotePath=false show --no-renames --remerge-diff --name-only --format= "$merge" || exit 1
+    git show --no-renames --remerge-diff --name-only -z --format= "$merge" | nul_names_to_lines || exit $?
   done
-} 2>"$probe_err") || {
-  echo "WARNING: review-cycle-scope: PR 自身の変更を取得できません (${base_sha}..HEAD)" >&2
-  head -3 "$probe_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-  emit_full diff_failed
-}
+} 2>"$probe_err") || unrepresentable_or_failed "$?" diff_failed "PR 自身の変更を取得できません (${base_sha}..HEAD)"
 # comm は入力と同じ照合順で動かす。ロケールが違うと片側を読み切って共通要素を落とす。
 scope_names=$( {
   sorted_diff_names=$(printf '%s\n' "$diff_names" | LC_ALL=C sort -u) || exit 1

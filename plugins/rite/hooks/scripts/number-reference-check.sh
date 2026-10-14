@@ -235,11 +235,11 @@ AWK_HAS_HIT='
 '
 
 awk_has_hit_and_emit() {
-  local file="$1"
-  awk -v file="$file" "$AWK_HAS_HIT"'
+  # The name goes through the environment: awk -v would read a backslash in it as an escape.
+  RITE_NR_FILE="$1" awk "$AWK_HAS_HIT"'
     {
       if (index($0, "drift-check-ignore") > 0) next
-      if (has_hit($0)) printf "%s:%d: %s\n", file, NR, $0
+      if (has_hit($0)) printf "%s:%d: %s\n", ENVIRON["RITE_NR_FILE"], NR, $0
     }
   '
 }
@@ -251,6 +251,18 @@ count_lines() {
     return 0
   fi
   printf '%s\n' "$s" | grep -c .
+}
+
+# A newline in the file name splits each finding of that file over several output lines,
+# so the line count is divided back by the lines one finding takes.
+count_file_findings() {
+  local out="$1" file="$2" nl
+  if [ -z "$out" ]; then
+    echo 0
+    return 0
+  fi
+  nl=$(printf '%s' "$file" | tr -cd '\n' | wc -c)
+  echo $(( $(printf '%s\n' "$out" | wc -l) / (nl + 1) ))
 }
 
 emit_findings() {
@@ -275,24 +287,32 @@ scan_file() {
     exit 2
   }
   emit_findings "$out"
-  hits=$(count_lines "$out")
+  hits=$(count_file_findings "$out" "$file")
   total=$((total + hits))
 }
 
 total=0
 
 scan_all() {
-  local list
-  if ! list=$(git ls-files); then
+  # NUL-separated so that a name git would quote (tab, quote, newline, non-ASCII) is read raw.
+  # A file keeps NULs that $(...) would drop.
+  # scan_file can exit mid-loop, so the list is removed on EXIT rather than after the loop only.
+  list=$(mktemp "${TMPDIR:-/tmp}/rite-number-ref-ls-XXXXXX") || {
+    echo "ERROR: mktemp failed for the tracked file list" >&2
+    exit 2
+  }
+  trap 'rm -f "$list"' EXIT
+  if ! git ls-files -z > "$list"; then
     echo "ERROR: git ls-files failed" >&2
     exit 2
   fi
   local f n=0
-  while IFS= read -r f; do
+  while IFS= read -r -d '' f; do
     [ -z "$f" ] && continue
     n=$((n + 1))
     scan_file "$f"
-  done <<< "$list"
+  done < "$list"
+  rm -f "$list"
   log "Scanning $n tracked file(s)..."
 }
 

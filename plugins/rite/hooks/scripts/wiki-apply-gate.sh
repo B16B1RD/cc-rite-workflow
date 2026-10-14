@@ -169,8 +169,9 @@ esac
 DIFF_DIR=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-apply-gate-XXXXXX") || _deny "tmp_unavailable"
 trap 'rm -rf "$DIFF_DIR"' EXIT
 DIFF_ERRF="$DIFF_DIR/err"
-# staged の一覧を取れないまま空として続けると paths と blob の照合が黙って外れるため拒否する
-if ! git -C "$WORKTREE" diff --cached --name-only >"$DIFF_DIR/staged" 2>>"$DIFF_DIR/err"; then
+# staged の一覧を取れないまま空として続けると paths と blob の照合が黙って外れるため拒否する。
+# 一覧は -z の NUL 区切りで受け、capture が記録した生の名前と同じ表現で照合する
+if ! git -C "$WORKTREE" diff --cached --name-only -z >"$DIFF_DIR/staged" 2>>"$DIFF_DIR/err"; then
   echo "ERROR: staged の一覧を取得できません: $(cat "$DIFF_DIR/err")" >&2
   _deny "staged_unreadable"
 fi
@@ -184,7 +185,7 @@ if [ -z "$BASE" ]; then
   : >"$DIFF_DIR/text"
   DIFF_OK=0
 else
-  git -C "$WORKTREE" diff --no-ext-diff --no-textconv --name-only "${BASE}...HEAD" >"$DIFF_DIR/names" 2>>"$DIFF_ERRF" || DIFF_OK=0
+  git -C "$WORKTREE" diff --no-ext-diff --no-textconv --name-only -z "${BASE}...HEAD" >"$DIFF_DIR/names" 2>>"$DIFF_ERRF" || DIFF_OK=0
   git -C "$WORKTREE" diff --no-ext-diff --no-textconv "${BASE}...HEAD" >"$DIFF_DIR/text" 2>>"$DIFF_ERRF" || DIFF_OK=0
 fi
 
@@ -319,7 +320,7 @@ diff_dir = os.environ["WIKI_APPLY_DIFF_DIR"]
 def diff_file(name):
     with open(os.path.join(diff_dir, name), encoding="utf-8", errors="surrogateescape") as f:
         return f.read()
-staged = [p for p in diff_file("staged").splitlines() if p]
+staged = [p for p in diff_file("staged").split("\0") if p]
 staged_set = set(staged)
 for path in recorded_paths:
     parts = path.split("/")
@@ -352,7 +353,7 @@ for path in staged:
 if status == "ok":
     if not pages:
         fail("pages_missing")
-    names = set(p for p in diff_file("names").splitlines() if p)
+    names = set(p for p in diff_file("names").split("\0") if p)
     diff_text = diff_file("text")
     for page in pages:
         if page.get("body") != "read":
