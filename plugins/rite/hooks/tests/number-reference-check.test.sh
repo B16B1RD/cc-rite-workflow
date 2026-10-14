@@ -705,7 +705,17 @@ git -C "$sb" rm -q -- "${odd_names[@]}" && git -C "$sb" commit -qm odd-names-gon
 # outside the quotes to a name with a space. Each odd name is reported raw and counted once,
 # also under core.quotePath=true (the script pins it off so octal escapes stay control-only).
 diff_odd_names=("${odd_names[@]}" 'docs/q"uote sp.md' $'docs/c\001trl.md' $'docs/c\rr.md'
-  $'docs/c\a\b\v\fx.md' $'docs/q"\xffbad.md')
+  $'docs/c\a\b\v\fx.md')
+# A name with a byte that is not valid UTF-8 checks that the scan pins the C locale: under a
+# UTF-8 locale, gawk's `.` does not match that byte. It is added only where a UTF-8 locale
+# exists and the file system accepts the name (macOS rejects it).
+diff_utf8=$(locale -a 2>/dev/null | grep -ixE 'c\.utf-?8|en_us\.utf-?8' | head -1) || diff_utf8=""
+if [ -n "$diff_utf8" ] && (: > "$sb/"$'probe\xff') 2>/dev/null; then
+  rm -f -- "$sb/"$'probe\xff'
+  diff_odd_names+=($'docs/q"\xffbad.md')
+else
+  echo "  (skip: invalid UTF-8 file name — no UTF-8 locale, or the file system rejects the name)"
+fi
 odd_n=2430
 for odd in "${diff_odd_names[@]}"; do
   printf 'odd diff name (#%s)\n' "$odd_n" > "$sb/$odd"
@@ -714,8 +724,7 @@ done
 commit_all "$sb" odd-diff-names
 for quote_path in false true; do
   git -C "$sb" config core.quotePath "$quote_path"
-  # Run under a UTF-8 locale: an invalid byte in a name matches `.` only if the scan pins C.
-  rc=0; out=$(LC_ALL=C.UTF-8 run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+  rc=0; out=$(LC_ALL="${diff_utf8:-C}" run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
   total=$(printf '%s\n' "$out" | sed -n 's/^Total number-ref findings: //p')
   if [ "$rc" -eq 1 ] && [ "$total" = "${#diff_odd_names[@]}" ]; then
     pass "--diff counts one finding per odd-named file (core.quotePath=$quote_path)"

@@ -376,9 +376,9 @@ scan_diff() {
       return 0
     }
     # git writes a header name in C-style quotes when it holds a quote, backslash or control
-    # character, and appends a tab outside the quotes when the name holds a space. core.quotePath=false
-    # keeps valid non-ASCII raw; the octal escapes left (control characters, invalid bytes) decode
-    # one byte each because this scan runs in the C locale.
+    # character, and appends a tab outside the quotes when the name holds a space. Octal
+    # escapes are limited to control characters because core.quotePath=false keeps every byte
+    # from 0x80 up raw, even one that is not valid UTF-8.
     function unquote(p,    out, i, c, n, d) {
       sub(/\t$/, "", p)
       if (p !~ /^".*"$/) return p
