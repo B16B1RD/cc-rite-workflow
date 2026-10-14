@@ -1746,9 +1746,9 @@ cap_block="$ROOT/base-intake-wiki-capture.sh"
 awk -v root="$PLUGIN_ROOT" '
   /^   # base-intake-wiki-capture$/ { copy=1; next }
   copy && /^   ```$/ { exit }
-  copy { sub(/^   /, ""); gsub(/\{plugin_root\}/, root); gsub(/\{keywords\}/, "base-intake"); gsub(/\{changed_paths\}/, "__CHANGED__"); print }
+  copy { sub(/^   /, ""); gsub(/\{plugin_root\}/, root); gsub(/\{keywords\}/, "base-intake"); print }
 ' "$PLAN_MD" > "$cap_block"
-if [ -s "$cap_block" ] && ! grep -q '{' "$cap_block" && grep -q '__CHANGED__' "$cap_block" \
+if [ -s "$cap_block" ] && ! grep -q '{' "$cap_block" && grep -qF -- "--changed-paths ''" "$cap_block" \
   && [ "$(grep -c . "$bi_block")" -eq 1 ] && grep -q 'wiki-apply-advance-head' "$bi_block"; then
   pass "the extracted re-capture block is complete and the head block stays one line"
 else
@@ -1759,7 +1759,7 @@ fi
 rc_env() { local flow="$1"; shift; env -u WIKI_APPLY_MEMORY -u RITE_STATE_ROOT WIKI_APPLY_FLOW_STATE="$flow" "$@"; }
 recapture_case() {
   local change="$1" before_mode="$2" before_reason="$3"
-  local r flow mem changed cap_rc=0 adv_rc=0 merge_rc=0
+  local r flow mem cap_rc=0 adv_rc=0 merge_rc=0
   r=$(new_repo "rc-$change")
   # 実リポジトリと同じく .rite/ は追跡外、rite-config.yml は追跡済みにする
   # （空の paths で capture が作業ツリーの変更一覧を使う回復で、どちらも拾わない）
@@ -1770,7 +1770,8 @@ recapture_case() {
   mem="$r/.rite/work-memory/issue-7.md"
   printf 'keep\n' > "$r/KEEP"
   ln -s KEEP "$r/LINK"
-  git -C "$r" add KEEP LINK rite-config.yml
+  printf 'old\n' > "$r/旧.txt"
+  git -C "$r" add KEEP LINK 旧.txt rite-config.yml
   git -C "$r" commit -qm 'fix: reviewed'
   git -C "$r" branch base
   git -C "$r" switch -q base
@@ -1780,6 +1781,12 @@ recapture_case() {
     delete) git -C "$r" rm -q KEEP ;;
     rename) git -C "$r" mv KEEP MOVED ;;
     symlink) ln -sfn rite-config.yml "$r/LINK"; git -C "$r" add LINK ;;
+    # git が引用符で囲んで表示する名前（非 ASCII・引用符・タブ）の追加・削除・改名
+    quoted)
+      printf 'a\n' > "$r/日本語.txt"; printf 'b\n' > "$r/q\"uote"; printf 'c\n' > "$r/tab	name"
+      git -C "$r" add 日本語.txt 'q"uote' 'tab	name'
+      git -C "$r" rm -q 旧.txt
+      git -C "$r" mv KEEP 改名.txt ;;
   esac
   git -C "$r" commit -qm 'chore: upstream'
   git -C "$r" switch -q -
@@ -1793,9 +1800,18 @@ recapture_case() {
   else
     fail "$change: before re-capture rc=$GRC out=$GOUT err=$(cat "$ROOT/rc-$change-before.err")"
   fi
-  changed=$(cd "$r" && git diff --no-renames --name-only HEAD | paste -sd, -)
-  sed "s|__CHANGED__|$changed|" "$cap_block" > "$ROOT/rc-$change-cap.sh"
-  (cd "$r" && rc_env "$flow" bash "$ROOT/rc-$change-cap.sh") >"$ROOT/rc-$change-cap.out" 2>&1 || cap_rc=$?
+  (cd "$r" && rc_env "$flow" bash "$cap_block") >"$ROOT/rc-$change-cap.out" 2>&1 || cap_rc=$?
+  if [ "$change" = quoted ]; then
+    # 改名元は記録せず改名先だけ、削除は blob の値 - で記録する
+    local got want
+    got=$(grep '^paths: ' "$mem" | tail -1 | sed 's/^paths: //' | tr ',' '\n' | LC_ALL=C sort)
+    want=$(printf '%s\n' 日本語.txt 'q"uote' 'tab	name' 改名.txt 旧.txt | LC_ALL=C sort)
+    if [ "$got" = "$want" ] && grep -qx 'blob: 旧.txt=-' "$mem" && ! grep -q '^blob: KEEP=' "$mem"; then
+      pass "$change: the re-capture records the intake paths with their raw names"
+    else
+      fail "$change: recorded paths $(grep '^paths: ' "$mem") cap=$(cat "$ROOT/rc-$change-cap.out")"
+    fi
+  fi
   GRC=0
   GOUT=$(cd "$r" && rc_env "$flow" bash "$GATE" --mode commit 2>"$ROOT/rc-$change-commit.err") || GRC=$?
   if [ "$cap_rc" -eq 0 ] && [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
@@ -1813,11 +1829,6 @@ recapture_case() {
   else
     fail "$change: review after intake adv_rc=$adv_rc rc=$GRC out=$GOUT err=$(cat "$ROOT/rc-$change-review.err") adv=$(cat "$ROOT/rc-$change-adv.out")"
   fi
-  # 手順 4 の回復: commit 後は手順 2 の paths のうち作業ツリーにあるものだけで取り直す
-  local kept="" p _cs
-  IFS=',' read -r -a _cs <<<"$changed"
-  for p in "${_cs[@]}"; do { [ -e "$r/$p" ] || [ -L "$r/$p" ]; } && kept="${kept:+$kept,}$p"; done
-  sed "s|__CHANGED__|$kept|" "$cap_block" > "$ROOT/rc-$change-recover.sh"
   # 手順 4 が進められなかった状態（head がレビュー済み commit のまま）から回復する
   sed -i.bak "s/^head: .*/head: $(git -C "$r" rev-parse HEAD^)/" "$mem" && rm -f "$mem.bak"
   GRC=0
@@ -1828,28 +1839,33 @@ recapture_case() {
     fail "$change: recovery precondition rc=$GRC out=$GOUT"
   fi
   cap_rc=0
-  (cd "$r" && rc_env "$flow" bash "$ROOT/rc-$change-recover.sh") >"$ROOT/rc-$change-recover.out" 2>&1 || cap_rc=$?
+  (cd "$r" && rc_env "$flow" bash "$cap_block") >"$ROOT/rc-$change-recover.out" 2>&1 || cap_rc=$?
   GRC=0
   GOUT=$(cd "$r" && rc_env "$flow" bash "$GATE" --mode review 2>"$ROOT/rc-$change-recover.err") || GRC=$?
+  # commit 後の作業ツリーは clean なので、回復の証跡は paths を持たない
   if [ "$cap_rc" -eq 0 ] && grep -qx "head: $(git -C "$r" rev-parse HEAD)" "$mem" \
+    && [ "$(grep '^paths:' "$mem" | tail -1)" = "paths:" ] \
     && [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
     pass "$change: the step 4 recovery re-capture lets the next review allow"
   else
-    fail "$change: step 4 recovery cap_rc=$cap_rc rc=$GRC out=$GOUT err=$(cat "$ROOT/rc-$change-recover.err") cap=$(cat "$ROOT/rc-$change-recover.out")"
+    fail "$change: step 4 recovery cap_rc=$cap_rc rc=$GRC out=$GOUT $(grep '^paths:' "$mem" | tail -1) err=$(cat "$ROOT/rc-$change-recover.err") cap=$(cat "$ROOT/rc-$change-recover.out")"
   fi
 }
 step2=$(awk '/^2\. / { copy=1 } /^3\. / { exit } copy { print }' <<<"$intake")
+# capture に渡す一覧は組み立てない: 手順 2 の計画 paths だけが --name-only の一覧を使う
+not_step2=$(awk '/^2\. / { skip=1; next } /^3\. / { skip=0 } !skip { print }' <<<"$intake")
 if grep -qF '`git diff --no-renames --name-only HEAD`' <<<"$step2" \
-  && grep -q '作業ツリーにあるもの' <<<"$(awk '/^4\. / { copy=1 } /^5\. / { exit } copy { print }' <<<"$intake")"; then
-  pass "step 2 lists paths as the test does and step 4 narrows the recovery to existing paths"
+  && ! grep -qF -e '--name-only' -e '{changed_paths}' <<<"$not_step2"; then
+  pass "only step 2 lists paths with --name-only; the re-captures pass no path list"
 else
-  fail "step 2 / step 4 wording step2=$step2"
+  fail "base-intake wording step2=$step2 others=$(grep -F -e '--name-only' -e '{changed_paths}' <<<"$not_step2")"
 fi
 recapture_case add commit paths
 recapture_case modify review stale_content
 recapture_case delete commit stale_content
 recapture_case rename commit stale_content
 recapture_case symlink commit paths
+recapture_case quoted commit stale_content
 # 削除として記録できるのは HEAD にあったパスだけで、記録した削除が戻れば一致しない
 r=$(new_repo rc-gone)
 write_config "$r" true false
