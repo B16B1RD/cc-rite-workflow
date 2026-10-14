@@ -307,7 +307,7 @@ upstream がファイルを直接読む `awk ... "$file"` の `exit` は pipe �
 
 ## Pitfalls by Theme
 
-Each row is a condition and the form that avoids it. Forms marked **lint** are detected by `hooks/scripts/bash-pitfall-check.sh` (`/rite:lint`); the rest need a reviewer's judgment. Rows cover the bash, awk, sed, grep and jq forms the plugin uses.
+Each row is a condition and the form that avoids it. Forms marked **lint** are detected by `hooks/scripts/bash-pitfall-check.sh` (`/rite:lint`); the rest need a reviewer's judgment. Rows cover the bash, awk, sed, grep and jq forms the plugin uses, and the output of other programs its helpers parse.
 
 ### Exit status, `set -e`, `pipefail`
 
@@ -418,6 +418,13 @@ Each row is a condition and the form that avoids it. Forms marked **lint** are d
 | A judgment mechanism is replaced (`jq` for `grep`, for example) | Enumerate the old mechanism's implicit failure conditions (empty input, status) and compare measured exit codes before switching |
 | A new consumer reads a persisted array | Take the meaning of the collection from the writer's definition, not the field name |
 | The `gh api graphql` variable is an opaque string (ID, cursor) | `-f`, not `-F` (which converts the type); every `gh` command in a skill body carries `-R {owner_repo}` |
+
+### Parsing another program's output
+
+| Situation | Defensive form |
+|-----------|----------------|
+| A helper parses `git diff` / `git status` / `git log` output whose format the user's git config changes (`core.quotePath` quotes non-ASCII paths, `diff.noprefix` / `diff.mnemonicPrefix` change the `a/` `b/` prefixes, `diff.external` replaces the diff, `color.ui=always` adds escapes) | Pin the format at the call site: `git -c core.quotePath=false diff --no-ext-diff --no-color --src-prefix=a/ --dst-prefix=b/ ...`. Output only shown to a person needs no pinning |
+| A Python helper removes a prefix with `s.lstrip("prefix")`, which strips any leading characters in the set (`"refs/heads/hotfix".lstrip("refs/heads/")` returns `"otfix"`) | `s.removeprefix("prefix")` (Python 3.9+) |
 
 ---
 

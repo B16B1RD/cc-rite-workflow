@@ -30,6 +30,11 @@ Shared error patterns referenced by command files. When an error occurs, display
 
 Common causes: wrong number/name, entity deleted, different repository.
 
+### Fetching to Decide Whether a Target Exists
+
+- A fetch whose result decides whether a target exists, where absence can be a normal outcome → treat "does not exist" (404, an empty result) as input to the decision, and "could not fetch" (authentication, permission, network, 5xx) as undecidable and stop. Do not fold both into one failure.
+- A list fetched with a count limit (`--limit`, stopped pagination) → keep a mark that the list was cut at the limit, and do not use a marked list as evidence that a target is absent. Fetch every page, or stop as undecidable.
+
 ### Permission Error
 
 ```
