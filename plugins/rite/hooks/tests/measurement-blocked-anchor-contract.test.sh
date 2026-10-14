@@ -89,7 +89,7 @@ grep '^\*\*reroll 後の再実行\*\*' "$PR_REVIEW" > "$rule_file" || true
 assert "reroll rule paragraph is extracted exactly once" "1" "$(wc -l < "$rule_file" | tr -d ' ')"
 assert_grep "routing row points to the reroll rule" "$routing_file" \
   '回収結果を下記「reroll 後の再実行」に従って統合・再実行してから、同 cycle 内で step 1 の JSON を作り直し step 2 を再実行する'
-assert_not_grep "routing row does not restate the reroll rule" "$routing_file" '元の出力|保持|通常どおりの条件で再実行'
+assert_not_grep "routing row does not restate the reroll rule" "$routing_file" '元の出力|保持|通常どおりの条件で再実行|5\.2\.2|evidence_claim_rejected_count|合意 finding|初回のまま'
 assert "the reroll rule body appears once in pr-review" "1" "$(grep -o '通常どおりの条件で再実行' "$PR_REVIEW" | wc -l | tr -d ' ')"
 # 作り直した出力の統合方法は丸ごと置き換えの 1 つだけで、5.1.1.1 の retry と同じ方式であること。
 # 置き換え・破棄・他 reviewer 保持の 3 文を、段落の先頭から連続した文全体で固定し、文の極性反転や頭・間への例外の挿入も落とす。
@@ -111,6 +111,11 @@ assert_grep "reroll rule reruns the normal path from the collection gate to 5.3.
 assert_grep "reroll rule rebuilds values made from the rerolled reviewer's original output" "$rule_file" \
   'のうち、当該 reviewer の元の出力から作られた値は作り直した出力から作り直して置き換える。他 reviewer の出力と組み合わせて作られた値（5\.2 の矛盾、5\.2\.1 の合意 finding と disposition、全 reviewer に量化した 5\.1\.1\.1 の判定など）もこれに含め、作り直した出力と他 reviewer の出力から作り直す。他 reviewer の出力だけから作られた値は初回のまま使う。'
 assert_not_grep "pr-review no longer keeps the initial contradiction disposition" "$PR_REVIEW" '初回に決まった矛盾の disposition'
+# 5.2.2 の例外と件数の文は共有規則の一部で、段落の中にだけ 1 回現れる（行へ戻す・複製する・消す変更を落とす）。
+assert_grep "reroll rule keeps the 5.2.2 exception and the rejected count" "$rule_file" \
+  '例外として、5\.2\.2 不採用は Verification 追加だけで再採用しない。再実行 5\.2\.2 は初回の不採用行を破棄しない。`evidence_claim_rejected_count` は初回の不採用行と再実行 5\.2\.2 の不採用行を合わせた件数とする'
+assert "the 5.2.2 exception appears once in pr-review" "1" "$(grep -o '5\.2\.2 不採用は Verification 追加だけで再採用しない' "$PR_REVIEW" | wc -l | tr -d ' ')"
+assert "the keep-initial-rejections sentence appears once in pr-review" "1" "$(grep -o '再実行 5\.2\.2 は初回の不採用行を破棄しない' "$PR_REVIEW" | wc -l | tr -d ' ')"
 assert_not_grep "reviewer prompt does not regenerate only the target findings" "$PROMPT_GEN" \
   '対象 finding のみ再生成|対象 finding の再生成'
 assert_grep "5.1.1.1 merge strategy is still replace" "$PR_REVIEW" \
