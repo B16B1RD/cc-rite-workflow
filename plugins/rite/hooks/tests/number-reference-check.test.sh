@@ -721,10 +721,10 @@ else
   diff_odd_names+=($'docs/q"\xffbad.md')
 fi
 if [ -n "$diff_skip" ]; then
-  if [ "$(uname -s)" = Linux ]; then
+  if [ -d /proc ]; then
     fail "--diff invalid UTF-8 name case could not run on Linux: $diff_skip"
   else
-    echo "  (skip: invalid UTF-8 file name — $diff_skip)"
+    skip "--diff invalid UTF-8 name case: $diff_skip"
   fi
 fi
 odd_n=2430
