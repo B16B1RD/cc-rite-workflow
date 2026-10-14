@@ -2,6 +2,7 @@
 
 ## 2026-10-15
 * **Promotion**: [候補の出典](raw/reviews/20261014T150735Z-pr-3891.md) — unresolved <!-- rite-promotion: {"candidate": "8905b6376db948109c5f33fe78acaeb72f6ee58d6e3f5ad5195d0d02dbffc344", "raw": "raw/reviews/20261014T150735Z-pr-3891.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
+* **lint:clean** — contradictions=0, stale=77, orphans=0, missing_concept=0, unregistered_raw=838, broken_refs=0 (WIKI_CONTRADICTION_CHECK=complete; changed=0; screened=0; candidates=0; excluded=0; compared=0; carried=0; resolved=0; 対象なし: 今回の取り込みで追加・更新したページなし)
 
 ## 2026-10-14
 * **Skip**: [20261014T101054Z-pr-3886.md](raw/reviews/20261014T101054Z-pr-3886.md) — 差分スコープでも reviewer が変異を再実測したという観察だけで、新しい経験則を含まない
