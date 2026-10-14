@@ -74,7 +74,7 @@ ROW
 pin_row "a list cut at its count limit is marked and not used as evidence of absence" "$ERR_DOC" "$H_FETCH" <<'ROW'
 - A list fetched with a count limit (`--limit`, stopped pagination) → keep a mark that the list was cut at the limit, and do not use a marked list as evidence that a target is absent. Fetch every page, or stop as undecidable.
 ROW
-pin_row "a partial body edit keeps no pre-edit lines and re-fetches after the last write" "$GH_DOC" "$H_BODY" <<'ROW'
+pin_row "a partial body edit writes back no copy read before an earlier write and re-fetches after the last write" "$GH_DOC" "$H_BODY" <<'ROW'
 | (4) Re-fetch after a partial edit | Do not write back a copy of the body read before an earlier write in the same script; after the script's last write, fetch the body again and stop if the replaced old text still appears | Overwriting the body with lines read before the edit, which brings the old text back |
 ROW
 pin_row "an accepting regex matches the producer's output and the existing gate" "$CP_DOC" "$H_REGEX" <<'ROW'
