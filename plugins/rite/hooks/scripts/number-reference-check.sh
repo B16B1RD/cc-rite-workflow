@@ -14,7 +14,9 @@
 #                         移動した行として検出しない（削除 1 行につき追加 1 行まで）。
 #                         rename 検出は使わない（ユーザー設定に依らず、除外パスからの
 #                         rename も行単位の追加として見る）。prefix・外部 diff・textconv
-#                         も固定し、ユーザーの diff 設定で走査対象の形を変えない
+#                         も固定し、ユーザーの diff 設定で走査対象の形を変えない。
+#                         ファイル名は git の引用を外した生の名前で表示し、件数は
+#                         検出 1 件を 1 と数える（名前の改行で出力行が分かれても同じ）
 #                         --path DIR で走査範囲を DIR 配下へ限定できる
 #                         (DIR に tracked も staged も 0 件なら invocation error)
 #   --stdin --label NAME  stdin を NAME として走査（除外パスなら走査しない）
@@ -64,7 +66,8 @@ Options:
   --all              Scan all git-tracked files minus path exclusions
   --diff BASE        Scan added lines of git diff --no-renames BASE (includes
                      uncommitted); an added line equal to a removed line outside
-                     the excluded paths in the same diff is a move (one for one)
+                     the excluded paths in the same diff is a move (one for one);
+                     file names are reported raw, not in git's quoted form
   --stdin            Scan stdin (requires --label)
   --label NAME       Path label for --stdin findings
   --path DIR         Limit --diff to this pathspec (repo-root relative)
@@ -368,12 +371,37 @@ scan_diff() {
       }
       return 0
     }
-    function unquote(p) {
-      if (p ~ /^".*"$/) {
-        sub(/^"/, "", p)
-        sub(/"$/, "", p)
+    # git writes a header name in C-style quotes when it holds a quote, backslash or control
+    # character, and appends a tab outside the quotes when the name holds a space. Octal
+    # escapes are limited to control characters because core.quotePath=false keeps non-ASCII raw.
+    function unquote(p,    out, i, c, n, d) {
+      sub(/\t$/, "", p)
+      if (p !~ /^".*"$/) return p
+      p = substr(p, 2, length(p) - 2)
+      out = ""
+      i = 1
+      while (i <= length(p)) {
+        c = substr(p, i, 1)
+        if (c != "\\") { out = out c; i++; continue }
+        c = substr(p, i + 1, 1)
+        if (c ~ /[0-7]/) {
+          n = 0
+          for (d = 0; d < 3 && substr(p, i + 1 + d, 1) ~ /[0-7]/; d++) n = n * 8 + substr(p, i + 1 + d, 1)
+          out = out sprintf("%c", n)
+          i += 1 + d
+          continue
+        }
+        if (c == "n") out = out "\n"
+        else if (c == "t") out = out "\t"
+        else if (c == "r") out = out "\r"
+        else if (c == "a") out = out "\a"
+        else if (c == "b") out = out "\b"
+        else if (c == "f") out = out "\f"
+        else if (c == "v") out = out "\v"
+        else out = out c
+        i += 2
       }
-      return p
+      return out
     }
     $0 == "#rite-second-pass" { second = 1; next }
     !second {
@@ -412,7 +440,7 @@ scan_diff() {
       content = substr($0, 2)
       if (index(content, "drift-check-ignore") == 0 && has_hit(content)) {
         if (removed[content] > 0) removed[content]--
-        else printf "%s:%d: %s\n", path, line, content
+        else { printf "%s:%d: %s\n", path, line, content; found++ }
       }
       line++
       next
@@ -420,14 +448,23 @@ scan_diff() {
     /^-/ { next }
     /^\\/ { next }
     { if (line > 0) line++ }
+    END { printf "#rite-findings=%d\n", found }
   ')
   local awk_rc=$?
   if [ "$awk_rc" -ne 0 ]; then
     echo "ERROR: diff scanner failed" >&2
     exit 2
   fi
+  # A newline in a file name splits one finding over several lines, so the count comes from
+  # awk rather than the output. It is the last line, read from the end of the output.
+  total=${hits##*#rite-findings=}
+  if [[ "$hits" != *"#rite-findings="* ]] || ! [[ "$total" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: diff scanner produced no findings count" >&2
+    exit 2
+  fi
+  hits=${hits%#rite-findings=*}
+  hits=${hits%$'\n'}
   emit_findings "$hits"
-  total=$(count_lines "$hits")
 }
 
 scan_stdin() {
