@@ -83,21 +83,20 @@ assert_grep "routing rerolls only reviewers that emitted the diagnostic finding 
 assert_grep "routing uses reviewer reject and reroll" "$routing_file" \
   'Reviewer reject \+ reroll'
 # 作り直した出力の統合方法は丸ごと置き換えの 1 つだけで、5.1.1.1 の retry と同じ方式であること。
-# 置き換え・破棄・他 reviewer 保持の 3 文を連続した文全体で固定し、文の極性反転や間への例外の挿入も落とす。
-replace_sentences='作り直した出力は当該 reviewer の元の出力を丸ごと置き換える（5.1.1.1 の結果 merge 戦略と同じ。元 prompt を送り直すので元の出力と同じ範囲を対象にする）。元の出力を破棄し、作り直した出力のみを使う。他 reviewer の出力は保持する。'
+# 置き換え・破棄・他 reviewer 保持の 3 文を、直前の文末から連続した文全体で固定し、文の極性反転や頭・間への例外の挿入も落とす。
+replace_sentences='含める。作り直した出力は当該 reviewer の元の出力を丸ごと置き換える（5.1.1.1 の結果 merge 戦略と同じ。元 prompt を送り直すので元の出力と同じ範囲を対象にする）。元の出力を破棄し、作り直した出力のみを使う。他 reviewer の出力は保持する。'
 if grep -qF -- "$replace_sentences" "$routing_file"; then
   pass "routing replaces the original output, discards it, and keeps other reviewers' outputs"
 else
   fail "routing replaces the original output, discards it, and keeps other reviewers' outputs (sentences not found in routing row)"
 fi
-# 言い換えた相反文を数で拒否する: 保持するのは他 reviewer の出力だけ、差し替えも両方の集計も書かない。
-assert "routing keeps only other reviewers' outputs" "1" "$(grep -o '保持' "$routing_file" | wc -l | tr -d ' ')"
-assert "routing does not splice findings into the original output" "0" "$(grep -o '差し替え' "$routing_file" | wc -l | tr -d ' ')"
-assert_not_grep "routing does not aggregate both outputs" "$routing_file" '両方'
-# 元の出力に触れるのは置き換え・範囲・破棄の 3 箇所だけ。元の出力から何かを引き継ぐ文が足されると数が変わる。
-assert "routing mentions the original output only in the three replace sentences" "3" "$(grep -o '元の出力' "$routing_file" | wc -l | tr -d ' ')"
-assert_grep "routing reruns the downstream stages for the rerolled output" "$routing_file" \
-  '5\.1\.0\.AC → 5\.1\.2\.A → 5\.2 → 5\.2\.1 → 5\.2\.2 → Fact-Checking → 5\.3\.0 を再実行し'
+# 相反文のうち 保持・差し替え・両方・元の出力 の語を含むものを数で拒否する（語を避けた言い換えまでは拒否しない）。
+assert "routing row has exactly one 保持 token" "1" "$(grep -o '保持' "$routing_file" | wc -l | tr -d ' ')"
+assert "routing row has no 差し替え token" "0" "$(grep -o '差し替え' "$routing_file" | wc -l | tr -d ' ')"
+assert_not_grep "routing row has no 両方 token" "$routing_file" '両方'
+assert "routing row has exactly three 元の出力 tokens" "3" "$(grep -o '元の出力' "$routing_file" | wc -l | tr -d ' ')"
+assert_grep "routing reruns the normal path from the collection gate to 5.3.0 for the rerolled output" "$routing_file" \
+  '5\.1 の回収完了ゲート（読取完了申告の照合を含む）→ 5\.1\.0\.L → 5\.1\.0\.AC から 5\.3\.0 までの通常経路の各段を、作り直した出力に対して通常どおりの条件で再実行し'
 assert_not_grep "reviewer prompt does not regenerate only the target findings" "$PROMPT_GEN" \
   '対象 finding のみ再生成|対象 finding の再生成'
 assert_grep "5.1.1.1 merge strategy is still replace" "$PR_REVIEW" \

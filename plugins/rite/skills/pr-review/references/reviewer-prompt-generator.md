@@ -137,7 +137,7 @@ Finding Quality Guardrail Category #2 で除外した候補を次の表へ必ず
 
 **`内容` 列のアンカー記入例**（`Likelihood-Evidence:` は掲載可否、`Verification:` は実測の記録を担う直交アンカー。実測できた指摘は両方を末尾に付けること）:
 
-> ⚠️ **`内容` 列の中では raw `|` (パイプ) を使わないこと**（`Likelihood-Evidence:` / `Verification:` / `Measurement-Blocked:` / 叙述部のいずれも対象）。テーブルのセル境界と衝突して 5 列構造を壊します。セルを跨がずに `description` へ届いた場合、アンカーは検出 regex に match せず原則として **error + その reviewer の出力全体の作り直し** になります。ただし marker から `=>` までの間に改行 / `<br>` / 句点があるとその手前で判定が切れ `measured=false` へ降格します (実測済みでも merge を止めません)。パイプは `¦` (U+00A6) で代替表記してください（下記 2 番目の例）。詳細は `_reviewer-base.md` §Verification: runtime 実測の添付 の Rules を参照。
+> ⚠️ **`内容` 列の中では raw `|` (パイプ) を使わないこと**（`Likelihood-Evidence:` / `Verification:` / `Measurement-Blocked:` / 叙述部のいずれも対象）。テーブルのセル境界と衝突して 5 列構造を壊します。セルを跨がずに `description` へ届いた場合、アンカーは検出 regex に match せず原則として **error + その reviewer の出力全体の作り直し** になります。ただし marker から `=>` までの間に改行 / `<br>` / 句点があるとその手前で判定が切れ `measured=false` へ降格します (実測済みでも merge を止めません)。パイプは `¦` (U+00A6) で代替表記してください（下記 2 番目の例）。`¦` での代替表記の書き方は `_reviewer-base.md` §Verification: runtime 実測の添付 の Rules を参照（形式崩れのアンカーの扱いの正本は pr-review SKILL.md 5.3.0.M step 3）。
 
 ```
 {WHAT + WHY の叙述}<br>Likelihood-Evidence: existing_call_site src/api.ts:45<br>Verification: repro node dist/cli.js --input empty.json => TypeError: Cannot read properties of undefined
