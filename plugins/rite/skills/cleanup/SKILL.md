@@ -133,15 +133,22 @@ rationale: references/rationale.md#tasklist-parent-verify
 ```bash
 # 候補集合は子 Issue の timeline の cross-referenced イベント（--paginate で件数上限なし）。
 # 件数上限で切れる検索の結果を「親が無い」根拠にしない。rc はパイプの外で取る
-_m3_rc=0
-_m3_raw=$(gh api "repos/{owner}/{repo}/issues/{issue_number}/timeline" --paginate \
-  --jq '.[] | select(.event=="cross-referenced") | .source.issue | select(.pull_request | not) | select(.repository.full_name == "{owner}/{repo}") | .number') || _m3_rc=$?
 parent_issue_number=""
 parent_undecided=""
+# 同じリポジトリかは API が返す正式名どうしで比べる（URL 由来の名前は大文字小文字や改名前の名前を含みうる）
+_m3_rc=0
+_m3_repo=$(gh api "repos/{owner}/{repo}" --jq .full_name) || _m3_rc=$?
 if [ "$_m3_rc" -ne 0 ]; then
-  parent_undecided="timeline を取得できない (rc=$_m3_rc)"
+  parent_undecided="リポジトリの正式名を取得できない (rc=$_m3_rc)"
 else
-  for cand in $(printf '%s\n' "$_m3_raw" | sort -un); do
+  _m3_raw=$(gh api "repos/{owner}/{repo}/issues/{issue_number}/timeline" --paginate \
+    --jq '.[] | select(.event=="cross-referenced") | .source.issue | select(.pull_request | not) | "\(.repository.full_name) \(.number)"') || _m3_rc=$?
+  if [ "$_m3_rc" -ne 0 ]; then
+    parent_undecided="timeline を取得できない (rc=$_m3_rc)"
+  fi
+fi
+if [ -z "$parent_undecided" ]; then
+  for cand in $(awk -v repo="$_m3_repo" '$1 == repo { print $2 }' <<< "$_m3_raw" | sort -un); do
     # 自己マッチ除外: standalone Issue が自分自身を親と誤検出するのを防ぐ
     [ "$cand" = "{issue_number}" ] && continue
     # 候補の取得失敗を一致なしとして扱わない
@@ -149,10 +156,13 @@ else
       parent_undecided="候補 #$cand を取得できない"
       break
     fi
+    if ! cand_state=$(jq -r .state <<< "$cand_json") || ! cand_body=$(jq -r .body <<< "$cand_json"); then
+      parent_undecided="候補 #$cand の内容を読めない"
+      break
+    fi
     # 親は open に限る（close 側にはこの行が無い）
-    [ "$(jq -r .state <<< "$cand_json")" = OPEN ] || continue
+    [ "$cand_state" = OPEN ] || continue
     # 妥当性検証: 候補 body に当該 tasklist 行が実在するか確認（コメント中の言及や、参照を消した後の event を排除）
-    cand_body=$(jq -r .body <<< "$cand_json")
     if grep -qE "^[[:space:]]*-[[:space:]]\[[ xX]\][[:space:]]*#{issue_number}([^0-9]|$)" <<< "$cand_body"; then
       parent_issue_number="$cand"
       break
@@ -166,10 +176,16 @@ fi
 if [ -n "$parent_issue_number" ]; then
   gh issue view "$parent_issue_number" -R {owner_repo} --json number,title,state
 fi
-echo "tasklist_parent=${parent_issue_number:-none}"
+if [ -n "$parent_undecided" ]; then
+  echo "tasklist_parent=undecided"
+else
+  echo "tasklist_parent=${parent_issue_number:-none}"
+fi
 ```
 
-両 method とも親を検出できなければ standalone として扱い、ステップ 10 の親処理をスキップする (non-blocking)。silent skip 禁止のため debug log を残す。tasklist fallback が判定不能の WARNING を出したときは standalone の debug log を出さず、ステップ 10 の親処理だけをスキップする:
+tasklist fallback が `tasklist_parent=undecided` を出したときは、debug log を出さず、ステップ 10 の親処理だけをスキップする（WARNING が判定できない理由を示している）。
+
+両 method とも親を検出できなければ（`tasklist_parent=none`）standalone として扱い、ステップ 10 の親処理をスキップする (non-blocking)。silent skip 禁止のため debug log を残す:
 
 ```bash
 echo "[DEBUG] parent not detected for issue #{issue_number} — processing as standalone (methods tried: sub_issues_api, tasklist_search)"

@@ -533,23 +533,96 @@ echo "=== Phase 7: Method 3 reads every candidate parent and reports a failed fe
 # failed fetch says the parent could not be determined instead of calling it standalone.
 for m3_md in "$PROJECTS_REF" "$CLOSE_MD" "$CLEANUP_MD"; do
   m3_name=$(basename "$(dirname "$m3_md")")/$(basename "$m3_md")
-  assert_not_grep "T-13 $m3_name has no count-limited tasklist search" "$m3_md" \
-    'gh issue list.*in:body.*--limit'
+  assert_not_grep "T-13 $m3_name has no count-limited issue search" "$m3_md" \
+    'gh issue list.*--limit|gh issue list.*--search'
   assert_grep "T-13 $m3_name reads the child's timeline with --paginate" "$m3_md" \
-    '^_m3_raw=\$\(gh api "repos/\{owner\}/\{repo\}/issues/\{issue_number\}/timeline" --paginate'
-  assert_grep "T-14 $m3_name keeps same-repository Issues and captures the timeline rc outside a pipeline" "$m3_md" \
-    "select\(\.repository\.full_name == \"\{owner\}/\{repo\}\"\) \| \.number'\) \|\| _m3_rc=\\\$\?$"
-  assert_grep "T-15 $m3_name treats a failed candidate fetch as undecidable" "$m3_md" \
-    '^    if ! cand_json=\$\(gh issue view "\$cand" -R \{owner_repo\} --json body,state\); then'
-  assert_grep "T-15 $m3_name warns that the parent could not be determined" "$m3_md" \
-    '^  echo "WARNING: 親 Issue の有無を判定できません'
+    '^  _m3_raw=\$\(gh api "repos/\{owner\}/\{repo\}/issues/\{issue_number\}/timeline" --paginate'
+  assert_grep "T-14 $m3_name captures the timeline rc outside a pipeline" "$m3_md" \
+    "\| \"\\\\\(\.repository\.full_name\) \\\\\(\.number\)\"'\) \|\| _m3_rc=\\\$\?$"
 done
-assert_grep "T-16 projects-integration.md keeps only open parents on the start side" "$PROJECTS_REF" \
-  '^    \[ "\$\(jq -r \.state <<< "\$cand_json"\)" = OPEN \] \|\| continue$'
-assert_grep "T-16 cleanup keeps only open parents" "$CLEANUP_MD" \
-  '^    \[ "\$\(jq -r \.state <<< "\$cand_json"\)" = OPEN \] \|\| continue$'
-assert_not_grep "T-16 close.md also checks closed parents" "$CLOSE_MD" \
-  '= OPEN \] \|\| continue$'
+
+echo "=== Phase 8: the three Method 3 blocks behave the same against a stub gh ==="
+# Each block is run as written, with a stub gh on PATH. The remote names the repository in
+# lower case while the API returns the canonical name. A connected event, an Issue from
+# another repository and a pull request all name the child, and the parent is #9. Only the start side and cleanup skip a
+# closed parent.
+m3_stub_dir=$(mktemp -d)
+# The stub applies the block's own --jq filter to fixture JSON, so the event, PR and
+# repository selection in the filter is exercised rather than skipped.
+cat > "$m3_stub_dir/timeline.json" <<'JSON'
+[{"event":"labeled"},
+ {"event":"connected","source":{"issue":{"number":3,"repository":{"full_name":"Owner/Repo"}}}},
+ {"event":"cross-referenced","source":{"issue":{"number":8,"repository":{"full_name":"Other/Repo"}}}},
+ {"event":"cross-referenced","source":{"issue":{"number":5,"repository":{"full_name":"Owner/Repo"}}}},
+ {"event":"cross-referenced","source":{"issue":{"number":6,"pull_request":{"url":"x"},"repository":{"full_name":"Owner/Repo"}}}},
+ {"event":"cross-referenced","source":{"issue":{"number":7,"repository":{"full_name":"Owner/Repo"}}}},
+ {"event":"cross-referenced","source":{"issue":{"number":9,"repository":{"full_name":"Owner/Repo"}}}}]
+JSON
+cat > "$m3_stub_dir/gh" <<'STUB'
+#!/bin/bash
+stub_dir=$(dirname "$0")
+jq_expr=""; prev=""
+for a in "$@"; do [ "$prev" = --jq ] && jq_expr=$a; prev=$a; done
+case "$1 $2" in
+  "api repos/lower/repo")
+    [ "${M3_FAIL:-}" = repo ] && { echo "stub: repository fetch failed" >&2; exit 1; }
+    echo '{"full_name":"Owner/Repo"}' | jq -r "$jq_expr" ;;
+  "api repos/lower/repo/issues/5/timeline")
+    [ "${M3_FAIL:-}" = timeline ] && { echo "stub: timeline fetch failed" >&2; exit 1; }
+    jq -r "$jq_expr" "$stub_dir/timeline.json" ;;
+  "issue view")
+    [ "${M3_FAIL:-}" = "view$3" ] && { echo "stub: issue view failed" >&2; exit 1; }
+    case "$3" in
+      3|6|8) echo '{"body":"- [ ] #5","state":"OPEN"}' ;;
+      7) echo '{"body":"- [ ] #50","state":"OPEN"}' ;;
+      9) printf '{"body":"- [ ] #5","state":"%s"}\n' "${M3_STATE9:-OPEN}" ;;
+      *) echo '{"body":"","state":"OPEN"}' ;;
+    esac ;;
+  *) echo "stub: unexpected gh call: $*" >&2; exit 2 ;;
+esac
+STUB
+chmod +x "$m3_stub_dir/gh"
+m3_run() {  # $1 file; M3_FAIL / M3_STATE9 select the case
+  local blk
+  blk=$(awk '/^# 候補集合は子 Issue の timeline/{f=1} f&&/^```/{exit} f' "$1")
+  blk=${blk//\{owner_repo\}/lower\/repo}
+  blk=${blk//\{owner\}/lower}
+  blk=${blk//\{repo\}/repo}
+  blk=${blk//\{issue_number\}/5}
+  PATH="$m3_stub_dir:$PATH" bash -c "$blk" 2>&1
+}
+for m3_md in "$PROJECTS_REF" "$CLOSE_MD" "$CLEANUP_MD"; do
+  m3_name=$(basename "$(dirname "$m3_md")")/$(basename "$m3_md")
+  m3_label=method3_parent; [ "$m3_md" = "$CLEANUP_MD" ] && m3_label=tasklist_parent
+  m3_out=$(m3_run "$m3_md")
+  if printf '%s\n' "$m3_out" | grep -qx "$m3_label=9"; then
+    pass "T-17 $m3_name finds the parent by the canonical repository name"
+  else
+    fail "T-17 $m3_name should find parent #9 (lower-case remote; connected #3, other-repository #8 and pull request #6 skipped): $m3_out"
+  fi
+  for m3_fail in repo timeline view7; do
+    case "$m3_fail" in
+      repo) m3_reason='リポジトリの正式名を取得できない' ;;
+      timeline) m3_reason='timeline を取得できない' ;;
+      view7) m3_reason='候補 #7 を取得できない' ;;
+    esac
+    m3_out=$(M3_FAIL=$m3_fail m3_run "$m3_md")
+    if printf '%s\n' "$m3_out" | grep -qx "$m3_label=undecided" \
+      && printf '%s\n' "$m3_out" | grep -qF "WARNING: 親 Issue の有無を判定できません（$m3_reason"; then
+      pass "T-18 $m3_name reports a failed $m3_fail fetch as undecided"
+    else
+      fail "T-18 $m3_name should report a failed $m3_fail fetch as undecided with a WARNING naming it ($m3_reason): $m3_out"
+    fi
+  done
+  m3_out=$(M3_STATE9=CLOSED m3_run "$m3_md")
+  m3_want=none; [ "$m3_md" = "$CLOSE_MD" ] && m3_want=9
+  if printf '%s\n' "$m3_out" | grep -qx "$m3_label=$m3_want"; then
+    pass "T-19 $m3_name gives $m3_want for a closed parent"
+  else
+    fail "T-19 $m3_name should give $m3_label=$m3_want for a closed parent: $m3_out"
+  fi
+done
+rm -rf "$m3_stub_dir"
 
 if ! print_summary "$(basename "$0")" "If you remove any of the 3 parent-detection methods (body meta / GraphQL trackedIssues / tasklist) from close.md or pr/open.md ステップ 1.2, or drop stateReason from parent auto-close, or restore unscoped linked:issue / glob --head PR lookup in close.md Phase 2, regression risk reopens. Re-confirm cross-references before removing methods."; then
   exit 1

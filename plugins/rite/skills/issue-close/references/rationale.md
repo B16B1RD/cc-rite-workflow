@@ -42,6 +42,9 @@ tasklist で子を参照した親を件数上限なしで返すが、兄弟や�
 盲目採用は standalone が自分自身や無関係 Issue を親にする。close 側は親が既 closed の可能性を
 拾うため全件を照合する（open 側が open の親に限るのは着手対象を open に限る意図的差異）。3 method 失敗は standalone として正常。
 debug log を残すのは silent-skip 回帰を観測するため。
+同じリポジトリかは URL 由来の名前ではなく API が返す正式名で比べる（大文字小文字の違いや改名前の
+名前で全候補を落とし、黙って「親なし」にしないため）。結果行は判定不能を `undecided` として「親なし」の
+`none` と分け、後続はこの値で分岐する。
 
 ## commit-delegate-single-process
 
