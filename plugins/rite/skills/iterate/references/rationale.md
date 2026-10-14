@@ -356,7 +356,7 @@ false の候補は REJECT で終端し、登録されない）と `safety.max_re
 （`.rite/state/pr-recommendations-done-{pr}.txt`、1 行目は最新レビューの basename と commit_sha、2 行目は渡した登録）を fix の invoke 前に
 書くのは、再入（Stop hook / recover）で同じ修正を繰り返さないため。ファイル名でも commit でもなく登録の内容で比べるのは、
 fix が同じレビューの複写を別名で保存し、sweep が新しい根因の無いまま最新の名前で登録を書き直す一方で、
-PR 本文だけを直した fix の後は同じ commit の再レビューが登録を作り直す（新しい根因、または未解消のまま説明を変えて再び採用した根因。内容が完全に同じ登録は渡し直さない）から。寿命は nb-sweep-done と同じで、0.6 の
+PR 本文だけを直した fix の後は同じ commit の再レビューが登録を作り直すから。正規化した `{commit_sha, recommendations}` が 2 行目と違えば渡し直す。寿命は nb-sweep-done と同じで、0.6 の
 `fresh || cur_cc == 0`（pin 書換と同条件）で消し、`review-restart` と cleanup でも消す。
 
 ## ac-unverified-pr-recommendation

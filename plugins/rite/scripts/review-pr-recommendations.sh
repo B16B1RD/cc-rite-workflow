@@ -194,10 +194,11 @@ case "$mode" in
       echo "[CONTEXT] PR_RECOMMENDATIONS_MARK=done; json=$(basename "$json")"
       exit 0
     fi
-    # Compared by registration content, not by review file name or commit: fix may
-    # save a copy of the review under a new name and the sweep rewrites the file
+    # Compared by registration content, not by review file name or commit alone: fix
+    # may save a copy of the review under a new name and the sweep rewrites the file
     # under the latest name without new roots, while a re-review of the same commit
-    # registers again (new roots, or re-adopted roots whose wording changed).
+    # may register again. The registration is handed again whenever its normalized
+    # {commit_sha, recommendations} differs from line 2.
     handed=""
     [ -f "$done_file" ] && handed=$(sed -n 2p "$done_file")
     if [ "$count" -gt 0 ] && [ "$handed" != "$current" ]; then
