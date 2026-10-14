@@ -701,6 +701,110 @@ fi
 git -C "$sb" rm -q -- "${odd_names[@]}" && git -C "$sb" commit -qm odd-names-gone \
   || fail "odd-name fixture cleanup failed (later cases run on a polluted tree)"
 
+# --diff reads names from the diff headers, where git quotes them in C style and appends a tab
+# outside the quotes to a name with a space. Each odd name is reported raw and counted once,
+# also under core.quotePath=true (the script pins it off so octal escapes stay control-only).
+diff_odd_names=("${odd_names[@]}" 'docs/q"uote sp.md' $'docs/c\001trl.md' $'docs/c\rr.md'
+  $'docs/c\a\b\v\fx.md')
+# A name with a byte that is not valid UTF-8 checks that the scan pins the C locale: under a
+# UTF-8 locale, gawk's `.` does not match that byte. It is added only where a UTF-8 locale
+# exists and the file system accepts the name (macOS rejects it). Linux has both, so a skip
+# there fails rather than silently dropping the check.
+diff_utf8=$(locale -a 2>/dev/null | grep -ixE 'c\.utf-?8|en_us\.utf-?8' | head -1) || diff_utf8=""
+diff_skip=""
+if [ -z "$diff_utf8" ]; then
+  diff_skip="no C.UTF-8 or en_US.UTF-8 locale"
+elif ! probe_err=$( (: > "$sb/"$'probe\xff') 2>&1 ); then
+  diff_skip="the file system rejects the name: ${probe_err%%$'\n'*}"
+else
+  rm -f -- "$sb/"$'probe\xff'
+  diff_odd_names+=($'docs/q"\xffbad.md')
+fi
+if [ -n "$diff_skip" ]; then
+  if [ -d /proc ]; then
+    fail "--diff invalid UTF-8 name case could not run on Linux: $diff_skip"
+  else
+    skip "--diff invalid UTF-8 name case: $diff_skip"
+  fi
+fi
+odd_n=2430
+for odd in "${diff_odd_names[@]}"; do
+  printf 'odd diff name (#%s)\n' "$odd_n" > "$sb/$odd"
+  odd_n=$((odd_n + 1))
+done
+commit_all "$sb" odd-diff-names
+for quote_path in false true; do
+  git -C "$sb" config core.quotePath "$quote_path"
+  rc=0; out=$(LC_ALL="${diff_utf8:-C}" run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+  total=$(printf '%s\n' "$out" | sed -n 's/^Total number-ref findings: //p')
+  if [ "$rc" -eq 1 ] && [ "$total" = "${#diff_odd_names[@]}" ]; then
+    pass "--diff counts one finding per odd-named file (core.quotePath=$quote_path)"
+  else
+    fail "--diff should count ${#diff_odd_names[@]} findings under core.quotePath=$quote_path, got rc=$rc total=$total: $out"
+  fi
+  # whole-line match: no leftover quote, tab or prefix around the name
+  odd_n=2430
+  for odd in "${diff_odd_names[@]}"; do
+    if [[ $'\n'"$out"$'\n' == *$'\n'"$odd:1: odd diff name (#$odd_n)"$'\n'* ]]; then
+      pass "--diff reports the raw name: $(printf '%q' "$odd") (core.quotePath=$quote_path)"
+    else
+      fail "--diff should report $(printf '%q' "$odd") under its raw name (core.quotePath=$quote_path): $out"
+    fi
+    odd_n=$((odd_n + 1))
+  done
+  if [[ "$out" != *"#rite-findings="* ]]; then
+    pass "--diff keeps its findings count off stdout (core.quotePath=$quote_path)"
+  else
+    fail "--diff leaked its findings count into the output (core.quotePath=$quote_path): $out"
+  fi
+done
+git -C "$sb" config --unset core.quotePath \
+  || fail "core.quotePath cleanup failed (later --diff cases run under a changed config)"
+git -C "$sb" rm -q -- "${diff_odd_names[@]}" && git -C "$sb" commit -qm odd-diff-names-gone \
+  || fail "odd diff-name fixture cleanup failed (later cases run on a polluted tree)"
+stdout_only=$(run_diff "$sb" HEAD --quiet 2>/dev/null)
+if [ -z "$stdout_only" ]; then
+  pass "--diff with no findings prints nothing on stdout"
+else
+  fail "--diff with no findings should print nothing on stdout, got: $(printf '%q' "$stdout_only")"
+fi
+
+# The removed side is read the same way: a line moved out of an excluded file whose name
+# holds a quote and a space is an addition, not a move cancelled by the removal.
+moved_from='plugins/rite/scripts/tests/fixtures/q"uote sp.md'
+mkdir -p "$sb/plugins/rite/scripts/tests/fixtures"
+printf 'moved out of a fixture (#2450)\n' > "$sb/$moved_from"
+commit_all "$sb" odd-fixture-name
+git -C "$sb" rm -q -- "$moved_from"
+printf 'moved out of a fixture (#2450)\n' > "$sb/docs/moved-in.md"
+commit_all "$sb" odd-fixture-move
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] && [[ $'\n'"$out"$'\n' == *$'\n'"docs/moved-in.md:1: moved out of a fixture (#2450)"$'\n'* ]]; then
+  pass "--diff reads the removed side's odd name, so a move out of an excluded file is a hit"
+else
+  fail "--diff should report the line moved out of an odd-named excluded file, got rc=$rc: $out"
+fi
+
+# The count comes from the scanner's last line. When that line is missing or not a number,
+# --diff stops with exit 2 instead of reporting the findings it printed as clean.
+real_awk=$(command -v awk)
+awk_shim_dir="$sb/awk-shim"
+mkdir -p "$awk_shim_dir"
+for count_case in dropped:'/^#rite-findings=/d' garbled:'s/^#rite-findings=.*/#rite-findings=x/'; do
+  printf '%s\n' '#!/bin/bash' "\"$real_awk\" \"\$@\" | sed '${count_case#*:}'" 'exit "${PIPESTATUS[0]}"' > "$awk_shim_dir/awk"
+  chmod +x "$awk_shim_dir/awk"
+  rc=0
+  shim_out=$(PATH="$awk_shim_dir:$PATH" run_diff "$sb" HEAD~1 --quiet 2>"$sb/awk-shim.err") || rc=$?
+  if [ "$rc" -eq 2 ] && [ -z "$shim_out" ] && grep -q 'ERROR: diff scanner produced no findings count' "$sb/awk-shim.err"; then
+    pass "--diff stops with exit 2 when the findings count is ${count_case%%:*}"
+  else
+    fail "--diff should stop with exit 2 when the findings count is ${count_case%%:*}, got rc=$rc stdout=$(printf '%q' "$shim_out"): $(cat "$sb/awk-shim.err")"
+  fi
+done
+rm -rf "$awk_shim_dir" "$sb/awk-shim.err"
+git -C "$sb" rm -q -- docs/moved-in.md && git -C "$sb" commit -qm odd-fixture-move-gone \
+  || fail "moved-in fixture cleanup failed (later cases run on a polluted tree)"
+
 # a scanner failure exits mid-loop; the tracked-file list under TMPDIR is still removed
 printf 'unreadable (#2420)\n' > "$sb/docs/unreadable.md"
 commit_all "$sb" unreadable
