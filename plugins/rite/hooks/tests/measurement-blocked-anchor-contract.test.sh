@@ -96,7 +96,7 @@ assert "routing row has no 差し替え token" "0" "$(grep -o '差し替え' "$r
 assert_not_grep "routing row has no 両方 token" "$routing_file" '両方'
 assert "routing row has exactly three 元の出力 tokens" "3" "$(grep -o '元の出力' "$routing_file" | wc -l | tr -d ' ')"
 assert_grep "routing reruns the normal path from the collection gate to 5.3.0 for the rerolled output" "$routing_file" \
-  '5\.1 の回収完了ゲート（読取完了申告の照合を含む）→ 5\.1\.0\.L → 5\.1\.0\.AC から 5\.3\.0 までの通常経路の各段を、作り直した出力に対して通常どおりの条件で再実行し'
+  '5\.1 の回収完了ゲート（読取完了申告の照合を含む）から 5\.3\.0 までの通常経路の各段（5\.1 のゲート通過後の収集、5\.1\.0\.L、5\.1\.0\.AC を含む）を、作り直した出力に対して通常どおりの条件で再実行し'
 assert_not_grep "reviewer prompt does not regenerate only the target findings" "$PROMPT_GEN" \
   '対象 finding のみ再生成|対象 finding の再生成'
 assert_grep "5.1.1.1 merge strategy is still replace" "$PR_REVIEW" \
