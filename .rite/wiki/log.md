@@ -26,6 +26,7 @@
 * **Promotion**: [候補の出典](raw/reviews/20261013T235755Z-pr-3876.md) — unresolved <!-- rite-promotion: {"candidate": "dce29a80aa8a3ba2963820388d8fde9f7733e6ef160fcb1b32d377e2a1d456df", "raw": "raw/reviews/20261013T235755Z-pr-3876.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
 * **Promotion**: [候補の出典](raw/reviews/20261013T235755Z-pr-3876.md) — unresolved <!-- rite-promotion: {"candidate": "14a34e7d30dd703f718fdc77d57188ab98b8a285e6b1b5d647cb482c4f3aa3b1", "raw": "raw/reviews/20261013T235755Z-pr-3876.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
 * **Promotion**: [候補の出典](raw/reviews/20261013T235755Z-pr-3876.md) — unresolved <!-- rite-promotion: {"candidate": "3e4024633335253878a9cf5f913ea87ec809ab103fcd5579c8ed850c579d78f6", "raw": "raw/reviews/20261013T235755Z-pr-3876.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
+* **lint:warning** — contradictions=0, stale=77, orphans=0, missing_concept=1, unregistered_raw=807, broken_refs=0; WIKI_CONTRADICTION_CHECK=complete; changed=0, screened=0, candidates=0, excluded=0, compared=0, carried=0, resolved=0; elapsed_seconds=0, read_bytes=0; 理由: 対象なし（rite の昇格候補のみを保存し、ページ本文の変更なし）。
 
 ## 2026-10-11
 * **Promotion**: [候補の出典](raw/reviews/20261010T210103Z-pr-3772.md) — skipped <!-- rite-promotion: {"candidate": "", "raw": "raw/reviews/20261010T210103Z-pr-3772.md", "reason": "追加試験の回帰検出と既存の受入条件未検証を再確認した記録。初回レビューと修正記録の候補を超える新しい経験則はない。", "status": "skipped"} -->
