@@ -197,8 +197,8 @@ case "$mode" in
     # Compared by registration content, not by review file name or commit alone: fix
     # may save a copy of the review under a new name and the sweep rewrites the file
     # under the latest name without new roots, while a re-review of the same commit
-    # may register again. The registration is handed again whenever its normalized
-    # {commit_sha, recommendations} differs from line 2.
+    # may register again. It is pending when the latest commit has at least one
+    # recommendation and the normalized {commit_sha, recommendations} differs from line 2.
     handed=""
     [ -f "$done_file" ] && handed=$(sed -n 2p "$done_file")
     if [ "$count" -gt 0 ] && [ "$handed" != "$current" ]; then
