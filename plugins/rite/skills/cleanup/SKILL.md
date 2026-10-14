@@ -127,23 +127,41 @@ query($owner: String!, $repo: String!, $number: Int!) {
 }' -f owner="{owner}" -f repo="{repo}" -F number={issue_number}
 ```
 
-Tasklist fallback では、複数候補を取得し、自己マッチ除外＋候補 body の tasklist 行再検証を経た候補のみ採用する。検証ループ本体（自己除外・再検証 regex・`--limit 10`）は close.md Phase 4.5.1 / projects-integration.md §2.4.7.1 と揃える。`--state` は cleanup が `--state open`（子マージ直後で親は通常 open）を使い、これは projects-integration.md §2.4.7.1 と一致する。差異は close.md Phase 4.5.1 が `--state all`（closing Issue の親が既に closed の可能性）を使う点のみ:
+Tasklist fallback では、子 Issue の timeline から候補を件数上限なしで集め、自己マッチ除外＋候補 body の tasklist 行再検証を経た候補のみ採用する。候補集合と検証ループ本体（timeline の cross-referenced・自己除外・再検証 regex・取得失敗を判定不能として示す）は close.md Phase 4.5.1 / projects-integration.md §2.4.7.1 と揃える。cleanup は open の親に限り（子マージ直後で親は通常 open）、これは projects-integration.md §2.4.7.1 と一致する。差異は close.md Phase 4.5.1 が閉じた親も照合する（closing Issue の親が既に closed の可能性）点のみ:
 rationale: references/rationale.md#tasklist-parent-verify
 
 ```bash
-# GitHub code search は `[`/`]` を無視する緩いマッチのため、複数候補を取得して検証する
-candidates=$(gh issue list -R {owner_repo} --state open --search "in:body \"- [ ] #{issue_number}\" OR \"- [x] #{issue_number}\"" --json number --limit 10 --jq '.[].number')
+# 候補集合は子 Issue の timeline の cross-referenced イベント（--paginate で件数上限なし）。
+# 件数上限で切れる検索の結果を「親が無い」根拠にしない。rc はパイプの外で取る
+_m3_rc=0
+_m3_raw=$(gh api "repos/{owner}/{repo}/issues/{issue_number}/timeline" --paginate \
+  --jq '.[] | select(.event=="cross-referenced") | .source.issue | select(.pull_request | not) | select(.repository.full_name == "{owner}/{repo}") | .number') || _m3_rc=$?
 parent_issue_number=""
-for cand in $candidates; do
-  # 自己マッチ除外: standalone closing Issue が自分自身を親と誤検出するのを防ぐ
-  [ "$cand" = "{issue_number}" ] && continue
-  # 妥当性検証: 候補 body に当該 tasklist 行が実在するか確認（緩いマッチで拾った無関係 Issue を排除）
-  cand_body=$(gh issue view "$cand" -R {owner_repo} --json body --jq '.body')
-  if grep -qE "^[[:space:]]*-[[:space:]]\[[ xX]\][[:space:]]*#{issue_number}([^0-9]|$)" <<< "$cand_body"; then
-    parent_issue_number="$cand"
-    break
-  fi
-done
+parent_undecided=""
+if [ "$_m3_rc" -ne 0 ]; then
+  parent_undecided="timeline を取得できない (rc=$_m3_rc)"
+else
+  for cand in $(printf '%s\n' "$_m3_raw" | sort -un); do
+    # 自己マッチ除外: standalone Issue が自分自身を親と誤検出するのを防ぐ
+    [ "$cand" = "{issue_number}" ] && continue
+    # 候補の取得失敗を一致なしとして扱わない
+    if ! cand_json=$(gh issue view "$cand" -R {owner_repo} --json body,state); then
+      parent_undecided="候補 #$cand を取得できない"
+      break
+    fi
+    # 親は open に限る（close 側にはこの行が無い）
+    [ "$(jq -r .state <<< "$cand_json")" = OPEN ] || continue
+    # 妥当性検証: 候補 body に当該 tasklist 行が実在するか確認（コメント中の言及や、参照を消した後の event を排除）
+    cand_body=$(jq -r .body <<< "$cand_json")
+    if grep -qE "^[[:space:]]*-[[:space:]]\[[ xX]\][[:space:]]*#{issue_number}([^0-9]|$)" <<< "$cand_body"; then
+      parent_issue_number="$cand"
+      break
+    fi
+  done
+fi
+if [ -n "$parent_undecided" ]; then
+  echo "WARNING: 親 Issue の有無を判定できません（$parent_undecided）。親の処理を飛ばします（standalone とは判定していません）" >&2
+fi
 # 検証済み親が見つかれば number/title/state を取得して保持
 if [ -n "$parent_issue_number" ]; then
   gh issue view "$parent_issue_number" -R {owner_repo} --json number,title,state
@@ -151,7 +169,7 @@ fi
 echo "tasklist_parent=${parent_issue_number:-none}"
 ```
 
-両 method とも親を検出できなければ standalone として扱い、ステップ 10 の親処理をスキップする (non-blocking)。silent skip 禁止のため debug log を残す:
+両 method とも親を検出できなければ standalone として扱い、ステップ 10 の親処理をスキップする (non-blocking)。silent skip 禁止のため debug log を残す。tasklist fallback が判定不能の WARNING を出したときは standalone の debug log を出さず、ステップ 10 の親処理だけをスキップする:
 
 ```bash
 echo "[DEBUG] parent not detected for issue #{issue_number} — processing as standalone (methods tried: sub_issues_api, tasklist_search)"

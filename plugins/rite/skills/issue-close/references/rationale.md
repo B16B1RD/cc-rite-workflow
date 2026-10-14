@@ -35,11 +35,12 @@ bash ブロックなので carry-forward は不要（pr-review / fix は別呼�
 ## three-method-parent
 
 過去に `trackedIssues` だけ残す簡略化が、body meta / tasklist で繋がった親子の close を
-silent に壊した。3-method OR と Method 3 の検証ループ（自己マッチ除外・候補 body 再検証・
-`--limit 10`）を open / projects-integration と揃えないと、同じ回帰が再発する。GitHub code
-search は `[` / `]` を無視しほぼ全 Issue を返すので、先頭 1 件の盲目採用は standalone が自分
-自身や無関係 Issue を親にする。`--state all` は親が既 closed の可能性を拾う（open 側の
-`--state open` は着手対象を open に限る意図的差異）。3 method 失敗は standalone として正常。
+silent に壊した。3-method OR と Method 3 の候補集合・検証ループ（timeline の cross-referenced・自己マッチ除外・
+候補 body 再検証・取得失敗の判定不能）を open / projects-integration と揃えないと、同じ回帰が
+再発する。件数上限のある検索で候補を集めると、上位から外れた親を「親なし」と読む。timeline は
+tasklist で子を参照した親を件数上限なしで返すが、兄弟やコメント中の言及も含むので、先頭 1 件の
+盲目採用は standalone が自分自身や無関係 Issue を親にする。close 側は親が既 closed の可能性を
+拾うため全件を照合する（open 側が open の親に限るのは着手対象を open に限る意図的差異）。3 method 失敗は standalone として正常。
 debug log を残すのは silent-skip 回帰を観測するため。
 
 ## commit-delegate-single-process

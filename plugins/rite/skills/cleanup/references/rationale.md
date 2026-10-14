@@ -131,9 +131,11 @@ F-NN に触れた本文は、再報告でなくても誤って結ばれ欠落側
 
 ## tasklist-parent-verify
 
-GitHub code search は `[` / `]` を無視しほぼ全 Issue を返す。`--jq '.[0]'` で先頭を盲目採用すると
-standalone closing Issue が自分自身や無関係 Issue を親と誤検出する。複数候補 + 自己除外 + body
-再検証は close.md / projects-integration.md §2.4.7.1 に入ったループと同じ方針。
+件数上限のある検索で候補を集めると、上位から外れた親を「親なし」と読む。子 Issue の timeline の
+cross-referenced は tasklist で子を参照した親を件数上限なしで返すが、兄弟やコメント中の言及も含む。
+先頭を盲目採用すると standalone closing Issue が自分自身や無関係 Issue を親と誤検出するので、
+自己除外 + body 再検証で絞る。取得の失敗は「親なし」ではなく判定不能として示す。close.md /
+projects-integration.md §2.4.7.1 と同じ方針。
 
 ## wm-source-content
 

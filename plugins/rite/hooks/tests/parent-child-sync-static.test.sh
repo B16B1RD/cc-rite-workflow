@@ -527,6 +527,30 @@ assert_grep_in_section "T-12 close.md Pattern D still uses AskUserQuestion" "$CL
 assert_not_grep "T-12 close.md Phase 2 does not stop on mergedAt like issue-cancel" "$CLOSE_MD" \
   '^\| `mergedAt` が非 null の PR がある \|'
 
+echo "=== Phase 7: Method 3 reads every candidate parent and reports a failed fetch as undecidable ==="
+# A search cut at a count limit drops a parent ranked below the limit and reads it as
+# "no parent". The candidates come from the child's timeline (no count limit), and a
+# failed fetch says the parent could not be determined instead of calling it standalone.
+for m3_md in "$PROJECTS_REF" "$CLOSE_MD" "$CLEANUP_MD"; do
+  m3_name=$(basename "$(dirname "$m3_md")")/$(basename "$m3_md")
+  assert_not_grep "T-13 $m3_name has no count-limited tasklist search" "$m3_md" \
+    'gh issue list.*in:body.*--limit'
+  assert_grep "T-13 $m3_name reads the child's timeline with --paginate" "$m3_md" \
+    '^_m3_raw=\$\(gh api "repos/\{owner\}/\{repo\}/issues/\{issue_number\}/timeline" --paginate'
+  assert_grep "T-14 $m3_name keeps same-repository Issues and captures the timeline rc outside a pipeline" "$m3_md" \
+    "select\(\.repository\.full_name == \"\{owner\}/\{repo\}\"\) \| \.number'\) \|\| _m3_rc=\\\$\?$"
+  assert_grep "T-15 $m3_name treats a failed candidate fetch as undecidable" "$m3_md" \
+    '^    if ! cand_json=\$\(gh issue view "\$cand" -R \{owner_repo\} --json body,state\); then'
+  assert_grep "T-15 $m3_name warns that the parent could not be determined" "$m3_md" \
+    '^  echo "WARNING: 親 Issue の有無を判定できません'
+done
+assert_grep "T-16 projects-integration.md keeps only open parents on the start side" "$PROJECTS_REF" \
+  '^    \[ "\$\(jq -r \.state <<< "\$cand_json"\)" = OPEN \] \|\| continue$'
+assert_grep "T-16 cleanup keeps only open parents" "$CLEANUP_MD" \
+  '^    \[ "\$\(jq -r \.state <<< "\$cand_json"\)" = OPEN \] \|\| continue$'
+assert_not_grep "T-16 close.md also checks closed parents" "$CLOSE_MD" \
+  '= OPEN \] \|\| continue$'
+
 if ! print_summary "$(basename "$0")" "If you remove any of the 3 parent-detection methods (body meta / GraphQL trackedIssues / tasklist) from close.md or pr/open.md ステップ 1.2, or drop stateReason from parent auto-close, or restore unscoped linked:issue / glob --head PR lookup in close.md Phase 2, regression risk reopens. Re-confirm cross-references before removing methods."; then
   exit 1
 fi
