@@ -666,9 +666,9 @@ else
 fi
 
 # --all reads the tracked list NUL-separated, so a name that git would quote
-# (tab, double quote, newline, non-ASCII) and a name with a space are scanned
-# under their raw names
-odd_names=($'docs/tab\there.md' 'docs/q"uote.md' $'docs/new\nline.md' 'docs/日本語.md' 'docs/sp ace.md')
+# (tab, double quote, newline, non-ASCII, backslash) and a name with a space are
+# scanned under their raw names
+odd_names=($'docs/tab\there.md' 'docs/q"uote.md' $'docs/new\nline.md' 'docs/日本語.md' 'docs/sp ace.md' 'docs/back\nslash.md')
 odd_n=2410
 for odd in "${odd_names[@]}"; do
   printf 'odd name (#%s)\n' "$odd_n" > "$sb/$odd"

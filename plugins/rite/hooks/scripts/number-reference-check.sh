@@ -235,11 +235,11 @@ AWK_HAS_HIT='
 '
 
 awk_has_hit_and_emit() {
-  local file="$1"
-  awk -v file="$file" "$AWK_HAS_HIT"'
+  # The name goes through the environment: awk -v would read a backslash in it as an escape.
+  RITE_NR_FILE="$1" awk "$AWK_HAS_HIT"'
     {
       if (index($0, "drift-check-ignore") > 0) next
-      if (has_hit($0)) printf "%s:%d: %s\n", file, NR, $0
+      if (has_hit($0)) printf "%s:%d: %s\n", ENVIRON["RITE_NR_FILE"], NR, $0
     }
   '
 }
