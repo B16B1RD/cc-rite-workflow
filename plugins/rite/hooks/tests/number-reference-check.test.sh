@@ -708,13 +708,24 @@ diff_odd_names=("${odd_names[@]}" 'docs/q"uote sp.md' $'docs/c\001trl.md' $'docs
   $'docs/c\a\b\v\fx.md')
 # A name with a byte that is not valid UTF-8 checks that the scan pins the C locale: under a
 # UTF-8 locale, gawk's `.` does not match that byte. It is added only where a UTF-8 locale
-# exists and the file system accepts the name (macOS rejects it).
+# exists and the file system accepts the name (macOS rejects it). Linux has both, so a skip
+# there fails rather than silently dropping the check.
 diff_utf8=$(locale -a 2>/dev/null | grep -ixE 'c\.utf-?8|en_us\.utf-?8' | head -1) || diff_utf8=""
-if [ -n "$diff_utf8" ] && (: > "$sb/"$'probe\xff') 2>/dev/null; then
+diff_skip=""
+if [ -z "$diff_utf8" ]; then
+  diff_skip="no C.UTF-8 or en_US.UTF-8 locale"
+elif ! probe_err=$( (: > "$sb/"$'probe\xff') 2>&1 ); then
+  diff_skip="the file system rejects the name: ${probe_err%%$'\n'*}"
+else
   rm -f -- "$sb/"$'probe\xff'
   diff_odd_names+=($'docs/q"\xffbad.md')
-else
-  echo "  (skip: invalid UTF-8 file name — no UTF-8 locale, or the file system rejects the name)"
+fi
+if [ -n "$diff_skip" ]; then
+  if [ "$(uname -s)" = Linux ]; then
+    fail "--diff invalid UTF-8 name case could not run on Linux: $diff_skip"
+  else
+    echo "  (skip: invalid UTF-8 file name — $diff_skip)"
+  fi
 fi
 odd_n=2430
 for odd in "${diff_odd_names[@]}"; do
