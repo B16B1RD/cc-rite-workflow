@@ -563,6 +563,20 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     check(len(defined) == 1 and 'fix-plan-input-{session}.json' in defined[0] and
           '`.rite/state/fix-plan-{session}.json`' not in defined[0] and
           '検査記録は `.rite/state/fix-plan-{session}.json`' in guide, 'guide names input and check record separately')
+    # The 4 sentences of the fix-plan.md section on repeated same-type findings, each matched
+    # from the preceding 句点 (or the section start) to its own 句点, once, within that section.
+    same_line = guide.split('\n## 同じ行に同じ型の指摘が続くとき\n\n', 1)[-1].split('\n## ', 1)[0]
+    for label, sentence in (
+        ('two rounds -> generalize the existing sentence',
+         '修正中の PR の同じ行に、列挙から漏れた値を挙げる同じ型の指摘が 2 周回続いたら、次の修正では列挙を足さず、その行の既存の 1 文をすべての値に当てはまる形へ一般化して直す。'),
+        ('why adding to the list repeats', '。列挙を足すと、次の周回で別の値について同じ型の指摘が出る。'),
+        ('PR body change note in the same commit',
+         '。PR 本文の変更欄も同じ commit で一般化に合わせて書き直す（列挙を足した説明のまま残すと、本文と差分が食い違う）。'),
+        ('applied without waiting for replan', '。下の見直し計画（診断の `action=replan`）を待たずに適用する。'),
+    ):
+        check(same_line != guide and same_line.count(sentence) == 1 and guide.count(sentence) == 1,
+              'fix-plan same-line section: ' + label)
+    check(same_line.startswith('修正中の PR の同じ行に、'), 'fix-plan same-line section starts with the condition')
     # Execute the documented assertion bodies through the real verify helper.
     script_a, script_b = private / 'a.sh', private / 'b.sh'
     script_a.write_text('printf "target out\\n"; printf "target err\\n" >&2; exit 2\n')

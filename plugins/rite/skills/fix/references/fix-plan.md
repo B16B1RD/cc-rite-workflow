@@ -89,6 +89,10 @@ mergeable のレビューの後に手で commit すると、その HEAD には f
 
 `base-intake` は merge 進行中（`MERGE_HEAD` がある状態）でだけ有効で、取り込み相手は `origin/<base>` またはその祖先に限る（別ブランチや別の worktree で作った commit は取り込めない）。計画に 1 グループまで。`--no-commit` / `--squash` / `--abort` / `--quit` / `--ff-only` の merge は拒否されない（オプションは git と同じく後に書いたものが勝つ。これらのオプションの省略形は判定できないため拒否される）。`git pull` / rebase 等でレビュー済み HEAD を動かした場合は次の `review-start` が拒否する。レビュー済み commit（`flow-state.sh get --jq-filter .review_cycle.review_context.commit_sha`）へ `git reset --keep` で戻してから、この手順で取り込む。ただし、`git fetch origin <PR ブランチ>` のあと `git merge-base --is-ancestor origin/<PR ブランチ> <レビュー済み commit>` が失敗するなら、戻すと push 済みの commit を巻き戻すことになるため、戻さずに止まり、その状況を報告する（公開済み履歴の書き換えは人間が判断する）。
 
+## 同じ行に同じ型の指摘が続くとき
+
+修正中の PR の同じ行に、列挙から漏れた値を挙げる同じ型の指摘が 2 周回続いたら、次の修正では列挙を足さず、その行の既存の 1 文をすべての値に当てはまる形へ一般化して直す。列挙を足すと、次の周回で別の値について同じ型の指摘が出る。PR 本文の変更欄も同じ commit で一般化に合わせて書き直す（列挙を足した説明のまま残すと、本文と差分が食い違う）。下の見直し計画（診断の `action=replan`）を待たずに適用する。
+
 ## 停滞時の見直し計画
 
 [レビュー停滞の診断](../../../references/review-stagnation.md) が `action=replan` を返した場合、同じ `{fix_plan_file}` に次の `replan` を追加する。全指摘・最新仕様・既存 `constraints` / `groups` / `verifications` との対応を維持する。
