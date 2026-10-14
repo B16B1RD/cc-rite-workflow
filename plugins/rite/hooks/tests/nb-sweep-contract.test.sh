@@ -2359,6 +2359,11 @@ check('PR_RECOMMENDATIONS_CHECK=pending' in pending(),pending())
 check(hold.exists() and len(json.loads(hold.read_text())['candidates'])==1,'candidate retained for next review')
 check(not (state/'nb-sweep-done-5.txt').exists() and not (state/'nb-sweep-entries-5.md').exists(),'pending is not sweep done')
 before=registered.read_bytes();out=run();check(out.returncode==0,out.stdout+out.stderr);check(registered.read_bytes()==before,'same HEAD registration is byte-identical')
+# Once handed, a sweep that rewrites this HEAD's registration under a copied review name, with no new root, is not pending.
+held_before=hold.read_bytes();subprocess.run(['bash',str(rec),'mark','--pr','5','--state-root',str(r)],cwd=r,env=env,text=True,capture_output=True,check=True)
+copy=results/'5-20261001000005.json';shutil.copy(review,copy);classify([record([i]) for i in [c['id'] for c in collect()['candidates']]]);out=run();check(out.returncode==0,out.stdout+out.stderr)
+check(json.loads(registered.read_text())['review_result']==copy.name,'sweep rewrote the registration under the copy name')
+check('PR_RECOMMENDATIONS_CHECK=none' in pending(),pending());copy.unlink();classify([record(ids)]);hold.write_bytes(held_before)
 # A previous triage recommendation must survive the full-file sweep record.
 d=json.loads(registered.read_text());d['recommendations'][0].update(candidates=['TRIAGE-1'],description='existing triage root');registered.write_text(json.dumps(d));out=run();check(out.returncode==0,out.stdout+out.stderr)
 check([x['id'] for x in json.loads(registered.read_text())['recommendations']]==['R-01','R-02'],'triage preserved before sweep')

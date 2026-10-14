@@ -352,10 +352,11 @@ false の候補は REJECT で終端し、登録されない）と `safety.max_re
 未レビューの HEAD を残すことになる。このときの根因は採否保留で止まる（先送りしない）。
 
 5.S の後に置くのは、修正後の差分再レビューが前の JSON の non-blocking を引き継がないため。先に sweep
-しておけば、落ちるものは無い。同じレビュー済み commit を fix へ二度渡さない記録
-（`.rite/state/pr-recommendations-done-{pr}.txt`、1 行目は basename と commit_sha）を fix の invoke 前に
-書くのは、再入（Stop hook / recover）で同じ修正を繰り返さないため。ファイル名ではなく commit で比べるのは、
-fix が同じレビューの複写を別名で保存することがあるから。寿命は nb-sweep-done と同じで、0.6 の
+しておけば、落ちるものは無い。同じ登録を fix へ二度渡さない記録
+（`.rite/state/pr-recommendations-done-{pr}.txt`、1 行目は最新レビューの basename と commit_sha、2 行目は渡した登録）を fix の invoke 前に
+書くのは、再入（Stop hook / recover）で同じ修正を繰り返さないため。ファイル名でも commit でもなく登録の内容で比べるのは、
+fix が同じレビューの複写を別名で保存し、sweep が新しい根因の無いまま最新の名前で登録を書き直す一方で、
+PR 本文だけを直した fix の後は同じ commit の再レビューが新しい根因を登録するから。寿命は nb-sweep-done と同じで、0.6 の
 `fresh || cur_cc == 0`（pin 書換と同条件）で消し、`review-restart` と cleanup でも消す。
 
 ## ac-unverified-pr-recommendation
@@ -385,7 +386,7 @@ origin=pr の判定は、逸脱の `file:line` が `origin/{PR の baseRefName}.
 blocking が残っている review、`safety.max_review_cycles` に達した cycle（修正を再レビューできないことがある）は
 拒否し、従来の `purpose_unaligned` 停止に落とす。この review context の `D-NN` を fix の計画が処置した後の記録も
 拒否する。fix が commit せずに戻ると HEAD は変わらず、同じ commit を再び fix へ渡すと cycle を進めないまま
-空転する（PR 内推奨を同じレビュー済み commit につき一度だけ渡すのと同じ終端）。記録は完了記録（`completed_context` / `deferred_context`）
+空転する（PR 内推奨を同じ登録につき一度だけ渡すのと同じ終端）。記録は完了記録（`completed_context` / `deferred_context`）
 を外す。残すと、逸脱が未処置のまま別の Issue へ切り替えられる。`D-NN` は記録した review context の
 計画だけが処置する。次の cycle の計画には要求しない（その cycle の完了前確認がまだ逸脱を見るなら、改めて記録する）。
 
