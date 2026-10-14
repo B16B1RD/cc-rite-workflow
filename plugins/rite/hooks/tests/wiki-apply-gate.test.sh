@@ -555,18 +555,22 @@ if [ "$GRC" -eq 1 ] && grep -q 'reason=evidence_mismatch' <<<"$GOUT"; then
 else
   fail "large diff mismatch rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
 fi
-# evidence names a changed path under its raw name. git quotes a non-ASCII name in the
-# plain name list and the diff headers, so only the NUL-separated list holds the raw name
+# evidence names a changed path under its raw name. git quotes these names in the plain
+# name list and the diff headers (a double quote whatever core.quotePath says), so only
+# the NUL-separated list holds the raw name
 printf 'j\n' > "$repo/日本語.md"
-git -C "$repo" add -- 日本語.md
-git -C "$repo" commit -qm 'non-ascii change'
-write_mem "$mem" "$(applied_page '対象の識別子を照合してから実行する。' 日本語.md 'printf ok')"
-run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$flow" --memory "$mem"
-if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
-  pass "review evidence matches a non-ASCII changed path under its raw name"
-else
-  fail "non-ASCII evidence review rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
-fi
+printf 'q\n' > "$repo/q\"uote.md"
+git -C "$repo" add -- 日本語.md 'q"uote.md'
+git -C "$repo" commit -qm 'quoted-name change'
+for ev_name in 日本語.md 'q"uote.md'; do
+  write_mem "$mem" "$(applied_page '対象の識別子を照合してから実行する。' "$ev_name" 'printf ok')"
+  run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$flow" --memory "$mem"
+  if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+    pass "review evidence matches a changed path under its raw name: $ev_name"
+  else
+    fail "evidence review for $ev_name rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+  fi
+done
 write_mem "$mem" "$(applied_page '対象の識別子を照合してから実行する。' not-in-diff.txt 'printf ok')"
 # the diff files are removed when the gate exits
 rm -rf "$gate_tmp" && mkdir -p "$gate_tmp"

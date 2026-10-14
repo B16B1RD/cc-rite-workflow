@@ -253,6 +253,18 @@ count_lines() {
   printf '%s\n' "$s" | grep -c .
 }
 
+# A newline in the file name splits each finding of that file over several output lines,
+# so the line count is divided back by the lines one finding takes.
+count_file_findings() {
+  local out="$1" file="$2" nl
+  if [ -z "$out" ]; then
+    echo 0
+    return 0
+  fi
+  nl=$(printf '%s' "$file" | tr -cd '\n' | wc -c)
+  echo $(( $(printf '%s\n' "$out" | wc -l) / (nl + 1) ))
+}
+
 emit_findings() {
   local out="$1"
   [ -n "$out" ] && printf '%s\n' "$out"
@@ -275,7 +287,7 @@ scan_file() {
     exit 2
   }
   emit_findings "$out"
-  hits=$(count_lines "$out")
+  hits=$(count_file_findings "$out" "$file")
   total=$((total + hits))
 }
 
