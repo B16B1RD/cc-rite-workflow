@@ -105,7 +105,30 @@ else
 fi
 
 if [ -z "$PATHS" ]; then
-  PATHS=$(git -C "$WT" status --porcelain | awk '{print $NF}' | paste -sd, -)
+  # NUL-separated so that a name git would quote is read raw. Each record is "XY path"; a rename or
+  # copy is followed by one more record holding the old path, which is skipped (only the new side is
+  # recorded). paths: is comma-separated and blob: is one path per line, so a name with a comma or a
+  # newline cannot be recorded and stops the capture instead of being split.
+  status_list=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-apply-status-XXXXXX") || { echo "ERROR: mktemp に失敗しました" >&2; exit 1; }
+  trap 'rm -f "$status_list"' EXIT
+  git -C "$WT" status --porcelain -z > "$status_list" || { echo "ERROR: git status を読めません" >&2; exit 1; }
+  skip_next=false
+  while IFS= read -r -d '' record; do
+    if [ "$skip_next" = true ]; then
+      skip_next=false
+      continue
+    fi
+    status_xy=${record:0:2}
+    status_path=${record:3}
+    case "$status_xy" in *R*|*C*) skip_next=true ;; esac
+    case "$status_path" in
+      *,*|*$'\n'*)
+        echo "ERROR: Wiki 適用証跡に記録できないパス名です（カンマか改行を含む）: $(printf '%q' "$status_path")" >&2
+        exit 1
+        ;;
+    esac
+    PATHS="${PATHS:+$PATHS,}$status_path"
+  done < "$status_list"
 fi
 
 EXECUTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)

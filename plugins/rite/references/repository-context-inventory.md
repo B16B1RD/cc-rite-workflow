@@ -370,7 +370,7 @@ Complexity の三つの consumer は固定 cwd だけでは repo 引数を持た
 | `hooks/scripts/wiki-apply-advance-head.sh` (4) | `ROOT=$(bash "$SCRIPT_DIR/../state-path-resolve.sh") ¦¦ _fail "state root を解決できません"` | S | 壊れない（固定cwd）、除外 | 既存入口の対象cwdで共有state rootを解決。非固定単体foreignでは別stateへ解決され壊れる |
 | `hooks/scripts/wiki-apply-capture.sh` (1) | `WT=$(git rev-parse --show-toplevel)` | W | 壊れない（固定cwd）、除外 | 対象worktreeで同じHEAD/登録情報を読む。非固定単体foreignでは別Git情報を読み壊れる |
 | `hooks/scripts/wiki-apply-capture.sh` (2) | `ROOT=$(bash "$SCRIPT_DIR/../state-path-resolve.sh") ¦¦ { echo "ERROR: state root を解決できません" >&2; exit 1; }` | S | 壊れない（固定cwd）、除外 | 既存入口の対象cwdで共有state rootを解決。非固定単体foreignでは別stateへ解決され壊れる |
-| `hooks/scripts/wiki-apply-capture.sh` (3) | `PATHS=$(git -C "$WT" status --porcelain ¦ awk '{print $NF}' ¦ paste -sd, -)` | W | 壊れない（明示対象）、除外 | 式の対象パスへ git -C / cd / resolver引数で固定。引数が入口の対象であることを保持 |
+| `hooks/scripts/wiki-apply-capture.sh` (3) | `git -C "$WT" status --porcelain -z > "$status_list" ¦¦ { echo "ERROR: git status を読めません" >&2; exit 1; }` | W | 壊れない（明示対象）、除外 | 式の対象パスへ git -C / cd / resolver引数で固定。引数が入口の対象であることを保持 |
 | `hooks/scripts/wiki-apply-capture.sh` (4) | `HEAD_SHA=$(git -C "$WT" rev-parse HEAD) ¦¦ { echo "ERROR: HEAD を読めません" >&2; exit 1; }` | W | 壊れない（明示対象）、除外 | 式の対象パスへ git -C / cd / resolver引数で固定。引数が入口の対象であることを保持 |
 | `hooks/scripts/wiki-apply-capture.sh` (5) | `&& git -C "$WT" cat-file -e "HEAD:$_wiki_path" 2>/dev/null; then` | W | 壊れない（明示対象）、除外 | 式の対象パスへ git -C / cd / resolver引数で固定。引数が入口の対象であることを保持 |
 | `hooks/scripts/wiki-apply-capture.sh` (6) | `_wiki_oid=$(readlink -- "$WT/$_wiki_path" ¦ tr -d '\n' ¦ git -C "$WT" hash-object --stdin) ¦¦ {` | W | 壊れない（明示対象）、除外 | 式の対象パスへ git -C / cd / resolver引数で固定。引数が入口の対象であることを保持 |

@@ -282,17 +282,25 @@ scan_file() {
 total=0
 
 scan_all() {
-  local list
-  if ! list=$(git ls-files); then
+  # NUL-separated so that a name git would quote (tab, quote, newline, non-ASCII) is read raw.
+  # A file keeps NULs that $(...) would drop.
+  # scan_file can exit mid-loop, so the list is removed on EXIT rather than after the loop only.
+  list=$(mktemp "${TMPDIR:-/tmp}/rite-number-ref-ls-XXXXXX") || {
+    echo "ERROR: mktemp failed for the tracked file list" >&2
+    exit 2
+  }
+  trap 'rm -f "$list"' EXIT
+  if ! git ls-files -z > "$list"; then
     echo "ERROR: git ls-files failed" >&2
     exit 2
   fi
   local f n=0
-  while IFS= read -r f; do
+  while IFS= read -r -d '' f; do
     [ -z "$f" ] && continue
     n=$((n + 1))
     scan_file "$f"
-  done <<< "$list"
+  done < "$list"
+  rm -f "$list"
   log "Scanning $n tracked file(s)..."
 }
 

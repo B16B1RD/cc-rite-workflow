@@ -743,6 +743,62 @@ for sort_input in 1 2; do
   assert_rc "TC-25.29.$sort_input: sort 失敗で前 cycle の一覧を残さない" 1 "$([ -e "$comm_stale_list" ]; echo $?)"
 done
 
+echo "=== TC-25b: git が引用符で囲む名前を生の名前で一覧に入れ、1 行で表せない名前では full へ倒す ==="
+# 引用符を含む名前は fix commit (log 側) で、非 ASCII の名前は競合解消 (merge の show 側) でだけ入る。
+# どちらかの取得が引用符付きの表記のままだと、起点からの差分との積から落ちる
+QREPO="$TEST_DIR/quote-repo"
+mkdir -p "$QREPO"
+git -C "$QREPO" init -q -b main
+git -C "$QREPO" config user.email t@example.com
+git -C "$QREPO" config user.name t
+printf 'base\n' > "$QREPO/日本語.md"
+git -C "$QREPO" add -A
+git -C "$QREPO" commit -qm init
+git -C "$QREPO" switch -qc feat
+printf 'feat\n' >> "$QREPO/日本語.md"
+git -C "$QREPO" commit -qam reviewed
+QBASE=$(git -C "$QREPO" rev-parse HEAD)
+printf 'fix\n' > "$QREPO/q\"uote.md"
+git -C "$QREPO" add -A
+git -C "$QREPO" commit -qm fix
+git -C "$QREPO" switch -q main
+printf 'main\n' >> "$QREPO/日本語.md"
+git -C "$QREPO" commit -qam main
+git -C "$QREPO" switch -q feat
+git -C "$QREPO" merge -q main -m "merge main" >/dev/null 2>&1
+printf 'base\nfeat\nmain\n' > "$QREPO/日本語.md"
+git -C "$QREPO" add -A
+git -C "$QREPO" commit -qm "merge main"
+QRESULTS="$TEST_DIR/results-quote"
+mkdir -p "$QRESULTS"
+mk_result_json "$QRESULTS/42-20260806-000000.json" "$QBASE"
+cd "$QREPO" || exit 1
+run_scope --pr 42 --results-dir "$QRESULTS"
+assert_contains "TC-25b.1: 引用符・非 ASCII の名前でも incremental" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
+quote_list=$(marker_value_of "$SCOPE_STDERR" "files")
+actual_files=$(LC_ALL=C sort "$quote_list" 2>/dev/null)
+expected_files=$(printf '%s\n' 'q"uote.md' '日本語.md' | LC_ALL=C sort)
+if [ "$actual_files" = "$expected_files" ]; then
+  pass "TC-25b.2: 引用符 (fix commit) と非 ASCII (競合解消) の名前が生の名前で 1 行ずつ入る"
+else
+  fail "TC-25b.2: 引用符・非 ASCII の名前の一覧"
+  echo "     期待値: '$expected_files'"
+  echo "     実際:   '$actual_files'"
+fi
+# タブと改行は一覧の 1 行にも、一覧を受け取る extra-references の入力にも載らない
+for ctl_name in $'tab\there.md' $'new\nline.md'; do
+  git -C "$QREPO" switch -qc "ctl-$RANDOM" feat
+  printf 'ctl\n' > "$QREPO/$ctl_name"
+  git -C "$QREPO" add -A
+  git -C "$QREPO" commit -qm ctl
+  run_scope --pr 42 --results-dir "$QRESULTS"
+  ctl_label=$(printf '%q' "$ctl_name")
+  assert_contains "TC-25b.3 $ctl_label: 制御文字を含む名前は scope_path_unrepresentable で full" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=full; reason=scope_path_unrepresentable"
+  assert_not_contains "TC-25b.4 $ctl_label: incremental を出さない" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
+  assert_not_contains "TC-25b.5 $ctl_label: files= を出さない" "$SCOPE_STDERR" "files="
+  git -C "$QREPO" switch -q feat
+done
+
 echo "=== TC-26: fix commit の改名は元パスと新パスの両方を一覧に入れる ==="
 # --name-only は検出した改名の移動先しか出さないため、rename 検出が有効だと元パスが一覧から落ち、
 # reviewer に新パスが新規ファイルとして渡る

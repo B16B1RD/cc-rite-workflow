@@ -665,6 +665,33 @@ else
   fail "--all should scan CHANGELOG, got rc=$rc: $out"
 fi
 
+# --all reads the tracked list NUL-separated, so a name that git would quote
+# (tab, double quote, newline, non-ASCII) is scanned under its raw name
+odd_names=($'docs/tab\there.md' 'docs/q"uote.md' $'docs/new\nline.md' 'docs/日本語.md')
+odd_n=2410
+for odd in "${odd_names[@]}"; do
+  printf 'odd name (#%s)\n' "$odd_n" > "$sb/$odd"
+  odd_n=$((odd_n + 1))
+done
+commit_all "$sb" odd-names
+rc=0; out=$(run_all "$sb" --quiet 2>&1) || rc=$?
+odd_n=2410
+for odd in "${odd_names[@]}"; do
+  if [ "$rc" -eq 1 ] && [[ "$out" == *"$odd:1: odd name (#$odd_n)"* ]]; then
+    pass "--all scans the raw name: $(printf '%q' "$odd")"
+  else
+    fail "--all should report $(printf '%q' "$odd") under its raw name, got rc=$rc: $out"
+  fi
+  odd_n=$((odd_n + 1))
+done
+if [[ "$out" == *"docs/new.md:1: new tracked (#2200)"* ]]; then
+  pass "--all still reports a plain name next to the odd names"
+else
+  fail "--all lost the plain name docs/new.md: $out"
+fi
+git -C "$sb" rm -q -- "${odd_names[@]}" && git -C "$sb" commit -qm odd-names-gone \
+  || fail "odd-name fixture cleanup failed (later cases run on a polluted tree)"
+
 # --quiet suppresses Scanning but not the summary
 rc=0; err=$(run_all "$sb" --quiet 2>&1 >/dev/null) || rc=$?
 if printf '%s' "$err" | grep -c >/dev/null 'Total number-ref findings:' \
