@@ -30,6 +30,11 @@ Shared error patterns referenced by command files. When an error occurs, display
 
 Common causes: wrong number/name, entity deleted, different repository.
 
+### Fetching to Decide Whether a Target Exists
+
+- A fetch whose result decides whether a target exists, where absence can be a normal outcome → treat only the API's report that the target itself is missing (a 404 or GraphQL `NOT_FOUND` for the target after fetching the repository itself succeeded, or an empty result) as "does not exist", an input to the decision. Treat every other failure as "could not fetch" and stop as undecidable (for example authentication, permission, rate limiting, network, 5xx, or a 404 / `NOT_FOUND` for the repository itself, which GitHub also returns when the token cannot see a private repository). Do not fold both into one failure.
+- A list fetched with a count limit (`--limit`, stopped pagination) → keep a mark that the list was cut at the limit, and do not use a marked list as evidence that a target is absent. Fetch every page, or stop as undecidable.
+
 ### Permission Error
 
 ```

@@ -248,6 +248,10 @@ OK patterns:
 
 **Mechanical enforcement**: lib で消せない残余 — `mktemp` ハンドルまたは lib ハンドル**から派生させたパス** — は `/rite:lint` Phase 3.5 の `hooks/scripts/tempfile-lifecycle-check.sh` が `mktemp-derived-path` として非ブロッキング warning で surface する（`[lint:success]` は不変）。**手書きの `mktemp` 自体は検出対象外**で、そちらは lib 側の fail-loud が受け皿。意図的に派生させたパスは行内または直上行の `drift-check-ignore` marker で除外する（marker は派生行そのものに置く — mktemp 行に置くと直上行免除でその直下行の検出まで落ちる）。背景は [plugin-checks-rationale.md](../../lint/references/plugin-checks-rationale.md) を参照。
 
+### 生成された文字列を受理する正規表現は生成側と揃える
+
+**Rule**: LLM や別の helper が生成した文字列を正規表現で受理するゲートは、生成側が自然に出す形を受理し、同じ形を受理する既存のゲートの式と揃える。片方だけを厳しくすると、正しい出力が拒否される。
+
 ---
 
 ## Phase Checklists
@@ -273,7 +277,7 @@ OK patterns:
 - [Phase Mapping](./phase-mapping.md) - Phase details
 - [PR Create Command](../../../skills/pr-create/SKILL.md) - Unaddressed issues check before PR creation (Phase 2.5)
 - [Markdown Authoring Conventions](#markdown-authoring-conventions) - Skill loader に load される Markdown ファイルの記述規約 (bash negation operator inline code convention / operational bash block heaviness convention)
-- [Shell Helper Conventions](#shell-helper-conventions) - `hooks/` / `scripts/` の bash helper を新規に書くときの規約 (tempfile は lib 経由で作る)
+- [Shell Helper Conventions](#shell-helper-conventions) - `hooks/` / `scripts/` の bash helper を新規に書くときの規約
 - [Sentinel Contract の設計規則](../../../references/sentinel-contract.md#設計規則) - sentinel / marker を新設・変更するときの規則
 - [Hook・ガード・分類器の設計規則](../../../references/hook-guard-design-rules.md) - hook と guard、コマンド解析の分類器を変更するときの規則
 - [PR 作成・運用の規則](../../../references/gh-cli-patterns.md#pr-作成運用の規則) - PR の作成・画像添付・Issue のクローズ手順を設計するときの規則
