@@ -84,7 +84,7 @@ When updating Issue or PR body, there is a risk of body loss due to:
 - **Data loss in pipe processing**: When processing body through pipes and passing to `--body` directly, a command failure mid-pipe passes empty string
 - **Write tool empty write**: If Claude Code's Write tool writes empty content to a temp file, the subsequent `--body-file` sets empty body
 
-In all cases, gh CLI sets the empty string as body, effectively making it `null`. **The recommended pattern prevents these risks with layers (1)–(3)**; layer (4) applies when a script replaces only part of the body:
+In all cases, gh CLI sets the empty string as body, effectively making it `null`. **The recommended pattern prevents these risks with layers (1)–(3)**; layer (4) applies when a script replaces only part of a PR body with gh (the Issue-body Checkbox Update below is outside it):
 
 | Defense Layer | Measure | Risk Prevented |
 |---------------|---------|----------------|

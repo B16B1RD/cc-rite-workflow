@@ -32,7 +32,7 @@ Common causes: wrong number/name, entity deleted, different repository.
 
 ### Fetching to Decide Whether a Target Exists
 
-- A fetch whose result decides whether a target exists, where absence can be a normal outcome → treat "does not exist" (the API reports the target itself as missing: a 404 or GraphQL `NOT_FOUND` for the target after fetching the repository itself succeeded, an empty result) as input to the decision, and "could not fetch" (authentication, permission, network, 5xx, or a 404 / `NOT_FOUND` for the repository itself, which GitHub also returns when the token cannot see a private repository) as undecidable and stop. Do not fold both into one failure.
+- A fetch whose result decides whether a target exists, where absence can be a normal outcome → treat as "does not exist", an input to the decision, only the API's report that the target itself is missing (a 404 or GraphQL `NOT_FOUND` for the target after fetching the repository itself succeeded, or an empty result). Treat every other failure as "could not fetch" and stop as undecidable (for example authentication, permission, rate limiting, network, 5xx, or a 404 / `NOT_FOUND` for the repository itself, which GitHub also returns when the token cannot see a private repository). Do not fold both into one failure.
 - A list fetched with a count limit (`--limit`, stopped pagination) → keep a mark that the list was cut at the limit, and do not use a marked list as evidence that a target is absent. Fetch every page, or stop as undecidable.
 
 ### Permission Error
