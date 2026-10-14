@@ -44,15 +44,16 @@ section_of() {
 
 # pin_row label doc heading; the expected whole line is read from stdin.
 pin_row() {
-  local label=$1 doc=$2 heading=$3 line body in_section in_refs
+  local label=$1 doc=$2 heading=$3 line hits body in_section in_refs
   line=$(cat)
+  hits=$(grep -cxF -- "$heading" "$doc") || hits=0
   body=$(section_of "$doc" "$heading")
   in_section=$(grep -cxF -- "$line" <<<"$body") || in_section=0
   in_refs=$(cat "$BASH_DOC" "$ERR_DOC" "$GH_DOC" "$CP_DOC" | grep -cxF -- "$line") || in_refs=0
-  if [ "$in_section" = 1 ] && [ "$in_refs" = 1 ]; then
+  if [ "$hits" = 1 ] && [ "$in_section" = 1 ] && [ "$in_refs" = 1 ]; then
     pass "$label"
   else
-    fail "$label (in section: $in_section, in the four references: $in_refs; want 1 and 1)"
+    fail "$label (heading hits: $hits, in section: $in_section, in the four references: $in_refs; want 1, 1 and 1)"
   fi
 }
 
@@ -61,20 +62,20 @@ H_FETCH="### Fetching to Decide Whether a Target Exists"
 H_BODY="## Safe Issue/PR Body Updates"
 H_REGEX="### 生成された文字列を受理する正規表現は生成側と揃える"
 
-pin_row "git output parsed by a helper pins the user-config-dependent format" "$BASH_DOC" "$H_PARSE" <<'ROW'
-| A helper parses `git diff` or `git log -p` output whose format the user's git config and the repository's `.gitattributes` change (`core.quotePath` quotes non-ASCII paths, `diff.noprefix` / `diff.mnemonicPrefix` change the `a/` `b/` prefixes, `diff.external` and `diff.<driver>.textconv` replace the diff, `diff.relative` makes paths relative, `color.ui=always` adds escapes) | Pin the format at the call site: `git -c core.quotePath=false diff --no-ext-diff --no-textconv --no-relative --no-color --src-prefix=a/ --dst-prefix=b/ ...` (the same options for `git log -p`). Output only shown to a person needs no pinning |
+pin_row "git output parsed by a helper pins every option its shape depends on" "$BASH_DOC" "$H_PARSE" <<'ROW'
+| A helper parses git output whose shape the user's git config or the repository's `.gitattributes` can change: a diff body (`git diff`, `git log -p`) or a path list (`git status --porcelain`, `git ls-files`) | Pin at the call site every option whose configured default changes the shape the parser reads, covering at least the set the existing parsing helpers use. For a diff body, for example: `git -c core.quotePath=false diff --no-renames --no-ext-diff --no-textconv --no-relative --no-color --src-prefix=a/ --dst-prefix=b/ ...` (the same options for `git log -p`). For a path list, read NUL-separated output with `-z`. Output only shown to a person needs no pinning |
 ROW
 pin_row "a Python prefix is removed with removeprefix, not lstrip" "$BASH_DOC" "$H_PARSE" <<'ROW'
 | A Python helper removes a prefix with `s.lstrip("prefix")`, which strips any leading characters in the set (`"refs/heads/hotfix".lstrip("refs/heads/")` returns `"otfix"`) | `s.removeprefix("prefix")` (Python 3.9+) |
 ROW
 pin_row "an existence fetch tells absent from unfetchable" "$ERR_DOC" "$H_FETCH" <<'ROW'
-- A fetch whose result decides whether a target exists, where absence can be a normal outcome → treat "does not exist" (the API reports the target itself as missing: a 404 or GraphQL `NOT_FOUND` for the target while its repository is visible, an empty result) as input to the decision, and "could not fetch" (authentication, permission, network, 5xx, or a 404 / `NOT_FOUND` for the repository itself, which GitHub also returns when the token cannot see a private repository) as undecidable and stop. Do not fold both into one failure.
+- A fetch whose result decides whether a target exists, where absence can be a normal outcome → treat "does not exist" (the API reports the target itself as missing: a 404 or GraphQL `NOT_FOUND` for the target after fetching the repository itself succeeded, an empty result) as input to the decision, and "could not fetch" (authentication, permission, network, 5xx, or a 404 / `NOT_FOUND` for the repository itself, which GitHub also returns when the token cannot see a private repository) as undecidable and stop. Do not fold both into one failure.
 ROW
 pin_row "a list cut at its count limit is marked and not used as evidence of absence" "$ERR_DOC" "$H_FETCH" <<'ROW'
 - A list fetched with a count limit (`--limit`, stopped pagination) → keep a mark that the list was cut at the limit, and do not use a marked list as evidence that a target is absent. Fetch every page, or stop as undecidable.
 ROW
 pin_row "a partial body edit keeps no pre-edit lines and re-fetches after the last write" "$GH_DOC" "$H_BODY" <<'ROW'
-| (4) Re-fetch after a partial edit | Do not write back lines read before the edit; after the script's last write, fetch the body again and stop if the replaced old text still appears | Overwriting the body with lines read before the edit, which brings the old text back |
+| (4) Re-fetch after a partial edit | Do not write back a copy of the body read before an earlier write in the same script; after the script's last write, fetch the body again and stop if the replaced old text still appears | Overwriting the body with lines read before the edit, which brings the old text back |
 ROW
 pin_row "an accepting regex matches the producer's output and the existing gate" "$CP_DOC" "$H_REGEX" <<'ROW'
 **Rule**: LLM や別の helper が生成した文字列を正規表現で受理するゲートは、生成側が自然に出す形を受理し、同じ形を受理する既存のゲートの式と揃える。片方だけを厳しくすると、正しい出力が拒否される。
