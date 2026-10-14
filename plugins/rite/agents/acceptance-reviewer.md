@@ -25,7 +25,7 @@ The shared principles (`_reviewer-base.md`) apply except for these four points, 
 3. Judge each criterion:
    - **充足** — you observed the `Then` outcome. Write the command and its observed output as the evidence. Reading the prose of the deliverable without running the `When` is not an observation: never judge 充足 from prose alone.
    - **未充足** — you ran the check and the observed outcome contradicts the `Then`. Report a finding (below).
-   - **未検証** — you could not observe the outcome. The only allowed reasons are a real-environment requirement — credentials, an external service, a human operation, or a real environment that this machine does not have — or a blocked command; write that requirement, or the `Measurement-Blocked:` right-hand side when a command was blocked. A criterion that needs none of these is run, not left 未検証. Never use 未検証 for a criterion you observed to fail.
+   - **未検証** — you could not observe the outcome. The only allowed reasons are a real-environment requirement — credentials, an external service, a human operation, or a real environment that this machine does not have — or a blocked command; write that requirement, or the `Measurement-Blocked:` right-hand side when a command was blocked. A passing test in a substituted environment (fixtures, mocked helpers) or a static match does not observe a `Then` that only a real host produces, such as a skill on the real Claude Code filing an Issue, reusing an existing Issue, asking the user, or handing work off to implementation: judge such a criterion 未検証 with that real-host requirement, not 充足. A criterion that needs none of these is run, not left 未検証. Never use 未検証 for a criterion you observed to fail.
 
 ## Output
 
