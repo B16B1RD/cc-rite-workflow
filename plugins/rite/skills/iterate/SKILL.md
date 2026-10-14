@@ -452,7 +452,7 @@ bash {plugin_root}/scripts/review-pr-recommendations.sh check --pr {pr_number}
 | `pending` | 下の記録のあと `/rite:fix` を invoke |
 | 非ゼロ終了 / marker 不在 | 停止する。完了通知へ進まず、成功 sentinel を出さない |
 
-`pending` のとき、同じレビュー済み commit を fix へ二度渡さない記録を書く。非ゼロ終了なら停止する（fix を invoke しない）:
+`pending` のとき、同じ登録を fix へ二度渡さない記録を書く。非ゼロ終了なら停止する（fix を invoke しない）:
 
 ```bash
 bash {plugin_root}/scripts/review-pr-recommendations.sh mark --pr {pr_number}

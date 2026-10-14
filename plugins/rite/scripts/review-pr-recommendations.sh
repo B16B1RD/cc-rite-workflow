@@ -42,20 +42,25 @@
 #
 # check (iterate, after the 5.S sweep): reads the latest saved result for the PR
 # (LC_ALL=C sort, last). Registrations are pending only when they were recorded
-# on that result's commit and the commit has not been handed to fix (see mark).
+# on that result's commit and that registration has not been handed to fix (see
+# mark). A done file without the registration line counts as not handed.
 #     [CONTEXT] PR_RECOMMENDATIONS_CHECK=pending; count=N; json=<path>
 #     [CONTEXT] PR_RECOMMENDATIONS_CHECK=none; json=<path>
 #
-# mark (iterate, right before invoking fix): records the latest saved result's
-# basename and commit_sha in .rite/state/pr-recommendations-done-<pr>.txt so
-# that re-entry does not hand the same reviewed commit to fix twice.
+# mark (iterate, right before invoking fix): writes
+# .rite/state/pr-recommendations-done-<pr>.txt: line 1 is the latest saved
+# result's basename and commit_sha, line 2 the handed registration
+# (jq -cS '{commit_sha, recommendations}'), so that re-entry does not hand the
+# same registration to fix twice. Fails when the latest result's commit has no
+# registration (mark follows a pending check only).
 #     [CONTEXT] PR_RECOMMENDATIONS_MARK=done; json=<basename>
 #
 # --state-root defaults to state-path-resolve.sh.
 #
 # Errors (stderr, exit 1): [CONTEXT] PR_RECOMMENDATIONS_FAILED=1; reason=<reason>
 #   jq_missing / input_unreadable / json_invalid / verdicts_invalid /
-#   config_unreadable / results_dir_missing / json_missing / write_failure
+#   config_unreadable / results_dir_missing / json_missing / registration_missing /
+#   write_failure
 # Exit 2: usage.
 
 set -uo pipefail
@@ -173,23 +178,30 @@ case "$mode" in
     sha=$(jq -r '.commit_sha // empty' "$json" 2>/dev/null)
     [ -n "$sha" ] || fail json_invalid "commit_sha missing: $json"
     done_file="$state_root/.rite/state/pr-recommendations-done-$pr.txt"
+    registered="$state_root/.rite/state/pr-recommendations-$pr.json"
+    count=0
+    current=""
+    if [ -f "$registered" ]; then
+      count=$(jq --arg sha "$sha" 'if .commit_sha == $sha then (.recommendations | length) else 0 end' "$registered" 2>/dev/null) \
+        || fail json_invalid "registrations unreadable: $registered"
+      current=$(jq -cS '{commit_sha, recommendations}' "$registered" 2>/dev/null) \
+        || fail json_invalid "registrations unreadable: $registered"
+    fi
     if [ "$mode" = mark ]; then
-      mkdir -p "$state_root/.rite/state" && printf '%s %s\n' "$(basename "$json")" "$sha" > "$done_file" \
+      [ "$count" -gt 0 ] || fail registration_missing "no registration on $sha to hand to fix: $registered"
+      mkdir -p "$state_root/.rite/state" && printf '%s %s\n%s\n' "$(basename "$json")" "$sha" "$current" > "$done_file" \
         || fail write_failure "could not write $done_file"
       echo "[CONTEXT] PR_RECOMMENDATIONS_MARK=done; json=$(basename "$json")"
       exit 0
     fi
-    registered="$state_root/.rite/state/pr-recommendations-$pr.json"
-    count=0
-    if [ -f "$registered" ]; then
-      count=$(jq --arg sha "$sha" 'if .commit_sha == $sha then (.recommendations | length) else 0 end' "$registered" 2>/dev/null) \
-        || fail json_invalid "registrations unreadable: $registered"
-    fi
-    # Compared by reviewed commit, not file name: fix may save a copy of the
-    # same review under a new name, and that copy is not a new review.
+    # Compared by registration content, not by review file name or commit alone: fix
+    # may save a copy of the review under a new name and the sweep rewrites the file
+    # under the latest name without new roots, while a re-review of the same commit
+    # may register again. It is pending when the latest reviewed commit has at least one
+    # recommendation and the normalized {commit_sha, recommendations} differs from line 2.
     handed=""
-    [ -f "$done_file" ] && handed=$(awk 'NR==1 { print $2 }' "$done_file")
-    if [ "$count" -gt 0 ] && [ "$handed" != "$sha" ]; then
+    [ -f "$done_file" ] && handed=$(sed -n 2p "$done_file")
+    if [ "$count" -gt 0 ] && [ "$handed" != "$current" ]; then
       echo "[CONTEXT] PR_RECOMMENDATIONS_CHECK=pending; count=$count; json=$json"
     else
       echo "[CONTEXT] PR_RECOMMENDATIONS_CHECK=none; json=$json"

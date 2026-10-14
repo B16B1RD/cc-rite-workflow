@@ -128,25 +128,54 @@ R="$STATE/.rite/review-results"
 rm -f "$REG"
 run check --pr 7 --state-root "$STATE"
 check "no saved review fails" '[ $RC -eq 1 ] && [[ "$ERR" == *"reason=json_missing"* ]]'
+DONE="$STATE/.rite/state/pr-recommendations-done-7.txt"
 cp "$WORK/r1.json" "$R/7-20260101000000.json"
 run check --pr 7 --state-root "$STATE"
 check "no registration is none" '[ $RC -eq 0 ] && [[ "$OUT" == "[CONTEXT] PR_RECOMMENDATIONS_CHECK=none; "* ]]'
+run mark --pr 7 --state-root "$STATE"
+check "mark without a registration on the latest commit fails and writes nothing" \
+  '[ $RC -eq 1 ] && [[ "$ERR" == *"reason=registration_missing"* ]] && [ ! -e "$DONE" ]'
+record "$WORK/r3.json"
+rm -f "$DONE"
+run mark --pr 7 --state-root "$STATE"
+check "mark with only another commit's registration fails and writes nothing" \
+  '[ $RC -eq 1 ] && [[ "$ERR" == *"reason=registration_missing"* ]] && [ ! -e "$DONE" ]'
+record "$WORK/r1.json" "$WORK/no-fix.json"
+rm -f "$DONE"
+run mark --pr 7 --state-root "$STATE"
+check "mark with an empty registration on the latest commit fails and writes nothing" \
+  '[ $RC -eq 1 ] && [[ "$ERR" == *"reason=registration_missing"* ]] && [ ! -e "$DONE" ]'
 record "$WORK/r1.json"
 run check --pr 7 --state-root "$STATE"
 check "a registration on the latest review's commit is pending" '[[ "$OUT" == "[CONTEXT] PR_RECOMMENDATIONS_CHECK=pending; count=2; json="*"7-20260101000000.json" ]]'
 run mark --pr 7 --state-root "$STATE"
-check "mark records the handed review" '[ $RC -eq 0 ] && [ "$(cat "$STATE/.rite/state/pr-recommendations-done-7.txt")" = "7-20260101000000.json c1" ]'
+want_done=$(printf '7-20260101000000.json c1\n%s' "$(jq -cS '{commit_sha, recommendations}' "$REG")")
+check "mark records the handed review and the handed registration" '[ $RC -eq 0 ] && [ "$(cat "$DONE")" = "$want_done" ]'
 run check --pr 7 --state-root "$STATE"
-check "the handed review is not pending again" '[[ "$OUT" == "[CONTEXT] PR_RECOMMENDATIONS_CHECK=none; "* ]]'
+check "the handed registration is not pending again" '[[ "$OUT" == "[CONTEXT] PR_RECOMMENDATIONS_CHECK=none; "* ]]'
 cp "$WORK/r1.json" "$R/7-20260101000005.json"
 run check --pr 7 --state-root "$STATE"
-check "a copy of the same reviewed commit under a new name is not pending" '[[ "$OUT" == "[CONTEXT] PR_RECOMMENDATIONS_CHECK=none; "* ]]'
+check "a copy of the same reviewed commit under a new name is not pending" '[[ "$OUT" == "[CONTEXT] PR_RECOMMENDATIONS_CHECK=none; "* ]] && [ "$(cat "$DONE")" = "$want_done" ]'
+# A re-review of the same commit (fix edited only the PR body) registers anew.
+review "$WORK/r1b.json" 2 c1
+cp "$WORK/r1b.json" "$R/7-20260101000007.json"
+jq '.verdicts |= map(select(.ids != ["C-1", "C-2"]))' "$WORK/verdicts.json" > "$WORK/verdicts-r1b.json"
+record "$WORK/r1b.json" "$WORK/verdicts-r1b.json"
+run check --pr 7 --state-root "$STATE"
+check "a new registration on the same commit after mark is pending" '[[ "$OUT" == "[CONTEXT] PR_RECOMMENDATIONS_CHECK=pending; count=1; json="*"7-20260101000007.json" ]]'
+run mark --pr 7 --state-root "$STATE"
+run check --pr 7 --state-root "$STATE"
+check "re-entry after marking the new registration is none" '[ "$(head -1 "$DONE")" = "7-20260101000007.json c1" ] && [[ "$OUT" == "[CONTEXT] PR_RECOMMENDATIONS_CHECK=none; "* ]]'
 cp "$WORK/r3.json" "$R/7-20260101000009.json"
 run check --pr 7 --state-root "$STATE"
 check "a registration on another commit is not pending for the latest review" '[[ "$OUT" == "[CONTEXT] PR_RECOMMENDATIONS_CHECK=none; "*"7-20260101000009.json" ]]'
-record "$WORK/r3.json"
+# The handed recommendations registered again on a new commit differ only in commit_sha.
+record "$WORK/r3.json" "$WORK/verdicts-r1b.json"
 run check --pr 7 --state-root "$STATE"
-check "a registration on the new commit is pending again" '[[ "$OUT" == *"=pending; count=2; json="*"7-20260101000009.json" ]]'
+check "the handed recommendations on a new commit are pending again" '[[ "$OUT" == *"=pending; count=1; json="*"7-20260101000009.json" ]]'
+printf '7-20260101000009.json c3\n' > "$DONE"
+run check --pr 7 --state-root "$STATE"
+check "a done file without the handed registration is pending" '[[ "$OUT" == *"=pending; count=1; "* ]]'
 printf '{broken' > "$REG"
 run check --pr 7 --state-root "$STATE"
 check "an unreadable registration fails" '[ $RC -eq 1 ] && [[ "$ERR" == *"reason=json_invalid"* ]]'
