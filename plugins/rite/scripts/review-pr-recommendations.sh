@@ -197,7 +197,7 @@ case "$mode" in
     # Compared by registration content, not by review file name or commit: fix may
     # save a copy of the review under a new name and the sweep rewrites the file
     # under the latest name without new roots, while a re-review of the same commit
-    # registers new roots.
+    # registers again (new roots, or re-adopted roots whose wording changed).
     handed=""
     [ -f "$done_file" ] && handed=$(sed -n 2p "$done_file")
     if [ "$count" -gt 0 ] && [ "$handed" != "$current" ]; then

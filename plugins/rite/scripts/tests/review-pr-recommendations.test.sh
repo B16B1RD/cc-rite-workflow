@@ -136,10 +136,12 @@ run mark --pr 7 --state-root "$STATE"
 check "mark without a registration on the latest commit fails and writes nothing" \
   '[ $RC -eq 1 ] && [[ "$ERR" == *"reason=registration_missing"* ]] && [ ! -e "$DONE" ]'
 record "$WORK/r3.json"
+rm -f "$DONE"
 run mark --pr 7 --state-root "$STATE"
 check "mark with only another commit's registration fails and writes nothing" \
   '[ $RC -eq 1 ] && [[ "$ERR" == *"reason=registration_missing"* ]] && [ ! -e "$DONE" ]'
 record "$WORK/r1.json" "$WORK/no-fix.json"
+rm -f "$DONE"
 run mark --pr 7 --state-root "$STATE"
 check "mark with an empty registration on the latest commit fails and writes nothing" \
   '[ $RC -eq 1 ] && [[ "$ERR" == *"reason=registration_missing"* ]] && [ ! -e "$DONE" ]'
