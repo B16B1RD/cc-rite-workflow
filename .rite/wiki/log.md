@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-10-15
+* **Promotion**: [候補の出典](raw/reviews/20261014T170541Z-pr-3896.md) — unresolved <!-- rite-promotion: {"candidate": "51a04765efcc0bd408247baa3326c5e5ce3fdd1dabb699ce43ea358a6c5f9a49", "raw": "raw/reviews/20261014T170541Z-pr-3896.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
 * **Skip**: [20261014T172458Z-pr-3896.md](raw/reviews/20261014T172458Z-pr-3896.md) — awk -v がバックスラッシュをエスケープとして解釈するという知見は既存ページ（awk-v-assignment-strips-backslash-in-range-pattern / sanitization-gap-downstream-tool-escape-semantics）が持ち、bash-defensive-patterns.md にも規則があるため新しい経験則を含まない
 * **Promotion**: [候補の出典](raw/reviews/20261014T172458Z-pr-3896.md) — skipped <!-- rite-promotion: {"candidate": "", "raw": "raw/reviews/20261014T172458Z-pr-3896.md", "reason": "awk -v がバックスラッシュをエスケープとして解釈するという知見は既存ページ（awk-v-assignment-strips-backslash-in-range-pattern / sanitization-gap-downstream-tool-escape-semantics）が持ち、bash-defensive-patterns.md にも規則があるため新しい経験則を含まない", "status": "skipped"} -->
 * **Skip**: [20261014T171331Z-pr-3896.md](raw/fixes/20261014T171331Z-pr-3896.md) — 同じ PR の cycle 2 のレビュー raw に昇格候補として保存した知見（core.quotePath に関係なく引用される名前を fixture に含める）と同内容で、新しい経験則を含まない
