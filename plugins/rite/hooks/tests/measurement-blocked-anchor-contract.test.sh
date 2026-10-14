@@ -82,21 +82,43 @@ assert_grep "routing rerolls only reviewers that emitted the diagnostic finding 
   '診断の対象 finding IDs を出した reviewer のみ'
 assert_grep "routing uses reviewer reject and reroll" "$routing_file" \
   'Reviewer reject \+ reroll'
+# reroll 後の規則は「reroll 後の再実行」段落の 1 か所だけに書き、routing 行はそこを指す。
+rule_file=$(mktemp)
+trap 'rm -f "$routing_file" "$rule_file"' EXIT
+grep '^\*\*reroll 後の再実行\*\*' "$PR_REVIEW" > "$rule_file" || true
+assert "reroll rule paragraph is extracted exactly once" "1" "$(wc -l < "$rule_file" | tr -d ' ')"
+assert_grep "routing row points to the reroll rule" "$routing_file" \
+  '回収結果を下記「reroll 後の再実行」に従って統合・再実行してから、同 cycle 内で step 1 の JSON を作り直し step 2 を再実行する'
+# routing 行は共有規則を指すだけなので、行全体を固定する（列挙・規則文・言い換えの追加を語の選び方に依らず落とす）。
+routing_row_expected='| `[CONTEXT] MEASURED_GATE_FAILED=1; reason=verification_preset_by_caller` / `scope_enum_violation` / `anchor_undetermined` (helper 非ゼロ終了) | **同 cycle 内で契約違反を修復する。** preset は step 1 の JSON を作り直す。scope 違反または `anchor_undetermined` は診断の対象 finding IDs を出した reviewer のみ **Reviewer reject + reroll** とし、当該 reviewer を元 prompt（`{shared_reviewer_principles}` / `{prose_reviewer_principles}` / `{additional_reviewer_references}` を含む）+ 診断（対象 finding IDs と正規形アンカーの案内）で再生成させ、先頭行の読取完了申告も含める。アンカーは `Verification: repro <cmd> => <観測>` または `Verification: failing_test <path> => <失敗出力>`、raw pipe は `¦` と案内する。回収結果を下記「reroll 後の再実行」に従って統合・再実行してから、同 cycle 内で step 1 の JSON を作り直し step 2 を再実行する。`measured_gate_retry_count` が `1` なら `[review:error]` で停止する。`/rite:fix` に形式修正を渡さず、review cycle を増やさない |'
+assert "routing row is the pointer row and states no other rule" "$routing_row_expected" "$(cat "$routing_file")"
+assert "the reroll rule body appears once in pr-review" "1" "$(grep -o '通常どおりの条件で再実行' "$PR_REVIEW" | wc -l | tr -d ' ')"
 # 作り直した出力の統合方法は丸ごと置き換えの 1 つだけで、5.1.1.1 の retry と同じ方式であること。
-# 置き換え・破棄・他 reviewer 保持の 3 文を、直前の文末から連続した文全体で固定し、文の極性反転や頭・間への例外の挿入も落とす。
-replace_sentences='含める。作り直した出力は当該 reviewer の元の出力を丸ごと置き換える（5.1.1.1 の結果 merge 戦略と同じ。元 prompt を送り直すので元の出力と同じ範囲を対象にする）。元の出力を破棄し、作り直した出力のみを使う。他 reviewer の出力は保持する。'
-if grep -qF -- "$replace_sentences" "$routing_file"; then
-  pass "routing replaces the original output, discards it, and keeps other reviewers' outputs"
+# 置き換え・破棄・他 reviewer 保持の 3 文を、段落の先頭から連続した文全体で固定し、文の極性反転や頭・間への例外の挿入も落とす。
+replace_sentences='従う唯一の規則）: 作り直した出力は当該 reviewer の元の出力を丸ごと置き換える（5.1.1.1 の結果 merge 戦略と同じ。元 prompt を送り直すので元の出力と同じ範囲を対象にする）。元の出力を破棄し、作り直した出力のみを使う。他 reviewer の出力は保持する。'
+if grep -qF -- "$replace_sentences" "$rule_file"; then
+  pass "reroll rule replaces the original output, discards it, and keeps other reviewers' outputs"
 else
-  fail "routing replaces the original output, discards it, and keeps other reviewers' outputs (sentences not found in routing row)"
+  fail "reroll rule replaces the original output, discards it, and keeps other reviewers' outputs (sentences not found in rule paragraph)"
 fi
-# 相反文のうち 保持・差し替え・両方・元の出力 の語を含むものを数で拒否する（語を避けた言い換えまでは拒否しない）。
-assert "routing row has exactly one 保持 token" "1" "$(grep -o '保持' "$routing_file" | wc -l | tr -d ' ')"
-assert "routing row has no 差し替え token" "0" "$(grep -o '差し替え' "$routing_file" | wc -l | tr -d ' ')"
-assert_not_grep "routing row has no 両方 token" "$routing_file" '両方'
-assert "routing row has exactly three 元の出力 tokens" "3" "$(grep -o '元の出力' "$routing_file" | wc -l | tr -d ' ')"
-assert_grep "routing reruns the normal path from the collection gate to 5.3.0 for the rerolled output" "$routing_file" \
+# 相反文のうち 保持・差し替え・両方・元の出力・初回分・入れ替え の語を含むものを数で拒否する（語を避けた言い換えまでは拒否しない）。
+assert "reroll rule has exactly one 保持 token" "1" "$(grep -o '保持' "$rule_file" | wc -l | tr -d ' ')"
+assert "reroll rule has no 差し替え token" "0" "$(grep -o '差し替え' "$rule_file" | wc -l | tr -d ' ')"
+assert_not_grep "reroll rule has no 両方 token" "$rule_file" '両方'
+assert "reroll rule has exactly four 元の出力 tokens" "4" "$(grep -o '元の出力' "$rule_file" | wc -l | tr -d ' ')"
+assert_not_grep "pr-review uses neither 初回分 nor 入れ替え for the reroll" "$PR_REVIEW" '初回分|入れ替え'
+assert_grep "reroll rule reruns the normal path from the collection gate to 5.3.0 for the rerolled output" "$rule_file" \
   '5\.1 の回収完了ゲート（読取完了申告の照合を含む）から 5\.3\.0 までの通常経路の各段（5\.1 のゲート通過後の収集、5\.1\.0\.L、5\.1\.0\.AC を含む）を、作り直した出力に対して通常どおりの条件で再実行し'
+# 作り直した reviewer が関わる初回の値は、他 reviewer と組み合わせた値（矛盾の合意と disposition）も含めて作り直す。
+assert_grep "reroll rule rebuilds values made from the rerolled reviewer's original output" "$rule_file" \
+  'のうち、当該 reviewer の元の出力から作られた値は作り直した出力から作り直して置き換える。他 reviewer の出力と組み合わせて作られた値（5\.2 の矛盾、5\.2\.1 の合意 finding と disposition、全 reviewer に量化した 5\.1\.1\.1 の判定など）もこれに含め、作り直した出力と他 reviewer の出力から作り直す。他 reviewer の出力だけから作られた値は初回のまま使う。'
+assert_not_grep "pr-review no longer keeps the initial contradiction disposition" "$PR_REVIEW" '初回に決まった矛盾の disposition'
+# 5.2.2 の例外の 2 文と件数の文は共有規則の一部で、段落の中にあり、手順書全体でそれぞれ 1 回だけ現れる（行へ戻す・複製する・消す・限定句を落とす変更を落とす）。
+assert_grep "reroll rule keeps the 5.2.2 exception and the rejected count" "$rule_file" \
+  '例外として、5\.2\.2 不採用は Verification 追加だけで再採用しない。再実行 5\.2\.2 は初回の不採用行を破棄しない。`evidence_claim_rejected_count` は初回の不採用行と再実行 5\.2\.2 の不採用行を合わせた件数とする（skip 時に 0 とするのは本 cycle で 5\.2\.2 が未判定のときに限る）。'
+assert "the 5.2.2 exception appears once in pr-review" "1" "$(grep -o '5\.2\.2 不採用は Verification 追加だけで再採用しない' "$PR_REVIEW" | wc -l | tr -d ' ')"
+assert "the keep-initial-rejections sentence appears once in pr-review" "1" "$(grep -o '再実行 5\.2\.2 は初回の不採用行を破棄しない' "$PR_REVIEW" | wc -l | tr -d ' ')"
+assert "the rejected-count sentence appears once in pr-review" "1" "$(grep -o '再実行 5\.2\.2 の不採用行を合わせた件数とする' "$PR_REVIEW" | wc -l | tr -d ' ')"
 assert_not_grep "reviewer prompt does not regenerate only the target findings" "$PROMPT_GEN" \
   '対象 finding のみ再生成|対象 finding の再生成'
 assert_grep "5.1.1.1 merge strategy is still replace" "$PR_REVIEW" \
