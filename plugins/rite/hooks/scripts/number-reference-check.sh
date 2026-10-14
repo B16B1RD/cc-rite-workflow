@@ -15,7 +15,8 @@
 #                         rename 検出は使わない（ユーザー設定に依らず、除外パスからの
 #                         rename も行単位の追加として見る）。prefix・外部 diff・textconv
 #                         も固定し、ユーザーの diff 設定で走査対象の形を変えない。
-#                         ファイル名は git の引用を外した生の名前で表示し、件数は
+#                         引用符・バックスラッシュ・制御文字・空白を含むファイル名も
+#                         git の引用を外した生の名前で表示し、件数は
 #                         検出 1 件を 1 と数える（名前の改行で出力行が分かれても同じ）
 #                         --path DIR で走査範囲を DIR 配下へ限定できる
 #                         (DIR に tracked も staged も 0 件なら invocation error)
@@ -67,7 +68,8 @@ Options:
   --diff BASE        Scan added lines of git diff --no-renames BASE (includes
                      uncommitted); an added line equal to a removed line outside
                      the excluded paths in the same diff is a move (one for one);
-                     file names are reported raw, not in git's quoted form
+                     names with a quote, backslash, control character or
+                     space are reported raw, not in git's quoted form
   --stdin            Scan stdin (requires --label)
   --label NAME       Path label for --stdin findings
   --path DIR         Limit --diff to this pathspec (repo-root relative)

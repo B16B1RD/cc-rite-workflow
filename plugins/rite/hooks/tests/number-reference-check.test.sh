@@ -704,7 +704,7 @@ git -C "$sb" rm -q -- "${odd_names[@]}" && git -C "$sb" commit -qm odd-names-gon
 # --diff reads names from the diff headers, where git quotes them in C style and appends a tab
 # outside the quotes to a name with a space. Each odd name is reported raw and counted once,
 # also under core.quotePath=true (the script pins it off so octal escapes stay control-only).
-diff_odd_names=("${odd_names[@]}" 'docs/q"uote sp.md')
+diff_odd_names=("${odd_names[@]}" 'docs/q"uote sp.md' $'docs/c\001trl.md' $'docs/c\rr.md')
 odd_n=2430
 for odd in "${diff_odd_names[@]}"; do
   printf 'odd diff name (#%s)\n' "$odd_n" > "$sb/$odd"
@@ -762,6 +762,24 @@ if [ "$rc" -eq 1 ] && [[ $'\n'"$out"$'\n' == *$'\n'"docs/moved-in.md:1: moved ou
 else
   fail "--diff should report the line moved out of an odd-named excluded file, got rc=$rc: $out"
 fi
+
+# The count comes from the scanner's last line. When that line is missing or not a number,
+# --diff stops with exit 2 instead of reporting the findings it printed as clean.
+real_awk=$(command -v awk)
+awk_shim_dir="$sb/awk-shim"
+mkdir -p "$awk_shim_dir"
+for count_case in dropped:'/^#rite-findings=/d' garbled:'s/^#rite-findings=.*/#rite-findings=x/'; do
+  printf '%s\n' '#!/bin/bash' "\"$real_awk\" \"\$@\" | sed '${count_case#*:}'" 'exit "${PIPESTATUS[0]}"' > "$awk_shim_dir/awk"
+  chmod +x "$awk_shim_dir/awk"
+  rc=0
+  shim_out=$(PATH="$awk_shim_dir:$PATH" run_diff "$sb" HEAD~1 --quiet 2>"$sb/awk-shim.err") || rc=$?
+  if [ "$rc" -eq 2 ] && [ -z "$shim_out" ] && grep -q 'ERROR: diff scanner produced no findings count' "$sb/awk-shim.err"; then
+    pass "--diff stops with exit 2 when the findings count is ${count_case%%:*}"
+  else
+    fail "--diff should stop with exit 2 when the findings count is ${count_case%%:*}, got rc=$rc stdout=$(printf '%q' "$shim_out"): $(cat "$sb/awk-shim.err")"
+  fi
+done
+rm -rf "$awk_shim_dir" "$sb/awk-shim.err"
 git -C "$sb" rm -q -- docs/moved-in.md && git -C "$sb" commit -qm odd-fixture-move-gone \
   || fail "moved-in fixture cleanup failed (later cases run on a polluted tree)"
 
