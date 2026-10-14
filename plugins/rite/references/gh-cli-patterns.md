@@ -91,7 +91,7 @@ In all cases, gh CLI sets the empty string as body, effectively making it `null`
 | (1) Pipe isolation via temp file | `mktemp` + write to file | Data loss in pipe processing |
 | (2) Empty check with `[ ! -s file ]` | Validate after fetch/write | Shell variable expansion failure, Write tool empty write |
 | (3) Safe delivery via `--body-file` | Pass directly from file without variable expansion | Shell variable expansion failure |
-| (4) Re-fetch after a partial edit | After replacing part of the body, fetch the body again and confirm the replaced old text no longer appears | Overwriting the body with lines read before the edit, which brings the old text back |
+| (4) Re-fetch after a partial edit | Do not write back lines read before the edit; after the script's last write, fetch the body again and stop if the replaced old text still appears | Overwriting the body with lines read before the edit, which brings the old text back |
 
 Follow the recommended patterns below.
 

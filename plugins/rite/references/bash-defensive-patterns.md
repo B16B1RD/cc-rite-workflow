@@ -423,7 +423,7 @@ Each row is a condition and the form that avoids it. Forms marked **lint** are d
 
 | Situation | Defensive form |
 |-----------|----------------|
-| A helper parses `git diff` / `git status` / `git log` output whose format the user's git config changes (`core.quotePath` quotes non-ASCII paths, `diff.noprefix` / `diff.mnemonicPrefix` change the `a/` `b/` prefixes, `diff.external` replaces the diff, `color.ui=always` adds escapes) | Pin the format at the call site: `git -c core.quotePath=false diff --no-ext-diff --no-color --src-prefix=a/ --dst-prefix=b/ ...`. Output only shown to a person needs no pinning |
+| A helper parses `git diff` or `git log -p` output whose format the user's git config and the repository's `.gitattributes` change (`core.quotePath` quotes non-ASCII paths, `diff.noprefix` / `diff.mnemonicPrefix` change the `a/` `b/` prefixes, `diff.external` and `diff.<driver>.textconv` replace the diff, `diff.relative` makes paths relative, `color.ui=always` adds escapes) | Pin the format at the call site: `git -c core.quotePath=false diff --no-ext-diff --no-textconv --no-relative --no-color --src-prefix=a/ --dst-prefix=b/ ...` (the same options for `git log -p`). Output only shown to a person needs no pinning |
 | A Python helper removes a prefix with `s.lstrip("prefix")`, which strips any leading characters in the set (`"refs/heads/hotfix".lstrip("refs/heads/")` returns `"otfix"`) | `s.removeprefix("prefix")` (Python 3.9+) |
 
 ---
