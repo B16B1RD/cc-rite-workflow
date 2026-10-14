@@ -1,6 +1,8 @@
 # Directory Update Log
 
 ## 2026-10-15
+* **Skip**: [20261014T153707Z-pr-3893.md](raw/reviews/20261014T153707Z-pr-3893.md) — 同じ PR 系列の別 raw に昇格候補として保存済みの知見（規則集の節を手順書側で列挙せず条件で選ばせる）と同内容で、新しい経験則を含まない
+* **Promotion**: [候補の出典](raw/reviews/20261014T153707Z-pr-3893.md) — skipped <!-- rite-promotion: {"candidate": "", "raw": "raw/reviews/20261014T153707Z-pr-3893.md", "reason": "同じ PR 系列の別 raw に昇格候補として保存済みの知見（規則集の節を手順書側で列挙せず条件で選ばせる）と同内容で、新しい経験則を含まない", "status": "skipped"} -->
 * **Promotion**: [候補の出典](raw/reviews/20261014T150735Z-pr-3891.md) — unresolved <!-- rite-promotion: {"candidate": "8905b6376db948109c5f33fe78acaeb72f6ee58d6e3f5ad5195d0d02dbffc344", "raw": "raw/reviews/20261014T150735Z-pr-3891.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
 * **lint:clean** — contradictions=0, stale=77, orphans=0, missing_concept=0, unregistered_raw=838, broken_refs=0 (WIKI_CONTRADICTION_CHECK=complete; changed=0; screened=0; candidates=0; excluded=0; compared=0; carried=0; resolved=0; 対象なし: 今回の取り込みで追加・更新したページなし)
 
