@@ -204,16 +204,14 @@ pin "2.2: prev_finders の acceptance は合流させない" "$PR_REVIEW" '`{pre
 pin "3.2.2: 既に acceptance があれば追加しない" "$PR_REVIEW" '`{selected_reviewers}` に既に `acceptance` があれば追加しない'
 pin "5.3.0.A: unverified への書き換え禁止" "$PR_REVIEW" '`acceptance_criteria[].status` を `unverified` に書き換えて通してはならない'
 pin "5.3.0.A: reroll 後は共有規則で再実行し、降格ゲートを通してから再検査" "$PR_REVIEW" '回収結果を 5.3.0.M の「reroll 後の再実行」に従って統合・再実行してから、5.3.0.M step 1 → step 2 → step 3 → 5.3.0.C → 本検査を同 cycle 内で再実行する'
-# 5.3.0.A 行は共有規則を指すだけで、段の列挙や初回判定の保持を自前で持たない。
+# 5.3.0.A 行は共有規則を指すだけなので、行全体を固定する（段の列挙・規則文・言い換えの追加を語の選び方に依らず落とす）。
+ac_reroll_row_expected='| rc=1 + `reason=unmet_finding_not_blocking`, first occurrence | reviewer 契約違反。acceptance reviewer を 1 回だけ reroll し（元 prompt + 診断 + 未充足の指摘に `[AC-N]` 接頭辞と正規形の `Verification:` アンカーを付ける要求）、回収結果を 5.3.0.M の「reroll 後の再実行」に従って統合・再実行してから、5.3.0.M step 1 → step 2 → step 3 → 5.3.0.C → 本検査を同 cycle 内で再実行する。`acceptance_criteria[].status` を `unverified` に書き換えて通してはならない |'
 ac_reroll_row=$(grep '^| rc=1 + `reason=unmet_finding_not_blocking`' "$PR_REVIEW" || true)
-if [ "$(printf '%s\n' "$ac_reroll_row" | grep -c .)" = "1" ] \
-   && ! grep -qE '5\.1\.0\.AC → 5\.1\.2\.A|保持|disposition|Fact-Checking|元の出力|5\.2\.2|evidence_claim_rejected_count|合意 finding|初回のまま' <<<"$ac_reroll_row"; then
-  pass "5.3.0.A: reroll 行は段の列挙・初回判定の保持・共有規則の文を持たない"
+if [ "$ac_reroll_row" = "$ac_reroll_row_expected" ]; then
+  pass "5.3.0.A: reroll 行は共有規則を指す 1 行だけで、ほかの文を持たない"
 else
-  fail "5.3.0.A: reroll 行は段の列挙・初回判定の保持・共有規則の文を持たない (row=$ac_reroll_row)"
+  fail "5.3.0.A: reroll 行は共有規則を指す 1 行だけで、ほかの文を持たない (row=$ac_reroll_row)"
 fi
-pin "reroll 後の再実行: Verification 追加だけで 5.2.2 不採用を再採用しない" "$PR_REVIEW" '5.2.2 不採用は Verification 追加だけで再採用しない'
-pin "reroll 後の再実行: 再実行 5.2.2 は初回不採用を破棄しない" "$PR_REVIEW" '再実行 5.2.2 は初回の不採用行を破棄しない'
 pin "5.3.0.M step 1: acceptance_criteria を常に書く" "$PR_REVIEW" '- **`acceptance_criteria` を常に書く**'
 
 echo ""
