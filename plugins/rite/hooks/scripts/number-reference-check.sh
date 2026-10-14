@@ -361,8 +361,10 @@ scan_diff() {
   local hits
   # 同じ diff を 2 回流す。1 回目は除外外パスの削除行の内容を数え、2 回目で一致する追加行を
   # 移動として相殺する。区切り行は `#` で始まり、git diff の出力行とは衝突しない。
+  # C ロケールで動かすのは、正規表現の `.` を任意のバイトに一致させるため。UTF-8 ロケールでは
+  # 不正なバイトを含む名前が引用形の判定から外れ、利用者のロケール次第で復号されなくなる。
   hits=$(printf '%s\n#rite-second-pass\n%s\n' "$diff_out" "$diff_out" \
-    | awk -v excluded_paths="$EXCLUDED_PATHS" "$AWK_HAS_HIT"'
+    | LC_ALL=C awk -v excluded_paths="$EXCLUDED_PATHS" "$AWK_HAS_HIT"'
     function excluded(p,    paths, count, i, candidate) {
       count = split(excluded_paths, paths, " ")
       for (i = 1; i <= count; i++) {

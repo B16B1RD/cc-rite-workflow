@@ -704,7 +704,8 @@ git -C "$sb" rm -q -- "${odd_names[@]}" && git -C "$sb" commit -qm odd-names-gon
 # --diff reads names from the diff headers, where git quotes them in C style and appends a tab
 # outside the quotes to a name with a space. Each odd name is reported raw and counted once,
 # also under core.quotePath=true (the script pins it off so octal escapes stay control-only).
-diff_odd_names=("${odd_names[@]}" 'docs/q"uote sp.md' $'docs/c\001trl.md' $'docs/c\rr.md')
+diff_odd_names=("${odd_names[@]}" 'docs/q"uote sp.md' $'docs/c\001trl.md' $'docs/c\rr.md'
+  $'docs/c\a\b\v\fx.md' $'docs/q"\xffbad.md')
 odd_n=2430
 for odd in "${diff_odd_names[@]}"; do
   printf 'odd diff name (#%s)\n' "$odd_n" > "$sb/$odd"
@@ -713,7 +714,8 @@ done
 commit_all "$sb" odd-diff-names
 for quote_path in false true; do
   git -C "$sb" config core.quotePath "$quote_path"
-  rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+  # Run under a UTF-8 locale: an invalid byte in a name matches `.` only if the scan pins C.
+  rc=0; out=$(LC_ALL=C.UTF-8 run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
   total=$(printf '%s\n' "$out" | sed -n 's/^Total number-ref findings: //p')
   if [ "$rc" -eq 1 ] && [ "$total" = "${#diff_odd_names[@]}" ]; then
     pass "--diff counts one finding per odd-named file (core.quotePath=$quote_path)"
