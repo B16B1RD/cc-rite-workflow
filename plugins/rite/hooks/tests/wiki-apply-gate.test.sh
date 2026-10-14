@@ -1787,12 +1787,17 @@ recapture_case() {
       git -C "$r" add 日本語.txt 'q"uote' 'tab	name'
       git -C "$r" rm -q 旧.txt
       git -C "$r" mv KEEP 改名.txt ;;
+    # 取り込みとは別に、gitignore されていない未追跡のディレクトリとファイルが作業ツリーにある
+    untracked) printf 'new\n' > "$r/NEW"; git -C "$r" add NEW ;;
   esac
   git -C "$r" commit -qm 'chore: upstream'
   git -C "$r" switch -q -
   write_mem "$mem" "$(fresh_header auto_query_off "rc-$change" "$r" 0 KEEP)"
   git -C "$r" merge -q --no-commit --no-ff base >"$ROOT/rc-$change-merge.out" 2>&1 || merge_rc=$?
   [ "$merge_rc" -eq 0 ] || fail "$change: merge rc=$merge_rc $(cat "$ROOT/rc-$change-merge.out")"
+  if [ "$change" = untracked ]; then
+    mkdir "$r/scratch"; printf 'x\n' > "$r/scratch/f"; printf 'y\n' > "$r/scratch.orig"
+  fi
   GRC=0
   GOUT=$(cd "$r" && rc_env "$flow" bash "$GATE" --mode "$before_mode" 2>"$ROOT/rc-$change-before.err") || GRC=$?
   if [ "$GRC" -ne 0 ] && grep -q "reason=$before_reason" <<<"$GOUT"; then
@@ -1810,6 +1815,16 @@ recapture_case() {
       pass "$change: the re-capture records the intake paths with their raw names"
     else
       fail "$change: recorded paths $(grep '^paths: ' "$mem") cap=$(cat "$ROOT/rc-$change-cap.out")"
+    fi
+  fi
+  # 未追跡のディレクトリは中身をファイル単位で記録し、取り込みのパスと並べる
+  if [ "$change" = untracked ]; then
+    local got_u
+    got_u=$(grep '^paths: ' "$mem" | tail -1 | sed 's/^paths: //' | tr ',' '\n' | LC_ALL=C sort)
+    if [ "$cap_rc" -eq 0 ] && [ "$got_u" = "$(printf '%s\n' NEW scratch.orig scratch/f | LC_ALL=C sort)" ]; then
+      pass "$change: the re-capture records untracked files one by one next to the intake paths"
+    else
+      fail "$change: cap_rc=$cap_rc recorded paths $(grep '^paths: ' "$mem") cap=$(cat "$ROOT/rc-$change-cap.out")"
     fi
   fi
   GRC=0
@@ -1842,9 +1857,11 @@ recapture_case() {
   (cd "$r" && rc_env "$flow" bash "$cap_block") >"$ROOT/rc-$change-recover.out" 2>&1 || cap_rc=$?
   GRC=0
   GOUT=$(cd "$r" && rc_env "$flow" bash "$GATE" --mode review 2>"$ROOT/rc-$change-recover.err") || GRC=$?
-  # commit 後の作業ツリーは clean なので、回復の証跡は paths を持たない
+  # commit 後の作業ツリーに取り込みの変更は残らないので、回復の証跡は残った未追跡のファイルだけを持つ
+  local want_recovered="paths:"
+  [ "$change" = untracked ] && want_recovered="paths: scratch.orig,scratch/f"
   if [ "$cap_rc" -eq 0 ] && grep -qx "head: $(git -C "$r" rev-parse HEAD)" "$mem" \
-    && [ "$(grep '^paths:' "$mem" | tail -1)" = "paths:" ] \
+    && [ "$(grep '^paths:' "$mem" | tail -1)" = "$want_recovered" ] \
     && [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
     pass "$change: the step 4 recovery re-capture lets the next review allow"
   else
@@ -1866,6 +1883,7 @@ recapture_case delete commit stale_content
 recapture_case rename commit stale_content
 recapture_case symlink commit paths
 recapture_case quoted commit stale_content
+recapture_case untracked commit paths
 # 削除として記録できるのは HEAD にあったパスだけで、記録した削除が戻れば一致しない
 r=$(new_repo rc-gone)
 write_config "$r" true false

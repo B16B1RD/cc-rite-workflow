@@ -61,14 +61,14 @@ mergeable のレビューの後に手で commit すると、その HEAD には f
 
 1. `git fetch origin <base>` のあと `git merge --no-commit --no-ff origin/<base>` で取り込み、競合を解消して `git add` する（HEAD はレビュー済み commit のまま）。`<base>` は PR の `baseRefName`（`gh pr view <PR 番号> --json baseRefName`。`rite-config.yml` は不要で、取得できなければ止まる）。`branch.base` が設定済みで `baseRefName` と食い違うときも `check` が両方の値を示して止まる。merge が既に進行中（`MERGE_HEAD` がある）なら、取り込み相手が `origin/<base>` のときは競合解消と `git add` から始め、そうでなければ `git merge --abort` してからこの手順 1 に戻る
 2. `git diff --no-renames --name-only HEAD` の全パスを 1 つの `action: "base-intake"` グループの `paths` に並べ、全体検証を対応付ける。`finding_ids` は空でよい。改名は旧パスと新パスの 2 つとして並ぶ
-3. `check` → `verify --kind all` を通し、commit の直前に Wiki 適用証跡を取り直してから `git commit` で取り込みを確定する（`git merge --continue` で確定しても check / verify の検査は受けるが、Wiki 適用ゲートは `git commit` でだけ働くため、取り直しは省かない）。取り直さないと、commit と次のレビューのゲートは取り込み前の証跡を読み、取り込んだパスを `paths` / `stale_content` で拒否する。取り直しは [fix](../SKILL.md) の 0.5.W と同じ capture で、パスの一覧は渡さず（下のブロックの `--changed-paths ''`）、capture が `git status --porcelain -z` で読んだ取り込みのパスを生の名前で記録する。`{keywords}` は取り込んだパスとその要点（`'` を含めない）。capture は作業ツリーの状態（symlink はリンク文字列）を記録し、ゲートは staged の内容と比べるため、全パスの `git add` を終えてから commit までの間に実行する。base 側が削除したパスは削除として記録され（改名は改名先だけを記録する）、ゲートはそのパスが index にも作業ツリーにも無いことを照合する。commit の前に、status が ok のページは 0.5.W と同じく証跡を書き切る。取り込みで見つかったページは、競合解消そのものに規則を当てた場合を除き out（base 側の変更の取り込みであり、この PR の修正ではない）と記録する。capture が非 0 で終わるか commit のゲートが deny なら commit せず、原因を報告して止まる
+3. `check` → `verify --kind all` を通し、commit の直前に Wiki 適用証跡を取り直してから `git commit` で取り込みを確定する（`git merge --continue` で確定しても check / verify の検査は受けるが、Wiki 適用ゲートは `git commit` でだけ働くため、取り直しは省かない）。取り直さないと、commit と次のレビューのゲートは取り込み前の証跡を読み、取り込んだパスを `paths` / `stale_content` で拒否する。取り直しは [fix](../SKILL.md) の 0.5.W と同じ capture で、パスの一覧は渡さず（下のブロックの `--changed-paths ''`）、capture が作業ツリーの変更を `git status --porcelain -z` で読み、取り込んだパスと未追跡のファイルを生の名前で記録する（未追跡のディレクトリは中のファイルごと）。`{keywords}` は取り込んだパスとその要点（`'` を含めない）。capture は作業ツリーの状態（symlink はリンク文字列）を記録し、ゲートは staged の内容と比べるため、全パスの `git add` を終えてから commit までの間に実行する。base 側が削除したパスは削除として記録され（改名は改名先だけを記録する）、ゲートはそのパスが index にも作業ツリーにも無いことを照合する。commit の前に、status が ok のページは 0.5.W と同じく証跡を書き切る。取り込みで見つかったページは、競合解消そのものに規則を当てた場合を除き out（base 側の変更の取り込みであり、この PR の修正ではない）と記録する。capture が非 0 で終わるか commit のゲートが deny なら commit せず、原因を報告して止まる
 
    ```bash
    # base-intake-wiki-capture
    bash {plugin_root}/scripts/fix-step.sh wiki-capture --keywords '{keywords}' --changed-paths ''
    ```
 
-4. 別の Bash 呼び出しで Wiki 適用証跡の head をレビュー済み commit（取り込み commit の第 1 親）から新しい HEAD へ進める。進めないと次のレビューのゲートが `stale_head` で拒否する。`WIKI_APPLY_HEAD=advanced` または `=current` なら手順 5 へ進む。非 0 終了では証跡は変わっていないので、手順 3 の `base-intake-wiki-capture` で capture からやり直して（commit 後の作業ツリーに変更は無いので、証跡は paths を持たず新しい HEAD を head として記録する。契約は [wiki-apply-contract.md](../../../references/wiki-apply-contract.md)）証跡を書き直してから手順 5 へ進む
+4. 別の Bash 呼び出しで Wiki 適用証跡の head をレビュー済み commit（取り込み commit の第 1 親）から新しい HEAD へ進める。進めないと次のレビューのゲートが `stale_head` で拒否する。`WIKI_APPLY_HEAD=advanced` または `=current` なら手順 5 へ進む。非 0 終了では証跡は変わっていないので、手順 3 の `base-intake-wiki-capture` で capture からやり直して（commit 後の作業ツリーに取り込みの変更は残らないので、証跡は取り込んだパスを持たず（未追跡のファイルだけが残る）、新しい HEAD を head として記録する。契約は [wiki-apply-contract.md](../../../references/wiki-apply-contract.md)）証跡を書き直してから手順 5 へ進む
 
    ```bash
    # base-intake-wiki-apply-head
