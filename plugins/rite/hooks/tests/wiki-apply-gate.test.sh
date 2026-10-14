@@ -555,6 +555,19 @@ if [ "$GRC" -eq 1 ] && grep -q 'reason=evidence_mismatch' <<<"$GOUT"; then
 else
   fail "large diff mismatch rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
 fi
+# evidence names a changed path under its raw name. git quotes a non-ASCII name in the
+# plain name list and the diff headers, so only the NUL-separated list holds the raw name
+printf 'j\n' > "$repo/日本語.md"
+git -C "$repo" add -- 日本語.md
+git -C "$repo" commit -qm 'non-ascii change'
+write_mem "$mem" "$(applied_page '対象の識別子を照合してから実行する。' 日本語.md 'printf ok')"
+run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$flow" --memory "$mem"
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+  pass "review evidence matches a non-ASCII changed path under its raw name"
+else
+  fail "non-ASCII evidence review rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+fi
+write_mem "$mem" "$(applied_page '対象の識別子を照合してから実行する。' not-in-diff.txt 'printf ok')"
 # the diff files are removed when the gate exits
 rm -rf "$gate_tmp" && mkdir -p "$gate_tmp"
 TMPDIR="$gate_tmp" run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$flow" --memory "$mem"
@@ -1898,7 +1911,7 @@ if [ "$cap_rc" -eq 0 ] && [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<
 else
   fail "glob deletion cap_rc=$cap_rc rc=$GRC out=$GOUT err=$(cat "$ROOT/rc-glob.err") cap=$(cat "$ROOT/rc-glob.out")"
 fi
-# --paths を省くと git status から拾う。空白・タブ・引用符入りの名前は生の名前で、改名は新パスだけを記録する
+# --paths を省くと git status から拾う。空白・タブ・引用符・非 ASCII の名前は生の名前で、改名は新パスだけを記録する
 r=$(new_repo rc-status)
 printf '.rite/\n' >> "$r/.git/info/exclude"
 write_config "$r" true false
@@ -1910,18 +1923,28 @@ git -C "$r" mv 'old name.txt' 'new name.txt'
 printf 'a\n' > "$r/a b.txt"
 printf 'q\n' > "$r/q\"uote.txt"
 printf 't\n' > "$r/"$'t\tab.txt'
+printf 'j\n' > "$r/日本語.txt"
 cap_rc=0
 (cd "$r" && rc_env "$ROOT/rc-status.flow-state" bash "$CAPTURE" --keywords status) >"$ROOT/rc-status.out" 2>&1 || cap_rc=$?
 st_mem="$r/.rite/work-memory/issue-7.md"
 st_paths=$(sed -n 's/^paths: //p' "$st_mem")
 st_blobs=$(sed -n 's/^blob: \(.*\)=[0-9a-f]\{40\}$/\1/p' "$st_mem")
 # git status の並び（index の変更、続いて未追跡）のまま。write_config の rite-config.yml も未追跡で入る
-st_expect="new name.txt,a b.txt,q\"uote.txt,rite-config.yml,"$'t\tab.txt'
+st_expect="new name.txt,a b.txt,q\"uote.txt,rite-config.yml,"$'t\tab.txt'",日本語.txt"
 if [ "$cap_rc" -eq 0 ] && [ "$st_paths" = "$st_expect" ] \
   && [ "$st_blobs" = "$(tr ',' '\n' <<<"$st_expect")" ]; then
   pass "capture without --paths records raw names from git status and only the new side of a rename"
 else
   fail "status capture rc=$cap_rc paths=$(printf '%q' "$st_paths") blobs=$(printf '%q' "$st_blobs") out=$(cat "$ROOT/rc-status.out")"
+fi
+# commit ゲートは staged の一覧を記録と同じ生の名前で照合する。引用符付きの名前で照合すると記録に無いパスとして拒否する
+git -C "$r" add -A
+GRC=0
+GOUT=$(cd "$r" && rc_env "$ROOT/rc-status.flow-state" bash "$GATE" --mode commit 2>"$ROOT/rc-status-gate.err") || GRC=$?
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+  pass "commit gate matches staged raw names against the status capture record"
+else
+  fail "status capture gate rc=$GRC out=$GOUT err=$(cat "$ROOT/rc-status-gate.err")"
 fi
 # paths: はカンマ区切り、blob: は 1 行 1 パス。改行やカンマを含む名前は記録できないので止める
 st_bad_n=0
