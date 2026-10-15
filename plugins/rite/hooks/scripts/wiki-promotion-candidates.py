@@ -453,6 +453,20 @@ def link(root, input_path, cwd, repo):
     print("PROMOTION_LINKED=" + str(len(works)))
 
 
+def closes_issue(pr, issue_url):
+    if issue_url in [x.get("url") for x in pr["closingIssuesReferences"]]:
+        return True
+    # GitHub lists closing references only for merges into the default branch. Accept the
+    # same body/branch references that cleanup uses before it closes the Issue; grep is
+    # line based there, so the keyword and the number stay on one line. Every reference that
+    # grep accepts in a UTF-8 locale (U+3000 included) matches here; Python also accepts a few
+    # characters grep rejects, so any difference only ever accepts more.
+    number = issue_url.rsplit("/", 1)[1]
+    refs = (pr.get("body") or "") + "\n" + (pr.get("headRefName") or "")
+    return re.search(rf"((close[sd]?|fix(e[sd])?|resolve[sd]?)[^\S\n]*:?[^\S\n]*#{number}([^0-9]|$))"
+                     rf"|(issue-{number}([^0-9]|$))", refs, re.IGNORECASE | re.MULTILINE) is not None
+
+
 def proof(cwd, repo, item):
     work = item["work"]
     for key in ("pr_url", "issue_url", "consumer", "caller", "test", "revision"):
@@ -463,13 +477,13 @@ def proof(cwd, repo, item):
         if not re.fullmatch(rf"https://github\.com/{re.escape(repo)}/{kind}/[0-9]+", work[key]):
             raise ValueError(f"{key} belongs to another repository")
     pr = json.loads(command(["gh", "pr", "view", work["pr_url"], "--repo", repo, "--json",
-                             "state,isDraft,mergeCommit,closingIssuesReferences"]))
+                             "state,isDraft,mergeCommit,closingIssuesReferences,body,headRefName"]))
     if pr["state"] != "MERGED" or pr["isDraft"] or not pr.get("mergeCommit"):
         raise ValueError("merge not confirmed")
     revision = pr["mergeCommit"]["oid"]
     if work["revision"] != revision:
         raise ValueError("verification revision is not the merged revision")
-    if work["issue_url"] not in [x.get("url") for x in pr["closingIssuesReferences"]]:
+    if not closes_issue(pr, work["issue_url"]):
         raise ValueError("PR does not close the linked Issue")
     execution_issue(cwd, repo, work["issue_url"])
     if item.get("consumer") and item["consumer"] != work["consumer"]:
