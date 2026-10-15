@@ -539,7 +539,9 @@ echo "=== Phase 7: Method 3 reads every candidate parent and reports a failed fe
 m3_unbraced_re='\$[A-Za-z_][A-Za-z0-9_]*[^ -~]'
 # Positive control: the T-15 pattern matches an unbraced variable before a full-width
 # bracket and not a braced one, so a zero count below is not a pattern that never matches.
-if [ "$(printf '%s\n' 'echo "（$v）"' 'echo "（${v}）"' | LC_ALL=C grep -c "$m3_unbraced_re")" = 1 ]; then
+# The full-width brackets are written as byte escapes so that this line does not itself
+# put an unbraced variable next to a multibyte character in the source.
+if [ "$(printf 'echo "\xef\xbc\x88$v\xef\xbc\x89"\necho "\xef\xbc\x88${v}\xef\xbc\x89"\n' | LC_ALL=C grep -c "$m3_unbraced_re")" = 1 ]; then
   pass "T-15 control: the pattern matches only the unbraced variable"
 else
   fail "T-15 control: the pattern should match the unbraced variable and not the braced one"
