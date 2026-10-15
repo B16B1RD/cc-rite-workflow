@@ -322,7 +322,8 @@ test "$(bash -c "$command")" = called
         self.git("-c", "user.name=fixture", "-c", "user.email=fixture@localhost", "commit", "-qm", "fixture")
         self.rev = self.git("rev-parse", "HEAD").strip()
         self.pr = dict(state="MERGED", isDraft=False, mergeCommit={"oid": self.rev},
-                       closingIssuesReferences=[{"number": 1, "url": "https://github.com/example/project/issues/1"}])
+                       closingIssuesReferences=[{"number": 1, "url": "https://github.com/example/project/issues/1"}],
+                       body="", headRefName="")
         self.issue = dict(number=1, url="https://github.com/example/project/issues/1",
                           body="Single implementation", state="CLOSED", labels=[])
         self.children = []
@@ -341,8 +342,11 @@ test "$(bash -c "$command")" = called
         original = p.command
         def command(args, cwd=None):
             if args[0] == "gh":
-                return json.dumps(self.pr if args[1] == "pr" else
-                                  self.children if args[1] == "api" else self.issue)
+                if args[1] == "pr":
+                    # gh returns only the requested fields.
+                    fields = args[args.index("--json") + 1].split(",")
+                    return json.dumps({key: self.pr[key] for key in fields if key in self.pr})
+                return json.dumps(self.children if args[1] == "api" else self.issue)
             return original(args, cwd)
         with patch.object(p, "command", command):
             return p.proof(self.cwd, self.repo, self.item)
@@ -363,6 +367,39 @@ test "$(bash -c "$command")" = called
             self.verify()
         self.children = []
         self.assertEqual(self.verify(), self.rev)
+
+    def test_body_keyword_or_branch_name_closes_when_github_lists_no_reference(self):
+        self.pr["closingIssuesReferences"] = []
+        with self.assertRaisesRegex(ValueError, "does not close"):
+            self.verify()
+        for body, branch in (("Closes #1", ""), ("", "fix/issue-1-slug"), (None, "fix/issue-1-slug")):
+            self.pr["body"], self.pr["headRefName"] = body, branch
+            with self.subTest(body=body, branch=branch):
+                self.assertEqual(self.verify(), self.rev)
+
+    def test_references_to_other_issues_or_longer_numbers_do_not_close(self):
+        self.pr["closingIssuesReferences"] = []
+        for body, branch in (("Closes #10", "fix/issue-99-slug"), ("Closes #10", "issue-10"),
+                             ("Part of #1", "feat/subtask"), (None, None)):
+            self.pr["body"], self.pr["headRefName"] = body, branch
+            with self.subTest(body=body, branch=branch), self.assertRaisesRegex(ValueError, "does not close"):
+                self.verify()
+
+    def test_closing_reference_rule_matches_cleanup_close_and_verify(self):
+        # Both decide whether a merged PR closes the Issue; run cleanup's grep on the same inputs.
+        procedure = (Path(sys.argv[1]).resolve().parents[2] /
+                     "skills/cleanup/references/archive-procedures.md").read_text()
+        pattern = re.search(r'grep -qiE "(.+)" <<< "\$pr_refs"', procedure)[1]
+        cases = {"Closes #1": True, "closes: #1": True, "CLOSED #1": True, "fix #1": True,
+                 "Fixed #1": True, "resolves #1": True, "Resolved:#1": True, "Closes #1.": True,
+                 "ISSUE-1": True, "fix/issue-1-slug": True, "Closes #10": False, "#1": False,
+                 "issue-10": False, "issue-12-x": False, "Closes\n#1": False}
+        for text, expected in cases.items():
+            cleanup = subprocess.run(["bash", "-c", f'issue=1; grep -qiE "{pattern}" <<< "$1"', "-", text]).returncode
+            with self.subTest(text=text):
+                self.assertEqual(cleanup == 0, expected)
+                self.assertEqual(p.closes_issue(dict(closingIssuesReferences=[], body=text, headRefName=""),
+                                                "https://github.com/example/project/issues/1"), expected)
 
     def test_display_only_caller_and_presence_only_test_are_unresolved(self):
         (self.cwd / self.caller).write_text('# Example\n\n```bash\nprintf "%s\\n" "bash plugins/rite/hooks/scripts/consumer.sh"\n```\n')
