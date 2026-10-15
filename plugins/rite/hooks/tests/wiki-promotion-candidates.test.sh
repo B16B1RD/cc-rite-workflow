@@ -384,6 +384,9 @@ test "$(bash -c "$command")" = called
             self.pr["body"], self.pr["headRefName"] = body, branch
             with self.subTest(body=body, branch=branch), self.assertRaisesRegex(ValueError, "does not close"):
                 self.verify()
+        # A full-width space between the keyword and the number is accepted.
+        self.assertTrue(p.closes_issue(dict(closingIssuesReferences=[], body="Closes" + chr(0x3000) + "#1",
+                                            headRefName=""), "https://github.com/example/project/issues/1"))
         # A shorter number must not close a longer one either.
         for body, branch, expected in (("Closes #1", "", False), ("", "fix/issue-1-slug", False),
                                        ("Closes #10", "", True), ("", "fix/issue-10-slug", True)):
@@ -400,8 +403,7 @@ test "$(bash -c "$command")" = called
                  "fix #1": True, "fixes #1": True, "Fixed #1": True, "resolve #1": True,
                  "resolves #1": True, "Resolved:#1": True, "Closes : #1": True, "Closes #1.": True,
                  "ISSUE-1": True, "fix/issue-1-slug": True, "Closes #10": False, "#1": False,
-                 "issue-10": False, "issue-12-x": False, "Closes\n#1": False,
-                 "Closes #1": False}
+                 "issue-10": False, "issue-12-x": False, "Closes\n#1": False}
         for text, expected in cases.items():
             cleanup = subprocess.run(["bash", "-c", f'issue=1; grep -qiE "{pattern}" <<< "$1"', "-", text]).returncode
             with self.subTest(text=text):
