@@ -185,7 +185,7 @@ done
 form="$(grep -oE '\( ulimit -u .* bash <test> \)' <<<"$EXP_LIMIT")"
 count_procs() { ps -L -u "$(id -u)" --no-headers | wc -l | tr -d ' '; }
 # 規則どおり外側の上限の中で実行されると、上限なしの対照 (深さ 300 で 600 件前後) も入れ子の上限も測れない。
-# fork を止めるのは soft 上限なのでそれを読む。CI では実測を必ず通すため、測れないことを skip ではなく失敗にする
+# fork を止めるのは soft 上限なのでそれを読む。CI では上限の残りが足りないことを skip ではなく失敗にし、閾値の誤りで実測が消えないようにする
 proc_limit="$(ulimit -u)"
 if [ "$(uname -s)" != Linux ]; then
   skip "規則の実行形の実測 (Linux の ps -L を使う形のため、Linux 以外では実測しない)"
