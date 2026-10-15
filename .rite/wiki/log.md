@@ -246,6 +246,15 @@
 * **Create**: [受理を確かめる assert は受理側の名前の試験の入力の組に置く](pages/heuristics/accept-side-assertion-in-accept-named-test.md) — [取り込み元](raw/fixes/20261015T113451Z-pr-3909.md) を新規ページ化
 * **Update**: [bash grep と同じ規則を名乗る正規表現は、合わせるロケールを決め、残る差を向きで書く](pages/heuristics/regex-parity-with-grep-declare-locale-and-difference-direction.md) — [取り込み元](raw/reviews/20261015T114600Z-pr-3909.md) を統合
 * **Update**: [受理を確かめる assert は受理側の名前の試験の入力の組に置く](pages/heuristics/accept-side-assertion-in-accept-named-test.md) — [取り込み元](raw/reviews/20261015T114600Z-pr-3909.md) を統合
+* **lint:warning** — contradictions=1, stale=79, orphans=0, missing_concept=0, unregistered_raw=889, broken_refs=0（自動矛盾検査 complete: changed=3; screened=2073; candidates=6; excluded=2067; compared=6; carried=1; resolved=0。要約照合は全 693 ページの index 要約に対する論点の照合、本文比較は候補 6 組の全文）
+  * 未解消の矛盾: [fake-command-applies-production-filters](pages/patterns/fake-command-applies-production-filters.md) ↔ [stub-ignored-argument-escapes-test](pages/heuristics/stub-ignored-argument-escapes-test.md) — 重複情報: どちらも偽コマンドが受け取った式と絞り込み引数を fixture に実際に適用させ、想定外の引数を失敗させるべきとする結論が 80% 以上一致する
+  * 比較: regex-parity-with-grep-declare-locale-and-difference-direction ↔ bounded-number-match-test-two-digit-target-and-doc-extracted-parity — 矛盾なし（同じ取り込みの別論点。前者はロケールと差の向き、後者は番号境界の試験形）
+  * 比較: regex-parity-with-grep-declare-locale-and-difference-direction ↔ accept-side-assertion-in-accept-named-test — 矛盾なし（論点が異なる）
+  * 比較: bounded-number-match-test-two-digit-target-and-doc-extracted-parity ↔ accept-side-assertion-in-accept-named-test — 矛盾なし（論点が異なる）
+  * 比較: bounded-number-match-test-two-digit-target-and-doc-extracted-parity ↔ fake-command-applies-production-filters — 矛盾なし（偽コマンドが要求欄だけを返す点は補強関係。結論の主題は番号境界の試験形で重複情報ではない）
+  * 比較: bounded-number-match-test-two-digit-target-and-doc-extracted-parity ↔ dual-implementation-rule-parity-assert-against-sot-executable — 矛盾なし（SoT 実装との突き合わせを手順書の正規表現に適用した具体例で補強関係）
+  * 比較: regex-parity-with-grep-declare-locale-and-difference-direction ↔ narrowed-prose-claim-check-outside-scope-and-same-claims — 矛盾なし（主張を実装の範囲に限定する一般則の具体例で補強関係）
+  * 除外の理由: 上記以外の要約は、ロケール・正規表現の同等性・番号境界の試験・受理側 assert の配置のいずれとも論点・対象が異なる
 
 ## 2026-10-14
 * **Skip**: [20261014T101054Z-pr-3886.md](raw/reviews/20261014T101054Z-pr-3886.md) — 差分スコープでも reviewer が変異を再実測したという観察だけで、新しい経験則を含まない
