@@ -121,6 +121,12 @@
   * 比較（locale-dependent-error-message-grep-assertion）: assert-not-grep-vacuous-without-fixture-scope — 否定 assert が入力に対象を含まず恒真になる別の原因を扱い、結論は両立する / bre-ere-metachar-inversion-dead-assertion — 正規表現の方言の取り違えによる別の原因を扱い、結論は両立する / ere-optional-quantifier-on-multibyte-char — LC_ALL=C が多バイト文字の正規表現を壊すという条件の異なる注意で、英語メッセージの固定に LC_ALL=C を使う変更本文とは成立条件が違うため見かけの対立
 * **Create**: [fork を再試行中のサブシェルは SIGTERM で止まらないので、fork 失敗の probe は timeout -s KILL で打ち切る](pages/heuristics/kill-fork-retrying-subshell-with-sigkill.md) — [取り込み元](raw/reviews/20261015T074827Z-pr-3907.md) を新規ページ化
 * **Update**: [fork を再試行中のサブシェルは SIGTERM で止まらないので、fork 失敗の probe は timeout -s KILL で打ち切る](pages/heuristics/kill-fork-retrying-subshell-with-sigkill.md) — [取り込み元](raw/fixes/20261015T075316Z-pr-3907.md) を統合
+* **lint:warning** — contradictions=1, stale=79, orphans=0, missing_concept=0, unregistered_raw=888, broken_refs=0 (WIKI_CONTRADICTION_CHECK=complete; changed=1; screened=689; candidates=3; excluded=686; compared=3; carried=1; resolved=0; 本文読取 3 ページ)
+  * 比較: [kill-fork-retrying-subshell-with-sigkill](pages/heuristics/kill-fork-retrying-subshell-with-sigkill.md) ↔ [bash-signal-verification-requires-matched-conditions](pages/heuristics/bash-signal-verification-requires-matched-conditions.md) — 矛盾なし: 後者は signal 経路の cleanup 検証で条件を揃える話で、fork 再試行中のサブシェルの打ち切り方とは結論が対立しない
+  * 比較: [kill-fork-retrying-subshell-with-sigkill](pages/heuristics/kill-fork-retrying-subshell-with-sigkill.md) ↔ [gnu-tool-shim-full-contract-reproduction](pages/patterns/gnu-tool-shim-full-contract-reproduction.md) — 矛盾なし: 後者は timeout の代替 shim が期限とシグナル範囲を再現する話で、孤児が捕捉パイプを握ると期限を超えるという観察はむしろ整合する
+  * 比較: [kill-fork-retrying-subshell-with-sigkill](pages/heuristics/kill-fork-retrying-subshell-with-sigkill.md) ↔ [race-window-probe-identification-power](pages/patterns/race-window-probe-identification-power.md) — 矛盾なし: 後者は SIGKILL を当てる時刻と結果分類の話で、論点が異なる
+  * 除外: 残り 686 ページは要約の論点（fork 失敗の誘発・プロセス数上限・シグナルでの打ち切り）と重ならない
+  * 未解消の矛盾: [fake-command-applies-production-filters](pages/patterns/fake-command-applies-production-filters.md) ↔ [stub-ignored-argument-escapes-test](pages/heuristics/stub-ignored-argument-escapes-test.md) — 重複情報: どちらも偽コマンドが受け取った式と絞り込み引数を fixture に実際に適用させ、想定外の引数を失敗させるべきとする結論が 80% 以上一致する
 
 ## 2026-10-14
 * **Skip**: [20261014T101054Z-pr-3886.md](raw/reviews/20261014T101054Z-pr-3886.md) — 差分スコープでも reviewer が変異を再実測したという観察だけで、新しい経験則を含まない
