@@ -422,9 +422,9 @@ echo "[CONTEXT] PROJECTS_STATUS=$status_result; issue={issue_number}"
 
 **(B) 親 Issue の Status 更新（Sub-Issue 着手時）** — (A) と独立に必ず実行する。ロジックの SoT は `projects-integration.md` §2.4.7:
 
-1. **§2.4.7.1 親検出（3-method OR）**: `## 親 Issue` body meta（PRIMARY）→ Sub-Issues API → tasklist search。この 3-method 構造は `../skills/issue-close/SKILL.md` Phase 4.5.1 と同一に保つ（Method 3 の `--state open` は start 側固有の意図的差異）。
+1. **§2.4.7.1 親検出（3-method OR）**: `## 親 Issue` body meta（PRIMARY）→ Sub-Issues API → tasklist search。この 3-method 構造は `../skills/issue-close/SKILL.md` Phase 4.5.1 と同一に保つ（Method 3 で open の親に限るのは start 側固有の意図的差異）。
 2. 親を検出したら **§2.4.7.2–2.4.7.4**: 盤面の列名を `rite-config.yml` の role に変換し、role が **`todo` または Status 未設定のときのみ** `in_progress` 列へ更新する（書き込みは `projects-status-update.sh` に `status_role: in_progress` で委譲）。既に `in_progress` / `in_review` / `done` / `cancelled` なら上書きしない（sibling child の進捗を保持する）。role に対応しない列も上書きしない。
-3. 親が無い standalone Issue は `[DEBUG] parent not detected for issue #{issue_number} — processing as standalone (methods tried: body_meta, sub_issues_api, tasklist_search)` を emit して skip する（silent skip 禁止）。
+3. 親が無い standalone Issue は `[DEBUG] parent not detected for issue #{issue_number} — processing as standalone (methods tried: body_meta, sub_issues_api, tasklist_search)` を emit して skip する（silent skip 禁止）。Method 3 が `method3_parent=undecided` を出したときは debug log を出さず、`{parent_issue_number}` も retain せずに skip する（WARNING が判定できない理由を示している）。
 4. 親を検出した場合は、その番号を `{parent_issue_number}` として retain し、ステップ 2.6 の `flow-state.sh set` へ渡す（standalone のときは retain しない）。Status 更新の成否とは独立に retain する — (B) は non-blocking だが、flow-state への記録が漏れると `/rite:issue-implement` 5.1.2 の親進捗更新が常に skip される。
 
 (B) はすべて non-blocking。

@@ -122,7 +122,7 @@ gh project item-edit --project-id {project_id} --id {item_id} --field-id {status
 
 ### 2.4.7 Parent Issue Status Update (for child Issues)
 
-**Execution condition**: Always execute 2.4.7.1 (parent detection). If a parent is found, proceed to 2.4.7.2–2.4.7.4. If no parent is found, emit the `[DEBUG] parent not detected` log (per 2.4.7.1 — silent skips are prohibited) and then skip 2.4.7.2–2.4.7.4 (this is the normal path for standalone Issues).
+**Execution condition**: Always execute 2.4.7.1 (parent detection). If a parent is found, proceed to 2.4.7.2–2.4.7.4. If Method 3 prints `method3_parent=undecided`, skip 2.4.7.2–2.4.7.4 without the `[DEBUG] parent not detected` log (its WARNING already says the parent could not be determined). If no parent is found, emit the `[DEBUG] parent not detected` log (per 2.4.7.1 — silent skips are prohibited) and then skip 2.4.7.2–2.4.7.4 (this is the normal path for standalone Issues).
 
 **Non-blocking**: All steps in 2.4.7 are non-blocking. Any failure displays a warning and continues the workflow.
 
@@ -130,7 +130,7 @@ gh project item-edit --project-id {project_id} --id {item_id} --field-id {status
 
 Detect the parent Issue of the current (child) Issue. **Three methods are tried in order (OR combination); the first successful result wins.** This ordering is critical: `## 親 Issue` body meta is placed PRIMARY because it is the most reliable source in repositories that use `/rite:issue-create` (Decompose Path, flat workflow; writes this section to every child), and it requires no dependency on GitHub's native Sub-Issues feature.
 
-> **Consistency requirement**: The same 3-method OR detection **structure** MUST be used in `close.md` Phase 4.5.1 — i.e., the same three method ordering (body meta → Sub-Issues API → tasklist search), the same OR combination semantics, and the same `[DEBUG] parent not detected` emission on total failure. **Context-dependent parameters MAY differ** between the two sites where the surrounding workflow demands it; specifically, Method 3's `--state` filter is `open` here (start side — closed parents do not need In Progress promotion) and `all` in close.md Phase 4.5.1 (close side — the closing Issue's parent may itself already be closed). These differences are intentional and are not drift. **Method 3's validation loop body is also a sync target**: the self-match exclusion (`cand != {issue_number}`), the body re-validation regex (which confirms the candidate body actually contains the `- [ ] #{issue_number}` / `- [x] #{issue_number}` tasklist line), and `--limit 10` MUST stay identical across both sites — only the `--state` filter differs. If the detection method ordering, the OR semantics, or the Method 3 loop body (regex / `--limit`) diverge between start and close, the past silent-skip and false-positive regressions in parent-child sync reappear.
+> **Consistency requirement**: The same 3-method OR detection **structure** MUST be used in `close.md` Phase 4.5.1 — i.e., the same three method ordering (body meta → Sub-Issues API → tasklist search), the same OR combination semantics, and the same `[DEBUG] parent not detected` emission on total failure. **Context-dependent parameters MAY differ** between the two sites where the surrounding workflow demands it; specifically, Method 3 keeps only open parents here (start side — closed parents do not need In Progress promotion) and checks every candidate in close.md Phase 4.5.1 (close side — the closing Issue's parent may itself already be closed). These differences are intentional and are not drift. **Method 3's candidate set and validation loop body are also a sync target**: the candidates come from the child Issue's timeline `cross-referenced` events read with `--paginate` (no count limit; same-repository Issues only, compared by the canonical repository name the API returns), and the self-match exclusion (`cand != {issue_number}`), the body re-validation regex (which confirms the candidate body actually contains the `- [ ] #{issue_number}` / `- [x] #{issue_number}` tasklist line), and the undecided result (a failed repository, timeline or candidate fetch prints `undecided` as the result, never `none`) MUST stay identical across both sites — only the open-parent filter differs. A search result cut at a count limit is never evidence that no parent exists. If the detection method ordering, the OR semantics, or the Method 3 candidate set or loop body diverge between start and close, the past silent-skip and false-positive regressions in parent-child sync reappear.
 
 > `-R {owner_repo}` は [gh-cli-patterns.md の Owner/Repo Resolution](./gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）をリテラル置換する
 
@@ -175,27 +175,59 @@ If `parent` is not null, extract `parent.number` as `{parent_issue_number}` and 
 If Methods 1 and 2 both failed:
 
 ```bash
-# GitHub code search は `[`/`]` を無視する緩いマッチのため、複数候補を取得して検証する
-candidates=$(gh issue list -R {owner_repo} --state open --search "in:body \"- [ ] #{issue_number}\" OR \"- [x] #{issue_number}\"" --json number --limit 10 --jq '.[].number')
+# 候補集合は子 Issue の timeline の cross-referenced イベント（--paginate で件数上限なし）。
+# 件数上限で切れる検索の結果を「親が無い」根拠にしない。rc はパイプの外で取る
 parent_number=""
-for cand in $candidates; do
-  # 自己マッチ除外: standalone Issue が自分自身を親と誤検出するのを防ぐ
-  [ "$cand" = "{issue_number}" ] && continue
-  # 妥当性検証: 候補 body に当該 tasklist 行が実在するか確認（緩いマッチで拾った無関係 Issue を排除）
-  cand_body=$(gh issue view "$cand" -R {owner_repo} --json body --jq '.body')
-  if grep -qE "^[[:space:]]*-[[:space:]]\[[ xX]\][[:space:]]*#{issue_number}([^0-9]|$)" <<< "$cand_body"; then
-    parent_number="$cand"
-    break
+parent_undecided=""
+# 同じリポジトリかは API が返す正式名どうしで比べる（URL 由来の名前は大文字小文字や改名前の名前を含みうる）
+_m3_rc=0
+_m3_repo=$(gh api "repos/{owner}/{repo}" --jq .full_name) || _m3_rc=$?
+if [ "$_m3_rc" -ne 0 ]; then
+  parent_undecided="リポジトリの正式名を取得できない (rc=$_m3_rc)"
+else
+  _m3_raw=$(gh api "repos/{owner}/{repo}/issues/{issue_number}/timeline" --paginate \
+    --jq '.[] | select(.event=="cross-referenced") | .source.issue | select(.pull_request | not) | "\(.repository.full_name) \(.number)"') || _m3_rc=$?
+  if [ "$_m3_rc" -ne 0 ]; then
+    parent_undecided="timeline を取得できない (rc=$_m3_rc)"
   fi
-done
-echo "method3_parent=${parent_number:-none}"
+fi
+if [ -z "$parent_undecided" ]; then
+  for cand in $(awk -v repo="$_m3_repo" '$1 == repo { print $2 }' <<< "$_m3_raw" | sort -un); do
+    # 自己マッチ除外: standalone Issue が自分自身を親と誤検出するのを防ぐ
+    [ "$cand" = "{issue_number}" ] && continue
+    # 候補の取得失敗を一致なしとして扱わない
+    if ! cand_json=$(gh issue view "$cand" -R {owner_repo} --json body,state); then
+      parent_undecided="候補 #$cand を取得できない"
+      break
+    fi
+    if ! cand_state=$(jq -r .state <<< "$cand_json") || ! cand_body=$(jq -r .body <<< "$cand_json"); then
+      parent_undecided="候補 #$cand の内容を読めない"
+      break
+    fi
+    # 親は open に限る（close 側にはこの行が無い）
+    [ "$cand_state" = OPEN ] || continue
+    # 妥当性検証: 候補 body に当該 tasklist 行が実在するか確認（コメント中の言及や、参照を消した後の event を排除）
+    if grep -qE "^[[:space:]]*-[[:space:]]\[[ xX]\][[:space:]]*#{issue_number}([^0-9]|$)" <<< "$cand_body"; then
+      parent_number="$cand"
+      break
+    fi
+  done
+fi
+if [ -n "$parent_undecided" ]; then
+  echo "WARNING: 親 Issue の有無を判定できません（${parent_undecided}）。親の処理を飛ばします（standalone とは判定していません）" >&2
+fi
+if [ -n "$parent_undecided" ]; then
+  echo "method3_parent=undecided"
+else
+  echo "method3_parent=${parent_number:-none}"
+fi
 ```
 
-**Note**: `--state open` is intentional — closed parent Issues do not need Status updates. The search matches both unchecked (`- [ ]`) and checked (`- [x]`) tasklist items to ensure checkbox state independence (consistent with [epic-detection.md](./epic-detection.md)). GitHub code search with `[`/`]` characters is known to be unreliable — it ignores the bracket literals and returns nearly every Issue — so Method 3 must **not** adopt a hit blindly. The self-match exclusion (`cand != {issue_number}`) plus the body re-validation (the candidate's body must actually contain the `- [ ] #{issue_number}` / `- [x] #{issue_number}` tasklist line) guard against the false positives this unreliability causes; without the body check, self-exclusion alone would simply promote the next unrelated Issue in the loose-match result set.
+**Note**: Keeping only open parents is intentional — closed parent Issues do not need Status updates. In the parent/child pairs checked, every parent whose tasklist names the child appeared in the child's timeline as a `cross-referenced` event, and the timeline has no count limit, so such a parent does not fall outside the candidate set the way it can fall outside a `--limit` search window. The same-repository check compares the canonical name from `gh api repos/{owner}/{repo}` with the name each event carries, because `{owner}/{repo}` comes from the remote URL and can differ in letter case or still use a name from before a rename. The timeline also holds sibling Issues, Issues that mention the child only in a comment, and Issues that removed the reference later, so Method 3 must **not** adopt a candidate blindly. The self-match exclusion (`cand != {issue_number}`) plus the body re-validation (the candidate's body must actually contain the `- [ ] #{issue_number}` / `- [x] #{issue_number}` tasklist line, checked or unchecked, consistent with [epic-detection.md](./epic-detection.md)) keep only real parents. A failed repository, timeline or candidate fetch sets `parent_undecided`: the WARNING says the parent could not be determined, the result line is `method3_parent=undecided`, and 2.4.7.2–2.4.7.4 are skipped without calling the Issue standalone.
 
 If `parent_number` is non-empty, extract it as `{parent_issue_number}` and proceed to 2.4.7.2.
 
-**When all three methods failed (no parent found)**: This is the normal path for standalone Issues. Emit an explicit **debug log** (not a warning) so that the skip is visible in execution traces — silent skips are prohibited by the MUST requirement "同期失敗時は silent skip せず、明示的にログまたは warning を出力する" and the preceding incidents which all stemmed from silent skips in parent-child sync:
+**When all three methods failed (no parent found)**: Only when Method 3 printed `method3_parent=none`. This is the normal path for standalone Issues. Emit an explicit **debug log** (not a warning) so that the skip is visible in execution traces — silent skips are prohibited by the MUST requirement "同期失敗時は silent skip せず、明示的にログまたは warning を出力する" and the preceding incidents which all stemmed from silent skips in parent-child sync:
 
 ```bash
 echo "[DEBUG] parent not detected for issue #{issue_number} — processing as standalone (methods tried: body_meta, sub_issues_api, tasklist_search)"
@@ -310,6 +342,7 @@ Parent Issue Status update failure does **not** block the start of work. Each st
 |------|-----------|----------|
 | 2.4.7.1 | Sub-Issues API fails | Try Tasklist fallback. If both fail, emit `[DEBUG] parent not detected` and skip (per 2.4.7.1 — silent skips prohibited) |
 | 2.4.7.1 | Tasklist search returns no results | Emit `[DEBUG] parent not detected` and skip (standalone Issue — per 2.4.7.1, not silent) |
+| 2.4.7.1 | Tasklist search prints `method3_parent=undecided` (a repository, timeline or candidate fetch failed) | Its WARNING says the parent could not be determined; skip 2.4.7.2–2.4.7.4 without the `[DEBUG] parent not detected` log |
 | 2.4.7.2 | GraphQL query fails | Display `警告: 親 Issue の Projects 情報取得に失敗しました。Status 更新をスキップします` |
 | 2.4.7.2 | Parent not registered in Project | Display warning and skip (see 2.4.7.2) |
 | 2.4.7.2–2.4.7.3 | Status configuration invalid | 2.4.7.2 displays the warning and emits `role=<invalid-config>`; 2.4.7.3 matches that row and skips 2.4.7.4 (see 2.4.7.3) |

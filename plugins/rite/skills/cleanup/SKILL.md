@@ -127,31 +127,65 @@ query($owner: String!, $repo: String!, $number: Int!) {
 }' -f owner="{owner}" -f repo="{repo}" -F number={issue_number}
 ```
 
-Tasklist fallback では、複数候補を取得し、自己マッチ除外＋候補 body の tasklist 行再検証を経た候補のみ採用する。検証ループ本体（自己除外・再検証 regex・`--limit 10`）は close.md Phase 4.5.1 / projects-integration.md §2.4.7.1 と揃える。`--state` は cleanup が `--state open`（子マージ直後で親は通常 open）を使い、これは projects-integration.md §2.4.7.1 と一致する。差異は close.md Phase 4.5.1 が `--state all`（closing Issue の親が既に closed の可能性）を使う点のみ:
+Tasklist fallback では、子 Issue の timeline から候補を件数上限なしで集め、自己マッチ除外＋候補 body の tasklist 行再検証を経た候補のみ採用する。候補集合と検証ループ本体（timeline の cross-referenced・自己除外・再検証 regex・取得失敗を判定不能として示す）は close.md Phase 4.5.1 / projects-integration.md §2.4.7.1 と揃える。cleanup は open の親に限り（子マージ直後で親は通常 open）、これは projects-integration.md §2.4.7.1 と一致する。差異は close.md Phase 4.5.1 が閉じた親も照合する（closing Issue の親が既に closed の可能性）点のみ:
 rationale: references/rationale.md#tasklist-parent-verify
 
 ```bash
-# GitHub code search は `[`/`]` を無視する緩いマッチのため、複数候補を取得して検証する
-candidates=$(gh issue list -R {owner_repo} --state open --search "in:body \"- [ ] #{issue_number}\" OR \"- [x] #{issue_number}\"" --json number --limit 10 --jq '.[].number')
+# 候補集合は子 Issue の timeline の cross-referenced イベント（--paginate で件数上限なし）。
+# 件数上限で切れる検索の結果を「親が無い」根拠にしない。rc はパイプの外で取る
 parent_issue_number=""
-for cand in $candidates; do
-  # 自己マッチ除外: standalone closing Issue が自分自身を親と誤検出するのを防ぐ
-  [ "$cand" = "{issue_number}" ] && continue
-  # 妥当性検証: 候補 body に当該 tasklist 行が実在するか確認（緩いマッチで拾った無関係 Issue を排除）
-  cand_body=$(gh issue view "$cand" -R {owner_repo} --json body --jq '.body')
-  if grep -qE "^[[:space:]]*-[[:space:]]\[[ xX]\][[:space:]]*#{issue_number}([^0-9]|$)" <<< "$cand_body"; then
-    parent_issue_number="$cand"
-    break
+parent_undecided=""
+# 同じリポジトリかは API が返す正式名どうしで比べる（URL 由来の名前は大文字小文字や改名前の名前を含みうる）
+_m3_rc=0
+_m3_repo=$(gh api "repos/{owner}/{repo}" --jq .full_name) || _m3_rc=$?
+if [ "$_m3_rc" -ne 0 ]; then
+  parent_undecided="リポジトリの正式名を取得できない (rc=$_m3_rc)"
+else
+  _m3_raw=$(gh api "repos/{owner}/{repo}/issues/{issue_number}/timeline" --paginate \
+    --jq '.[] | select(.event=="cross-referenced") | .source.issue | select(.pull_request | not) | "\(.repository.full_name) \(.number)"') || _m3_rc=$?
+  if [ "$_m3_rc" -ne 0 ]; then
+    parent_undecided="timeline を取得できない (rc=$_m3_rc)"
   fi
-done
+fi
+if [ -z "$parent_undecided" ]; then
+  for cand in $(awk -v repo="$_m3_repo" '$1 == repo { print $2 }' <<< "$_m3_raw" | sort -un); do
+    # 自己マッチ除外: standalone Issue が自分自身を親と誤検出するのを防ぐ
+    [ "$cand" = "{issue_number}" ] && continue
+    # 候補の取得失敗を一致なしとして扱わない
+    if ! cand_json=$(gh issue view "$cand" -R {owner_repo} --json body,state); then
+      parent_undecided="候補 #$cand を取得できない"
+      break
+    fi
+    if ! cand_state=$(jq -r .state <<< "$cand_json") || ! cand_body=$(jq -r .body <<< "$cand_json"); then
+      parent_undecided="候補 #$cand の内容を読めない"
+      break
+    fi
+    # 親は open に限る（close 側にはこの行が無い）
+    [ "$cand_state" = OPEN ] || continue
+    # 妥当性検証: 候補 body に当該 tasklist 行が実在するか確認（コメント中の言及や、参照を消した後の event を排除）
+    if grep -qE "^[[:space:]]*-[[:space:]]\[[ xX]\][[:space:]]*#{issue_number}([^0-9]|$)" <<< "$cand_body"; then
+      parent_issue_number="$cand"
+      break
+    fi
+  done
+fi
+if [ -n "$parent_undecided" ]; then
+  echo "WARNING: 親 Issue の有無を判定できません（${parent_undecided}）。親の処理を飛ばします（standalone とは判定していません）" >&2
+fi
 # 検証済み親が見つかれば number/title/state を取得して保持
 if [ -n "$parent_issue_number" ]; then
   gh issue view "$parent_issue_number" -R {owner_repo} --json number,title,state
 fi
-echo "tasklist_parent=${parent_issue_number:-none}"
+if [ -n "$parent_undecided" ]; then
+  echo "tasklist_parent=undecided"
+else
+  echo "tasklist_parent=${parent_issue_number:-none}"
+fi
 ```
 
-両 method とも親を検出できなければ standalone として扱い、ステップ 10 の親処理をスキップする (non-blocking)。silent skip 禁止のため debug log を残す:
+tasklist fallback が `tasklist_parent=undecided` を出したときは、debug log を出さず、ステップ 10 の親処理だけをスキップする（WARNING が判定できない理由を示している）。このときステップ 12 の `{parent_close_result}` は `⚠️ 親 Issue の有無を判定できず親処理をスキップ` にする。
+
+両 method とも親を検出できなければ（`tasklist_parent=none`）standalone として扱い、ステップ 10 の親処理をスキップする (non-blocking)。silent skip 禁止のため debug log を残す:
 
 ```bash
 echo "[DEBUG] parent not detected for issue #{issue_number} — processing as standalone (methods tried: sub_issues_api, tasklist_search)"
@@ -1129,7 +1163,7 @@ rationale: references/rationale.md#outstanding-checkbox
 - 結果: {parent_close_result}
 ```
 
-`{parent_close_result}` の値域 (ステップ 10 で決定された 8 種類のいずれか):
+`{parent_close_result}` の値域 (ステップ 10 で決定された 9 種類のいずれか):
 - `✅ 自動クローズ完了 (全 sub-issue clear)` — 親 Issue が全 sub-issue 完了で自動 close
 - `🟡 sub-issue 残あり (close 保留)` — 残 sub-issue があり親は open のまま
 - `⚠️ Cancelled の子を含むため親は未完了扱い` — Cancelled（NOT_PLANNED）の子が居る。Done / auto-close しない
@@ -1137,6 +1171,7 @@ rationale: references/rationale.md#outstanding-checkbox
 - `⚠️ 子の stateReason 判定不能のため auto-close スキップ` — CLOSED 子の `stateReason` 取得失敗（fail-loud）
 - `⚠️ 手動確認推奨` — 親 Issue 状態が判定不能で manual triage 推奨
 - `ℹ️ PR 未マージのため親 Issue は更新していません` — `{pr_merged}=false`。Tasklist 更新も auto-close 判定も実行していない
+- `⚠️ 親 Issue の有無を判定できず親処理をスキップ` — ステップ 2 の tasklist fallback が `tasklist_parent=undecided`（取得の失敗。理由はステップ 2 の WARNING）
 - `(該当なし)` — 親 Issue が識別されなかった (ステップ 2 で見つからず)
 
 未完了タスク Issue 化結果 (該当する場合のみ):

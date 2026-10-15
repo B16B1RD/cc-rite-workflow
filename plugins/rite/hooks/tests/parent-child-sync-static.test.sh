@@ -219,6 +219,11 @@ assert_grep_in_section "cleanup ステップ 12 値域 has Cancelled 未完了�
 assert_grep_in_section "cleanup ステップ 12 値域 has Cancelled のため Done 上書きをスキップ" "$CLEANUP_MD" \
   "$S12_START" "$S12_END" \
   '^- `⚠️ Cancelled のため Done 上書きをスキップ`'
+assert_grep_in_section "cleanup ステップ 12 値域 has the undecided parent value" "$CLEANUP_MD" \
+  "$S12_START" "$S12_END" \
+  '^- `⚠️ 親 Issue の有無を判定できず親処理をスキップ` — ステップ 2 の tasklist fallback が `tasklist_parent=undecided`'
+assert_grep "cleanup routes tasklist_parent=undecided to that step 12 value" "$CLEANUP_MD" \
+  'このときステップ 12 の `\{parent_close_result\}` は `⚠️ 親 Issue の有無を判定できず親処理をスキップ` にする'
 # 件数は値域ブロック内の行頭 `- `` 行だけを数える（任意の `- ` ではない）。
 # 終端空行が無いときは NOEND で fail し、0 件を pass と読まない。
 _value_domain_count() {
@@ -249,10 +254,10 @@ _value_domain_heading_n() {
 _vd_count=$(_value_domain_count "$CLEANUP_MD") || true
 if [ "$_vd_count" = "NOEND" ] || [ -z "$_vd_count" ]; then
   fail "cleanup ステップ 12 値域ブロック終端（空行）が見つからない（0 件を pass と読まない）"
-elif [ "$_vd_count" = "8" ]; then
-  pass "cleanup ステップ 12 値域 - \` 行数が 8"
+elif [ "$_vd_count" = "9" ]; then
+  pass "cleanup ステップ 12 値域 - \` 行数が 9"
 else
-  fail "cleanup ステップ 12 値域 - \` 行数が ${_vd_count}（expected 8）"
+  fail "cleanup ステップ 12 値域 - \` 行数が ${_vd_count}（expected 9）"
 fi
 _vd_heading=$(_value_domain_heading_n "$CLEANUP_MD")
 if [ -n "$_vd_heading" ] && [ "$_vd_heading" = "$_vd_count" ]; then
@@ -526,6 +531,135 @@ assert_grep_in_section "T-12 close.md Pattern D still uses AskUserQuestion" "$CL
   'AskUserQuestion'
 assert_not_grep "T-12 close.md Phase 2 does not stop on mergedAt like issue-cancel" "$CLOSE_MD" \
   '^\| `mergedAt` が非 null の PR がある \|'
+
+echo "=== Phase 7: Method 3 reads every candidate parent and reports a failed fetch as undecidable ==="
+# A search cut at a count limit drops a parent ranked below the limit and reads it as
+# "no parent". The candidates come from the child's timeline (no count limit), and a
+# failed fetch says the parent could not be determined instead of calling it standalone.
+m3_unbraced_re='\$[A-Za-z_][A-Za-z0-9_]*[^ -~]'
+# Positive control: the T-15 pattern matches an unbraced variable before a full-width
+# bracket and not a braced one, so a zero count below is not a pattern that never matches.
+# The full-width brackets are written as byte escapes so that this line does not itself
+# put an unbraced variable next to a multibyte character in the source.
+if [ "$(printf 'echo "\xef\xbc\x88$v\xef\xbc\x89"\necho "\xef\xbc\x88${v}\xef\xbc\x89"\n' | LC_ALL=C grep -c "$m3_unbraced_re")" = 1 ]; then
+  pass "T-15 control: the pattern matches only the unbraced variable"
+else
+  fail "T-15 control: the pattern should match the unbraced variable and not the braced one"
+fi
+for m3_md in "$PROJECTS_REF" "$CLOSE_MD" "$CLEANUP_MD"; do
+  m3_name=$(basename "$(dirname "$m3_md")")/$(basename "$m3_md")
+  assert_not_grep "T-13 $m3_name has no count-limited issue search" "$m3_md" \
+    'gh issue list.*--limit|gh issue list.*--search'
+  assert_grep "T-13 $m3_name reads the child's timeline with --paginate" "$m3_md" \
+    '^  _m3_raw=\$\(gh api "repos/\{owner\}/\{repo\}/issues/\{issue_number\}/timeline" --paginate'
+  assert_grep "T-14 $m3_name captures the timeline rc outside a pipeline" "$m3_md" \
+    "\| \"\\\\\(\.repository\.full_name\) \\\\\(\.number\)\"'\) \|\| _m3_rc=\\\$\?$"
+  # bash on macOS reads the first byte of a multibyte character right after an unbraced
+  # $var as part of the name, so the expansion comes out empty there (Linux does not).
+  m3_unbraced=$(awk '/^# 候補集合は子 Issue の timeline/{f=1} f&&/^```/{exit} f' "$m3_md" \
+    | LC_ALL=C grep -c "$m3_unbraced_re" || true)
+  if [ "$m3_unbraced" = 0 ]; then
+    pass "T-15 $m3_name Method 3 block braces every variable followed by a multibyte character"
+  else
+    fail "T-15 $m3_name Method 3 block has $m3_unbraced line(s) with an unbraced variable before a multibyte character"
+  fi
+done
+
+echo "=== Phase 8: the three Method 3 blocks behave the same against a stub gh ==="
+# Each block is run as written, with a stub gh on PATH. The remote names the repository in
+# lower case while the API returns the canonical name. A connected event, an Issue from
+# another repository and a pull request all name the child, and the parent is #99, placed
+# after more than ten other same-repository candidates so that a count limit on the
+# candidates drops it. Only the start side and cleanup skip a closed parent.
+m3_stub_dir=$(mktemp -d)
+trap 'rm -rf "$m3_stub_dir"' EXIT
+# The stub applies the block's own --jq filter to fixture JSON, so the event, PR and
+# repository selection in the filter is exercised rather than skipped.
+{
+  printf '%s\n' '[{"event":"labeled"},' \
+    '{"event":"connected","source":{"issue":{"number":3,"repository":{"full_name":"Owner/Repo"}}}},' \
+    '{"event":"cross-referenced","source":{"issue":{"number":8,"repository":{"full_name":"Other/Repo"}}}},' \
+    '{"event":"cross-referenced","source":{"issue":{"number":5,"repository":{"full_name":"Owner/Repo"}}}},' \
+    '{"event":"cross-referenced","source":{"issue":{"number":6,"pull_request":{"url":"x"},"repository":{"full_name":"Owner/Repo"}}}},' \
+    '{"event":"cross-referenced","source":{"issue":{"number":7,"repository":{"full_name":"Owner/Repo"}}}},'
+  for m3_n in $(seq 10 30); do
+    printf '{"event":"cross-referenced","source":{"issue":{"number":%d,"repository":{"full_name":"Owner/Repo"}}}},\n' "$m3_n"
+  done
+  printf '%s\n' '{"event":"cross-referenced","source":{"issue":{"number":99,"repository":{"full_name":"Owner/Repo"}}}}]'
+} > "$m3_stub_dir/timeline.json"
+# issue view honours -R and returns only the fields named by --json, as gh does.
+cat > "$m3_stub_dir/gh" <<'STUB'
+#!/bin/bash
+stub_dir=$(dirname "$0")
+jq_expr=""; json_fields=""; repo_arg=""; prev=""
+for a in "$@"; do
+  case "$prev" in --jq) jq_expr=$a ;; --json) json_fields=$a ;; -R) repo_arg=$a ;; esac
+  prev=$a
+done
+case "$1 $2" in
+  "api repos/lower/repo")
+    [ "${M3_FAIL:-}" = repo ] && { echo "stub: repository fetch failed" >&2; exit 1; }
+    echo '{"full_name":"Owner/Repo"}' | jq -r "$jq_expr" ;;
+  "api repos/lower/repo/issues/5/timeline")
+    [ "${M3_FAIL:-}" = timeline ] && { echo "stub: timeline fetch failed" >&2; exit 1; }
+    jq -r "$jq_expr" "$stub_dir/timeline.json" ;;
+  "issue view")
+    [ "$repo_arg" = lower/repo ] || { echo "stub: unexpected -R '$repo_arg'" >&2; exit 2; }
+    [ -n "$json_fields" ] || { echo "stub: --json is required" >&2; exit 2; }
+    [ "${M3_FAIL:-}" = "view$3" ] && { echo "stub: issue view failed" >&2; exit 1; }
+    [ "${M3_FAIL:-}" = "json$3" ] && { echo "not json"; exit 0; }
+    case "$3" in
+      3|6|8) issue='{"body":"- [ ] #5","state":"OPEN"}' ;;
+      7) issue='{"body":"- [ ] #50","state":"OPEN"}' ;;
+      99) issue=$(printf '{"body":"- [ ] #5","state":"%s"}' "${M3_STATE99:-OPEN}") ;;
+      *) issue='{"body":"","state":"OPEN"}' ;;
+    esac
+    jq -c "{${json_fields}}" <<< "$issue" ;;
+  *) echo "stub: unexpected gh call: $*" >&2; exit 2 ;;
+esac
+STUB
+chmod +x "$m3_stub_dir/gh"
+m3_run() {  # $1 file; M3_FAIL / M3_STATE99 select the case
+  local blk
+  blk=$(awk '/^# 候補集合は子 Issue の timeline/{f=1} f&&/^```/{exit} f' "$1")
+  blk=${blk//\{owner_repo\}/lower\/repo}
+  blk=${blk//\{owner\}/lower}
+  blk=${blk//\{repo\}/repo}
+  blk=${blk//\{issue_number\}/5}
+  PATH="$m3_stub_dir:$PATH" bash -c "$blk" 2>&1
+}
+for m3_md in "$PROJECTS_REF" "$CLOSE_MD" "$CLEANUP_MD"; do
+  m3_name=$(basename "$(dirname "$m3_md")")/$(basename "$m3_md")
+  m3_label=method3_parent; [ "$m3_md" = "$CLEANUP_MD" ] && m3_label=tasklist_parent
+  m3_out=$(m3_run "$m3_md")
+  if grep -qx "$m3_label=99" <<< "$m3_out"; then
+    pass "T-17 $m3_name finds the parent by the canonical repository name past more than ten candidates"
+  else
+    fail "T-17 $m3_name should find parent #99 after 22 other same-repository candidates (lower-case remote; connected #3, other-repository #8 and pull request #6 skipped): $m3_out"
+  fi
+  for m3_fail in repo timeline view7 json7; do
+    case "$m3_fail" in
+      repo) m3_reason='リポジトリの正式名を取得できない' ;;
+      timeline) m3_reason='timeline を取得できない' ;;
+      view7) m3_reason='候補 #7 を取得できない' ;;
+      json7) m3_reason='候補 #7 の内容を読めない' ;;
+    esac
+    m3_out=$(M3_FAIL=$m3_fail m3_run "$m3_md")
+    if grep -qx "$m3_label=undecided" <<< "$m3_out" \
+      && grep -qF "WARNING: 親 Issue の有無を判定できません（$m3_reason" <<< "$m3_out"; then
+      pass "T-18 $m3_name reports a failed $m3_fail fetch as undecided"
+    else
+      fail "T-18 $m3_name should report a failed $m3_fail fetch as undecided with a WARNING naming it ($m3_reason): $m3_out"
+    fi
+  done
+  m3_out=$(M3_STATE99=CLOSED m3_run "$m3_md")
+  m3_want=none; [ "$m3_md" = "$CLOSE_MD" ] && m3_want=99
+  if grep -qx "$m3_label=$m3_want" <<< "$m3_out"; then
+    pass "T-19 $m3_name gives $m3_want for a closed parent"
+  else
+    fail "T-19 $m3_name should give $m3_label=$m3_want for a closed parent: $m3_out"
+  fi
+done
 
 if ! print_summary "$(basename "$0")" "If you remove any of the 3 parent-detection methods (body meta / GraphQL trackedIssues / tasklist) from close.md or pr/open.md ステップ 1.2, or drop stateReason from parent auto-close, or restore unscoped linked:issue / glob --head PR lookup in close.md Phase 2, regression risk reopens. Re-confirm cross-references before removing methods."; then
   exit 1
