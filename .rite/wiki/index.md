@@ -700,8 +700,11 @@ okf_version: "0.2"
 | [API が返す名前と照合するときは、URL から作った文字列ではなく API の正式名と比べる](pages/patterns/compare-names-with-api-canonical-name.md) | patterns | remote URL から作った owner/repo は大文字小文字や改名前の名前を含みうるので、API の返す full_name と文字列で比べると一致すべき行を黙って落とす。比べる両側を同じ API から取った正式名にそろえる。 | 2026-10-15T02:42:28Z | high |
 | [テスト用の偽コマンドは本番が渡す絞り込み引数を照合して適用する](pages/patterns/fake-command-applies-production-filters.md) | patterns | 偽の gh が --jq を無視したり --json のフィールド指定に関係なく全件を返したりすると、本番の取得範囲を減らす変異がテストを通り抜ける。偽コマンドは本番の引数を照合し、フィルタを fixture に実際に適用して指定分だけ返す。 | 2026-10-15T02:42:28Z | high |
 | [fork を再試行中のサブシェルは SIGTERM で止まらないので、fork 失敗の probe は timeout -s KILL で打ち切る](pages/heuristics/kill-fork-retrying-subshell-with-sigkill.md) | heuristics | ulimit -u で fork 失敗を誘発するサブシェルは、bash が fork を再試行している間 timeout 既定の SIGTERM では止まらず孤児として残り、コマンド置換を十数秒待たせる。打ち切りは SIGKILL を直接送る timeout -s KILL で行い、-k は監視対象が先に終わると KILL が送られないため頼らない。 | 2026-10-15T08:18:52Z | high |
+| [bash grep と同じ規則を名乗る正規表現は、合わせるロケールを決め、残る差を向きで書く](pages/heuristics/regex-parity-with-grep-declare-locale-and-difference-direction.md) | heuristics | grep の [[:space:]] と -i の受理範囲はロケールで変わり、Python の \\s とも集合が一致しないため、「grep と同じ」は合わせるロケールを決めたうえで、どちら向きの差が残るかまで書かないと成り立たない。 | 2026-10-15T20:55:00+09:00 | high |
+| [境界付き番号照合の試験は 2 桁の対象を置き、手順書から取り出した正規表現と突き合わせる](pages/patterns/bounded-number-match-test-two-digit-target-and-doc-extracted-parity.md) | patterns | 対象番号を 1 桁だけにすると短い番号の参照が長い番号の対象を通す退行が試験を通り抜けるため、2 桁の対象も置き、別実装と同じ規則を名乗る照合は手順書から取り出した正規表現と同じ入力で突き合わせる。 | 2026-10-15T20:55:00+09:00 | high |
+| [受理を確かめる assert は受理側の名前の試験の入力の組に置く](pages/heuristics/accept-side-assertion-in-accept-named-test.md) | heuristics | 受理を確かめる assert を拒否側の名前の試験に置くと、受理側の退行が拒否側の失敗として表示され原因が試験名から読めないため、受理側の試験の入力の組に 1 件足す。 | 2026-10-15T20:55:00+09:00 | medium |
 ## 統計
 
-- 総ページ数: 690
-- ドメイン別: patterns=148, heuristics=345, anti-patterns=197
-- 最終更新: 2026-10-15T08:18:52Z
+- 総ページ数: 693
+- ドメイン別: patterns=149, heuristics=347, anti-patterns=197
+- 最終更新: 2026-10-15T20:55:00+09:00

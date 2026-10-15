@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-10-15
+* **Promotion**: [候補の出典](raw/fixes/20261015T113451Z-pr-3909.md) — unresolved <!-- rite-promotion: {"candidate": "fc945ceb268ae44425b3d30faf1560778e43927f338e022ee8cfb7ef547b1f74", "raw": "raw/fixes/20261015T113451Z-pr-3909.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
 * **Promotion**: [候補の出典](raw/reviews/20261015T084627Z-pr-3889.md) — unresolved <!-- rite-promotion: {"candidate": "3d8d0376877de8f6c9f5d97753e3fe2bb1c5f980af999877d284cc472f425599", "raw": "raw/reviews/20261015T084627Z-pr-3889.md", "reason": "missing pr_url", "status": "unresolved"} -->
 * **Promotion**: [候補の出典](raw/reviews/20261015T081012Z-pr-3907.md) — unresolved <!-- rite-promotion: {"candidate": "39197b5946fdf551990ffbfca519bc5e1d5a32ac264d728c1de4b3d206b67a06", "raw": "raw/reviews/20261015T081012Z-pr-3907.md", "reason": "missing pr_url", "status": "unresolved"} -->
 * **Promotion**: [候補の出典](raw/reviews/20261015T074827Z-pr-3907.md) — unresolved <!-- rite-promotion: {"candidate": "82ad6e152130601916cb94f721eeb3eab9859b8ae2ea26caf15c2ee2e80415db", "raw": "raw/reviews/20261015T074827Z-pr-3907.md", "reason": "missing pr_url", "status": "unresolved"} -->
@@ -233,6 +234,18 @@
 * **lint:warning** — contradictions=1, stale=79, orphans=0, missing_concept=0, unregistered_raw=889, broken_refs=0
   * 矛盾検査: WIKI_CONTRADICTION_CHECK=complete; changed=0; screened=0; candidates=0; excluded=0; compared=0; carried=1; resolved=0 — 対象なし（今回の取り込みは昇格候補のみでページの追加・更新なし。記録済みの未解消 1 組は両ページ実在・変更なしのため引継ぎ）
   * 未解消の矛盾: [fake-command-applies-production-filters](pages/patterns/fake-command-applies-production-filters.md) ↔ [stub-ignored-argument-escapes-test](pages/heuristics/stub-ignored-argument-escapes-test.md) — 重複情報: どちらも偽コマンドが受け取った式と絞り込み引数を fixture に実際に適用させ、想定外の引数を失敗させるべきとする結論が 80% 以上一致する
+* **Create**: [bash grep と同じ規則を名乗る正規表現は、合わせるロケールを決め、残る差を向きで書く](pages/heuristics/regex-parity-with-grep-declare-locale-and-difference-direction.md) — [取り込み元](raw/fixes/20261015T105901Z-pr-3909.md) を新規ページ化
+* **Create**: [境界付き番号照合の試験は 2 桁の対象を置き、手順書から取り出した正規表現と突き合わせる](pages/patterns/bounded-number-match-test-two-digit-target-and-doc-extracted-parity.md) — [取り込み元](raw/fixes/20261015T105901Z-pr-3909.md) を新規ページ化
+* **Update**: [bash grep と同じ規則を名乗る正規表現は、合わせるロケールを決め、残る差を向きで書く](pages/heuristics/regex-parity-with-grep-declare-locale-and-difference-direction.md) — [取り込み元](raw/reviews/20261015T105136Z-pr-3909.md) を統合
+* **Update**: [境界付き番号照合の試験は 2 桁の対象を置き、手順書から取り出した正規表現と突き合わせる](pages/patterns/bounded-number-match-test-two-digit-target-and-doc-extracted-parity.md) — [取り込み元](raw/reviews/20261015T105136Z-pr-3909.md) を統合
+* **Update**: [bash grep と同じ規則を名乗る正規表現は、合わせるロケールを決め、残る差を向きで書く](pages/heuristics/regex-parity-with-grep-declare-locale-and-difference-direction.md) — [取り込み元](raw/fixes/20261015T111510Z-pr-3909.md) を統合
+* **Update**: [bash grep と同じ規則を名乗る正規表現は、合わせるロケールを決め、残る差を向きで書く](pages/heuristics/regex-parity-with-grep-declare-locale-and-difference-direction.md) — [取り込み元](raw/reviews/20261015T111210Z-pr-3909.md) を統合
+* **Update**: [境界付き番号照合の試験は 2 桁の対象を置き、手順書から取り出した正規表現と突き合わせる](pages/patterns/bounded-number-match-test-two-digit-target-and-doc-extracted-parity.md) — [取り込み元](raw/reviews/20261015T111210Z-pr-3909.md) を統合
+* **Update**: [bash grep と同じ規則を名乗る正規表現は、合わせるロケールを決め、残る差を向きで書く](pages/heuristics/regex-parity-with-grep-declare-locale-and-difference-direction.md) — [取り込み元](raw/reviews/20261015T112612Z-pr-3909.md) を統合
+* **Update**: [bash grep と同じ規則を名乗る正規表現は、合わせるロケールを決め、残る差を向きで書く](pages/heuristics/regex-parity-with-grep-declare-locale-and-difference-direction.md) — [取り込み元](raw/fixes/20261015T113451Z-pr-3909.md) を統合
+* **Create**: [受理を確かめる assert は受理側の名前の試験の入力の組に置く](pages/heuristics/accept-side-assertion-in-accept-named-test.md) — [取り込み元](raw/fixes/20261015T113451Z-pr-3909.md) を新規ページ化
+* **Update**: [bash grep と同じ規則を名乗る正規表現は、合わせるロケールを決め、残る差を向きで書く](pages/heuristics/regex-parity-with-grep-declare-locale-and-difference-direction.md) — [取り込み元](raw/reviews/20261015T114600Z-pr-3909.md) を統合
+* **Update**: [受理を確かめる assert は受理側の名前の試験の入力の組に置く](pages/heuristics/accept-side-assertion-in-accept-named-test.md) — [取り込み元](raw/reviews/20261015T114600Z-pr-3909.md) を統合
 
 ## 2026-10-14
 * **Skip**: [20261014T101054Z-pr-3886.md](raw/reviews/20261014T101054Z-pr-3886.md) — 差分スコープでも reviewer が変異を再実測したという観察だけで、新しい経験則を含まない
