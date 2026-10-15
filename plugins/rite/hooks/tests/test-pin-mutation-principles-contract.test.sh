@@ -154,7 +154,7 @@ BASE="$PLUGIN_ROOT/agents/_reviewer-base.md"
 BASE_RATIONALE="$PLUGIN_ROOT/skills/reviewers/references/reviewer-base-rationale.md"
 EXP_H="### Mutation experiments and verification (worktree-only)"
 EXP_STUB='- **スタブは自分自身を呼ばない**: 本物のコマンドの代わりに置くスタブ（偽の `gh` 等）から、`"$0"`・自分自身のパス・PATH 上で自分に解決される同名コマンドを呼ばない。本物のコマンドが要るときは、スタブを PATH の先頭に置く前に `command -v` で解決した絶対パスを控えておき、その絶対パスで呼ぶ'
-EXP_LIMIT='- **実験・テスト・probe はプロセス数の上限付きサブシェルで実行する**: 実行する前に、上限が効く条件をすべて単独のコマンドで確かめる。条件は、Linux であること（`uname -s` が `Linux`。数え上げに使う `ps -L` は Linux の procps の形）、root でないこと（`id -u` が `0` でない。root には `ulimit -u` が fork を止めない）、数え上げ（`ps -L -u "$(id -u)" --no-headers | wc -l`）が正の整数を返すことの 3 つ。1 つでも満たさなければ、既定値で代用せず実験・テスト・probe を実行しないで `Measurement-Blocked:` として報告する。すべて満たすときは `( ulimit -u $(( $(ps -L -u "$(id -u)" --no-headers | wc -l) + 512 )); bash <test> )` の形で実行する。上限は実行直前の自ユーザーのプロセス数（スレッドを含む）に固定の余裕 512 を足した値にする。`ulimit -u` はサブシェルの子孫ではなく自ユーザー全体のプロセス数で判定されるため、小さい固定値だけを上限にするとふだんのコマンドも fork できなくなる。複合コマンドが拒否されるときは、この形のままスクリプトに書いて `bash <script.sh>` で実行する'
+EXP_LIMIT='- **実験・テスト・probe はプロセス数の上限付きサブシェルで実行する**: ここでの probe は、プロセスを起こして挙動を観測する実行（テスト・スタブ・PR が変更したスクリプトの実行など）を指し、Read / grep / `git show` などの読み取りは含まない。実行する前に、上限が効く条件をすべて単独のコマンドで確かめる。条件は、Linux であること（`uname -s` が `Linux`。数え上げに使う `ps -L` は Linux の procps の形）、root でないこと（`id -u` が `0` でない。root には `ulimit -u` が fork を止めない）、数え上げ（`ps -L -u "$(id -u)" --no-headers | wc -l`）が正の整数を返すことの 3 つ。1 つでも満たさなければ、既定値で代用せず実験・テスト・probe を実行しないで `Measurement-Blocked:` として報告する。すべて満たすときは `( ulimit -u $(( $(ps -L -u "$(id -u)" --no-headers | wc -l) + 512 )); bash <test> )` の形で実行する。上限は実行直前の自ユーザーのプロセス数（スレッドを含む）に固定の余裕 512 を足した値にする。`ulimit -u` はサブシェルの子孫ではなく自ユーザー全体のプロセス数で判定されるため、小さい固定値だけを上限にするとふだんのコマンドも fork できなくなる。複合コマンドが拒否されるときは、この形のままスクリプトに書いて `bash <script.sh>` で実行する'
 EXP_BLOCKED='- **上限で止まった実験は数えない**: 上限で fork が失敗した実験（`Resource temporarily unavailable` / `Cannot fork` 等）は成功・失敗のどちらにも数えず `Measurement-Blocked:` として報告し、上限を上げて再試行しない'
 EXP_ANCHOR="why-experiments-run-under-a-process-limit"
 EXP_POINTER="rationale: ../skills/reviewers/references/reviewer-base-rationale.md#$EXP_ANCHOR"
@@ -184,14 +184,16 @@ done
 # 実行する式は規則の行から抜き出す (テスト側で書き直すと文書とずれても気づけない)。ps -L は Linux の procps の形
 form="$(grep -oE '\( ulimit -u .* bash <test> \)' <<<"$EXP_LIMIT")"
 count_procs() { ps -L -u "$(id -u)" --no-headers | wc -l | tr -d ' '; }
-# 規則どおり外側の上限の中で実行されると、上限なしの対照 (深さ 300 で 600 件前後) も入れ子の上限も測れない
-hard_limit="$(ulimit -Hu)"
+# 規則どおり外側の上限の中で実行されると、上限なしの対照 (深さ 300 で 600 件前後) も入れ子の上限も測れない。
+# fork を止めるのは soft 上限なのでそれを読む。CI では実測を必ず通すため、測れないことを skip ではなく失敗にする
+proc_limit="$(ulimit -u)"
 if [ "$(uname -s)" != Linux ]; then
   skip "規則の実行形の実測 (Linux の ps -L を使う形のため、Linux 以外では実測しない)"
 elif [ -z "$form" ]; then
   fail "規則の行から上限付きサブシェルの実行形を抜き出せない"
-elif [ "$hard_limit" != unlimited ] && [ $(( hard_limit - $(count_procs) )) -lt 1000 ]; then
-  skip "規則の実行形の実測 (外側の上限 ulimit -Hu=$hard_limit の残りが 1000 件未満で、上限なしの対照と入れ子の上限を測れない)"
+elif [ "$proc_limit" != unlimited ] && [ $(( proc_limit - $(count_procs) )) -lt 1000 ]; then
+  limit_note="外側の上限 ulimit -u=$proc_limit の残りが 1000 件未満で、上限なしの対照と入れ子の上限を測れない"
+  if [ -n "${CI:-}" ]; then fail "規則の実行形の実測が CI では測れない ($limit_note)"; else skip "規則の実行形の実測 ($limit_note)"; fi
 else
   shell_limit_before="$(ulimit -u)"
   # 誤って自己再帰するスタブが上限で止まる。bash は fork の失敗を約 15 秒再試行するため、再試行しない dash で書く。
