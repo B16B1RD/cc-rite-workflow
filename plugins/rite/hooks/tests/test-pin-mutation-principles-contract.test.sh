@@ -257,11 +257,11 @@ EOF
   c_locale=(env LC_ALL=C)
   fork_failed() { grep -q 'Resource temporarily unavailable' <<<"$1"; }
   # positive control: 本物の fork 失敗の出力に同じ判定が一致する。bash は fork の失敗を約 15 秒再試行するが、
-  # 失敗のたびに文言を出すので 3 秒で打ち切る
+  # 失敗のたびに文言を出すので 3 秒で打ち切る。再試行中のサブシェルは SIGTERM では止まらず孤児として残るため KILL で止める
   if [ "$(id -u)" -eq 0 ]; then
     skip "対照: fork 失敗の判定が本物の fork 失敗に一致する (root には ulimit -u が効かない)"
   else
-    probe_out="$("${c_locale[@]}" timeout 3 bash -c '( ulimit -u 1; /bin/true; /bin/true ); true' 2>&1)"
+    probe_out="$("${c_locale[@]}" timeout -s KILL 3 bash -c '( ulimit -u 1; /bin/true; /bin/true ); true' 2>&1)"
     if fork_failed "$probe_out"; then pass "対照: fork 失敗の判定が本物の fork 失敗に一致する"; else fail "対照: fork 失敗の判定が本物の fork 失敗に一致しない ($(head -2 <<<"$probe_out" | paste -sd ' ' -))"; fi
   fi
   # 規則どおりの上限 (+512) では、再帰しない既存のテストスイートが上限なしと同じ結果になる
