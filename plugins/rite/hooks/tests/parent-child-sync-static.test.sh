@@ -539,30 +539,48 @@ for m3_md in "$PROJECTS_REF" "$CLOSE_MD" "$CLEANUP_MD"; do
     '^  _m3_raw=\$\(gh api "repos/\{owner\}/\{repo\}/issues/\{issue_number\}/timeline" --paginate'
   assert_grep "T-14 $m3_name captures the timeline rc outside a pipeline" "$m3_md" \
     "\| \"\\\\\(\.repository\.full_name\) \\\\\(\.number\)\"'\) \|\| _m3_rc=\\\$\?$"
+  # bash on macOS reads the first byte of a multibyte character right after an unbraced
+  # $var as part of the name, so the expansion comes out empty there (Linux does not).
+  m3_unbraced=$(awk '/^# 候補集合は子 Issue の timeline/{f=1} f&&/^```/{exit} f' "$m3_md" \
+    | LC_ALL=C grep -c '\$[A-Za-z_][A-Za-z0-9_]*[^ -~]' || true)
+  if [ "$m3_unbraced" = 0 ]; then
+    pass "T-15 $m3_name braces every variable followed by a multibyte character"
+  else
+    fail "T-15 $m3_name has $m3_unbraced line(s) with an unbraced variable before a multibyte character"
+  fi
 done
 
 echo "=== Phase 8: the three Method 3 blocks behave the same against a stub gh ==="
 # Each block is run as written, with a stub gh on PATH. The remote names the repository in
 # lower case while the API returns the canonical name. A connected event, an Issue from
-# another repository and a pull request all name the child, and the parent is #9. Only the start side and cleanup skip a
-# closed parent.
+# another repository and a pull request all name the child, and the parent is #99, placed
+# after more than ten other same-repository candidates so that a count limit on the
+# candidates drops it. Only the start side and cleanup skip a closed parent.
 m3_stub_dir=$(mktemp -d)
+trap 'rm -rf "$m3_stub_dir"' EXIT
 # The stub applies the block's own --jq filter to fixture JSON, so the event, PR and
 # repository selection in the filter is exercised rather than skipped.
-cat > "$m3_stub_dir/timeline.json" <<'JSON'
-[{"event":"labeled"},
- {"event":"connected","source":{"issue":{"number":3,"repository":{"full_name":"Owner/Repo"}}}},
- {"event":"cross-referenced","source":{"issue":{"number":8,"repository":{"full_name":"Other/Repo"}}}},
- {"event":"cross-referenced","source":{"issue":{"number":5,"repository":{"full_name":"Owner/Repo"}}}},
- {"event":"cross-referenced","source":{"issue":{"number":6,"pull_request":{"url":"x"},"repository":{"full_name":"Owner/Repo"}}}},
- {"event":"cross-referenced","source":{"issue":{"number":7,"repository":{"full_name":"Owner/Repo"}}}},
- {"event":"cross-referenced","source":{"issue":{"number":9,"repository":{"full_name":"Owner/Repo"}}}}]
-JSON
+{
+  printf '%s\n' '[{"event":"labeled"},' \
+    '{"event":"connected","source":{"issue":{"number":3,"repository":{"full_name":"Owner/Repo"}}}},' \
+    '{"event":"cross-referenced","source":{"issue":{"number":8,"repository":{"full_name":"Other/Repo"}}}},' \
+    '{"event":"cross-referenced","source":{"issue":{"number":5,"repository":{"full_name":"Owner/Repo"}}}},' \
+    '{"event":"cross-referenced","source":{"issue":{"number":6,"pull_request":{"url":"x"},"repository":{"full_name":"Owner/Repo"}}}},' \
+    '{"event":"cross-referenced","source":{"issue":{"number":7,"repository":{"full_name":"Owner/Repo"}}}},'
+  for m3_n in $(seq 10 30); do
+    printf '{"event":"cross-referenced","source":{"issue":{"number":%d,"repository":{"full_name":"Owner/Repo"}}}},\n' "$m3_n"
+  done
+  printf '%s\n' '{"event":"cross-referenced","source":{"issue":{"number":99,"repository":{"full_name":"Owner/Repo"}}}}]'
+} > "$m3_stub_dir/timeline.json"
+# issue view honours -R and returns only the fields named by --json, as gh does.
 cat > "$m3_stub_dir/gh" <<'STUB'
 #!/bin/bash
 stub_dir=$(dirname "$0")
-jq_expr=""; prev=""
-for a in "$@"; do [ "$prev" = --jq ] && jq_expr=$a; prev=$a; done
+jq_expr=""; json_fields=""; repo_arg=""; prev=""
+for a in "$@"; do
+  case "$prev" in --jq) jq_expr=$a ;; --json) json_fields=$a ;; -R) repo_arg=$a ;; esac
+  prev=$a
+done
 case "$1 $2" in
   "api repos/lower/repo")
     [ "${M3_FAIL:-}" = repo ] && { echo "stub: repository fetch failed" >&2; exit 1; }
@@ -571,18 +589,22 @@ case "$1 $2" in
     [ "${M3_FAIL:-}" = timeline ] && { echo "stub: timeline fetch failed" >&2; exit 1; }
     jq -r "$jq_expr" "$stub_dir/timeline.json" ;;
   "issue view")
+    [ "$repo_arg" = lower/repo ] || { echo "stub: unexpected -R '$repo_arg'" >&2; exit 2; }
+    [ -n "$json_fields" ] || { echo "stub: --json is required" >&2; exit 2; }
     [ "${M3_FAIL:-}" = "view$3" ] && { echo "stub: issue view failed" >&2; exit 1; }
+    [ "${M3_FAIL:-}" = "json$3" ] && { echo "not json"; exit 0; }
     case "$3" in
-      3|6|8) echo '{"body":"- [ ] #5","state":"OPEN"}' ;;
-      7) echo '{"body":"- [ ] #50","state":"OPEN"}' ;;
-      9) printf '{"body":"- [ ] #5","state":"%s"}\n' "${M3_STATE9:-OPEN}" ;;
-      *) echo '{"body":"","state":"OPEN"}' ;;
-    esac ;;
+      3|6|8) issue='{"body":"- [ ] #5","state":"OPEN"}' ;;
+      7) issue='{"body":"- [ ] #50","state":"OPEN"}' ;;
+      99) issue=$(printf '{"body":"- [ ] #5","state":"%s"}' "${M3_STATE99:-OPEN}") ;;
+      *) issue='{"body":"","state":"OPEN"}' ;;
+    esac
+    jq -c "{${json_fields}}" <<< "$issue" ;;
   *) echo "stub: unexpected gh call: $*" >&2; exit 2 ;;
 esac
 STUB
 chmod +x "$m3_stub_dir/gh"
-m3_run() {  # $1 file; M3_FAIL / M3_STATE9 select the case
+m3_run() {  # $1 file; M3_FAIL / M3_STATE99 select the case
   local blk
   blk=$(awk '/^# 候補集合は子 Issue の timeline/{f=1} f&&/^```/{exit} f' "$1")
   blk=${blk//\{owner_repo\}/lower\/repo}
@@ -595,34 +617,34 @@ for m3_md in "$PROJECTS_REF" "$CLOSE_MD" "$CLEANUP_MD"; do
   m3_name=$(basename "$(dirname "$m3_md")")/$(basename "$m3_md")
   m3_label=method3_parent; [ "$m3_md" = "$CLEANUP_MD" ] && m3_label=tasklist_parent
   m3_out=$(m3_run "$m3_md")
-  if printf '%s\n' "$m3_out" | grep -qx "$m3_label=9"; then
-    pass "T-17 $m3_name finds the parent by the canonical repository name"
+  if grep -qx "$m3_label=99" <<< "$m3_out"; then
+    pass "T-17 $m3_name finds the parent by the canonical repository name past more than ten candidates"
   else
-    fail "T-17 $m3_name should find parent #9 (lower-case remote; connected #3, other-repository #8 and pull request #6 skipped): $m3_out"
+    fail "T-17 $m3_name should find parent #99 after 22 other same-repository candidates (lower-case remote; connected #3, other-repository #8 and pull request #6 skipped): $m3_out"
   fi
-  for m3_fail in repo timeline view7; do
+  for m3_fail in repo timeline view7 json7; do
     case "$m3_fail" in
       repo) m3_reason='リポジトリの正式名を取得できない' ;;
       timeline) m3_reason='timeline を取得できない' ;;
       view7) m3_reason='候補 #7 を取得できない' ;;
+      json7) m3_reason='候補 #7 の内容を読めない' ;;
     esac
     m3_out=$(M3_FAIL=$m3_fail m3_run "$m3_md")
-    if printf '%s\n' "$m3_out" | grep -qx "$m3_label=undecided" \
-      && printf '%s\n' "$m3_out" | grep -qF "WARNING: 親 Issue の有無を判定できません（$m3_reason"; then
+    if grep -qx "$m3_label=undecided" <<< "$m3_out" \
+      && grep -qF "WARNING: 親 Issue の有無を判定できません（$m3_reason" <<< "$m3_out"; then
       pass "T-18 $m3_name reports a failed $m3_fail fetch as undecided"
     else
       fail "T-18 $m3_name should report a failed $m3_fail fetch as undecided with a WARNING naming it ($m3_reason): $m3_out"
     fi
   done
-  m3_out=$(M3_STATE9=CLOSED m3_run "$m3_md")
-  m3_want=none; [ "$m3_md" = "$CLOSE_MD" ] && m3_want=9
-  if printf '%s\n' "$m3_out" | grep -qx "$m3_label=$m3_want"; then
+  m3_out=$(M3_STATE99=CLOSED m3_run "$m3_md")
+  m3_want=none; [ "$m3_md" = "$CLOSE_MD" ] && m3_want=99
+  if grep -qx "$m3_label=$m3_want" <<< "$m3_out"; then
     pass "T-19 $m3_name gives $m3_want for a closed parent"
   else
     fail "T-19 $m3_name should give $m3_label=$m3_want for a closed parent: $m3_out"
   fi
 done
-rm -rf "$m3_stub_dir"
 
 if ! print_summary "$(basename "$0")" "If you remove any of the 3 parent-detection methods (body meta / GraphQL trackedIssues / tasklist) from close.md or pr/open.md ステップ 1.2, or drop stateReason from parent auto-close, or restore unscoped linked:issue / glob --head PR lookup in close.md Phase 2, regression risk reopens. Re-confirm cross-references before removing methods."; then
   exit 1

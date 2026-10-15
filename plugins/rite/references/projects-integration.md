@@ -214,7 +214,7 @@ if [ -z "$parent_undecided" ]; then
   done
 fi
 if [ -n "$parent_undecided" ]; then
-  echo "WARNING: 親 Issue の有無を判定できません（$parent_undecided）。親の処理を飛ばします（standalone とは判定していません）" >&2
+  echo "WARNING: 親 Issue の有無を判定できません（${parent_undecided}）。親の処理を飛ばします（standalone とは判定していません）" >&2
 fi
 if [ -n "$parent_undecided" ]; then
   echo "method3_parent=undecided"
