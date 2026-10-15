@@ -81,6 +81,7 @@ pin "agent: 上書き 4 毎 cycle 全 AC を HEAD で" "$AGENT" "**Every cycle, 
 pin "agent: 未充足は [AC-N] 接頭辞の CRITICAL / current-pr" "$AGENT" 'whose `内容` **starts with `[AC-N]`**, with severity `CRITICAL` and scope `current-pr`'
 pin "agent: 未充足は runtime_observation と Verification アンカー" "$AGENT" 'Likelihood-Evidence: runtime_observation <what you ran>` followed by `Verification: repro <command> => <observed outcome>`'
 pin "agent: 観測した失敗を未検証にしない" "$AGENT" "Never use 未検証 for a criterion you observed to fail."
+pin "agent: 仮の環境の試験・静的照合は実ホストの Then を充足にしない" "$AGENT" 'A passing test in a substituted environment (fixtures, mocked helpers) or a static match does not observe a `Then` that only a real host produces, such as a skill on the real Claude Code filing an Issue, reusing an existing Issue, asking the user, or handing work off to implementation: judge such a criterion 未検証 with that real-host requirement, not 充足.'
 pin "reviewers: Type Identifiers に acceptance" "$REVIEWERS" '| acceptance | 受入条件確認担当 | `acceptance-reviewer.md` |'
 pin "reviewers: cap 適用後に mandatory 追加" "$REVIEWERS" 'ステップ 3.2.1 の cap 適用**後**に `selection_type: mandatory` で追加する'
 pin "reviewers: Phase 5 で cap 枠外" "$REVIEWERS" "The acceptance reviewer is outside this cap"
