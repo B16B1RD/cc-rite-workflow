@@ -372,7 +372,8 @@ test "$(bash -c "$command")" = called
         self.pr["closingIssuesReferences"] = []
         with self.assertRaisesRegex(ValueError, "does not close"):
             self.verify()
-        for body, branch in (("Closes #1", ""), ("", "fix/issue-1-slug"), (None, "fix/issue-1-slug")):
+        for body, branch in (("Closes #1", ""), ("Closes" + chr(0x3000) + "#1", ""), ("", "fix/issue-1-slug"),
+                             (None, "fix/issue-1-slug")):
             self.pr["body"], self.pr["headRefName"] = body, branch
             with self.subTest(body=body, branch=branch):
                 self.assertEqual(self.verify(), self.rev)
@@ -384,9 +385,6 @@ test "$(bash -c "$command")" = called
             self.pr["body"], self.pr["headRefName"] = body, branch
             with self.subTest(body=body, branch=branch), self.assertRaisesRegex(ValueError, "does not close"):
                 self.verify()
-        # A full-width space between the keyword and the number is accepted.
-        self.assertTrue(p.closes_issue(dict(closingIssuesReferences=[], body="Closes" + chr(0x3000) + "#1",
-                                            headRefName=""), "https://github.com/example/project/issues/1"))
         # A shorter number must not close a longer one either.
         for body, branch, expected in (("Closes #1", "", False), ("", "fix/issue-1-slug", False),
                                        ("Closes #10", "", True), ("", "fix/issue-10-slug", True)):
