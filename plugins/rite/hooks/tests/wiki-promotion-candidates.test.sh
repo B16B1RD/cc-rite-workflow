@@ -384,16 +384,24 @@ test "$(bash -c "$command")" = called
             self.pr["body"], self.pr["headRefName"] = body, branch
             with self.subTest(body=body, branch=branch), self.assertRaisesRegex(ValueError, "does not close"):
                 self.verify()
+        # A shorter number must not close a longer one either.
+        for body, branch, expected in (("Closes #1", "", False), ("", "fix/issue-1-slug", False),
+                                       ("Closes #10", "", True), ("", "fix/issue-10-slug", True)):
+            with self.subTest(target=10, body=body, branch=branch):
+                self.assertEqual(p.closes_issue(dict(closingIssuesReferences=[], body=body, headRefName=branch),
+                                                "https://github.com/example/project/issues/10"), expected)
 
     def test_closing_reference_rule_matches_cleanup_close_and_verify(self):
         # Both decide whether a merged PR closes the Issue; run cleanup's grep on the same inputs.
         procedure = (Path(sys.argv[1]).resolve().parents[2] /
                      "skills/cleanup/references/archive-procedures.md").read_text()
         pattern = re.search(r'grep -qiE "(.+)" <<< "\$pr_refs"', procedure)[1]
-        cases = {"Closes #1": True, "closes: #1": True, "CLOSED #1": True, "fix #1": True,
-                 "Fixed #1": True, "resolves #1": True, "Resolved:#1": True, "Closes #1.": True,
+        cases = {"Closes #1": True, "closes: #1": True, "CLOSED #1": True, "close #1": True,
+                 "fix #1": True, "fixes #1": True, "Fixed #1": True, "resolve #1": True,
+                 "resolves #1": True, "Resolved:#1": True, "Closes : #1": True, "Closes #1.": True,
                  "ISSUE-1": True, "fix/issue-1-slug": True, "Closes #10": False, "#1": False,
-                 "issue-10": False, "issue-12-x": False, "Closes\n#1": False}
+                 "issue-10": False, "issue-12-x": False, "Closes\n#1": False,
+                 "Closes #1": False}
         for text, expected in cases.items():
             cleanup = subprocess.run(["bash", "-c", f'issue=1; grep -qiE "{pattern}" <<< "$1"', "-", text]).returncode
             with self.subTest(text=text):

@@ -458,11 +458,13 @@ def closes_issue(pr, issue_url):
         return True
     # GitHub lists closing references only for merges into the default branch. Accept the
     # same body/branch references that cleanup uses before it closes the Issue; grep is
-    # line based there, so the keyword and the number stay on one line.
+    # line based there, so the keyword and the number stay on one line. re.ASCII keeps
+    # whitespace and case folding to ASCII as grep's [[:space:]] does.
     number = issue_url.rsplit("/", 1)[1]
     refs = (pr.get("body") or "") + "\n" + (pr.get("headRefName") or "")
     return re.search(rf"((close[sd]?|fix(e[sd])?|resolve[sd]?)[^\S\n]*:?[^\S\n]*#{number}([^0-9]|$))"
-                     rf"|(issue-{number}([^0-9]|$))", refs, re.IGNORECASE | re.MULTILINE) is not None
+                     rf"|(issue-{number}([^0-9]|$))", refs,
+                     re.ASCII | re.IGNORECASE | re.MULTILINE) is not None
 
 
 def proof(cwd, repo, item):
