@@ -24,13 +24,16 @@ sources:
     resource: "raw/reviews/20260927T193310Z-pr-3330.md"
   - type: "reviews"
     resource: "raw/reviews/20260929T043549Z-pr-3425.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261015T040025Z-pr-3905.md"
 tags: ["bash", "test-quality", "locale", "dead-assertion", "identification-power", "degrade-path", "LC_ALL"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T04:44:52Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-15T06:45:00Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-10T14:23:18Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:38:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T04:44:52Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-15T06:45:00Z" }
 ---
 
 # エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する
@@ -119,6 +122,10 @@ assert は**自分が中和した行に限定**する必要がある（メッセ
 
 テストが「git がこの操作を拒否した」ことを確かめるために stderr の英語文言を読むなら、2 点をそろえる。1 つは被検査の git に `LC_ALL=C` を付けて文言を英語に固定すること（既存の helper と同じ形）。もう 1 つは、照合する部分文字列を**期待する拒否理由に固有のもの**まで絞ることである。起点事例では、ブランチが別の worktree で使用中であることによる拒否（`already used`）を確かめたいのに、照合が `already` 程度に広いと、作成先パスの衝突による別の拒否（`already exists`）でも通ってしまう。拒否されたという事実だけでなく、どの理由で拒否されたかまで照合して初めて、テストは意図した分岐を見ている。
 
+## 変種: fork 失敗の不在を英語文言の否定で確かめる
+
+上限付きのサブシェルでテストを走らせ、「fork が失敗しなかった」ことを `Resource temporarily unavailable` の grep 否定で確かめる assert も同じ形で死ぬ。bash の fork 失敗メッセージは strerror の翻訳に従い、日本語ロケールでは「リソースが一時的に利用できません」と出るので、否定 assert は一致しようがなく常に通る。本物の fork 失敗を足す変異を当てても PASS のままになることがレビューで実測された。被検査コマンドに `LC_ALL=C` を付けるか、ロケールに依らない `fork:` の接頭辞で照合する。
+
 ## ソース（追記分）
 
 - [フィルタ経路の locale 依存](../../raw/reviews/20260729T061547Z-pr-2044.md)
@@ -128,3 +135,4 @@ assert は**自分が中和した行に限定**する必要がある（メッセ
 - [fix 結果](../../raw/reviews/20260910T140012Z-pr-2659-fix.md)
 - [書込失敗の診断を接頭辞で固定したレビュー結果](../../raw/reviews/20260927T193310Z-pr-3330.md)
 - [git の拒否文言の照合をロケール固定と理由固有の部分文字列にそろえるよう勧めたレビュー結果](../../raw/reviews/20260929T043549Z-pr-3425.md)
+- [fork 失敗の不在を英語文言の否定で確かめる assert が日本語ロケールで常に通ることを示したレビュー結果](../../raw/reviews/20261015T040025Z-pr-3905.md)
