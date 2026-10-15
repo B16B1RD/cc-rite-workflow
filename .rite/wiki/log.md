@@ -128,6 +128,9 @@
   * 比較: [kill-fork-retrying-subshell-with-sigkill](pages/heuristics/kill-fork-retrying-subshell-with-sigkill.md) ↔ [race-window-probe-identification-power](pages/patterns/race-window-probe-identification-power.md) — 矛盾なし: 後者は SIGKILL を当てる時刻と結果分類の話で、論点が異なる
   * 除外: 残り 686 ページは要約の論点（fork 失敗の誘発・プロセス数上限・シグナルでの打ち切り）と重ならない
   * 未解消の矛盾: [fake-command-applies-production-filters](pages/patterns/fake-command-applies-production-filters.md) ↔ [stub-ignored-argument-escapes-test](pages/heuristics/stub-ignored-argument-escapes-test.md) — 重複情報: どちらも偽コマンドが受け取った式と絞り込み引数を fixture に実際に適用させ、想定外の引数を失敗させるべきとする結論が 80% 以上一致する
+* **lint:warning** — contradictions=1, stale=79, orphans=0, missing_concept=0, unregistered_raw=889, broken_refs=0
+  * 矛盾検査: WIKI_CONTRADICTION_CHECK=complete; changed=0; screened=0; candidates=0; excluded=0; compared=0; carried=1; resolved=0 — 対象なし（今回の取り込みは昇格候補のみでページの追加・更新なし。記録済みの未解消 1 組は両ページ実在・変更なしのため引継ぎ）
+  * 未解消の矛盾: [fake-command-applies-production-filters](pages/patterns/fake-command-applies-production-filters.md) ↔ [stub-ignored-argument-escapes-test](pages/heuristics/stub-ignored-argument-escapes-test.md) — 重複情報: どちらも偽コマンドが受け取った式と絞り込み引数を fixture に実際に適用させ、想定外の引数を失敗させるべきとする結論が 80% 以上一致する
 
 ## 2026-10-14
 * **Skip**: [20261014T101054Z-pr-3886.md](raw/reviews/20261014T101054Z-pr-3886.md) — 差分スコープでも reviewer が変異を再実測したという観察だけで、新しい経験則を含まない
