@@ -8,8 +8,9 @@
 # 落ちることを確かめる (負例: 実装側は削除・節外移動・コメント化・見出し改名、reviewer 側は削除・節外移動・語の反転、両側とも次の見出しを平文化してポインタ行を下へ移す変形)。
 # あわせて、reviewer 側ポインタ行が参照する _reviewer-base.md のアンカーが実在することも検査する。
 # reviewer が検証実験で守る規則 (スタブの自己再帰禁止・プロセス数の上限付きサブシェル・上限停止の報告) も
-# _reviewer-base.md の節に固定し、規則に書いた実行形を抜き出して、自己再帰するスタブが上限で止まることと、
-# 再帰しない既存スイートが上限の有無で同じ結果になることを実測する。
+# _reviewer-base.md の節に固定し (負例: 規則の削除・節外移動で、欠けた規則のラベルだけが出る)、規則に書いた実行形を
+# 抜き出して、自己再帰するスタブが上限で止まることと、再帰しない既存スイートが上限の有無で同じ結果になることを実測する。
+# 既存スイートの fork 失敗の判定は C ロケールで行い、同じ判定が本物の fork 失敗に一致することを対照で確かめる。
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -169,14 +170,17 @@ missing="$(missing_exp_rules "$BASE")"
 if [ -z "$missing" ]; then pass "_reviewer-base.md 検証実験の節に 3 規則がある"; else fail "_reviewer-base.md 検証実験の節に規則が無い: $(printf '%s' "$missing" | paste -sd '/' -)"; fi
 if section_has_line "$BASE" "$EXP_H" "$EXP_POINTER"; then pass "_reviewer-base.md 検証実験の節に上限規則の rationale ポインタがある"; else fail "_reviewer-base.md 検証実験の節に上限規則の rationale ポインタが無い"; fi
 assert "rationale: ポインタ先の見出しが 1 つある" "1" "$(grep -cxF "## $EXP_ANCHOR" "$BASE_RATIONALE")"
-# negative control: 規則を 1 つずつ削除・節外 (ファイル末尾) へ移動した入力では、欠けた規則だけを名指しする
-for rule in "$EXP_STUB" "$EXP_LIMIT" "$EXP_BLOCKED"; do
+# negative control: 規則を 1 つずつ削除・節外 (ファイル末尾) へ移動した入力では、欠けた規則のラベルだけを出す。
+# 期待ラベルは missing_exp_rules から独立に書き、規則とラベルの対応のずれも落とす
+exp_rules=("$EXP_STUB" "$EXP_LIMIT" "$EXP_BLOCKED")
+exp_labels=("スタブの自己再帰禁止と絶対パス" "ulimit -u 付きサブシェルの実行形" "上限停止は Measurement-Blocked")
+for i in "${!exp_rules[@]}"; do
+  rule="${exp_rules[$i]}"; label="${exp_labels[$i]}"
   assert "前提: 規則行が _reviewer-base.md にちょうど 1 つある (${rule:0:30})" "1" "$(grep -cxF -- "$rule" "$BASE")"
   grep -vxF -- "$rule" "$BASE" > "$ctl/base-deleted.md"
   { grep -vxF -- "$rule" "$BASE"; printf '%s\n' "$rule"; } > "$ctl/base-moved.md"
   for variant in deleted moved; do
-    got="$(missing_exp_rules "$ctl/base-$variant.md")"
-    if [ "$(printf '%s\n' "$got" | grep -c .)" = 1 ]; then pass "control: 規則の${variant}を検出し、欠けた規則を出す ($got)"; else fail "control: 規則の${variant}で欠けた規則を 1 つに特定できない (出力: ${got:-なし})"; fi
+    assert "control: 規則の${variant}で、出力が欠けた規則のラベル 1 行と完全一致する ($label)" "$label" "$(missing_exp_rules "$ctl/base-$variant.md")"
   done
 done
 
@@ -249,16 +253,27 @@ EOF
     if [ "$elapsed" -lt 5 ]; then pass "自己再帰のスタブ: 5 秒未満で終わる (${elapsed} 秒)"; else fail "自己再帰のスタブ: 終了まで ${elapsed} 秒かかった"; fi
     assert "自己再帰のスタブ: 終了後に残るスタブのプロセスは 0 件" "0" "$(pgrep -f "$stub_dir/gh" | wc -l | tr -d ' ')"
   fi
+  # bash の fork 失敗の文言は strerror の翻訳に従うため、判定する実行はすべて同じ形で C ロケールに固定する
+  c_locale=(env LC_ALL=C)
+  fork_failed() { grep -q 'Resource temporarily unavailable' <<<"$1"; }
+  # positive control: 本物の fork 失敗の出力に同じ判定が一致する。bash は fork の失敗を約 15 秒再試行するが、
+  # 失敗のたびに文言を出すので 3 秒で打ち切る
+  if [ "$(id -u)" -eq 0 ]; then
+    skip "対照: fork 失敗の判定が本物の fork 失敗に一致する (root には ulimit -u が効かない)"
+  else
+    probe_out="$("${c_locale[@]}" timeout 3 bash -c '( ulimit -u 1; /bin/true; /bin/true ); true' 2>&1)"
+    if fork_failed "$probe_out"; then pass "対照: fork 失敗の判定が本物の fork 失敗に一致する"; else fail "対照: fork 失敗の判定が本物の fork 失敗に一致しない ($(head -2 <<<"$probe_out" | paste -sd ' ' -))"; fi
+  fi
   # 規則どおりの上限 (+512) では、再帰しない既存のテストスイートが上限なしと同じ結果になる
   SUITE="$SCRIPT_DIR/parent-child-sync-static.test.sh"
-  free_out="$(bash "$SUITE" 2>&1)"; free_rc=$?
-  lim_out="$(bash -c "${form/<test>/\"$SUITE\"}" 2>&1)"; lim_rc=$?
+  free_out="$("${c_locale[@]}" bash "$SUITE" 2>&1)"; free_rc=$?
+  lim_out="$("${c_locale[@]}" bash -c "${form/<test>/\"$SUITE\"}" 2>&1)"; lim_rc=$?
   free_counts="$(grep -E '^(PASS|FAIL): [0-9]+$' <<<"$free_out")"
   lim_counts="$(grep -E '^(PASS|FAIL): [0-9]+$' <<<"$lim_out")"
   if [ -n "$free_counts" ]; then pass "既存スイート: 上限なしで成功・失敗件数が出る"; else fail "既存スイート: 上限なしの出力に件数が無い"; fi
   assert "既存スイート: 規則どおりの上限でも終了コードが同じ" "$free_rc" "$lim_rc"
   assert "既存スイート: 規則どおりの上限でも成功・失敗件数が同じ" "$free_counts" "$lim_counts"
-  if grep -q 'Resource temporarily unavailable' <<<"$lim_out"; then fail "既存スイート: 規則どおりの上限で fork が失敗した"; else pass "既存スイート: 規則どおりの上限で fork が失敗しない"; fi
+  if fork_failed "$lim_out"; then fail "既存スイート: 規則どおりの上限で fork が失敗した"; else pass "既存スイート: 規則どおりの上限で fork が失敗しない"; fi
   assert "上限はサブシェルの中に閉じ、テスト自身のシェルの ulimit -u は変わらない" "$shell_limit_before" "$(ulimit -u)"
 fi
 
