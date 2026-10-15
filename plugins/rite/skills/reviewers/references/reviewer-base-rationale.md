@@ -30,6 +30,16 @@ The `[READ-ONLY RULE]` is not just a tool-level (`Edit`/`Write`) restriction —
 
 **Invariant の enforcement 経路**: exit-time invariant (branch / stash count / branch list / worktree hash の 4 軸) は orchestrator 側 (`skills/pr-review/SKILL.md` ステップ 4.0.A snapshot と 5.0.A post-review state verification) で `post-review-state-verify.sh` により post-condition check される。refs/heads と refs/stash は全 worktree で共有されるため、stash と branch list は他セッションの worktree で checkout 中の branch（stash は件名の branch）を除いて数え、並列セッションの操作を drift と誤認しない。mutation worktree の名前空間の worktree と、reviewer 漏出名（`pr-<N>-cycle<X>` / `pr-<N>-test` / `pr-<N>-experiment` / `pr-<N>-mutation` / `pr-<N>-verify` / `pr-<N>-check` / `pr-<N>-sandbox`。`pr-cycle-cleanup.sh` の回収対象と同じ集合）の branch は他セッションに数えない。worktree 軸 (`git status --porcelain` hash) も enforce 対象 — Edit/Write in-place mutation や state-changing git が残す差分を検出する。4 軸は独立に評価し、変化した全軸を WARNING で報告して JSON の `types` に列挙する。(branch drift のみ) automatic recovery (`git switch --no-guess -- <original_branch>`) を行い、復旧後に current branch が元の branch と一致したときだけ recovered とする。stash/branch_list/worktree drift は内容を失うリスク回避のため auto-recover せず manual action を案内する。
 
+## why-experiments-run-under-a-process-limit
+
+**Rationale**: worktree 隔離は作業ツリーを守るが、実験が使うプロセス数は制約しない。偽の `gh` が「`gh issue view` として呼ばれたら」の分岐の中で `"$0" "$@"` を呼んで出力を jq に渡していた実験では、内側の呼び出しも同じ分岐に入り、スタブと jq が呼び出しのたびに 1 組ずつ増え続けた。開発機（WSL）のメモリと swap は数十秒で尽き、VM ごと停止して利用者の端末もすべて落ちた。カーネルのメモリ統計からの推定では、約 2 万スレッド相当まで増えてから止まった。メモリ不足時にプロセスを止める仕組み（earlyoom 等）は大きいプロセスから止めるため、小さいプロセスが大量に増えるこの形は止められない。
+
+そのため規則を 2 段にする。1 段目は増殖の原因を断つこと — スタブから自分自身や同名コマンドを呼ばず、本物は PATH に入れる前に解決した絶対パスで呼ぶ。2 段目は書き誤ったときに止めること — `ulimit -u` で上限を設けたサブシェルで実行すれば、上限に達した時点で fork が失敗して増殖が止まる。
+
+`ulimit -u` は対象のサブシェルの子孫ではなく、同じユーザーの全プロセス（Linux ではスレッドを含む）を数える。開発機ではエディタやエージェントのスレッドだけで数百〜千を超えるため、小さい固定値を上限にするとふだんのコマンドまで fork できなくなる。上限は実行直前の自ユーザーの数に余裕を足した値にする。止められたスタブは 1 つあたり 2〜3MB だったので、余裕 512 なら増える分は数 GB 未満に収まる見込みだが、他の環境で足りるかは確かめていない。余裕は固定値で書き、設定キーにしない。
+
+上限で止まった実験は、対象の挙動ではなく上限を観測している。成功・失敗のどちらに数えても誤った根拠になるため `Measurement-Blocked:` として報告する。上限を上げて再試行すると、上限が守るはずの機械を再び危険にさらすので行わない。
+
 ## why-fail-fast-is-the-default
 
 Fallbacks hide failures. A `catch (e) { return null }` recommendation that the reviewer treats as a "safety improvement" is, in fact, the same silent-failure pattern that error-handling reviewers flag as CRITICAL. Adding a fallback without justification turns the reviewer into a co-conspirator in silent failure.

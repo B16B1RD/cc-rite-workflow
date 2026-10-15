@@ -7,6 +7,9 @@
 # リテラルの行全体一致で検査し、ポインタ行の移動・コメント化・削除を負例 (negative control) として
 # 落ちることを確かめる (負例: 実装側は削除・節外移動・コメント化・見出し改名、reviewer 側は削除・節外移動・語の反転、両側とも次の見出しを平文化してポインタ行を下へ移す変形)。
 # あわせて、reviewer 側ポインタ行が参照する _reviewer-base.md のアンカーが実在することも検査する。
+# reviewer が検証実験で守る規則 (スタブの自己再帰禁止・プロセス数の上限付きサブシェル・上限停止の報告) も
+# _reviewer-base.md の節に固定し、規則に書いた実行形を抜き出して、自己再帰するスタブが上限で止まることと、
+# 再帰しない既存スイートが上限の有無で同じ結果になることを実測する。
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -146,6 +149,113 @@ if section_has_line "$ctl/rev-demoted.md" "$REV_H" "$REV_LINE" && ! rev_last_ok 
 # --- _reviewer-base.md の Gate アンカーが実在する (reviewer 側ポインタ行の参照先) ---
 assert "_reviewer-base.md に test-coverage-finding-gate のアンカーがある" "1" "$(grep -cxF '<a id="test-coverage-finding-gate"></a>' "$PLUGIN_ROOT/agents/_reviewer-base.md")"
 
-if ! print_summary "$(basename "$0")" "drift: test-pin-mutation-principles.md の節構成・中核規則、または issue-implement 5.0.F / test-reviewer Step 3 の参照行が変更された可能性"; then
+# --- reviewer 共通原則: 検証実験のスタブの自己再帰禁止と、プロセス数の上限 ---
+BASE="$PLUGIN_ROOT/agents/_reviewer-base.md"
+BASE_RATIONALE="$PLUGIN_ROOT/skills/reviewers/references/reviewer-base-rationale.md"
+EXP_H="### Mutation experiments and verification (worktree-only)"
+EXP_STUB='- **スタブは自分自身を呼ばない**: 本物のコマンドの代わりに置くスタブ（偽の `gh` 等）から、`"$0"`・自分自身のパス・PATH 上で自分に解決される同名コマンドを呼ばない。本物のコマンドが要るときは、スタブを PATH の先頭に置く前に `command -v` で解決した絶対パスを控えておき、その絶対パスで呼ぶ'
+EXP_LIMIT='- **実験・テスト・probe はプロセス数の上限付きサブシェルで実行する**: `( ulimit -u $(( $(ps -L -u "$(id -u)" --no-headers | wc -l) + 512 )); bash <test> )` の形で実行する（`ps -L` は Linux の procps の形）。上限は実行直前の自ユーザーのプロセス数（スレッドを含む）に固定の余裕 512 を足した値にする。`ulimit -u` はサブシェルの子孫ではなく自ユーザー全体のプロセス数で判定されるため、小さい固定値だけを上限にするとふだんのコマンドも fork できなくなる。複合コマンドが拒否されるときは、この形のままスクリプトに書いて `bash <script.sh>` で実行する'
+EXP_BLOCKED='- **上限で止まった実験は数えない**: 上限で fork が失敗した実験（`Resource temporarily unavailable` / `Cannot fork` 等）は成功・失敗のどちらにも数えず `Measurement-Blocked:` として報告し、上限を上げて再試行しない'
+EXP_ANCHOR="why-experiments-run-under-a-process-limit"
+EXP_POINTER="rationale: ../skills/reviewers/references/reviewer-base-rationale.md#$EXP_ANCHOR"
+# 欠けた規則のラベルを 1 行ずつ出す (全部あれば何も出さない)
+missing_exp_rules() {
+  section_has_line "$1" "$EXP_H" "$EXP_STUB" || echo "スタブの自己再帰禁止と絶対パス"
+  section_has_line "$1" "$EXP_H" "$EXP_LIMIT" || echo "ulimit -u 付きサブシェルの実行形"
+  section_has_line "$1" "$EXP_H" "$EXP_BLOCKED" || echo "上限停止は Measurement-Blocked"
+}
+assert "_reviewer-base.md: 検証実験の節の見出し行が 1 つ" "1" "$(grep -cxF -- "$EXP_H" "$BASE")"
+missing="$(missing_exp_rules "$BASE")"
+if [ -z "$missing" ]; then pass "_reviewer-base.md 検証実験の節に 3 規則がある"; else fail "_reviewer-base.md 検証実験の節に規則が無い: $(printf '%s' "$missing" | paste -sd '/' -)"; fi
+if section_has_line "$BASE" "$EXP_H" "$EXP_POINTER"; then pass "_reviewer-base.md 検証実験の節に上限規則の rationale ポインタがある"; else fail "_reviewer-base.md 検証実験の節に上限規則の rationale ポインタが無い"; fi
+assert "rationale: ポインタ先の見出しが 1 つある" "1" "$(grep -cxF "## $EXP_ANCHOR" "$BASE_RATIONALE")"
+# negative control: 規則を 1 つずつ削除・節外 (ファイル末尾) へ移動した入力では、欠けた規則だけを名指しする
+for rule in "$EXP_STUB" "$EXP_LIMIT" "$EXP_BLOCKED"; do
+  assert "前提: 規則行が _reviewer-base.md にちょうど 1 つある (${rule:0:30})" "1" "$(grep -cxF -- "$rule" "$BASE")"
+  grep -vxF -- "$rule" "$BASE" > "$ctl/base-deleted.md"
+  { grep -vxF -- "$rule" "$BASE"; printf '%s\n' "$rule"; } > "$ctl/base-moved.md"
+  for variant in deleted moved; do
+    got="$(missing_exp_rules "$ctl/base-$variant.md")"
+    if [ "$(printf '%s\n' "$got" | grep -c .)" = 1 ]; then pass "control: 規則の${variant}を検出し、欠けた規則を出す ($got)"; else fail "control: 規則の${variant}で欠けた規則を 1 つに特定できない (出力: ${got:-なし})"; fi
+  done
+done
+
+# --- 規則の実行形の実測 ---
+# 実行する式は規則の行から抜き出す (テスト側で書き直すと文書とずれても気づけない)。ps -L は Linux の procps の形
+form="$(grep -oE '\( ulimit -u .* bash <test> \)' <<<"$EXP_LIMIT")"
+if [ "$(uname -s)" != Linux ]; then
+  skip "規則の実行形の実測 (Linux の ps -L を使う形のため、Linux 以外では実測しない)"
+elif [ -z "$form" ]; then
+  fail "規則の行から上限付きサブシェルの実行形を抜き出せない"
+else
+  count_procs() { ps -L -u "$(id -u)" --no-headers | wc -l | tr -d ' '; }
+  shell_limit_before="$(ulimit -u)"
+  # 誤って自己再帰するスタブが上限で止まる。bash は fork の失敗を約 15 秒再試行するため、再試行しない dash で書く。
+  # 深さ 300 の安全弁は上限が効かなかったときの機械の保護で、上限ありの実行で安全弁に届いたら失敗にする
+  if [ "$(id -u)" -eq 0 ]; then
+    skip "自己再帰のスタブが上限で止まる (root には ulimit -u が効かない)"
+  elif ! dash_bin="$(command -v dash)"; then
+    skip "自己再帰のスタブが上限で止まる (fork を再試行しない dash が無い)"
+  else
+    stub_dir="$ctl/stub-bin"; depth_file="$ctl/stub-depth"
+    mkdir -p "$stub_dir"
+    cat > "$stub_dir/gh" <<EOF
+#!$dash_bin
+d=\${STUB_DEPTH:-0}
+echo "\$d" >> "$depth_file"
+if [ "\$d" -ge 300 ]; then echo backstop >&2; [ -n "\${STUB_HOLD:-}" ] && sleep 2; exit 97; fi
+out=\$(STUB_DEPTH=\$((d + 1)) "\$0" "\$@") || exit \$?
+printf '%s\n' "\$out"
+EOF
+    chmod +x "$stub_dir/gh"
+    max_depth() { sort -n "$depth_file" 2>/dev/null | tail -1; }
+    # 対照: 上限なしでは安全弁まで再帰する。実行中はスタブのプロセスが見える (残存 0 件の数え方の positive control)
+    : > "$depth_file"
+    ( STUB_HOLD=1 PATH="$stub_dir:$PATH" gh issue view 7 ) >/dev/null 2>"$ctl/stub-free-err" &
+    free_pid=$!
+    sleep 1
+    seen="$(pgrep -f "$stub_dir/gh" | wc -l | tr -d ' ')"
+    wait "$free_pid"
+    if [ "$seen" -ge 1 ]; then pass "対照: 実行中のスタブのプロセスを数えられる ($seen 件)"; else fail "対照: 実行中のスタブのプロセスが見えない (残存 0 件の判定が空振りする)"; fi
+    if [ "$(max_depth)" = 300 ] && ! grep -q 'Cannot fork' "$ctl/stub-free-err"; then pass "対照: 上限なしでは安全弁 (深さ 300) まで再帰する"; else fail "対照: 上限なしで安全弁まで届かない (深さ $(max_depth))"; fi
+    # 本体: 規則の式の余裕だけを 128 にして実行する (512 はふだんの用途の余裕で、再帰を短く止めるため小さくする)
+    stub_form="${form/+ 512/+ 128}"
+    stub_form="${stub_form/bash <test>/gh issue view 7}"
+    if [ "$(grep -o '+ 512' <<<"$form" | wc -l | tr -d ' ')" = 1 ] && [ "$(grep -o 'bash <test>' <<<"$form" | wc -l | tr -d ' ')" = 1 ] \
+       && [ "$stub_form" = "( ulimit -u \$(( \$(ps -L -u \"\$(id -u)\" --no-headers | wc -l) + 128 )); gh issue view 7 )" ]; then
+      pass "規則の式の余裕と実行コマンドだけを置き換えた"
+    else
+      fail "規則の式の置き換えが 1 か所ずつ効いていない ($stub_form)"
+    fi
+    : > "$depth_file"
+    procs_before="$(count_procs)"
+    started=$(date +%s)
+    PATH="$stub_dir:$PATH" bash -c "$stub_form" >/dev/null 2>"$ctl/stub-err"
+    stub_rc=$?
+    elapsed=$(( $(date +%s) - started ))
+    procs_after="$(count_procs)"
+    depth="$(max_depth)"
+    procs_note="自ユーザーのプロセス数: 実行前 $procs_before / 実行後 $procs_after"
+    if [ "$stub_rc" -ne 0 ]; then pass "自己再帰のスタブ: サブシェルが非ゼロで終了する (rc=$stub_rc)"; else fail "自己再帰のスタブ: サブシェルが 0 で終了した ($procs_note)"; fi
+    if grep -q 'Cannot fork' "$ctl/stub-err" && ! grep -q backstop "$ctl/stub-err"; then pass "自己再帰のスタブ: 安全弁ではなく fork の失敗で止まる"; else fail "自己再帰のスタブ: fork の失敗で止まっていない ($(head -3 "$ctl/stub-err" | paste -sd ' ' -); $procs_note)"; fi
+    # positive control: 1 段も再帰せず最初の fork で落ちた回は、上の判定を空振りで通す
+    if [ "${depth:-0}" -ge 1 ] && [ "$depth" -lt 300 ]; then pass "自己再帰のスタブ: 実際に再帰してから上限で止まる (深さ $depth)"; else fail "自己再帰のスタブ: 再帰の深さが範囲外 (深さ ${depth:-なし}。0 なら上限が最初から足りない; $procs_note)"; fi
+    if [ "$elapsed" -lt 5 ]; then pass "自己再帰のスタブ: 5 秒未満で終わる (${elapsed} 秒)"; else fail "自己再帰のスタブ: 終了まで ${elapsed} 秒かかった"; fi
+    assert "自己再帰のスタブ: 終了後に残るスタブのプロセスは 0 件" "0" "$(pgrep -f "$stub_dir/gh" | wc -l | tr -d ' ')"
+  fi
+  # 規則どおりの上限 (+512) では、再帰しない既存のテストスイートが上限なしと同じ結果になる
+  SUITE="$SCRIPT_DIR/parent-child-sync-static.test.sh"
+  free_out="$(bash "$SUITE" 2>&1)"; free_rc=$?
+  lim_out="$(bash -c "${form/<test>/\"$SUITE\"}" 2>&1)"; lim_rc=$?
+  free_counts="$(grep -E '^(PASS|FAIL): [0-9]+$' <<<"$free_out")"
+  lim_counts="$(grep -E '^(PASS|FAIL): [0-9]+$' <<<"$lim_out")"
+  if [ -n "$free_counts" ]; then pass "既存スイート: 上限なしで成功・失敗件数が出る"; else fail "既存スイート: 上限なしの出力に件数が無い"; fi
+  assert "既存スイート: 規則どおりの上限でも終了コードが同じ" "$free_rc" "$lim_rc"
+  assert "既存スイート: 規則どおりの上限でも成功・失敗件数が同じ" "$free_counts" "$lim_counts"
+  if grep -q 'Resource temporarily unavailable' <<<"$lim_out"; then fail "既存スイート: 規則どおりの上限で fork が失敗した"; else pass "既存スイート: 規則どおりの上限で fork が失敗しない"; fi
+  assert "上限はサブシェルの中に閉じ、テスト自身のシェルの ulimit -u は変わらない" "$shell_limit_before" "$(ulimit -u)"
+fi
+
+if ! print_summary "$(basename "$0")" "drift: test-pin-mutation-principles.md の節構成・中核規則、issue-implement 5.0.F / test-reviewer Step 3 の参照行、または _reviewer-base.md の検証実験の節の上限規則 3 行と rationale ポインタが変更された可能性"; then
   exit 1
 fi
