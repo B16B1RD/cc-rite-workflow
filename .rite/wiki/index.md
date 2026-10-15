@@ -250,7 +250,7 @@ okf_version: "0.2"
 | [却下理由が採用案にも等しく当てはまる — differentiator でない根拠をコメントに残す](pages/anti-patterns/rejected-rationale-applies-to-adopted-option.md) | anti-patterns | 設計判断をコメントに残すとき「A を却下して B を採用した」と書く。 | 2026-08-01T00:21:06+09:00 | high |
 | [GNU ツールの代替 shim は exit code だけでなく期限・シグナル範囲まで契約を全部再現する](pages/patterns/gnu-tool-shim-full-contract-reproduction.md) | patterns | macOS/BSD で GNU ツール（`timeout` 等）が無い環境向けに shim を書くとき、**契約の一部だけを再現すると fail-open になる**。 | 2026-09-16T23:37:15Z | high |
 | [mktemp -d の canonical 化は 2 段階に分ける — `cd "$(mktemp -d)"` は失敗時にリポジトリ本体を掴む](pages/patterns/two-stage-canonicalization-mktemp-pwd-p.md) | patterns | macOS の `$TMPDIR` は `/var/folders/...`（`/private` への symlink）なので、テストが temp ディレクトリの path を比較すると symlink 解決の差で落ちる。 | 2026-09-27T10:47:38Z | high |
-| [否定アサーションには positive control を添える — `\|\| true` は唯一の crash signal を消す](pages/patterns/negative-assertion-positive-control.md) | patterns | 否定アサーション（「出力が空であること」「canary ファイルが作られないこと」で pass する TC）は、**被テストコマンドの exit code が唯一残った crash signal** である。 | 2026-09-16T15:08:04Z | high |
+| [否定アサーションには positive control を添える — `\|\| true` は唯一の crash signal を消す](pages/patterns/negative-assertion-positive-control.md) | patterns | 否定アサーション（「出力が空であること」「canary ファイルが作られないこと」で pass する TC）は、**被テストコマンドの exit code が唯一残った crash signal** である。 | 2026-10-15T02:42:28Z | high |
 | [プラットフォーム skip を増やすなら「緑の意味」を痩せさせない skip 会計をセットで入れる](pages/heuristics/skip-accounting-honest-green.md) | heuristics | クロスプラットフォーム対応は skip を増やす。 | 2026-08-30T15:15:33Z | high |
 | [degrade する対象をテストするときは判別子を probe と連動させる — 片側の値で固定すると degrade 環境が恒久 RED になる](pages/heuristics/degrade-discriminator-switched-by-probe.md) | heuristics | スクリプトが GNU ツール不在時に `n_stale=0` + rc 0 で短絡する設計だと、「0 件を期待する TC」は **degrade 経路でも PASS する**（vacuous green）。 | 2026-07-25T07:05:21Z | high |
 | [機械的制裁を伴う規約は「何をすると」「何がどこまで」落ちるかを書く — 予約グリフ・予約文字列も導入と同時に文書化する](pages/heuristics/mechanical-sanction-rule-documents-blast-radius.md) | heuristics | 規約に機械的な制裁（CI で落ちる）を伴わせるなら、**発火条件と制裁の範囲**を文書に書かなければ、規約どおりに従ったコントリビューターが blocking gate を落とす。 | 2026-07-25T07:05:21Z | high |
@@ -696,8 +696,11 @@ okf_version: "0.2"
 | [固定だった挙動を設定化したら、仕様書と README の固定記述を 1 回の grep で全数洗い出す](pages/patterns/configurable-behavior-sweeps-fixed-docs-at-once.md) | patterns | 固定の挙動を設定で選べるようにすると、仕様書のコマンド表・フロー図・設定表や README に固定の記述が散らばって残る。一部だけ直すとレビューのたびに残りが指摘されるので、旧挙動を表す語で一度に全数を洗い出してから直す。 | 2026-10-10T02:51:06Z | high |
 | [fail-loud の診断文は、検出した原因の種別ごとに直し方を変えて書く](pages/patterns/fail-loud-diagnostics-per-cause-kind.md) | patterns | 設定値を検証して止める helper が原因の違うエラーを同じ文言で告げると、許可値を書いた利用者に「その値は不正」と矛盾した案内をする。検出の種別ごとに文言を分け、終了コードと機械向けの marker は変えずに人向けの文面だけを分ける。 | 2026-10-10T01:04:42Z | high |
 | [件数の意味を変える変更は、その件数を表示・列挙する消費側を同じ変更で追随させる](pages/heuristics/count-semantics-change-updates-consumers-in-same-change.md) | heuristics | 既存のカウンタへ別種の件数を合算するなど件数の意味を変える変更では、その件数を表示するラベル、helper の終了コードの記述、呼び出し側手順書の例外列挙とエラー表を同じ変更で更新する。追記は正本（契約・エラー表）へ足し、理由の補足側の列挙は例示として扱うと、追随の連鎖が止まる。 | 2026-10-10T04:36:45Z | medium |
+| [多バイト文字の直前に波括弧なしの変数展開を置くと macOS の bash で変数名に取り込まれる](pages/anti-patterns/unbraced-var-before-multibyte-macos-bash.md) | anti-patterns | macOS の bash は UTF-8 の先頭バイトを英数字として扱うため、`$var（` のように多バイト文字が直後に来る展開は変数名を伸ばして空展開になり、化けたバイトが残る。Linux では再現しないので、波括弧で閉じる規約と静的検査で防ぐ。 | 2026-10-15T02:42:28Z | high |
+| [API が返す名前と照合するときは、URL から作った文字列ではなく API の正式名と比べる](pages/patterns/compare-names-with-api-canonical-name.md) | patterns | remote URL から作った owner/repo は大文字小文字や改名前の名前を含みうるので、API の返す full_name と文字列で比べると一致すべき行を黙って落とす。比べる両側を同じ API から取った正式名にそろえる。 | 2026-10-15T02:42:28Z | high |
+| [テスト用の偽コマンドは本番が渡す絞り込み引数を照合して適用する](pages/patterns/fake-command-applies-production-filters.md) | patterns | 偽の gh が --jq を無視したり --json のフィールド指定に関係なく全件を返したりすると、本番の取得範囲を減らす変異がテストを通り抜ける。偽コマンドは本番の引数を照合し、フィルタを fixture に実際に適用して指定分だけ返す。 | 2026-10-15T02:42:28Z | high |
 ## 統計
 
-- 総ページ数: 686
-- ドメイン別: patterns=146, heuristics=344, anti-patterns=196
-- 最終更新: 2026-10-10T04:36:45Z
+- 総ページ数: 689
+- ドメイン別: patterns=148, heuristics=344, anti-patterns=197
+- 最終更新: 2026-10-15T02:42:28Z

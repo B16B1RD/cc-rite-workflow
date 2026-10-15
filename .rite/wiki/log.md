@@ -1,6 +1,15 @@
 # Directory Update Log
 
 ## 2026-10-15
+* **Promotion**: [候補の出典](raw/fixes/20261015T021212Z-pr-3903.md) — unresolved <!-- rite-promotion: {"candidate": "2fe61bacd801f194031b3b25621b69ad19edb5b19eb6f3d7cbb6c66f79ca981c", "raw": "raw/fixes/20261015T021212Z-pr-3903.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
+* **Promotion**: [候補の出典](raw/reviews/20261015T020350Z-pr-3903.md) — unresolved <!-- rite-promotion: {"candidate": "c14802804ad58efed650a9303f9e8c177bcdd122c3d2123f11d06abc1a71e35b", "raw": "raw/reviews/20261015T020350Z-pr-3903.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
+* **Promotion**: [候補の出典](raw/fixes/20261015T014725Z-pr-3903.md) — unresolved <!-- rite-promotion: {"candidate": "0f4731d131522bf1c04a7933e60eec21c60665c224e79fb5ac51f7be159ef292", "raw": "raw/fixes/20261015T014725Z-pr-3903.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
+* **Promotion**: [候補の出典](raw/reviews/20261015T013253Z-pr-3903.md) — unresolved <!-- rite-promotion: {"candidate": "bbb539e6d276e15c8f6d1821b47aa74f076e2b8c9d72431f568230afdd5536a1", "raw": "raw/reviews/20261015T013253Z-pr-3903.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
+* **Promotion**: [候補の出典](raw/reviews/20261015T013253Z-pr-3903.md) — unresolved <!-- rite-promotion: {"candidate": "7467eee285e9f5f3b7b4912a6981f555c1a244b31477ba0b0754f453f7aa6a25", "raw": "raw/reviews/20261015T013253Z-pr-3903.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
+* **Promotion**: [候補の出典](raw/fixes/20261015T011237Z-pr-3903.md) — unresolved <!-- rite-promotion: {"candidate": "63d3920662dc37342f7cfd96f0e17a855533c292158d9359e169c09bd0d8b195", "raw": "raw/fixes/20261015T011237Z-pr-3903.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
+* **Promotion**: [候補の出典](raw/reviews/20261015T005949Z-pr-3903.md) — unresolved <!-- rite-promotion: {"candidate": "647ae5e62b8f6225ade9b4ba5bcb92716e6cae2d8e50d1b199d05defec8921fb", "raw": "raw/reviews/20261015T005949Z-pr-3903.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
+* **Promotion**: [候補の出典](raw/reviews/20261015T005949Z-pr-3903.md) — unresolved <!-- rite-promotion: {"candidate": "facbcc090ddeb6ad334fab3fdd873f15581b384fc637e45ca78e8ed0a18d5d52", "raw": "raw/reviews/20261015T005949Z-pr-3903.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
+* **Promotion**: [候補の出典](raw/reviews/20261014T234324Z-pr-3903.md) — unresolved <!-- rite-promotion: {"candidate": "998b2910ab895b2fcd9a6c264f329d5aa3a2f1195a98c917cd112c9de78c5b18", "raw": "raw/reviews/20261014T234324Z-pr-3903.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
 * **Promotion**: [候補の出典](raw/reviews/20261014T225514Z-pr-3902.md) — unresolved <!-- rite-promotion: {"candidate": "3e1ca1acfcf8b25bad6ce8cb9c3542e7af250a276f4196c95ef090497bfe6938", "raw": "raw/reviews/20261014T225514Z-pr-3902.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
 * **Promotion**: [候補の出典](raw/fixes/20261014T225059Z-pr-3902.md) — unresolved <!-- rite-promotion: {"candidate": "a46141b7714ff7b21edebc2eaef0f997fefbf9c73769e132920606180c34c76a", "raw": "raw/fixes/20261014T225059Z-pr-3902.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
 * **Promotion**: [候補の出典](raw/reviews/20261014T224736Z-pr-3902.md) — unresolved <!-- rite-promotion: {"candidate": "abccb9bf4715a02eb6d349ac90bc1306c618c4db4136519eefe7dd3b612be782", "raw": "raw/reviews/20261014T224736Z-pr-3902.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
@@ -63,6 +72,19 @@
   * 矛盾検査: WIKI_CONTRADICTION_CHECK=complete; changed=0; screened=0; candidates=0; excluded=0; compared=0; carried=0; resolved=0 — 対象なし（今回の取り込みは昇格候補のみでページの追加・更新なし）
 * **lint:clean** — contradictions=0, stale=77, orphans=0, missing_concept=0, unregistered_raw=877, broken_refs=0
   * 矛盾検査: WIKI_CONTRADICTION_CHECK=complete; changed=0; screened=0; candidates=0; excluded=0; compared=0; carried=0; resolved=0 — 対象なし（今回の取り込みは昇格候補のみでページの追加・更新なし）
+* **Create**: [多バイト文字の直前に波括弧なしの変数展開を置くと macOS の bash で変数名に取り込まれる](pages/anti-patterns/unbraced-var-before-multibyte-macos-bash.md) — [取り込み元](raw/reviews/20261015T005949Z-pr-3903.md) を新規ページ化
+* **Update**: [多バイト文字の直前に波括弧なしの変数展開を置くと macOS の bash で変数名に取り込まれる](pages/anti-patterns/unbraced-var-before-multibyte-macos-bash.md) — [取り込み元](raw/fixes/20261015T011237Z-pr-3903.md) を統合
+* **Create**: [API が返す名前と照合するときは、URL から作った文字列ではなく API の正式名と比べる](pages/patterns/compare-names-with-api-canonical-name.md) — [取り込み元](raw/reviews/20261014T234324Z-pr-3903.md) を新規ページ化
+* **Update**: [API が返す名前と照合するときは、URL から作った文字列ではなく API の正式名と比べる](pages/patterns/compare-names-with-api-canonical-name.md) — [取り込み元](raw/fixes/20261014T235100Z-pr-3903.md) を統合
+* **Create**: [テスト用の偽コマンドは本番が渡す絞り込み引数を照合して適用する](pages/patterns/fake-command-applies-production-filters.md) — [取り込み元](raw/reviews/20261014T234324Z-pr-3903.md) を新規ページ化
+* **Update**: [テスト用の偽コマンドは本番が渡す絞り込み引数を照合して適用する](pages/patterns/fake-command-applies-production-filters.md) — [取り込み元](raw/fixes/20261014T235100Z-pr-3903.md) を統合
+* **Update**: [テスト用の偽コマンドは本番が渡す絞り込み引数を照合して適用する](pages/patterns/fake-command-applies-production-filters.md) — [取り込み元](raw/reviews/20261015T005949Z-pr-3903.md) を統合
+* **Update**: [テスト用の偽コマンドは本番が渡す絞り込み引数を照合して適用する](pages/patterns/fake-command-applies-production-filters.md) — [取り込み元](raw/fixes/20261015T011237Z-pr-3903.md) を統合
+* **Update**: [テスト用の偽コマンドは本番が渡す絞り込み引数を照合して適用する](pages/patterns/fake-command-applies-production-filters.md) — [取り込み元](raw/reviews/20261015T013253Z-pr-3903.md) を統合
+* **Update**: [否定アサーションには positive control を添える — `|| true` は唯一の crash signal を消す](pages/patterns/negative-assertion-positive-control.md) — [取り込み元](raw/fixes/20261015T014725Z-pr-3903.md) を統合
+* **Update**: [否定アサーションには positive control を添える — `|| true` は唯一の crash signal を消す](pages/patterns/negative-assertion-positive-control.md) — [取り込み元](raw/reviews/20261015T020350Z-pr-3903.md) を統合
+* **Update**: [否定アサーションには positive control を添える — `|| true` は唯一の crash signal を消す](pages/patterns/negative-assertion-positive-control.md) — [取り込み元](raw/fixes/20261015T021212Z-pr-3903.md) を統合
+* **Update**: [否定アサーションには positive control を添える — `|| true` は唯一の crash signal を消す](pages/patterns/negative-assertion-positive-control.md) — [取り込み元](raw/reviews/20261015T022602Z-pr-3903.md) を統合
 
 ## 2026-10-14
 * **Skip**: [20261014T101054Z-pr-3886.md](raw/reviews/20261014T101054Z-pr-3886.md) — 差分スコープでも reviewer が変異を再実測したという観察だけで、新しい経験則を含まない

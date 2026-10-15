@@ -29,13 +29,22 @@ sources:
     resource: "raw/fixes/20260916T140542Z-pr-2917.md"
   - type: "reviews"
     resource: "raw/reviews/20260916T141828Z-pr-2917.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261015T014725Z-pr-3903.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261015T020350Z-pr-3903.md"
+  - type: "fixes"
+    resource: "raw/fixes/20261015T021212Z-pr-3903.md"
+  - type: "reviews"
+    resource: "raw/reviews/20261015T022602Z-pr-3903.md"
 tags: ["test", "negative-assert", "positive-control", "fail-open", "mutation-testing"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T15:08:04Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-15T02:42:28Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-16T03:09:20Z" }
   - { by: "rite-wiki-ingest/gpt-5", at: "2026-09-16T14:11:59Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T15:08:04Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-10-15T02:42:28Z" }
 ---
 
 # 否定アサーションには positive control を添える — `|| true` は唯一の crash signal を消す
@@ -136,11 +145,20 @@ mock の marker 設置を生成後の検索置換に依存させると、置換�
 
 主題が「呼ばない」である TC の内側には、その経路を「呼ぶ」入力を置けない — 置いた瞬間に TC の主題が変わる。この場合、同じ suite 内で同じ mock を使い「呼ばれる」ことを本命とする別 TC が、absence assert の precondition（marker が読まれうること）を担う唯一の構造になる。suite の粒度が TC 単位のとき、control が別 TC に住むこと自体は欠陥ではないが、両 TC が同じ mock 定義を共有していることが前提になる。片方だけ mock を差し替えると control は precondition を保証しなくなるので、共有を崩す変更は control の側にも反映する。
 
+### 違反を探す静的検査の control は、違反の形をソースに書かない
+
+「違反が 0 件」を確かめる静的検査にも、違反例に 1 件だけ一致する対照入力を並べる。パターンが壊れて何にも一致しなくなっても、0 件の検査は通り続けるからである。
+
+ただし違反例をソースにリテラルで書くと、同じ規約をリポジトリ全体で走査する別の検査が、その対照の行を本物の違反として拾う。違反の形は printf のバイトエスケープなどで実行時に作り、ソース上には違反の形を残さない。変更したテストファイルだけを回すとこの衝突は見えないので、全体を走査する検査を含むスイート全体で確かめる。
+
+対照を書き換えたら、検出力が残っていることを変異で確かめる。正規表現を一致しない値にする、広げすぎる、違反例のバイト列を ASCII に替える、のいずれでも対照が落ちること、修正を戻すと元の失敗が再現することを見る。作り直した入力が旧リテラルの出力と `od -c` でバイト単位に一致すれば、対照の見る内容は変わっていない。assert 名は実際に検査する範囲と同じ広さで書き、値域や振り分けを固定する pin は、名乗る条件と行末の括弧書きまで含めて行全体で照合する。
+
 ## 関連ページ
 
 - [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](./absence-pin-base-present-head-absent-single-line.md)
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](./mutation-testing-test-fidelity.md)
 - [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](../heuristics/fixture-mutation-isolates-invariants.md)
+- [多バイト文字の直前に波括弧なしの変数展開を置くと macOS の bash で変数名に取り込まれる](../anti-patterns/unbraced-var-before-multibyte-macos-bash.md)
 
 ## ソース
 
@@ -156,3 +174,7 @@ mock の marker 設置を生成後の検索置換に依存させると、置換�
 - [事後パッチに依存した marker 設置と absence assert の空振りを扱ったレビュー結果](../../raw/reviews/20260916T135355Z-pr-2917.md)
 - [marker を mock 定義へ移し positive control で固定した修正結果](../../raw/fixes/20260916T140542Z-pr-2917.md)
 - [control が別 TC に住む構造を確認した再レビュー結果](../../raw/reviews/20260916T141828Z-pr-2917.md)
+- [0 件を確かめる否定の検査に対照を並べた修正結果](../../raw/fixes/20261015T014725Z-pr-3903.md)
+- [対照のリテラルが全体走査の検査に拾われたレビュー結果](../../raw/reviews/20261015T020350Z-pr-3903.md)
+- [対照の違反例をバイトエスケープで生成した修正結果](../../raw/fixes/20261015T021212Z-pr-3903.md)
+- [書き換えた対照の検出力を変異で確かめた再レビュー結果](../../raw/reviews/20261015T022602Z-pr-3903.md)
