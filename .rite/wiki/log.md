@@ -1,6 +1,8 @@
 # Directory Update Log
 
 ## 2026-10-15
+* **Promotion**: [候補の出典](raw/reviews/20261015T081012Z-pr-3907.md) — unresolved <!-- rite-promotion: {"candidate": "39197b5946fdf551990ffbfca519bc5e1d5a32ac264d728c1de4b3d206b67a06", "raw": "raw/reviews/20261015T081012Z-pr-3907.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
+* **Promotion**: [候補の出典](raw/reviews/20261015T074827Z-pr-3907.md) — unresolved <!-- rite-promotion: {"candidate": "82ad6e152130601916cb94f721eeb3eab9859b8ae2ea26caf15c2ee2e80415db", "raw": "raw/reviews/20261015T074827Z-pr-3907.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
 * **Promotion**: [候補の出典](raw/reviews/20261015T063453Z-pr-3905.md) — skipped <!-- rite-promotion: {"candidate": "", "raw": "raw/reviews/20261015T063453Z-pr-3905.md", "reason": "PR 内推奨の修正が収束していった経過の記録で、再利用できる経験則を含まない", "status": "skipped"} -->
 * **Promotion**: [候補の出典](raw/reviews/20261015T062026Z-pr-3905.md) — unresolved <!-- rite-promotion: {"candidate": "3dec8414022eb6d8519f43d5772720dfacd20c29366c176532c85cdf5ddfa2db", "raw": "raw/reviews/20261015T062026Z-pr-3905.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
 * **Promotion**: [候補の出典](raw/reviews/20261015T062026Z-pr-3905.md) — unresolved <!-- rite-promotion: {"candidate": "530ffdcdda590c9863577768e94bcf4245e69beafc73e1901c64c9176e171261", "raw": "raw/reviews/20261015T062026Z-pr-3905.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
@@ -117,6 +119,8 @@
   * 未解消の矛盾: [fake-command-applies-production-filters](pages/patterns/fake-command-applies-production-filters.md) ↔ [stub-ignored-argument-escapes-test](pages/heuristics/stub-ignored-argument-escapes-test.md) — 重複情報: どちらも偽コマンドが受け取った式と絞り込み引数を fixture に実際に適用させ、想定外の引数を失敗させるべきとする結論が 80% 以上一致する
   * 除外: 一行要約の論点・対象・条件が、外部コマンドのエラーメッセージを英語文字列で grep する assert の locale 依存と重ならないと要約から判断できた組（685 組）
   * 比較（locale-dependent-error-message-grep-assertion）: assert-not-grep-vacuous-without-fixture-scope — 否定 assert が入力に対象を含まず恒真になる別の原因を扱い、結論は両立する / bre-ere-metachar-inversion-dead-assertion — 正規表現の方言の取り違えによる別の原因を扱い、結論は両立する / ere-optional-quantifier-on-multibyte-char — LC_ALL=C が多バイト文字の正規表現を壊すという条件の異なる注意で、英語メッセージの固定に LC_ALL=C を使う変更本文とは成立条件が違うため見かけの対立
+* **Create**: [fork を再試行中のサブシェルは SIGTERM で止まらないので、fork 失敗の probe は timeout -s KILL で打ち切る](pages/heuristics/kill-fork-retrying-subshell-with-sigkill.md) — [取り込み元](raw/reviews/20261015T074827Z-pr-3907.md) を新規ページ化
+* **Update**: [fork を再試行中のサブシェルは SIGTERM で止まらないので、fork 失敗の probe は timeout -s KILL で打ち切る](pages/heuristics/kill-fork-retrying-subshell-with-sigkill.md) — [取り込み元](raw/fixes/20261015T075316Z-pr-3907.md) を統合
 
 ## 2026-10-14
 * **Skip**: [20261014T101054Z-pr-3886.md](raw/reviews/20261014T101054Z-pr-3886.md) — 差分スコープでも reviewer が変異を再実測したという観察だけで、新しい経験則を含まない

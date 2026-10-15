@@ -699,8 +699,9 @@ okf_version: "0.2"
 | [多バイト文字の直前に波括弧なしの変数展開を置くと macOS の bash で変数名に取り込まれる](pages/anti-patterns/unbraced-var-before-multibyte-macos-bash.md) | anti-patterns | macOS の bash は UTF-8 の先頭バイトを英数字として扱うため、`$var（` のように多バイト文字が直後に来る展開は変数名を伸ばして空展開になり、化けたバイトが残る。Linux では再現しないので、波括弧で閉じる規約と静的検査で防ぐ。 | 2026-10-15T02:42:28Z | high |
 | [API が返す名前と照合するときは、URL から作った文字列ではなく API の正式名と比べる](pages/patterns/compare-names-with-api-canonical-name.md) | patterns | remote URL から作った owner/repo は大文字小文字や改名前の名前を含みうるので、API の返す full_name と文字列で比べると一致すべき行を黙って落とす。比べる両側を同じ API から取った正式名にそろえる。 | 2026-10-15T02:42:28Z | high |
 | [テスト用の偽コマンドは本番が渡す絞り込み引数を照合して適用する](pages/patterns/fake-command-applies-production-filters.md) | patterns | 偽の gh が --jq を無視したり --json のフィールド指定に関係なく全件を返したりすると、本番の取得範囲を減らす変異がテストを通り抜ける。偽コマンドは本番の引数を照合し、フィルタを fixture に実際に適用して指定分だけ返す。 | 2026-10-15T02:42:28Z | high |
+| [fork を再試行中のサブシェルは SIGTERM で止まらないので、fork 失敗の probe は timeout -s KILL で打ち切る](pages/heuristics/kill-fork-retrying-subshell-with-sigkill.md) | heuristics | ulimit -u で fork 失敗を誘発するサブシェルは、bash が fork を再試行している間 timeout 既定の SIGTERM では止まらず孤児として残り、コマンド置換を十数秒待たせる。打ち切りは SIGKILL を直接送る timeout -s KILL で行い、-k は監視対象が先に終わると KILL が送られないため頼らない。 | 2026-10-15T08:18:52Z | high |
 ## 統計
 
-- 総ページ数: 689
-- ドメイン別: patterns=148, heuristics=344, anti-patterns=197
-- 最終更新: 2026-10-15T06:45:00Z
+- 総ページ数: 690
+- ドメイン別: patterns=148, heuristics=345, anti-patterns=197
+- 最終更新: 2026-10-15T08:18:52Z
