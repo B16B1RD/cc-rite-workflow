@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-10-15
+* **Promotion**: [候補の出典](raw/reviews/20261015T084627Z-pr-3889.md) — unresolved <!-- rite-promotion: {"candidate": "3d8d0376877de8f6c9f5d97753e3fe2bb1c5f980af999877d284cc472f425599", "raw": "raw/reviews/20261015T084627Z-pr-3889.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
 * **Promotion**: [候補の出典](raw/reviews/20261015T081012Z-pr-3907.md) — unresolved <!-- rite-promotion: {"candidate": "39197b5946fdf551990ffbfca519bc5e1d5a32ac264d728c1de4b3d206b67a06", "raw": "raw/reviews/20261015T081012Z-pr-3907.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
 * **Promotion**: [候補の出典](raw/reviews/20261015T074827Z-pr-3907.md) — unresolved <!-- rite-promotion: {"candidate": "82ad6e152130601916cb94f721eeb3eab9859b8ae2ea26caf15c2ee2e80415db", "raw": "raw/reviews/20261015T074827Z-pr-3907.md", "reason": "caller, verification and merge evidence required", "status": "unresolved"} -->
 * **Promotion**: [候補の出典](raw/reviews/20261015T063453Z-pr-3905.md) — skipped <!-- rite-promotion: {"candidate": "", "raw": "raw/reviews/20261015T063453Z-pr-3905.md", "reason": "PR 内推奨の修正が収束していった経過の記録で、再利用できる経験則を含まない", "status": "skipped"} -->
