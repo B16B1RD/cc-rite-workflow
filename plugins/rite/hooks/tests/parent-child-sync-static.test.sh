@@ -219,6 +219,11 @@ assert_grep_in_section "cleanup ステップ 12 値域 has Cancelled 未完了�
 assert_grep_in_section "cleanup ステップ 12 値域 has Cancelled のため Done 上書きをスキップ" "$CLEANUP_MD" \
   "$S12_START" "$S12_END" \
   '^- `⚠️ Cancelled のため Done 上書きをスキップ`'
+assert_grep_in_section "cleanup ステップ 12 値域 has the undecided parent value" "$CLEANUP_MD" \
+  "$S12_START" "$S12_END" \
+  '^- `⚠️ 親 Issue の有無を判定できず親処理をスキップ` — ステップ 2 の tasklist fallback が `tasklist_parent=undecided`'
+assert_grep "cleanup routes tasklist_parent=undecided to that step 12 value" "$CLEANUP_MD" \
+  'このときステップ 12 の `\{parent_close_result\}` は `⚠️ 親 Issue の有無を判定できず親処理をスキップ` にする'
 # 件数は値域ブロック内の行頭 `- `` 行だけを数える（任意の `- ` ではない）。
 # 終端空行が無いときは NOEND で fail し、0 件を pass と読まない。
 _value_domain_count() {
@@ -249,10 +254,10 @@ _value_domain_heading_n() {
 _vd_count=$(_value_domain_count "$CLEANUP_MD") || true
 if [ "$_vd_count" = "NOEND" ] || [ -z "$_vd_count" ]; then
   fail "cleanup ステップ 12 値域ブロック終端（空行）が見つからない（0 件を pass と読まない）"
-elif [ "$_vd_count" = "8" ]; then
-  pass "cleanup ステップ 12 値域 - \` 行数が 8"
+elif [ "$_vd_count" = "9" ]; then
+  pass "cleanup ステップ 12 値域 - \` 行数が 9"
 else
-  fail "cleanup ステップ 12 値域 - \` 行数が ${_vd_count}（expected 8）"
+  fail "cleanup ステップ 12 値域 - \` 行数が ${_vd_count}（expected 9）"
 fi
 _vd_heading=$(_value_domain_heading_n "$CLEANUP_MD")
 if [ -n "$_vd_heading" ] && [ "$_vd_heading" = "$_vd_count" ]; then
@@ -531,6 +536,14 @@ echo "=== Phase 7: Method 3 reads every candidate parent and reports a failed fe
 # A search cut at a count limit drops a parent ranked below the limit and reads it as
 # "no parent". The candidates come from the child's timeline (no count limit), and a
 # failed fetch says the parent could not be determined instead of calling it standalone.
+m3_unbraced_re='\$[A-Za-z_][A-Za-z0-9_]*[^ -~]'
+# Positive control: the T-15 pattern matches an unbraced variable before a full-width
+# bracket and not a braced one, so a zero count below is not a pattern that never matches.
+if [ "$(printf '%s\n' 'echo "（$v）"' 'echo "（${v}）"' | LC_ALL=C grep -c "$m3_unbraced_re")" = 1 ]; then
+  pass "T-15 control: the pattern matches only the unbraced variable"
+else
+  fail "T-15 control: the pattern should match the unbraced variable and not the braced one"
+fi
 for m3_md in "$PROJECTS_REF" "$CLOSE_MD" "$CLEANUP_MD"; do
   m3_name=$(basename "$(dirname "$m3_md")")/$(basename "$m3_md")
   assert_not_grep "T-13 $m3_name has no count-limited issue search" "$m3_md" \
@@ -542,11 +555,11 @@ for m3_md in "$PROJECTS_REF" "$CLOSE_MD" "$CLEANUP_MD"; do
   # bash on macOS reads the first byte of a multibyte character right after an unbraced
   # $var as part of the name, so the expansion comes out empty there (Linux does not).
   m3_unbraced=$(awk '/^# 候補集合は子 Issue の timeline/{f=1} f&&/^```/{exit} f' "$m3_md" \
-    | LC_ALL=C grep -c '\$[A-Za-z_][A-Za-z0-9_]*[^ -~]' || true)
+    | LC_ALL=C grep -c "$m3_unbraced_re" || true)
   if [ "$m3_unbraced" = 0 ]; then
-    pass "T-15 $m3_name braces every variable followed by a multibyte character"
+    pass "T-15 $m3_name Method 3 block braces every variable followed by a multibyte character"
   else
-    fail "T-15 $m3_name has $m3_unbraced line(s) with an unbraced variable before a multibyte character"
+    fail "T-15 $m3_name Method 3 block has $m3_unbraced line(s) with an unbraced variable before a multibyte character"
   fi
 done
 

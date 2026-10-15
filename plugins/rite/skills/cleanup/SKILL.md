@@ -183,7 +183,7 @@ else
 fi
 ```
 
-tasklist fallback が `tasklist_parent=undecided` を出したときは、debug log を出さず、ステップ 10 の親処理だけをスキップする（WARNING が判定できない理由を示している）。
+tasklist fallback が `tasklist_parent=undecided` を出したときは、debug log を出さず、ステップ 10 の親処理だけをスキップする（WARNING が判定できない理由を示している）。このときステップ 12 の `{parent_close_result}` は `⚠️ 親 Issue の有無を判定できず親処理をスキップ` にする。
 
 両 method とも親を検出できなければ（`tasklist_parent=none`）standalone として扱い、ステップ 10 の親処理をスキップする (non-blocking)。silent skip 禁止のため debug log を残す:
 
@@ -1163,7 +1163,7 @@ rationale: references/rationale.md#outstanding-checkbox
 - 結果: {parent_close_result}
 ```
 
-`{parent_close_result}` の値域 (ステップ 10 で決定された 8 種類のいずれか):
+`{parent_close_result}` の値域 (ステップ 10 で決定された 9 種類のいずれか):
 - `✅ 自動クローズ完了 (全 sub-issue clear)` — 親 Issue が全 sub-issue 完了で自動 close
 - `🟡 sub-issue 残あり (close 保留)` — 残 sub-issue があり親は open のまま
 - `⚠️ Cancelled の子を含むため親は未完了扱い` — Cancelled（NOT_PLANNED）の子が居る。Done / auto-close しない
@@ -1171,6 +1171,7 @@ rationale: references/rationale.md#outstanding-checkbox
 - `⚠️ 子の stateReason 判定不能のため auto-close スキップ` — CLOSED 子の `stateReason` 取得失敗（fail-loud）
 - `⚠️ 手動確認推奨` — 親 Issue 状態が判定不能で manual triage 推奨
 - `ℹ️ PR 未マージのため親 Issue は更新していません` — `{pr_merged}=false`。Tasklist 更新も auto-close 判定も実行していない
+- `⚠️ 親 Issue の有無を判定できず親処理をスキップ` — ステップ 2 の tasklist fallback が `tasklist_parent=undecided`（取得の失敗。理由はステップ 2 の WARNING）
 - `(該当なし)` — 親 Issue が識別されなかった (ステップ 2 で見つからず)
 
 未完了タスク Issue 化結果 (該当する場合のみ):
